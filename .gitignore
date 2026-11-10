@@ -6,3 +6,4 @@
 **/.stopwords
 .vs/
 *.user
+src/SpaceTangent.Godot/.local-data/

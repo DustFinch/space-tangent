@@ -32,3 +32,5 @@ Place the shared UTF-8 `.stopwords` file next to both repositories, or set `SPAC
 The checks cover staged paths and supported text, commit identities and messages, and objects introduced by a push, including annotated tags. For a required literal in text, add a reviewed exception to `scripts/audit/allowlist.json` with `path` (repository-relative), `sha256` (SHA-256 of the exact UTF-8 line without its newline) and `reason`. Changing the line invalidates the exception. Paths, commit metadata and the word list itself are outside the exception mechanism.
 
 Text inspection supports UTF-8 and UTF-16 with a BOM. Binary data and dependency repository histories require their own checks. Each dependency repository has its own hooks and publishes its referenced commit before an application push.
+
+[Run the Sun, Earth and Moon simulation](docs/FIRST_SIMULATION.md)

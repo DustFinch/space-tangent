@@ -1,6 +1,6 @@
 # SpaceTangent migration plan
 
-Status: proposed for approval. The repository setup is the starting point. The first migration milestone begins after approval.
+The migration plan is approved. Each milestone is accepted against its verification criteria.
 
 Use the legacy checkout at `E:/Projects/karyonika/gamedev/space_tangent_legacy` as a reference for behavior, source provenance and tests. The refactor inputs are `docs/review/13-local-fix-progress.md` and `godot-dotnet/docs/LOCAL_FIX_LIMITS.md` in that checkout. Each step below has a way to verify its result.
 

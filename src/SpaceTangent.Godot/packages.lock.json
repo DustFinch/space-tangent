@@ -1,0 +1,34 @@
+{
+  "version": 1,
+  "dependencies": {
+    "net8.0": {
+      "Godot.SourceGenerators": {
+        "type": "Direct",
+        "requested": "[4.7.2, )",
+        "resolved": "4.7.2",
+        "contentHash": "Utbu3S+af5/+SVRUlSZZJb2M52mcL3RbHl5sW6lmvRkG2klS/KFjZ+6ldAmOlp1mTqvxZ+5QsEvl/Dis7a4ZMA=="
+      },
+      "GodotSharp": {
+        "type": "Direct",
+        "requested": "[4.7.2, )",
+        "resolved": "4.7.2",
+        "contentHash": "7lbJgYB1o96H23sX0idzwhnY0DbRx0oJucYKP9xGQv5IcghlXUuxUv/xTMV+I1mW3Wh9uDdtuwtpwNurk2y7Fw=="
+      },
+      "GodotSharpEditor": {
+        "type": "Direct",
+        "requested": "[4.7.2, )",
+        "resolved": "4.7.2",
+        "contentHash": "Pl2L2ppnXyDuiQ5tqp208/yFsdFUF3x+e81GOhZNLoaudaSOQ6p/Lf12/cUiDj2g/flI3Kdf+LYz+2MDs8/DtQ==",
+        "dependencies": {
+          "GodotSharp": "4.7.2"
+        }
+      },
+      "spacetangent.contracts": {
+        "type": "Project"
+      },
+      "spacetangent.core": {
+        "type": "Project"
+      }
+    }
+  }
+}

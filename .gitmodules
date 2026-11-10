@@ -1,0 +1,3 @@
+[submodule "space-tangent-core"]
+	path = deps/space-tangent-core
+	url = ../space-tangent-core

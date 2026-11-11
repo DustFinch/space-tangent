@@ -19,6 +19,7 @@ internal sealed class SurfaceProjection
     private readonly Label[] _cardinals;
     private BrightSkyOverlay? _sky;
     private (Vector3 Forward, Vector3 Right, Vector3 Up, Vector3 North, Vector3 East)? _cardinalFrame;
+    private float _tanHalfField = .087488664f;
     internal double? PitchDegrees { get; set; }
 
     internal SurfaceProjection(Node owner, SurfaceTextures textures)
@@ -47,7 +48,7 @@ internal sealed class SurfaceProjection
     internal ObjectId? PickStar(Vector2 position) => _sky?.Pick(position);
 
     internal bool Draw(bool surface, SolarSystemSample sample, DeltaTModel model, EarthObserverCamera? camera = null,
-        SkyLayerSettings sky = default, ObjectId? selection = null)
+        SkyLayerSettings sky = default, ObjectId? selection = null, double fieldOfView = 10)
     {
         _surface.Visible = surface;
         if (!surface)
@@ -74,6 +75,8 @@ internal sealed class SurfaceProjection
         Vector3 forward = horizontal * (float)Math.Cos(pitch) + up * (float)Math.Sin(pitch);
         Vector3 right = horizontal.Cross(up).Normalized();
         Vector3 cameraUp = right.Cross(forward);
+        _tanHalfField = (float)Math.Tan(fieldOfView * Degrees / 2);
+        _material.SetShaderParameter("tan_half_field", _tanHalfField);
         _material.SetShaderParameter("observer", Convert(lighting.PositionKilometers));
         _material.SetShaderParameter("forward", forward);
         _material.SetShaderParameter("right", right);
@@ -92,7 +95,7 @@ internal sealed class SurfaceProjection
             float solarAltitude = (float)(lighting.SolarAltitudeRadians / Degrees);
             Vector3 moon = Convert(lighting.EarthToMoon - lighting.PositionKilometers);
             float moonRadius = MathF.Asin(MathF.Min(4 * (float)EarthSurfaceLighting.MoonRadiusKilometers / moon.Length(), .1f));
-            _sky.ShowFrame(new(sample.Epoch, sky, selection, forward, right, cameraUp, .087488664f,
+            _sky.ShowFrame(new(sample.Epoch, sky, selection, forward, right, cameraUp, _tanHalfField,
                 1 - Mathf.SmoothStep(-12, -4, solarAltitude), up, moon.Normalized(), moonRadius));
         }
         else
@@ -115,7 +118,6 @@ internal sealed class SurfaceProjection
     private void PlaceCardinals()
     {
         Vector2 size = _surface.Size;
-        const float tanHalfField = .087488664f;
         for (int index = 0; index < _cardinals.Length; index++)
         {
             Label label = _cardinals[index];
@@ -128,7 +130,7 @@ internal sealed class SurfaceProjection
             float depth = axis.Dot(frame.Forward);
             if (depth <= 0)
                 continue;
-            float scale = size.Y / (2 * depth * tanHalfField);
+            float scale = size.Y / (2 * depth * _tanHalfField);
             Vector2 point = size / 2 + new Vector2(axis.Dot(frame.Right), -axis.Dot(frame.Up)) * scale;
             if (!new Rect2(Vector2.Zero, size).HasPoint(point))
                 continue;

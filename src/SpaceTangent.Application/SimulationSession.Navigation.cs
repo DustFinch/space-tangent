@@ -19,7 +19,7 @@ public sealed partial class SimulationSession
         if (!TrySelectedState(view, out ObjectId target, out WorldSnapshot snapshot, out _))
             return false;
         ObserverView observer = _views[view];
-        NavigationCamera start = observer.Navigation ?? PresetCamera(observer, snapshot);
+        NavigationCamera start = (observer.Navigation ?? PresetCamera(observer, snapshot)) with { Placement = null };
         _flights[view] = new(start, 0);
         _views[view] = observer with { Navigation = start with { Target = target, Tracking = false } };
         return true;
@@ -30,7 +30,9 @@ public sealed partial class SimulationSession
         ObserverView observer = _views[view];
         if (observer.Navigation is { Tracking: true } tracked && tracked.Target == observer.Selection)
         {
-            _views[view] = observer with { Navigation = tracked with { Tracking = false } };
+            NavigationPlacement? placement = tracked.Placement is { BodyFixed: true }
+                ? tracked.ResolvePlacement(World.Graph.Evaluate(observer.Epoch)) : tracked.Placement;
+            _views[view] = observer with { Navigation = tracked with { Tracking = false, Placement = placement } };
             return true;
         }
         if (!TrySelectedState(view, out ObjectId target, out WorldSnapshot snapshot, out CartesianState state))
@@ -43,7 +45,7 @@ public sealed partial class SimulationSession
         _views[view] = observer with
         {
             Navigation = pose with { AnchorKilometers = state.PositionKilometers, RangeKilometers = range,
-                Target = target, Tracking = true }
+                Target = target, Tracking = true, Placement = null }
         };
         return true;
     }
@@ -65,7 +67,11 @@ public sealed partial class SimulationSession
             return false;
         double minimum = camera.Target is { } target ? MinimumRange(target) : NavigationCamera.MinRange;
         CancelFlight(view);
-        _views[view] = observer with { Navigation = camera.Adjust(azimuth, elevation, zoom, minimum) };
+        NavigationCamera next = camera.Adjust(azimuth, elevation, zoom, minimum);
+        if (camera.Placement is { } placement)
+            next = next with { Placement = placement.Turn(azimuth, elevation) with
+                { OffsetKilometers = placement.OffsetKilometers * (next.RangeKilometers / camera.RangeKilometers) } };
+        _views[view] = observer with { Navigation = next };
         return true;
     }
 

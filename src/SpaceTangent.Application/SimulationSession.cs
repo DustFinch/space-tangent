@@ -9,6 +9,8 @@ using SpaceTangent.Core.World;
 
 namespace SpaceTangent.Application;
 
+public enum ViewSplit { SideBySide, Stacked }
+
 public enum CameraMode { Solar, Lunar, Satellites, Surface, Mission, Timeline, Probe, LunarTerrain, SolarOuter, MarsTerrain }
 
 public readonly record struct LunarTerrainCamera(double LongitudeDegrees, double LatitudeDegrees, double FieldKilometers)
@@ -26,6 +28,9 @@ public readonly record struct ObserverView(JulianInstant Epoch, CameraMode Mode,
     public NavigationCamera? Navigation { get; init; }
     public EarthObserverCamera? EarthObserver { get; init; }
     public SkyLayerSettings Sky { get; init; }
+    public double? FieldOfViewDegrees { get; init; }
+    public double EffectiveFieldOfView => FieldOfViewDegrees ?? (Mode == CameraMode.Surface && Navigation is null ? 10 : 49);
+    public static bool ValidFieldOfView(double field) => field is >= 2 and <= 120;
 }
 
 public sealed record HuygensMission(SscHuygensTrack Track, SpkKernel SaturnSystem, SpicePolynomialBodyFrame TitanFrame);
@@ -137,11 +142,12 @@ public sealed partial class SimulationSession
     public SimulationWorld World { get; private set; }
     public DeltaTModel DeltaT { get; private set; }
     public bool Synchronized { get; private set; } = true;
+    public ViewSplit SplitLayout { get; private set; }
     public int ViewCount => _views.Count;
     public ObserverView this[int view] => _views[view];
 
     public SimulationScenario CaptureScenario(int activeView) =>
-        new(Array.AsReadOnly(_views.ToArray()), Synchronized, _clockOwner, activeView, DeltaT);
+        new(Array.AsReadOnly(_views.ToArray()), Synchronized, _clockOwner, activeView, DeltaT) { SplitLayout = SplitLayout };
 
     public void RestoreScenario(SimulationScenario scenario)
     {
@@ -151,6 +157,8 @@ public sealed partial class SimulationSession
             throw new InvalidDataException("The scenario refers to an unavailable view.");
         if (!Enum.IsDefined(scenario.DeltaT))
             throw new InvalidDataException("The scenario has an unknown ΔT model.");
+        if (!Enum.IsDefined(scenario.SplitLayout))
+            throw new InvalidDataException("The scenario has an unknown view layout.");
         foreach (ObserverView view in views)
         {
             if (!Covers(World, view.Epoch))
@@ -169,6 +177,8 @@ public sealed partial class SimulationSession
                 throw new InvalidDataException("The scenario needs the Martian elevation map and orientation kernel.");
             if (view.EarthObserver is { } earth && !earth.IsValid())
                 throw new InvalidDataException("The scenario has an invalid Earth observer camera.");
+            if (view.FieldOfViewDegrees is { } field && !ObserverView.ValidFieldOfView(field))
+                throw new InvalidDataException("The scenario has an invalid field of view.");
             if (view.Terrain is { } terrain && !terrain.IsValid())
                 throw new InvalidDataException("The scenario has invalid lunar camera coordinates or field width.");
             if (view.Mode == CameraMode.Satellites && World.Satellites.Count == 0)
@@ -178,6 +188,9 @@ public sealed partial class SimulationSession
             if (view.Navigation is { } camera &&
                 (!camera.IsValid() || (camera.Target is { } target && World.Catalogue.Find(target) is null)))
                 throw new InvalidDataException("The scenario has an invalid camera pose or unavailable camera target.");
+            if (view.Navigation is { Placement.BodyFixed: true, Target: { } body } &&
+                !World.Graph.Evaluate(view.Epoch).TryOrientation(body, out _))
+                throw new InvalidDataException("The scene needs an unavailable rotating-body frame.");
         }
         ObserverView owner = views[scenario.ClockOwner];
         if (scenario.Synchronized && views.Any(view => view.Epoch != owner.Epoch || view.Playing != owner.Playing))
@@ -188,6 +201,7 @@ public sealed partial class SimulationSession
         Array.Clear(_flights);
         Synchronized = scenario.Synchronized;
         _clockOwner = scenario.ClockOwner;
+        SplitLayout = scenario.SplitLayout;
         DeltaT = scenario.DeltaT;
     }
 
@@ -199,6 +213,20 @@ public sealed partial class SimulationSession
     }
 
     public void SetSkyLayers(int view, SkyLayerSettings sky) => _views[view] = _views[view] with { Sky = sky };
+
+    public void SetSplitLayout(ViewSplit layout)
+    {
+        if (!Enum.IsDefined(layout))
+            throw new ArgumentOutOfRangeException(nameof(layout));
+        SplitLayout = layout;
+    }
+
+    public void SetFieldOfView(int view, double? field)
+    {
+        if (field is { } degrees && !ObserverView.ValidFieldOfView(degrees))
+            throw new ArgumentOutOfRangeException(nameof(field));
+        _views[view] = _views[view] with { FieldOfViewDegrees = field };
+    }
 
     public void Split()
     {
@@ -369,7 +397,8 @@ public sealed partial class SimulationSession
             NavigationCamera? navigation = previous.Navigation;
             if (navigation is { Target: { } target } camera && next.Catalogue.Find(target) is null)
             {
-                navigation = camera with { Target = null, Tracking = false };
+                navigation = camera with { Target = null, Tracking = false,
+                    Placement = camera.Placement is { BodyFixed: true } ? null : camera.Placement };
                 CancelFlight(index);
             }
             _views[index] = previous with { Selection = selected, Mode = mode, Navigation = navigation };

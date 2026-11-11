@@ -20,6 +20,8 @@ public partial class WorkspaceInputSmoke : Node
         const string settingsVariable = "SPACETANGENT_SETTINGS_PATH";
         const string scienceVariable = "SPACETANGENT_SCIENCE_ROOT";
         const string addonSettingsVariable = "SPACETANGENT_ADDONS_SETTINGS_PATH";
+        const string bookmarkVariable = "SPACETANGENT_BOOKMARKS_PATH";
+        string? oldBookmarks = System.Environment.GetEnvironmentVariable(bookmarkVariable);
         string? oldSettings = System.Environment.GetEnvironmentVariable(settingsVariable);
         string? oldAddonSettings = System.Environment.GetEnvironmentVariable(addonSettingsVariable);
         string? science = System.Environment.GetEnvironmentVariable(scienceVariable);
@@ -32,6 +34,8 @@ public partial class WorkspaceInputSmoke : Node
             scratch = Directory.CreateTempSubdirectory("SpaceTangent-ui-");
             string settings = Path.Combine(scratch.FullName, "delta-t.txt");
             string addonSettings = Path.Combine(scratch.FullName, "local-addons.json");
+            string bookmarks = Path.Combine(scratch.FullName, "bookmarks.json");
+            System.Environment.SetEnvironmentVariable(bookmarkVariable, bookmarks);
             System.Environment.SetEnvironmentVariable(settingsVariable, settings);
             System.Environment.SetEnvironmentVariable(addonSettingsVariable, addonSettings);
 
@@ -100,6 +104,13 @@ public partial class WorkspaceInputSmoke : Node
                 await ExercisePlanetNavigation(scratch.FullName);
             if (System.Environment.GetEnvironmentVariable("SPACETANGENT_SPATIAL_SKY_SMOKE") == "1")
                 await ExerciseSpatialSky(scratch.FullName);
+            if (System.Environment.GetEnvironmentVariable("SPACETANGENT_VIEW_FRAME_SMOKE") == "1")
+            {
+                string restore = Path.Combine(scratch.FullName, "before-view-frames.stscene");
+                ScenarioFile.Save(restore, Session.CaptureScenario(0));
+                await ExerciseViewFrames(scratch.FullName, bookmarks);
+                Require(_scene.LoadScenario(restore), "The previous working scene must reopen after frame acceptance.");
+            }
             if (!string.IsNullOrWhiteSpace(System.Environment.GetEnvironmentVariable("SPACETANGENT_PLANET_TEXTURES")))
                 await ExerciseEarthOrbit();
             GD.Print($"SpaceTangent workspace input smoke passed ({DisplayServer.GetName()})");
@@ -113,6 +124,7 @@ public partial class WorkspaceInputSmoke : Node
         {
             System.Environment.SetEnvironmentVariable(settingsVariable, oldSettings);
             System.Environment.SetEnvironmentVariable(addonSettingsVariable, oldAddonSettings);
+            System.Environment.SetEnvironmentVariable(bookmarkVariable, oldBookmarks);
             System.Environment.SetEnvironmentVariable(scienceVariable, science);
             scratch?.Delete(recursive: true);
             Tree.Quit(exitCode);
@@ -357,7 +369,7 @@ public partial class WorkspaceInputSmoke : Node
     private static void RequireScenario(SimulationScenario expected, SimulationScenario actual, string action) =>
         Require(expected.Views.SequenceEqual(actual.Views) && expected.DeltaT == actual.DeltaT &&
                 expected.Synchronized == actual.Synchronized && expected.ClockOwner == actual.ClockOwner &&
-                expected.ActiveView == actual.ActiveView,
+                expected.ActiveView == actual.ActiveView && expected.SplitLayout == actual.SplitLayout,
             $"{action} must preserve both cameras, epochs, selections, sync settings and ΔT.");
 
     private static void Require(bool condition, string message)

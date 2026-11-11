@@ -53,7 +53,7 @@ internal partial class SimulationViewport
     }
 
     private void DrawNavigation(NavigationCamera pose, WorldSnapshot snapshot, SolarSystemSample solar, DeltaTModel deltaT,
-        SkyLayerSettings sky)
+        SkyLayerSettings sky, double fieldOfView)
     {
         double units = pose.RangeKilometers / NavigationCameraUnits;
         double azimuth = pose.AzimuthRadians, elevation = pose.ElevationRadians;
@@ -61,8 +61,18 @@ internal partial class SimulationViewport
             (float)(Math.Cos(elevation) * Math.Sin(azimuth)),
             (float)Math.Sin(elevation),
             (float)(Math.Cos(elevation) * Math.Cos(azimuth)));
-        _navigationCamera.Position = offset * NavigationCameraUnits;
-        _navigationCamera.LookAt(Vector3.Zero);
+        _navigationCamera.Fov = (float)fieldOfView;
+        if (pose.Placement is not null)
+        {
+            NavigationPlacement placement = pose.ResolvePlacement(snapshot);
+            _navigationCamera.Position = ToGodot(placement.OffsetKilometers, units);
+            _navigationCamera.LookAt(_navigationCamera.Position + ToGodot(placement.Forward, 1), ToGodot(placement.Up, 1));
+        }
+        else
+        {
+            _navigationCamera.Position = offset * NavigationCameraUnits;
+            _navigationCamera.LookAt(Vector3.Zero);
+        }
         if (!_navigationCamera.Current)
             _navigationCamera.MakeCurrent();
 

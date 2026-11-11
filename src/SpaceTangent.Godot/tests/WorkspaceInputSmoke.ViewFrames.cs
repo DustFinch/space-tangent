@@ -1,0 +1,103 @@
+// SPDX-License-Identifier: GPL-2.0-or-later
+using Godot;
+using SpaceTangent.Application;
+using SpaceTangent.Contracts;
+using SpaceTangent.Core.Ephemerides;
+
+namespace SpaceTangent.Godot.Tests;
+
+public partial class WorkspaceInputSmoke
+{
+    private async Task ExerciseViewFrames(string directory, string bookmarks)
+    {
+        if (Session.ViewCount == 1)
+            await KeyPress(Key.U, ctrl: true);
+        Require(Session.ViewCount == 2, "The frame regression needs two views.");
+        if (Session.Synchronized)
+            Session.Synchronize(false, 0);
+        _scene.Seek(0, JulianInstant.FromJulianDate(2460600.5008, TimeScale.Tdb));
+        _scene.Seek(1, JulianInstant.FromJulianDate(2460601.5008, TimeScale.Tdb));
+        Session.SelectObject(0, PlanetCatalogue.MarsId);
+        Require(Session.ToggleTracking(0), "The Mars orbit pose must be available.");
+        await Click(Find<SubViewportContainer>("ViewCanvas0"));
+        var settings = Find<Button>("SettingsTab");
+        if (!settings.ButtonPressed)
+            await Click(settings);
+        await Click(Find<Button>("FollowBodyRotation"));
+        Require(Session[0].Navigation is { Placement.BodyFixed: true }, "The selected Mars pose must follow the rotating body frame.");
+        NavigationCamera mars = Session[0].Navigation!.Value;
+        var before = mars.ResolvePlacement(Session.World.Graph.Evaluate(Session[0].Epoch));
+        await Click(Find<Button>("AdvanceHour0"));
+        NavigationCamera rotated = Session[0].Navigation!.Value;
+        var after = rotated.ResolvePlacement(Session.World.Graph.Evaluate(Session[0].Epoch));
+        Require(mars.Placement == rotated.Placement && (before.Forward - after.Forward).Length > .001,
+            "A time step must rotate the inertial orientation while preserving the local frame.");
+
+        await Click(Find<SubViewportContainer>("ViewCanvas1"));
+        await Click(Find<Button>("FreeFlight"));
+        var at = Session[1].Navigation;
+        await KeyPress(Key.W);
+        Require(Session[1].Navigation is { Tracking: false, Placement.BodyFixed: false } moved &&
+            moved.AnchorKilometers != at!.Value.AnchorKilometers, "A free-flight key must translate the active camera.");
+        await Click(Find<Button>("StackViews"));
+        Require(Find<BoxContainer>("Views").Vertical && Session.SplitLayout == ViewSplit.Stacked,
+            "The alternate layout must stack both live views.");
+        Find<SpinBox>("ViewField0").Value = 28;
+        Find<SpinBox>("ViewField1").Value = 67;
+        var expected = Session.CaptureScenario(1);
+        Require(expected.Views[0].FieldOfViewDegrees == 28 && expected.Views[1].FieldOfViewDegrees == 67 &&
+            expected.Views[0].Epoch != expected.Views[1].Epoch, "Each view must retain its own lens and clock.");
+
+        var scenarios = Find<Button>("BookmarksTab");
+        if (!scenarios.ButtonPressed)
+            await Click(scenarios);
+        await FillField("BookmarkName", "Mars and free flight");
+        await Click(Find<Button>("StoreBookmark"));
+        Require(new ObserverBookmarkFile(bookmarks).Load().Single().Name == "Mars and free flight",
+            "The named bookmark must reach persistent storage.");
+        await Click(Find<Button>("CreateSceneLink"));
+        var link = Find<LineEdit>("SceneLinkInput");
+        string native = link.Text;
+        Require(native.StartsWith(SceneLink.Scheme, StringComparison.Ordinal), "The scene must have a portable link.");
+
+        const string follow = "cel://Follow/Sol:Earth/2024-04-09T00:00:00.00000?x=AAAAAAAAAAAB&y=&z=&ow=1&ox=0&oy=0&oz=0&select=Sol:Earth:Moon&fov=45&ts=1&ltd=0&p=1&ver=3";
+        link.Text = follow + "&rf=1";
+        await Click(Find<Button>("OpenSceneLink"));
+        Require(Session.ViewCount == 1 && Session[0].Selection == SolarSystemSample.MoonId &&
+            Session[0].Navigation is { Tracking: true, Target: { } parent, Placement: { } pose } &&
+            parent == SolarSystemSample.EarthId && Math.Abs(pose.OffsetKilometers.X - 9_460_730.4725808) < 1e-5 &&
+            Math.Abs(pose.Forward.Y - .917482) < .000001 && Session[0].FieldOfViewDegrees == 45 &&
+            Session[0].Epoch == JulianInstant.FromJulianDate(2460409.5, TimeScale.Tdb) &&
+            Find<Label>("WorkspaceStatus").Text.Contains("Unapplied link parameters: rf", StringComparison.Ordinal),
+            "The reference link must restore selection, time, field and orientation and report its unsupported flag.");
+        var imported = Session.CaptureScenario(0);
+        var free = SceneLink.Read(follow.Replace("Follow/Sol:Earth", "Freeflight", StringComparison.Ordinal)
+            .Replace("ver=3", "ver=4", StringComparison.Ordinal), Session.World, Session.DeltaT).Scenario.Views[0];
+        Require(free.Navigation is { Tracking: false, Target: null, Placement: { } independent } &&
+            independent.OffsetKilometers == default && free.FieldOfViewDegrees == 45 && free.Epoch == Session[0].Epoch,
+            "A version 4 free-flight link must restore its independent eye and field.");
+        link.Text = follow.Replace("Sol:Earth/", "Sol:Missing/", StringComparison.Ordinal);
+        await Click(Find<Button>("OpenSceneLink"));
+        RequireScenario(imported, Session.CaptureScenario(0), "An unavailable linked object");
+        Require(Find<Label>("WorkspaceStatus").Text.Contains("unavailable object", StringComparison.Ordinal),
+            "A missing linked object must produce a visible diagnostic.");
+
+        await Click(Find<Button>("RestoreBookmark"));
+        RequireScenario(expected, Session.CaptureScenario(1), "Opening the named bookmark");
+        link.Text = native;
+        await Click(Find<Button>("OpenSceneLink"));
+        RequireScenario(expected, Session.CaptureScenario(1), "Opening the native scene link");
+        Require(Session.SplitLayout == ViewSplit.Stacked && Find<BoxContainer>("Views").Vertical,
+            "Opening the link must also restore the split direction.");
+        Require(await _scene.ReloadAddOns(), "Reload must succeed with a linked two-view scene.");
+        RequireScenario(expected, Session.CaptureScenario(1), "Reloading the linked two-view scene");
+        const string filename = "saved-view-frames.stscene";
+        await UseScenarioDialog("SaveScenario", 1, directory, filename);
+        var saved = ScenarioFile.Load(Path.Combine(directory, filename));
+        RequireScenario(expected, saved, "Saving frames and field of view");
+        Require(saved.SplitLayout == ViewSplit.Stacked, "The saved file must keep the view layout.");
+        if (System.Environment.GetEnvironmentVariable("SPACETANGENT_VIEW_FRAME_SCENE") is { Length: > 0 } output)
+            File.Copy(Path.Combine(directory, filename), output, overwrite: true);
+        GD.Print("UI: restored rotation, free-flight pose, two fields of view, stacked layout and link after reload");
+    }
+}

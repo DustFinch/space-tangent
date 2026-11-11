@@ -22,7 +22,7 @@ internal sealed class SimulatorWorkspace
     private readonly Button _goTo, _track;
 
     internal HBoxContainer Toolbar { get; }
-    internal HBoxContainer Views { get; }
+    internal BoxContainer Views { get; }
     internal Label Status { get; }
     internal Label Observation { get; }
 
@@ -90,7 +90,7 @@ internal sealed class SimulatorWorkspace
         Observation.AutowrapMode = TextServer.AutowrapMode.Off;
         Observation.VerticalAlignment = VerticalAlignment.Center;
         readout.AddChild(Observation);
-        Views = new HBoxContainer { Name = "Views", SizeFlagsVertical = Control.SizeFlags.ExpandFill };
+        Views = new BoxContainer { Name = "Views", SizeFlagsVertical = Control.SizeFlags.ExpandFill };
         stageContent.AddChild(Views);
         Status = SimulatorTheme.Detail("");
         Status.Name = "WorkspaceStatus";

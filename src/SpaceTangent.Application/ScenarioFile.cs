@@ -7,13 +7,16 @@ using SpaceTangent.Core.Time;
 namespace SpaceTangent.Application;
 
 public sealed record SimulationScenario(IReadOnlyList<ObserverView> Views, bool Synchronized, int ClockOwner,
-    int ActiveView, DeltaTModel DeltaT);
+    int ActiveView, DeltaTModel DeltaT)
+{
+    public ViewSplit SplitLayout { get; init; }
+}
 
 /// <summary>Persists observer settings with exact TDB epochs and stable catalog IDs.</summary>
 public static class ScenarioFile
 {
-    private const int Version = 5;
-    private const int MaximumBytes = 32 * 1024;
+    private const int Version = 6;
+    internal const int MaximumBytes = 32 * 1024;
     private static readonly JsonSerializerOptions Json = new()
     {
         PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
@@ -23,11 +26,12 @@ public static class ScenarioFile
         Converters =
         {
             new JsonStringEnumConverter<CameraMode>(JsonNamingPolicy.CamelCase, allowIntegerValues: false),
+            new JsonStringEnumConverter<ViewSplit>(JsonNamingPolicy.CamelCase, allowIntegerValues: false),
             new JsonStringEnumConverter<DeltaTModel>(JsonNamingPolicy.CamelCase, allowIntegerValues: false)
         }
     };
 
-    public static void Save(string path, SimulationScenario scenario)
+    internal static byte[] Encode(SimulationScenario scenario)
     {
         if (scenario.Views.Count is < 1 or > 2 || scenario.Views.Any(view => view.Epoch.Scale != TimeScale.Tdb))
             throw new InvalidDataException("A scenario needs one or two TDB views.");
@@ -35,12 +39,16 @@ public static class ScenarioFile
             throw new InvalidDataException("The scenario has an invalid camera pose.");
         if (scenario.Views.Any(view => view.EarthObserver is { } earth && !earth.IsValid()))
             throw new InvalidDataException("The scenario has an invalid Earth observer camera.");
+        if (!Enum.IsDefined(scenario.SplitLayout) ||
+            scenario.Views.Any(view => view.FieldOfViewDegrees is { } field && !ObserverView.ValidFieldOfView(field)))
+            throw new InvalidDataException("The scenario has an invalid layout or field of view.");
         var document = new Document
         {
             Version = Version,
             Synchronized = scenario.Synchronized,
             ClockOwner = scenario.ClockOwner,
             ActiveView = scenario.ActiveView,
+            SplitLayout = scenario.SplitLayout,
             DeltaT = scenario.DeltaT,
             Views = scenario.Views.Select(view => new View
             {
@@ -50,6 +58,7 @@ public static class ScenarioFile
                 Selection = view.Selection?.Value,
                 Playing = view.Playing,
                 Terrain = view.Terrain,
+                FieldOfViewDegrees = view.FieldOfViewDegrees,
                 Navigation = view.Navigation is { } pose ? Camera.From(pose) : null,
                 EarthObserver = view.EarthObserver,
                 Sky = view.Sky.Visible ? view.Sky : null
@@ -58,7 +67,12 @@ public static class ScenarioFile
         byte[] bytes = JsonSerializer.SerializeToUtf8Bytes(document, Json);
         if (bytes.Length > MaximumBytes)
             throw new InvalidDataException("The scenario is too large.");
+        return bytes;
+    }
 
+    public static void Save(string path, SimulationScenario scenario)
+    {
+        byte[] bytes = Encode(scenario);
         string destination = Path.GetFullPath(path);
         string temporary = Path.Combine(Path.GetDirectoryName(destination)!, ".scene-" + Guid.NewGuid().ToString("N") + ".tmp");
         bool created = false;
@@ -89,10 +103,19 @@ public static class ScenarioFile
         stream.ReadExactly(bytes);
         if (stream.ReadByte() != -1)
             throw new InvalidDataException("The scenario changed while it was being read.");
+        return Decode(bytes);
+    }
+
+    internal static SimulationScenario Decode(ReadOnlySpan<byte> bytes)
+    {
+        if (bytes.Length is <= 0 or > MaximumBytes)
+            throw new InvalidDataException("The scenario has an invalid size.");
         Document document = JsonSerializer.Deserialize<Document>(bytes, Json)
             ?? throw new InvalidDataException("The scenario is empty.");
         if (document.Version is < 1 or > Version)
             throw new InvalidDataException($"Unsupported scenario version {document.Version}.");
+        if (!Enum.IsDefined(document.SplitLayout) || (document.Version < 6 && document.SplitLayout != ViewSplit.SideBySide))
+            throw new InvalidDataException("The scenario has an invalid layout.");
         if (document.Views is not { Length: 1 or 2 } || document.Views.Any(view => view is null))
             throw new InvalidDataException("A scenario must have one or two views.");
 
@@ -113,15 +136,20 @@ public static class ScenarioFile
                 throw new InvalidDataException("Sky layers require a version 4 scenario.");
             if (data.Sky is { DeepSky: true } && document.Version < 5)
                 throw new InvalidDataException("The deep-sky layer requires a version 5 scenario.");
+            if ((data.FieldOfViewDegrees is { } field && !ObserverView.ValidFieldOfView(field)) ||
+                (document.Version < 6 && (data.FieldOfViewDegrees.HasValue || navigation?.Placement is not null)))
+                throw new InvalidDataException("The scene field or observer frame is unsupported.");
             views[i] = new(epoch, data.Camera, selection, data.Playing)
             {
                 Terrain = data.Terrain,
+                FieldOfViewDegrees = data.FieldOfViewDegrees,
                 Navigation = navigation,
                 EarthObserver = data.EarthObserver,
                 Sky = data.Sky ?? default
             };
         }
-        return new(Array.AsReadOnly(views), document.Synchronized, document.ClockOwner, document.ActiveView, document.DeltaT);
+        return new(Array.AsReadOnly(views), document.Synchronized, document.ClockOwner, document.ActiveView, document.DeltaT)
+            { SplitLayout = document.SplitLayout };
     }
 
     private sealed class Document
@@ -130,6 +158,8 @@ public static class ScenarioFile
         public required bool Synchronized { get; init; }
         public required int ClockOwner { get; init; }
         public required int ActiveView { get; init; }
+        [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingDefault)]
+        public ViewSplit SplitLayout { get; init; }
         public required DeltaTModel DeltaT { get; init; }
         public required View[] Views { get; init; }
     }
@@ -144,6 +174,8 @@ public static class ScenarioFile
         [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
         public LunarTerrainCamera? Terrain { get; init; }
         [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+        public double? FieldOfViewDegrees { get; init; }
+        [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
         public Camera? Navigation { get; init; }
         [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
         public EarthObserverCamera? EarthObserver { get; init; }
@@ -154,11 +186,34 @@ public static class ScenarioFile
     private sealed record Camera(double AnchorX, double AnchorY, double AnchorZ, double RangeKilometers,
         double AzimuthRadians, double ElevationRadians, string? Target, bool Tracking)
     {
+        [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+        public Placement? ObserverPlacement { get; init; }
+
         internal static Camera From(NavigationCamera pose) => new(pose.AnchorKilometers.X, pose.AnchorKilometers.Y,
             pose.AnchorKilometers.Z, pose.RangeKilometers, pose.AzimuthRadians, pose.ElevationRadians,
-            pose.Target?.Value, pose.Tracking);
+            pose.Target?.Value, pose.Tracking)
+        {
+            ObserverPlacement = pose.Placement is { } placement ? Placement.From(placement) : null
+        };
 
         internal NavigationCamera ToPose() => new(new(AnchorX, AnchorY, AnchorZ), RangeKilometers,
-            AzimuthRadians, ElevationRadians, Target is { } id ? new ObjectId(id) : null, Tracking);
+            AzimuthRadians, ElevationRadians, Target is { } id ? new ObjectId(id) : null, Tracking)
+        {
+            Placement = ObserverPlacement?.ToPlacement()
+        };
+    }
+
+    private sealed record Placement(Components Offset, Components Forward, Components Up, bool BodyFixed)
+    {
+        internal static Placement From(NavigationPlacement pose) =>
+            new(Components.From(pose.OffsetKilometers), Components.From(pose.Forward), Components.From(pose.Up), pose.BodyFixed);
+
+        internal NavigationPlacement ToPlacement() => new(Offset.ToVector(), Forward.ToVector(), Up.ToVector(), BodyFixed);
+    }
+
+    private readonly record struct Components(double X, double Y, double Z)
+    {
+        internal static Components From(Vector3d vector) => new(vector.X, vector.Y, vector.Z);
+        internal Vector3d ToVector() => new(X, Y, Z);
     }
 }

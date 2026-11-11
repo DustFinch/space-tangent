@@ -7,6 +7,7 @@ render_mode unshaded;
 uniform sampler2D cloud_texture : filter_linear_mipmap, repeat_enable;
 uniform sampler2D moon_texture : source_color, filter_linear_mipmap;
 uniform vec3 observer;
+uniform float tan_half_field = 0.087488664;
 uniform vec3 forward;
 uniform vec3 right;
 uniform vec3 camera_up;
@@ -80,8 +81,7 @@ float grid_line(float coordinate) {
 void fragment() {
     vec2 screen = vec2(2.0 * UV.x - 1.0, 1.0 - 2.0 * UV.y);
     screen.x *= SCREEN_PIXEL_SIZE.y / SCREEN_PIXEL_SIZE.x;
-    const float TAN_HALF_FIELD = 0.087488664;
-    vec3 ray = normalize(forward + TAN_HALF_FIELD * (screen.x * right + screen.y * camera_up));
+    vec3 ray = normalize(forward + tan_half_field * (screen.x * right + screen.y * camera_up));
     vec3 site_up = normalize(observer);
     vec3 sun_dir = normalize(earth_to_sun - observer);
     vec3 moon_delta = earth_to_moon - observer;

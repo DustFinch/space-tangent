@@ -236,7 +236,7 @@ internal partial class SimulationViewport : Node3D
         {
             _surface?.Draw(false, sample, deltaT);
             HideOrbitalMarkers();
-            DrawNavigation(navigation, snapshot, sample, deltaT, observer.Sky);
+            DrawNavigation(navigation, snapshot, sample, deltaT, observer.Sky, observer.EffectiveFieldOfView);
             return true;
         }
         HideNavigation();
@@ -245,7 +245,7 @@ internal partial class SimulationViewport : Node3D
         if (_surface is { } surface)
         {
             bool isSurface = observer.Mode == CameraMode.Surface;
-            bool available = surface.Draw(isSurface, sample, deltaT, observer.EarthObserver, observer.Sky, observer.Selection);
+            bool available = surface.Draw(isSurface, sample, deltaT, observer.EarthObserver, observer.Sky, observer.Selection, observer.EffectiveFieldOfView);
             if (isSurface && available)
                 return true;
         }

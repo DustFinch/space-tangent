@@ -17,7 +17,7 @@ public partial class SolarSystemScene : Control
     private static readonly int NavigationOption = Enum.GetValues<CameraMode>().Length;
     private sealed record ViewControls(PanelContainer Panel, SimulationViewport Renderer, Label Epoch,
         Button Play, OptionButton Mode, OptionButton Selection, LineEdit TimelineEpoch, HBoxContainer TerrainTools,
-        LineEdit TerrainCoordinates)
+        LineEdit TerrainCoordinates, SpinBox FieldOfView)
     {
         internal WorldSnapshot? Snapshot { get; set; }
     }
@@ -42,7 +42,7 @@ public partial class SolarSystemScene : Control
     private Button _satelliteLayersMode = null!;
     private Button _playFromPanel = null!;
     private Label _calendarTime = null!;
-    private HBoxContainer _panels = null!;
+    private BoxContainer _panels = null!;
     private StyleBoxFlat _activeFrame = null!, _inactiveFrame = null!;
     private Button _spaceMode = null!, _observatoryMode = null!;
     private Button _split = null!;
@@ -265,6 +265,7 @@ public partial class SolarSystemScene : Control
         var bookmarks = _workspace.AddPage("Bookmarks", "Scenarios");
         bookmarks.AddChild(SimulatorTheme.Section("Scene file"));
         AddScenarioMenu(bookmarks);
+        AddObserverBookmarks(bookmarks);
         var addOns = _workspace.AddPage("AddOns", "Packs and add-ons");
         addOns.AddChild(SimulatorTheme.Section("Loaded inputs"));
         _dataSummary = SimulatorTheme.Detail("");
@@ -281,6 +282,10 @@ public partial class SolarSystemScene : Control
         var settings = _workspace.AddPage("Settings", "Settings");
         settings.AddChild(SimulatorTheme.Section("Workspace"));
         AddButton(settings, "Split or close second view", ToggleSplit);
+        AddButton(settings, "Views side by side", () => SetSplitLayout(ViewSplit.SideBySide)).Name = "SideBySideViews";
+        AddButton(settings, "Stack views", () => SetSplitLayout(ViewSplit.Stacked)).Name = "StackViews";
+        AddButton(settings, "Free flight", StartFreeFlight).Name = "FreeFlight";
+        AddButton(settings, "Follow body rotation", FollowBodyRotation).Name = "FollowBodyRotation";
         AddButton(settings, "Open time settings", () => _workspace.Open("Time"));
         var help = _workspace.AddPage("Help", "Controls");
         help.AddChild(SimulatorTheme.Detail("Ctrl+U    Split or close the second view"));
@@ -411,7 +416,14 @@ public partial class SolarSystemScene : Control
 
     public override void _UnhandledKeyInput(InputEvent input)
     {
-        if (Session is null || input is not InputEventKey { Pressed: true, Echo: false } key)
+        if (Session is null || input is not InputEventKey { Pressed: true } key)
+            return;
+        if (TryFreeFlightKey(key))
+        {
+            GetViewport().SetInputAsHandled();
+            return;
+        }
+        if (key.Echo)
             return;
         switch (key.Keycode)
         {
@@ -547,8 +559,50 @@ public partial class SolarSystemScene : Control
         Refresh();
     }
 
+    private void SetSplitLayout(ViewSplit layout)
+    {
+        Session!.SetSplitLayout(layout);
+        UpdateViewLayout();
+        Refresh();
+    }
+
+    private void StartFreeFlight()
+    {
+        Session!.StartFreeFlight(_active);
+        _status.Text = "Free flight · WASD to move, R/F for height, right-drag to turn.";
+        Refresh();
+    }
+
+    private void FollowBodyRotation()
+    {
+        _status.Text = Session!.FollowBodyRotation(_active) ? "Following the selected body's rotation."
+            : "Select a body with a rotation model at this epoch.";
+        Refresh();
+    }
+
+    private bool TryFreeFlightKey(InputEventKey key)
+    {
+        if (key.CtrlPressed || key.AltPressed || key.MetaPressed || GetViewport().GuiGetFocusOwner() is LineEdit)
+            return false;
+        (double right, double up, double forward) = key.Keycode switch
+        {
+            Key.A => (-1, 0, 0),
+            Key.D => (1, 0, 0),
+            Key.W => (0, 0, 1),
+            Key.S => (0, 0, -1),
+            Key.R => (0, 1, 0),
+            Key.F => (0, -1, 0),
+            _ => (0, 0, 0)
+        };
+        if ((right, up, forward) == (0d, 0d, 0d) || !Session!.MoveFreeFlight(_active, right, up, forward))
+            return false;
+        Refresh();
+        return true;
+    }
+
     private void UpdateViewLayout()
     {
+        _panels.Vertical = Session!.SplitLayout == ViewSplit.Stacked;
         if (_views.Count < Session!.ViewCount)
             AddView();
         else if (_views.Count > Session.ViewCount)
@@ -649,24 +703,28 @@ public partial class SolarSystemScene : Control
     {
         try
         {
-            SimulationScenario scenario = ScenarioFile.Load(path);
-            if (_surfaceTextures is null && scenario.Views.Any(view => view.Mode == CameraMode.Surface))
-                throw new InvalidDataException("The scenario needs the Earth surface textures.");
-            Session!.RestoreScenario(scenario);
-            if (_script is not null)
-                StopScript();
-            _active = scenario.ActiveView;
+            ApplyScenario(ScenarioFile.Load(path));
         }
         catch (Exception error) when (IsLoadError(error))
         {
             _status.Text = $"Could not open scenario. {error.Message}";
             return false;
         }
+        _status.Text = "Scenario opened.";
+        return true;
+    }
+
+    private void ApplyScenario(SimulationScenario scenario)
+    {
+        if (_surfaceTextures is null && scenario.Views.Any(view => view.Mode == CameraMode.Surface && view.Navigation is null))
+            throw new InvalidDataException("The scenario needs the Earth surface textures.");
+        Session!.RestoreScenario(scenario);
+        if (_script is not null)
+            StopScript();
+        _active = scenario.ActiveView;
         UpdateViewLayout();
         _sync.SetPressedNoSignal(Session.Synchronized);
         Refresh();
-        _status.Text = "Scenario opened.";
-        return true;
     }
 
     internal Task<bool> ReloadAddOns() => ReloadAddOns(null);
@@ -768,7 +826,7 @@ public partial class SolarSystemScene : Control
     private void AddView()
     {
         int index = _views.Count;
-        var frame = new PanelContainer { SizeFlagsHorizontal = SizeFlags.ExpandFill };
+        var frame = new PanelContainer { SizeFlagsHorizontal = SizeFlags.ExpandFill, SizeFlagsVertical = SizeFlags.ExpandFill };
         _panels.AddChild(frame);
         var panel = new VBoxContainer();
         frame.AddChild(panel);
@@ -795,6 +853,14 @@ public partial class SolarSystemScene : Control
         mode.SetItemDisabled((int)CameraMode.Surface, _surfaceTextures is null);
         mode.ItemSelected += item => SetMode(index, (CameraMode)mode.GetItemId((int)item));
         tools.AddChild(mode);
+        var field = new SpinBox { Name = $"ViewField{index}", MinValue = 2, MaxValue = 120, Step = .5,
+            Suffix = "° FOV", TooltipText = "Vertical field of view" };
+        field.ValueChanged += value =>
+        {
+            Session!.SetFieldOfView(index, value);
+            Refresh();
+        };
+        tools.AddChild(field);
         var selection = new OptionButton();
         selection.ItemSelected += item => SelectSatellite(index, Assets[(int)item].Track.Id);
         tools.AddChild(selection);
@@ -839,7 +905,7 @@ public partial class SolarSystemScene : Control
         if (_brightSky is { } sky)
             renderer.SetSkyData(sky);
         var controls = new ViewControls(frame, renderer, epoch, play, mode, selection, timelineEpoch,
-            terrainTools, terrainCoordinates);
+            terrainTools, terrainCoordinates, field);
         _views.Add(controls);
         ReplaceAssets(controls);
     }
@@ -1048,6 +1114,8 @@ public partial class SolarSystemScene : Control
             controls.Play.Text = view.Playing ? "Pause" : "Play";
             bool preset = view.Navigation is null;
             controls.Mode.Select(preset ? (int)view.Mode : NavigationOption);
+            controls.FieldOfView.Visible = !preset || view.Mode == CameraMode.Surface;
+            controls.FieldOfView.SetValueNoSignal(view.EffectiveFieldOfView);
             controls.Selection.Visible = preset && view.Mode == CameraMode.Satellites;
             controls.TimelineEpoch.Visible = preset && view.Mode is CameraMode.Timeline or CameraMode.Probe;
             controls.TerrainTools.Visible = preset && view.Mode == CameraMode.LunarTerrain;

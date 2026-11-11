@@ -31,7 +31,7 @@ public partial class BootstrapSmoke : Node
             {
                 await CheckSatellitesAndReload(scene);
                 if (!string.IsNullOrWhiteSpace(System.Environment.GetEnvironmentVariable("SPACETANGENT_SURFACE_TEXTURES")))
-                    CheckScenarios(scene);
+                    await CheckScenarios(scene);
             }
             if (!string.IsNullOrWhiteSpace(System.Environment.GetEnvironmentVariable("SPACETANGENT_MISSION_CATALOG")))
                 await CheckMission(scene);
@@ -188,7 +188,7 @@ public partial class BootstrapSmoke : Node
         }
     }
 
-    private static void CheckScenarios(SolarSystemScene scene)
+    private async Task CheckScenarios(SolarSystemScene scene)
     {
         var jason = new ObjectId("norad/26997");
         SimulationSession session = scene.Session!;
@@ -247,6 +247,13 @@ public partial class BootstrapSmoke : Node
             Directory.Delete(root);
         }
         session.TogglePlaying(0);
+        if (System.Environment.GetEnvironmentVariable("SPACETANGENT_SCENARIO_CAPTURE") is { Length: > 0 } capture)
+        {
+            await ToSignal(GetTree(), SceneTree.SignalName.ProcessFrame);
+            await ToSignal(RenderingServer.Singleton, RenderingServer.SignalName.FramePostDraw);
+            using Image image = GetViewport().GetTexture().GetImage();
+            Require(image.SavePng(capture) == Error.Ok, "Could not save the restored Jason-1 and full-Moon views.");
+        }
         GD.Print("SpaceTangent Jason-1 and Full Moon scenario save and restore smoke passed");
     }
 

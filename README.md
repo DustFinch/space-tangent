@@ -19,7 +19,7 @@ godot --headless --path src/SpaceTangent.Godot res://tests/BootstrapSmoke.tscn
 
 Open `src/SpaceTangent.Godot/project.godot` in the editor for interactive development. The starter uses the Compatibility renderer and its own user-data directory.
 
-See [the migration plan](docs/MIGRATION_PLAN.md) for feature order and verification.
+See [the migration plan](docs/MIGRATION_PLAN.md) for feature order and [the release notes](docs/RELEASE_NOTES.md) for supported inputs and verification.
 
 License: GPL-2.0-or-later. See `COPYING`.
 

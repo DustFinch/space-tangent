@@ -161,7 +161,9 @@ public sealed class SimulationSession
             SetClock(view, target.Epoch, previous.Playing);
     }
 
-    public void TogglePlaying(int view) => SetClock(view, _views[view].Epoch, !_views[view].Playing);
+    public void TogglePlaying(int view) => SetPlaying(view, !_views[view].Playing);
+
+    public void SetPlaying(int view, bool playing) => SetClock(view, _views[view].Epoch, playing);
 
     public void Seek(int view, JulianInstant epoch)
     {

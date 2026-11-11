@@ -1,1 +1,12 @@
-[]
+[
+  {
+    "path": "src/SpaceTangent.Application/LuaSessionScript.cs",
+    "sha256": "ae933b985213fdaf7f3be3a8977ebf49ca4efc0d29c4ac6596dc162172eee9f9",
+    "reason": "Required upstream Lua API global name."
+  },
+  {
+    "path": "docs/LUA_SCRIPTS.md",
+    "sha256": "66f1e6be3a16d13f8520852b13ecccf0a4c528dcca2055121d00f25b792b4fd3",
+    "reason": "Upstream fixture provenance and attribution."
+  }
+]

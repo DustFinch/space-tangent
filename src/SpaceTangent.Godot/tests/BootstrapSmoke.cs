@@ -34,6 +34,8 @@ public partial class BootstrapSmoke : Node
             }
             if (!string.IsNullOrWhiteSpace(System.Environment.GetEnvironmentVariable("SPACETANGENT_MISSION_CATALOG")))
                 await CheckMission(scene);
+            if (System.Environment.GetEnvironmentVariable("SPACETANGENT_PAUSE_SCRIPT") is { Length: > 0 } script)
+                await CheckLua(scene, script);
 
             GD.Print("SpaceTangent bootstrap smoke passed");
             GetTree().Quit();
@@ -289,6 +291,69 @@ public partial class BootstrapSmoke : Node
             }
         }
         GD.Print("SpaceTangent Cassini geometry, SPICE transform and two-view reload smoke passed");
+    }
+
+    private async Task CheckLua(SolarSystemScene scene, string original)
+    {
+        string hash = Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(File.ReadAllBytes(original)));
+        Require(hash == "20F0CCC2781C62D6C216D395049BBC64DCF701C41128079DB93C6909E0402C0B",
+            "Expected the original pause.celx fixture.");
+        SimulationSession session = scene.Session!;
+        scene.Synchronize(false, 0);
+        scene.SetMode(0, CameraMode.Solar);
+        session.SetPlaying(0, false);
+        LuaSessionScript pause = scene.RunScript(original) ?? throw new InvalidOperationException("Could not open pause.celx.");
+        pause.Step(0);
+        Require(!pause.Finished && session[0].Playing, "The first upstream pause call must toggle the clock and wait.");
+        for (int tick = 0; tick < 20 && !pause.Finished; tick++)
+            pause.Step(2);
+        Require(pause.Finished && pause.Error is null && session[0].Playing, "The original pause script must finish.");
+        session.SetPlaying(0, false);
+
+        string path = Path.Combine(Path.GetTempPath(), $"SpaceTangent-lua-{Guid.NewGuid():N}.lua");
+        try
+        {
+            File.WriteAllText(path, "st.settime(2451545.125)\nst.wait(0.03)\nst.mode('lunar')");
+            LuaSessionScript normal = scene.RunScript(path) ?? throw new InvalidOperationException("Lua command script did not load.");
+            await WaitForScript(normal);
+            Require(normal.Error is null && session[0].Mode == CameraMode.Lunar &&
+                session[0].Epoch == JulianInstant.FromJulianDate(2451545.125, TimeScale.Tdb),
+                "Lua commands must share the application's time and camera paths.");
+
+            File.WriteAllText(path, "while true do end");
+            LuaSessionScript loop = scene.RunScript(path) ?? throw new InvalidOperationException("Lua loop did not load.");
+            await ToSignal(GetTree(), SceneTree.SignalName.ProcessFrame);
+            Require(!loop.Finished, "The infinite loop must yield control between frames.");
+            await WaitForScript(loop);
+            Require(loop.Error?.Contains("instruction quota", StringComparison.Ordinal) == true,
+                $"The infinite loop must hit the instruction quota. Actual error: {loop.Error}");
+
+            File.WriteAllText(path, """local s = "x"; while true do s = s .. s end""");
+            LuaSessionScript growth = scene.RunScript(path) ?? throw new InvalidOperationException("Lua growth script did not load.");
+            await WaitForScript(growth);
+            Require(growth.Error?.Contains("allocation quota", StringComparison.Ordinal) == true,
+                "Exponential string growth must hit the allocation quota.");
+
+            File.WriteAllText(path, "assert(os == nil and io == nil and require == nil and load == nil)");
+            LuaSessionScript access = scene.RunScript(path) ?? throw new InvalidOperationException("Lua access probe did not load.");
+            await WaitForScript(access);
+            Require(access.Error is null, "Lua must not expose external host APIs.");
+        }
+        finally
+        {
+            File.Delete(path);
+        }
+        GD.Print("SpaceTangent original pause.celx and Lua quotas smoke passed");
+    }
+
+    private async Task WaitForScript(LuaSessionScript script)
+    {
+        var time = System.Diagnostics.Stopwatch.StartNew();
+        while (!script.Finished)
+        {
+            Require(time.Elapsed.TotalSeconds < 15, "Lua script did not finish.");
+            await ToSignal(GetTree(), SceneTree.SignalName.ProcessFrame);
+        }
     }
 
     private static void VerifyMesh(MeshInstance3D node, int triangles, int surfaces, int textureCount)

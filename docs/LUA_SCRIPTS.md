@@ -1,0 +1,14 @@
+# Observer Lua scripts
+
+Use **Script → Run Lua** to open a local `.lua` or `.celx` file for the active view. **Stop script** cancels it. The script's commands use the same session as the toolbar. A synchronized clock follows the normal shared-time rules. Opening a saved scenario stops the current script.
+
+- `st.pause(true)` pauses and `st.pause(false)` resumes. Omit the argument to toggle playback.
+- `st.settime(julianDate)` seeks to a TDB Julian date. `st.gettime()` returns the current date.
+- `st.synchronizetime(enabled)` changes the clock mode. `st.mode(name)` selects `solar`, `lunar`, `satellites`, `surface` or `mission`. `st.select(id)` selects a loaded Earth satellite by catalogue ID.
+- `wait(seconds)` and `st.wait(seconds)` resume on a later frame. `st.log(text)` writes to the Godot log.
+
+The compatibility adapter supports the clock and logging methods used by the original [pause.celx](https://github.com/CelestiaProject/Celestia/blob/master/test/scripts/pause.celx). The test loads the unchanged local fixture with SHA-256 `20F0CCC2781C62D6C216D395049BBC64DCF701C41128079DB93C6909E0402C0B`. Broader script APIs, observer pose controls and add-on script factories remain pending.
+
+The host limits input to 32 KiB, resumes up to 1,024 VM steps per frame and stops after 131,072 steps, 16 MiB of measured execution allocations, 128 log messages or 120 seconds of requested waits. Only the exposed commands and selected standard-library functions are available. The interpreter runs in the application process and these quotas cover the tested workloads.
+
+[MoonSharp coroutine behavior](https://www.moonsharp.org/coroutines.html) · [MoonSharp module selection](https://www.moonsharp.org/sandbox.html)

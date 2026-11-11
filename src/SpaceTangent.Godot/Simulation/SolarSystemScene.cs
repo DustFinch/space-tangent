@@ -31,6 +31,8 @@ public partial class SolarSystemScene : Control
     private int _active;
     private int _loadGeneration;
     private CancellationTokenSource? _loadCancellation;
+    private LuaSessionScript? _script;
+    private PopupMenu _scriptMenu = null!;
     internal SimulationSession? Session { get; private set; }
     internal bool InitializationFinished { get; private set; }
 
@@ -123,6 +125,7 @@ public partial class SolarSystemScene : Control
         _deltaT.ItemSelected += index => SetDeltaT((DeltaTModel)_deltaT.GetItemId((int)index));
         toolbar.AddChild(_deltaT);
         AddScenarioMenu(toolbar);
+        AddScriptMenu(toolbar);
         AddButton(toolbar, "Reload add-ons", async () => await ReloadAddOns());
         if (_surfaceTextures is not null)
             AddButton(toolbar, "Full Moon", () => ShowFullMoon(_active));
@@ -138,6 +141,7 @@ public partial class SolarSystemScene : Control
 
     public override void _ExitTree()
     {
+        _script?.Stop();
         _loadGeneration++;
         _loadCancellation?.Cancel();
         _loadCancellation?.Dispose();
@@ -146,7 +150,18 @@ public partial class SolarSystemScene : Control
 
     public override void _Process(double delta)
     {
-        if (Session?.Tick(delta) == true)
+        bool changed = Session?.Tick(delta) == true;
+        if (_script is { } script)
+        {
+            changed |= script.Step(delta);
+            if (script.Finished)
+            {
+                _script = null;
+                _scriptMenu.SetItemDisabled(1, true);
+                _status.Text = script.Error ?? "Lua script finished.";
+            }
+        }
+        if (changed)
             Refresh();
     }
 
@@ -214,6 +229,8 @@ public partial class SolarSystemScene : Control
         else
         {
             Session.CloseSecondView();
+            if (_script?.View == 1)
+                StopScript();
             _active = 0;
         }
         UpdateViewLayout();
@@ -254,6 +271,55 @@ public partial class SolarSystemScene : Control
         popup.IdPressed += id => (id == 0 ? open : save).PopupCentered(new Vector2I(700, 460));
     }
 
+    private void AddScriptMenu(Container toolbar)
+    {
+        var menu = new MenuButton { Text = "Script" };
+        toolbar.AddChild(menu);
+        var open = new FileDialog { Name = "OpenScript", Access = FileDialog.AccessEnum.Filesystem,
+            FileMode = FileDialog.FileModeEnum.OpenFile, DeletingEnabled = false };
+        AddChild(open);
+        open.AddFilter("*.lua,*.celx", "Lua scripts");
+        open.FileSelected += path => RunScript(path);
+        _scriptMenu = menu.GetPopup();
+        _scriptMenu.AddItem("Run Lua…", 0);
+        _scriptMenu.AddItem("Stop script", 1);
+        _scriptMenu.SetItemDisabled(1, true);
+        _scriptMenu.IdPressed += id =>
+        {
+            if (id == 0)
+                open.PopupCentered(new Vector2I(700, 460));
+            else
+                StopScript();
+        };
+    }
+
+    internal LuaSessionScript? RunScript(string path)
+    {
+        try
+        {
+            LuaSessionScript next = LuaSessionScript.Load(path, Session!, _active, _surfaceTextures is not null, line => GD.Print(line));
+            _script?.Stop();
+            _script = next;
+            _scriptMenu.SetItemDisabled(1, false);
+            _status.Text = "Lua script running.";
+            return next;
+        }
+        catch (Exception error) when (IsLoadError(error))
+        {
+            _status.Text = $"Could not open script. {error.Message}";
+            GD.PushWarning(_status.Text);
+            return null;
+        }
+    }
+
+    private void StopScript()
+    {
+        _script?.Stop();
+        _script = null;
+        _scriptMenu.SetItemDisabled(1, true);
+        _status.Text = "Lua script stopped.";
+    }
+
     internal bool SaveScenario(string path)
     {
         try
@@ -277,6 +343,8 @@ public partial class SolarSystemScene : Control
             if (_surfaceTextures is null && scenario.Views.Any(view => view.Mode == CameraMode.Surface))
                 throw new InvalidDataException("The scenario needs the Earth surface textures.");
             Session!.RestoreScenario(scenario);
+            if (_script is not null)
+                StopScript();
             _active = scenario.ActiveView;
         }
         catch (Exception error) when (IsLoadError(error))

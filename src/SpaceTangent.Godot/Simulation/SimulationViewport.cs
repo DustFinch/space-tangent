@@ -33,12 +33,14 @@ internal partial class SimulationViewport : Node3D
     private readonly ImmediateMesh _projectionMesh = new(), _footprintMesh = new();
     private StandardMaterial3D[] _footprintMaterials = [];
     private SurfaceProjection? _surface;
+    private LunarTerrainProjection? _terrain;
     private readonly Dictionary<ObjectId, (PreparedSatellite Asset, MeshInstance3D Node)> _satellites = new();
 
     internal Vector3 EarthPosition => _earth.Position;
     internal Vector3 MoonPosition => _moon.Position;
     internal bool MoonVisible => _moon.Visible;
     internal string? ProbeStatus { get; private set; }
+    internal LunarTerrainProjection? Terrain => _terrain;
 
     public override void _Ready()
     {
@@ -85,6 +87,7 @@ internal partial class SimulationViewport : Node3D
     {
         Vector2 size = GetViewport().GetVisibleRect().Size;
         _camera.KeepAspect = size.X >= size.Y ? Camera3D.KeepAspectEnum.Height : Camera3D.KeepAspectEnum.Width;
+        _terrain?.FitCamera(size);
     }
 
     internal void ReplaceSatellites(IReadOnlyList<PreparedSatellite> assets)
@@ -165,6 +168,16 @@ internal partial class SimulationViewport : Node3D
 
     internal void SetSurfaceTextures(SurfaceTextures textures) => _surface = new SurfaceProjection(this, textures);
 
+    internal void ReplaceLunarTerrain(LunarTerrainAsset? asset)
+    {
+        if (asset is not null)
+        {
+            _terrain ??= new(this);
+            _terrain.FitCamera(GetViewport().GetVisibleRect().Size);
+        }
+        _terrain?.Replace(asset);
+    }
+
     internal void SetSurfaceControls(bool clouds, bool lunarLight) => _surface!.SetControls(clouds, lunarLight);
 
     internal bool Draw(ObserverView observer, WorldSnapshot snapshot, DeltaTModel deltaT)
@@ -178,6 +191,9 @@ internal partial class SimulationViewport : Node3D
         _projectedFrusta.Hide();
         _footprints.Hide();
         ProbeStatus = null;
+        _terrain?.Hide();
+        if (observer.Mode != CameraMode.LunarTerrain && !_camera.Current)
+            _camera.MakeCurrent();
         if (_surface is { } surface)
         {
             bool isSurface = observer.Mode == CameraMode.Surface;
@@ -190,6 +206,14 @@ internal partial class SimulationViewport : Node3D
             return DrawMission(snapshot, observer.Mode == CameraMode.Timeline);
         if (observer.Mode == CameraMode.Probe)
             return DrawProbe(snapshot);
+        if (observer.Mode == CameraMode.LunarTerrain)
+        {
+            HideOrbitalMarkers();
+            if (_terrain is null || !snapshot.TryOrientation(SolarSystemSample.MoonId, out var moonFrame))
+                return false;
+            Vector3d sun = (sample.Sun - sample.Moon).PositionKilometers;
+            return _terrain.Draw(observer.Terrain ?? LunarTerrainCamera.Globe, moonFrame.ToWorld.Transpose().Transform(sun));
+        }
 
         ObjectId origin = observer.Mode == CameraMode.Solar ? SolarSystemSample.SunId : SolarSystemSample.EarthId;
         double scale = observer.Mode == CameraMode.Solar ? OverviewKilometersPerUnit : LunarKilometersPerUnit;

@@ -8,16 +8,29 @@ using SpaceTangent.Core.World;
 
 namespace SpaceTangent.Application;
 
-public enum CameraMode { Solar, Lunar, Satellites, Surface, Mission, Timeline, Probe }
+public enum CameraMode { Solar, Lunar, Satellites, Surface, Mission, Timeline, Probe, LunarTerrain }
 
-public readonly record struct ObserverView(JulianInstant Epoch, CameraMode Mode, ObjectId? Selection, bool Playing);
+public readonly record struct LunarTerrainCamera(double LongitudeDegrees, double LatitudeDegrees, double FieldKilometers)
+{
+    public static LunarTerrainCamera Globe { get; } = new(-20.08, 9.62, 4200);
+    public static LunarTerrainCamera Copernicus { get; } = new(-20.08, 9.62, 420);
+
+    public bool IsValid() => LongitudeDegrees is >= -180 and <= 180 && LatitudeDegrees is >= -90 and <= 90 &&
+        FieldKilometers is >= 50 and <= 4600;
+}
+
+public readonly record struct ObserverView(JulianInstant Epoch, CameraMode Mode, ObjectId? Selection, bool Playing)
+{
+    public LunarTerrainCamera? Terrain { get; init; }
+}
 
 public sealed record HuygensMission(SscHuygensTrack Track, SpkKernel SaturnSystem, SpicePolynomialBodyFrame TitanFrame);
 
 public sealed class SimulationWorld
 {
     public SimulationWorld(De440Ephemeris ephemeris, IEnumerable<ScienceSatellite> satellites,
-        SpiceSpacecraft? mission = null, SscSampledSpacecraft? timeline = null, HuygensMission? probe = null)
+        SpiceSpacecraft? mission = null, SscSampledSpacecraft? timeline = null, HuygensMission? probe = null,
+        SpicePolynomialBodyFrame? moonFrame = null)
     {
         Ephemeris = ephemeris;
         Satellites = Array.AsReadOnly(satellites.ToArray());
@@ -43,6 +56,13 @@ public sealed class SimulationWorld
             graph.AddHuygens(probe.Track);
             Probe = probe.Track;
         }
+        if (moonFrame is not null)
+        {
+            if (moonFrame.BodyId != 301)
+                throw new ArgumentException("The lunar terrain requires a Moon body frame.", nameof(moonFrame));
+            graph.AddOrientation(SolarSystemSample.MoonId, epoch => moonFrame.Sample(epoch));
+            HasLunarTerrain = true;
+        }
         Graph = graph.Build();
     }
 
@@ -54,6 +74,7 @@ public sealed class SimulationWorld
     public ObjectId? TimelineId { get; }
     public JulianInstant? TimelineStart { get; }
     public SscHuygensTrack? Probe { get; }
+    public bool HasLunarTerrain { get; }
 }
 
 /// <summary>Owns clocks and view preferences independently of rendering resources.</summary>
@@ -102,6 +123,10 @@ public sealed class SimulationSession
                 throw new InvalidDataException("The scenario needs the Cassini timeline catalogue.");
             if (view.Mode == CameraMode.Probe && World.Probe is null)
                 throw new InvalidDataException("The scenario needs the Huygens timeline and Titan kernels.");
+            if (view.Mode == CameraMode.LunarTerrain && !World.HasLunarTerrain)
+                throw new InvalidDataException("The scenario needs the lunar elevation map and orientation kernel.");
+            if (view.Terrain is { } terrain && !terrain.IsValid())
+                throw new InvalidDataException("The scenario has invalid lunar camera coordinates or field width.");
             if (view.Mode == CameraMode.Satellites && World.Satellites.Count == 0)
                 throw new InvalidDataException("The scenario needs the Earth satellite add-ons.");
             if (view.Selection is { } selection && !World.Satellites.Any(satellite => satellite.Id == selection))
@@ -152,6 +177,8 @@ public sealed class SimulationSession
     {
         if (!Enum.IsDefined(mode))
             throw new ArgumentOutOfRangeException(nameof(mode));
+        if (mode == CameraMode.LunarTerrain && !World.HasLunarTerrain)
+            throw new InvalidOperationException("The current world has no lunar terrain.");
         ObserverView previous = _views[view];
         if (mode == CameraMode.Satellites)
         {
@@ -180,6 +207,13 @@ public sealed class SimulationSession
                 Seek(view, probe.Separation);
         }
         _views[view] = _views[view] with { Mode = mode };
+    }
+
+    public void SetLunarTerrainCamera(int view, LunarTerrainCamera camera)
+    {
+        if (!camera.IsValid())
+            throw new ArgumentOutOfRangeException(nameof(camera));
+        _views[view] = _views[view] with { Terrain = camera };
     }
 
     public void Select(int view, ObjectId selection)
@@ -258,7 +292,8 @@ public sealed class SimulationSession
             bool lostMode = (previous.Mode == CameraMode.Satellites && next.Satellites.Count == 0) ||
                 (previous.Mode == CameraMode.Mission && next.MissionId is null) ||
                 (previous.Mode == CameraMode.Timeline && next.TimelineId is null) ||
-                (previous.Mode == CameraMode.Probe && next.Probe is null);
+                (previous.Mode == CameraMode.Probe && next.Probe is null) ||
+                (previous.Mode == CameraMode.LunarTerrain && !next.HasLunarTerrain);
             CameraMode mode = lostMode
                 ? CameraMode.Solar
                 : previous.Mode;

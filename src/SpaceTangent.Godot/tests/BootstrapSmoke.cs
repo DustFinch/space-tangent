@@ -42,6 +42,8 @@ public partial class BootstrapSmoke : Node
                 await CheckProbe(scene);
             if (System.Environment.GetEnvironmentVariable("SPACETANGENT_TEST_SSC_OVERLAYS") is { Length: > 0 } overlays)
                 await CheckSscOverlays(scene, overlays);
+            if (!string.IsNullOrWhiteSpace(System.Environment.GetEnvironmentVariable("SPACETANGENT_TERRAIN_ROOT")))
+                await CheckLunarTerrain(scene);
 
             GD.Print("SpaceTangent bootstrap smoke passed");
             GetTree().Quit();
@@ -500,6 +502,55 @@ public partial class BootstrapSmoke : Node
         Require(await scene.ReloadAddOns() && model.Visible && ((ArrayMesh)model.Mesh).GetSurfaceCount() == 10,
             "Removing the SSC overrides must restore the original Cassini model.");
         GD.Print("SpaceTangent ordered SSC overlay reload smoke passed");
+    }
+
+    private async Task CheckLunarTerrain(SolarSystemScene scene)
+    {
+        SimulationSession session = scene.Session!;
+        Require(session.World.HasLunarTerrain, "The real lunar elevation map and PCK must load.");
+        if (session.ViewCount == 1)
+            scene.ToggleSplit();
+        scene.Synchronize(false, 0);
+        scene.SetMode(0, CameraMode.LunarTerrain);
+        scene.SetMode(1, CameraMode.LunarTerrain);
+        scene.SetLunarTerrainCamera(0, LunarTerrainCamera.Globe);
+        scene.SetLunarTerrainCamera(1, LunarTerrainCamera.Copernicus);
+        scene.Seek(0, SurfaceProjection.FullMoonEpoch);
+        scene.Seek(1, SurfaceProjection.FullMoonEpoch.AddSeconds(-3.8 * JulianInstant.SecondsPerDay));
+        LunarTerrainProjection left = scene.Renderer(0).Terrain!, right = scene.Renderer(1).Terrain!;
+        Require(left.Visible && right.Visible && !left.Regional && right.Regional &&
+            left.SunDirection.DistanceTo(right.SunDirection) > .5f, "Terrain must draw at separate scales and solar epochs.");
+        Require(Math.Abs(left.SunDirection.Length() - 1) < 1e-6f && Math.Abs(right.SunDirection.Length() - 1) < 1e-6f,
+            "The terrain shader requires unit light directions.");
+
+        if (System.Environment.GetEnvironmentVariable("SPACETANGENT_TERRAIN_CAPTURE") is { Length: > 0 } capture)
+        {
+            await ToSignal(GetTree(), SceneTree.SignalName.ProcessFrame);
+            await ToSignal(RenderingServer.Singleton, RenderingServer.SignalName.FramePostDraw);
+            using Image image = GetViewport().GetTexture().GetImage();
+            Require(image.SavePng(capture) == Error.Ok, "Could not save the globe and regional relief views.");
+        }
+
+        ObserverView globe = session[0], crater = session[1];
+        string file = Path.Combine(Path.GetTempPath(), $"SpaceTangent-terrain-{Guid.NewGuid():N}.stscene");
+        try
+        {
+            Require(scene.SaveScenario(file), "The lunar terrain scenario must save.");
+            scene.SetLunarTerrainCamera(1, LunarTerrainCamera.Globe);
+            Require(!right.Regional, "Changing one view must select the new scale.");
+            Require(scene.LoadScenario(file) && session[0] == globe && session[1] == crater && right.Regional,
+                "Opening a scenario must restore both lunar cameras.");
+            Require(await scene.ReloadAddOns() && session[0] == globe && session[1] == crater && left.Visible && right.Visible,
+                "Reloading terrain must preserve both observers and cameras.");
+            scene.ShowFullMoon(0);
+            Require(!left.Visible && right.Visible && session[1] == crater,
+                "Returning to Earth must hide only that observer's terrain.");
+        }
+        finally
+        {
+            File.Delete(file);
+        }
+        GD.Print("SpaceTangent real lunar terrain two-view and scenario smoke passed");
     }
 
     private static void VerifyMesh(MeshInstance3D node, int triangles, int surfaces, int textureCount)

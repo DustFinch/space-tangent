@@ -44,7 +44,8 @@ public static class ScenarioFile
                 NanosecondsOfDay = view.Epoch.NanosecondsOfDay,
                 Camera = view.Mode,
                 Selection = view.Selection?.Value,
-                Playing = view.Playing
+                Playing = view.Playing,
+                Terrain = view.Terrain
             }).ToArray()
         };
         byte[] bytes = JsonSerializer.SerializeToUtf8Bytes(document, Json);
@@ -94,7 +95,7 @@ public static class ScenarioFile
             View data = document.Views[i];
             var epoch = new JulianInstant(data.DayTdb, data.NanosecondsOfDay, TimeScale.Tdb);
             ObjectId? selection = data.Selection is { } id ? new ObjectId(id) : null;
-            views[i] = new(epoch, data.Camera, selection, data.Playing);
+            views[i] = new(epoch, data.Camera, selection, data.Playing) { Terrain = data.Terrain };
         }
         return new(Array.AsReadOnly(views), document.Synchronized, document.ClockOwner, document.ActiveView, document.DeltaT);
     }
@@ -116,5 +117,7 @@ public static class ScenarioFile
         public required CameraMode Camera { get; init; }
         public required string? Selection { get; init; }
         public required bool Playing { get; init; }
+        [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+        public LunarTerrainCamera? Terrain { get; init; }
     }
 }

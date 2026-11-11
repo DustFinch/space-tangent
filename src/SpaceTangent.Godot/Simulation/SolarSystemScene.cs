@@ -14,19 +14,21 @@ namespace SpaceTangent.Godot.Simulation;
 public partial class SolarSystemScene : Control
 {
     private sealed record ViewControls(VBoxContainer Panel, SimulationViewport Renderer, Label Epoch,
-        Button Play, OptionButton Mode, OptionButton Selection, LineEdit TimelineEpoch);
+        Button Play, OptionButton Mode, OptionButton Selection, LineEdit TimelineEpoch, HBoxContainer TerrainTools,
+        LineEdit TerrainCoordinates);
     private sealed record DecodedSatellite(ScienceSatellite Track, DecodedScienceModel Model);
     private sealed record DecodedMission(DecodedScienceModel Model, IReadOnlyList<SpiceSensor> Sensors, SaturnSurface? Surface);
     private sealed record DecodedAddOns(SimulationWorld World, List<DecodedSatellite> Satellites, DecodedMission? Mission,
-        DecodedScienceModel? Timeline, DecodedScienceModel? Probe);
+        DecodedScienceModel? Timeline, DecodedScienceModel? Probe, DecodedLunarTerrain? Terrain);
     private sealed record PublishedAddOns(IReadOnlyList<PreparedSatellite> Satellites, PreparedMission? Mission,
-        PreparedMission? Timeline, PreparedProbe? Probe);
+        PreparedMission? Timeline, PreparedProbe? Probe, LunarTerrainAsset? Terrain);
 
     private readonly List<ViewControls> _views = [];
     private IReadOnlyList<PreparedSatellite> _assets = [];
     private PreparedMission? _mission;
     private PreparedMission? _timeline;
     private PreparedProbe? _probe;
+    private LunarTerrainAsset? _terrain;
     private SurfaceTextures? _surfaceTextures;
     private HBoxContainer _panels = null!;
     private Button _split = null!;
@@ -98,6 +100,7 @@ public partial class SolarSystemScene : Control
             _mission = assets.Mission;
             _timeline = assets.Timeline;
             _probe = assets.Probe;
+            _terrain = assets.Terrain;
             _status.Text = "";
         }
         catch (OperationCanceledException)
@@ -146,6 +149,8 @@ public partial class SolarSystemScene : Control
             GD.Print("SpaceTangent Cassini timeline ready.");
         if (world.Probe is not null)
             GD.Print("SpaceTangent Huygens ready.");
+        if (world.HasLunarTerrain)
+            GD.Print("SpaceTangent lunar terrain ready.");
         if (OS.GetCmdlineUserArgs().Contains("--smoke-startup"))
             GetTree().Quit();
     }
@@ -182,6 +187,13 @@ public partial class SolarSystemScene : Control
     {
         _active = view;
         Session!.SetMode(view, mode);
+        Refresh();
+    }
+
+    internal void SetLunarTerrainCamera(int view, LunarTerrainCamera camera)
+    {
+        Session!.SetLunarTerrainCamera(view, camera);
+        _active = view;
         Refresh();
     }
 
@@ -387,6 +399,7 @@ public partial class SolarSystemScene : Control
             _mission = next.Mission;
             _timeline = next.Timeline;
             _probe = next.Probe;
+            _terrain = next.Terrain;
             foreach (ViewControls view in _views)
                 ReplaceAssets(view);
             Refresh();
@@ -444,6 +457,7 @@ public partial class SolarSystemScene : Control
         mode.AddItem("Cassini at Saturn", (int)CameraMode.Mission);
         mode.AddItem("Cassini timeline", (int)CameraMode.Timeline);
         mode.AddItem("Huygens", (int)CameraMode.Probe);
+        mode.AddItem("Lunar terrain", (int)CameraMode.LunarTerrain);
         mode.SetItemDisabled((int)CameraMode.Surface, _surfaceTextures is null);
         mode.ItemSelected += item => SetMode(index, (CameraMode)mode.GetItemId((int)item));
         tools.AddChild(mode);
@@ -454,6 +468,19 @@ public partial class SolarSystemScene : Control
             TooltipText = "Enter a TDB Julian date, such as 2453167.5, and press Enter." };
         timelineEpoch.TextSubmitted += text => SeekTimeline(index, text);
         panel.AddChild(timelineEpoch);
+
+        var terrainTools = new HBoxContainer { Visible = false };
+        AddButton(terrainTools, "Globe", () => SetLunarTerrainCamera(index, LunarTerrainCamera.Globe));
+        AddButton(terrainTools, "Copernicus", () => SetLunarTerrainCamera(index, LunarTerrainCamera.Copernicus));
+        var terrainCoordinates = new LineEdit
+        {
+            SizeFlagsHorizontal = SizeFlags.ExpandFill,
+            PlaceholderText = "Lon°, lat°, width km ↵",
+            TooltipText = "East longitude, north latitude and view width in km. Separate values with commas."
+        };
+        terrainCoordinates.TextSubmitted += text => SeekTerrain(index, terrainCoordinates, text);
+        terrainTools.AddChild(terrainCoordinates);
+        panel.AddChild(terrainTools);
 
         var container = new SubViewportContainer
         {
@@ -472,7 +499,8 @@ public partial class SolarSystemScene : Control
         viewport.AddChild(renderer);
         if (_surfaceTextures is { } textures)
             renderer.SetSurfaceTextures(textures);
-        var controls = new ViewControls(panel, renderer, epoch, play, mode, selection, timelineEpoch);
+        var controls = new ViewControls(panel, renderer, epoch, play, mode, selection, timelineEpoch,
+            terrainTools, terrainCoordinates);
         _views.Add(controls);
         ReplaceAssets(controls);
     }
@@ -481,6 +509,7 @@ public partial class SolarSystemScene : Control
     {
         view.Renderer.ReplaceSatellites(_assets);
         view.Renderer.ReplaceMission(_mission, _timeline, _probe);
+        view.Renderer.ReplaceLunarTerrain(_terrain);
         view.Selection.Clear();
         foreach (PreparedSatellite asset in _assets)
             view.Selection.AddItem(asset.Track.Name);
@@ -488,6 +517,7 @@ public partial class SolarSystemScene : Control
         view.Mode.SetItemDisabled((int)CameraMode.Mission, _mission is null);
         view.Mode.SetItemDisabled((int)CameraMode.Timeline, _timeline is null);
         view.Mode.SetItemDisabled((int)CameraMode.Probe, _probe is null);
+        view.Mode.SetItemDisabled((int)CameraMode.LunarTerrain, _terrain is null);
     }
 
     private void SeekTimeline(int view, string text)
@@ -503,6 +533,26 @@ public partial class SolarSystemScene : Control
         {
             _status.Text = $"Could not set the epoch. {error.Message}";
         }
+    }
+
+    private void SeekTerrain(int view, LineEdit coordinates, string text)
+    {
+        string[] fields = text.Split(',', StringSplitOptions.TrimEntries);
+        if (fields.Length == 3 && Read(0, out double longitude) && Read(1, out double latitude) && Read(2, out double width))
+        {
+            var camera = new LunarTerrainCamera(longitude, latitude, width);
+            if (camera.IsValid())
+            {
+                coordinates.ReleaseFocus();
+                SetLunarTerrainCamera(view, camera);
+                _status.Text = "";
+                return;
+            }
+        }
+        _status.Text = "Enter longitude (−180–180°), latitude (−90–90°) and width (50–4600 km), separated by commas.";
+
+        bool Read(int index, out double value) =>
+            double.TryParse(fields[index], NumberStyles.Float, CultureInfo.InvariantCulture, out value);
     }
 
     private void Refresh()
@@ -521,6 +571,7 @@ public partial class SolarSystemScene : Control
                     CameraMode.Mission => "   Cassini state or pointing is outside kernel coverage.",
                     CameraMode.Timeline => "   Cassini is outside the sampled timeline.",
                     CameraMode.Probe => "   Huygens is outside the available timeline or kernel coverage.",
+                    CameraMode.LunarTerrain => "   Lunar terrain is unavailable.",
                     _ => "   Surface view is available for 1900–2099."
                 };
             if (controls.Renderer.ProbeStatus is { } phase)
@@ -529,6 +580,13 @@ public partial class SolarSystemScene : Control
             controls.Mode.Select((int)view.Mode);
             controls.Selection.Visible = view.Mode == CameraMode.Satellites;
             controls.TimelineEpoch.Visible = view.Mode is CameraMode.Timeline or CameraMode.Probe;
+            controls.TerrainTools.Visible = view.Mode == CameraMode.LunarTerrain;
+            if (controls.TerrainTools.Visible && !controls.TerrainCoordinates.HasFocus())
+            {
+                var camera = view.Terrain ?? LunarTerrainCamera.Globe;
+                controls.TerrainCoordinates.Text = FormattableString.Invariant(
+                    $"{camera.LongitudeDegrees:G}, {camera.LatitudeDegrees:G}, {camera.FieldKilometers:G}");
+            }
             int selected = -1;
             for (int item = 0; item < _assets.Count && selected < 0; item++)
             {
@@ -549,14 +607,15 @@ public partial class SolarSystemScene : Control
         const string TimelineEnvironment = "SPACETANGENT_TIMELINE_ROOT";
         string timelineRoot = LocalDataPaths.Find(TimelineEnvironment, "timeline", directory: true);
         bool timelineConfigured = !string.IsNullOrWhiteSpace(System.Environment.GetEnvironmentVariable(TimelineEnvironment));
+        string terrainRoot = LocalDataPaths.Find("SPACETANGENT_TERRAIN_ROOT", "terrain", directory: true);
         return Task.Run(() => DecodeAddOns(ephemeris, root, configured, explicitMission, missionJson, missionSsc,
-            timelineRoot, timelineConfigured, cancellation),
+            timelineRoot, timelineConfigured, terrainRoot, cancellation),
             cancellation);
     }
 
     private static DecodedAddOns DecodeAddOns(De440Ephemeris ephemeris, string root, bool configured,
         string? explicitMission, string missionJson, string missionSsc, string timelineRoot, bool timelineConfigured,
-        CancellationToken cancellation)
+        string terrainRoot, CancellationToken cancellation)
     {
         string catalog = Path.Combine(root, "catalog", "sciencesat.json");
         var satellites = new List<DecodedSatellite>();
@@ -601,8 +660,16 @@ public partial class SolarSystemScene : Control
                 probeGeometry = StudioMeshDecoder.Decode(track.MeshPath, cancellation, centerOnBounds: true);
             }
         }
-        return new(new SimulationWorld(ephemeris, satellites.Select(asset => asset.Track), mission, timeline, probe),
-            satellites, geometry, timelineGeometry, probeGeometry);
+        string terrainPath = Path.Combine(terrainRoot, "terrain-moon.bin");
+        SpicePolynomialBodyFrame? moonFrame = null;
+        DecodedLunarTerrain? terrain = null;
+        if (File.Exists(terrainPath))
+        {
+            moonFrame = new(Path.Combine(terrainRoot, "pck00011.tpc"), 301);
+            terrain = DecodedLunarTerrain.Load(terrainPath, moonFrame.RadiiKilometers.X, cancellation);
+        }
+        return new(new SimulationWorld(ephemeris, satellites.Select(asset => asset.Track), mission, timeline, probe, moonFrame),
+            satellites, geometry, timelineGeometry, probeGeometry, terrain);
     }
 
     private static (SpiceSpacecraft Track, IReadOnlyList<SpiceSensor> Sensors) ReadMission(string path)
@@ -647,7 +714,8 @@ public partial class SolarSystemScene : Control
         PreparedProbe? probe = decoded.Probe is { } probeModel
             ? new(decoded.World.Probe!, ScienceMeshLoader.Publish(probeModel), (float)(24 / probeModel.Diameter))
             : null;
-        return new(satellites, mission, timeline, probe);
+        return new(satellites, mission, timeline, probe,
+            decoded.Terrain is { } terrain ? LunarTerrainAsset.Publish(terrain) : null);
     }
 
     private static bool IsLoadError(Exception error) =>

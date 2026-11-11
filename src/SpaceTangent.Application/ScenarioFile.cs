@@ -15,7 +15,7 @@ public sealed record SimulationScenario(IReadOnlyList<ObserverView> Views, bool 
 /// <summary>Persists observer settings with exact TDB epochs and stable catalog IDs.</summary>
 public static class ScenarioFile
 {
-    private const int Version = 6;
+    private const int Version = 7;
     internal const int MaximumBytes = 32 * 1024;
     private static readonly JsonSerializerOptions Json = new()
     {
@@ -40,7 +40,8 @@ public static class ScenarioFile
         if (scenario.Views.Any(view => view.EarthObserver is { } earth && !earth.IsValid()))
             throw new InvalidDataException("The scenario has an invalid Earth observer camera.");
         if (!Enum.IsDefined(scenario.SplitLayout) ||
-            scenario.Views.Any(view => view.FieldOfViewDegrees is { } field && !ObserverView.ValidFieldOfView(field)))
+            scenario.Views.Any(view => (view.FieldOfViewDegrees is { } field && !ObserverView.ValidFieldOfView(field)) ||
+                (view.PlaybackRate is { } rate && !ObserverView.ValidPlaybackRate(rate))))
             throw new InvalidDataException("The scenario has an invalid layout or field of view.");
         var document = new Document
         {
@@ -59,6 +60,7 @@ public static class ScenarioFile
                 Playing = view.Playing,
                 Terrain = view.Terrain,
                 FieldOfViewDegrees = view.FieldOfViewDegrees,
+                PlaybackRate = view.PlaybackRate,
                 Navigation = view.Navigation is { } pose ? Camera.From(pose) : null,
                 EarthObserver = view.EarthObserver,
                 Sky = view.Sky.Visible ? view.Sky : null
@@ -139,10 +141,13 @@ public static class ScenarioFile
             if ((data.FieldOfViewDegrees is { } field && !ObserverView.ValidFieldOfView(field)) ||
                 (document.Version < 6 && (data.FieldOfViewDegrees.HasValue || navigation?.Placement is not null)))
                 throw new InvalidDataException("The scene field or observer frame is unsupported.");
+            if (data.PlaybackRate is { } rate && (document.Version < 7 || !ObserverView.ValidPlaybackRate(rate)))
+                throw new InvalidDataException("The scene playback rate is unsupported.");
             views[i] = new(epoch, data.Camera, selection, data.Playing)
             {
                 Terrain = data.Terrain,
                 FieldOfViewDegrees = data.FieldOfViewDegrees,
+                PlaybackRate = data.PlaybackRate,
                 Navigation = navigation,
                 EarthObserver = data.EarthObserver,
                 Sky = data.Sky ?? default
@@ -175,6 +180,8 @@ public static class ScenarioFile
         public LunarTerrainCamera? Terrain { get; init; }
         [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
         public double? FieldOfViewDegrees { get; init; }
+        [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+        public double? PlaybackRate { get; init; }
         [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
         public Camera? Navigation { get; init; }
         [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]

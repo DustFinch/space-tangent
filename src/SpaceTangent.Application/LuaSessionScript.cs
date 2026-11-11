@@ -6,7 +6,7 @@ using SpaceTangent.Contracts;
 namespace SpaceTangent.Application;
 
 /// <summary>Runs an explicitly opened observer script in bounded steps on its owning thread.</summary>
-public sealed class LuaSessionScript
+public sealed partial class LuaSessionScript
 {
     private const int MaximumSourceBytes = 32 * 1024;
     private const int StepsPerFrame = 1024, MaximumSteps = 131072;
@@ -45,6 +45,7 @@ public sealed class LuaSessionScript
         Bind(api, "select", (_, arguments) => Change(() => _session.Select(View, new ObjectId(Text(arguments[0])))));
         Bind(api, "wait", Wait);
         Bind(api, "log", (_, arguments) => { Log(Text(arguments[0])); return DynValue.Nil; });
+        BindTourActions(api);
         script.Globals.Set("st", DynValue.NewTable(api));
         Bind(script.Globals, "wait", Wait);
 

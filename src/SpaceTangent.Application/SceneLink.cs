@@ -96,11 +96,13 @@ public static class SceneLink
         if (paused is not (null or "0" or "1"))
             throw new FormatException("The link has an invalid pause flag.");
 
+        double? rate = parameters.ContainsKey("ts") ? Number("ts") : null;
+        if (rate is { } value && !ObserverView.ValidPlaybackRate(value))
+            throw new FormatException("The link has an unsupported playback rate.");
         var warnings = parameters.Keys.Where(key => key is not ("ver" or "x" or "y" or "z" or "ow" or "ox" or "oy" or "oz"
-            or "select" or "fov" or "p") && !(key is "ltd" or "tsrc" && parameters[key] == "0")
-            && !(key == "ts" && paused != "0")).ToArray();
-        var observer = new ObserverView(epoch, CameraMode.Solar, selected, paused == "0")
-            { Navigation = camera, FieldOfViewDegrees = field };
+            or "select" or "fov" or "p" or "ts") && !(key is "ltd" or "tsrc" && parameters[key] == "0")).ToArray();
+        var observer = new ObserverView(epoch, CameraMode.Solar, selected, paused == "0" && rate != 0)
+            { Navigation = camera, FieldOfViewDegrees = field, PlaybackRate = rate };
         return (new([observer], true, 0, 0, deltaT), warnings.Length == 0 ? null :
             $"Unapplied link parameters: {string.Join(", ", warnings)}.");
 
@@ -117,7 +119,7 @@ public static class SceneLink
         }
     }
 
-    private static ObjectId ResolveObject(string path, ObjectCatalogue catalogue)
+    internal static ObjectId ResolveObject(string path, ObjectCatalogue catalogue)
     {
         string[] parts = path.Split([':', '/'], StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
         if (parts.Length == 0)

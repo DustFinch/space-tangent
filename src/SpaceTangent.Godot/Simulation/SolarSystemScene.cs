@@ -441,7 +441,9 @@ public partial class SolarSystemScene : Control
                 TogglePlaying(_active);
                 break;
             case Key.Escape:
-                if (Session.CancelFlight(_active))
+                if (_script is { Finished: false })
+                    StopScript();
+                else if (Session.CancelFlight(_active))
                 {
                     _status.Text = "Flight stopped.";
                     Refresh();
@@ -640,7 +642,7 @@ public partial class SolarSystemScene : Control
 
     private void AddScriptMenu(Container toolbar)
     {
-        var menu = new MenuButton { Text = "Script" };
+        var menu = new MenuButton { Name = "ScriptMenu", Text = "Script" };
         toolbar.AddChild(menu);
         var open = new FileDialog { Name = "OpenScript", Access = FileDialog.AccessEnum.Filesystem,
             FileMode = FileDialog.FileModeEnum.OpenFile, DeletingEnabled = false };
@@ -650,13 +652,17 @@ public partial class SolarSystemScene : Control
         _scriptMenu = menu.GetPopup();
         _scriptMenu.AddItem("Run Lua…", 0);
         _scriptMenu.AddItem("Stop script", 1);
+        var conversionSource = AddTourDialogs();
+        _scriptMenu.AddItem("Convert tour…", 2);
         _scriptMenu.SetItemDisabled(1, true);
         _scriptMenu.IdPressed += id =>
         {
             if (id == 0)
                 open.PopupCentered(new Vector2I(700, 460));
-            else
+            else if (id == 1)
                 StopScript();
+            else
+                conversionSource.PopupCentered(new Vector2I(700, 460));
         };
     }
 
@@ -681,7 +687,11 @@ public partial class SolarSystemScene : Control
 
     private void StopScript()
     {
-        _script?.Stop();
+        if (_script is { } running)
+        {
+            running.Stop();
+            Session?.CancelFlight(running.View);
+        }
         _script = null;
         _scriptMenu.SetItemDisabled(1, true);
         _status.Text = "Lua script stopped.";

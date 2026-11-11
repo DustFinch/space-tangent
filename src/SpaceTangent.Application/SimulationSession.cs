@@ -29,6 +29,8 @@ public readonly record struct ObserverView(JulianInstant Epoch, CameraMode Mode,
     public EarthObserverCamera? EarthObserver { get; init; }
     public SkyLayerSettings Sky { get; init; }
     public double? FieldOfViewDegrees { get; init; }
+    public double? PlaybackRate { get; init; }
+    public static bool ValidPlaybackRate(double rate) => rate is >= -100_000_000 and <= 100_000_000;
     public double EffectiveFieldOfView => FieldOfViewDegrees ?? (Mode == CameraMode.Surface && Navigation is null ? 10 : 49);
     public static bool ValidFieldOfView(double field) => field is >= 2 and <= 120;
 }
@@ -183,6 +185,8 @@ public sealed partial class SimulationSession
                 throw new InvalidDataException("The scenario has an invalid Earth observer camera.");
             if (view.FieldOfViewDegrees is { } field && !ObserverView.ValidFieldOfView(field))
                 throw new InvalidDataException("The scenario has an invalid field of view.");
+            if (view.PlaybackRate is { } rate && !ObserverView.ValidPlaybackRate(rate))
+                throw new InvalidDataException("The scenario has an invalid playback rate.");
             if (view.Terrain is { } terrain && !terrain.IsValid())
                 throw new InvalidDataException("The scenario has invalid lunar camera coordinates or field width.");
             if (view.Mode == CameraMode.Satellites && World.Satellites.Count == 0)
@@ -334,6 +338,14 @@ public sealed partial class SimulationSession
 
     public void SetPlaying(int view, bool playing) => SetClock(view, _views[view].Epoch, playing);
 
+    public void SetPlaybackRate(int view, double rate)
+    {
+        if (!ObserverView.ValidPlaybackRate(rate))
+            throw new ArgumentOutOfRangeException(nameof(rate));
+        _views[view] = _views[view] with { PlaybackRate = rate == 0 ? null : rate };
+        SetPlaying(view, rate != 0);
+    }
+
     public void Seek(int view, JulianInstant epoch)
     {
         if (!Covers(World, epoch))
@@ -365,12 +377,12 @@ public sealed partial class SimulationSession
         {
             if (_views[view].Playing)
             {
-                double rate = _views[view].Mode switch
+                double rate = _views[view].PlaybackRate ?? (_views[view].Mode switch
                 {
                     CameraMode.Probe => 1,
                     CameraMode.Satellites or CameraMode.Mission or CameraMode.Timeline => 180,
                     _ => JulianInstant.SecondsPerDay
-                };
+                });
                 Step(view, elapsed * rate);
                 changed = true;
             }

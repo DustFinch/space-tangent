@@ -7,20 +7,25 @@ namespace SpaceTangent.Application;
 
 public sealed partial class SimulationSession
 {
-    private sealed record CameraFlight(NavigationCamera Start, double Elapsed);
+    private sealed record CameraFlight(NavigationCamera Start, double Elapsed, double Duration, double TargetRange);
 
     private const double FlightDuration = 1.65;
     private readonly CameraFlight?[] _flights = new CameraFlight?[2];
 
     public bool IsFlying(int view) => _flights[view] is not null;
 
-    public bool GoToSelection(int view)
+    public bool GoToSelection(int view) => GoToSelection(view, FlightDuration, null);
+
+    internal bool GoToSelection(int view, double duration, double? range)
     {
+        if (!double.IsFinite(duration) || duration is < 0 or > 300 || (range.HasValue && !double.IsFinite(range.Value)))
+            throw new ArgumentOutOfRangeException(nameof(duration));
         if (!TrySelectedState(view, out ObjectId target, out WorldSnapshot snapshot, out _))
             return false;
         ObserverView observer = _views[view];
         NavigationCamera start = (observer.Navigation ?? PresetCamera(observer, snapshot)) with { Placement = null };
-        _flights[view] = new(start, 0);
+        double targetRange = Math.Clamp(range ?? FramingRange(target), MinimumRange(target), NavigationCamera.MaxRange);
+        _flights[view] = new(start, 0, Math.Max(duration, .001), targetRange);
         _views[view] = observer with { Navigation = start with { Target = target, Tracking = false } };
         return true;
     }
@@ -89,10 +94,10 @@ public sealed partial class SimulationSession
         Vector3d position = state.PositionKilometers;
         if (_flights[view] is { } flight)
         {
-            double elapsed = Math.Min(FlightDuration, flight.Elapsed + elapsedSeconds);
-            double t = elapsed / FlightDuration;
+            double elapsed = Math.Min(flight.Duration, flight.Elapsed + elapsedSeconds);
+            double t = elapsed / flight.Duration;
             double pan = Smooth(Math.Min(1, t * 1.8));
-            double destinationRange = FramingRange(target);
+            double destinationRange = flight.TargetRange;
             double range = InterpolateRange(flight.Start.RangeKilometers, destinationRange, Smooth(t));
             double travel = (position - flight.Start.AnchorKilometers).Length;
             double wide = Math.Min(NavigationCamera.MaxRange, travel * .35);
@@ -108,7 +113,7 @@ public sealed partial class SimulationSession
                 AnchorKilometers = flight.Start.AnchorKilometers + (position - flight.Start.AnchorKilometers) * pan,
                 RangeKilometers = range
             };
-            _flights[view] = elapsed >= FlightDuration ? null : flight with { Elapsed = elapsed };
+            _flights[view] = elapsed >= flight.Duration ? null : flight with { Elapsed = elapsed };
         }
         else if (pose.Tracking)
             pose = pose with { AnchorKilometers = position };

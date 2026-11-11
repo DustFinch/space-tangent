@@ -113,6 +113,8 @@ public partial class WorkspaceInputSmoke : Node
             }
             if (System.Environment.GetEnvironmentVariable("SPACETANGENT_SSC_ADDON_PACK") is { Length: > 0 } bodyPack)
                 await ExerciseSscBodies(scratch.FullName, bodyPack);
+            if (System.Environment.GetEnvironmentVariable("SPACETANGENT_TOUR_SOURCES") is { Length: > 0 } tours)
+                await ExerciseOriginalTours(scratch.FullName, tours);
             if (!string.IsNullOrWhiteSpace(System.Environment.GetEnvironmentVariable("SPACETANGENT_PLANET_TEXTURES")))
                 await ExerciseEarthOrbit();
             GD.Print($"SpaceTangent workspace input smoke passed ({DisplayServer.GetName()})");

@@ -12,7 +12,7 @@ public sealed record SimulationScenario(IReadOnlyList<ObserverView> Views, bool 
 /// <summary>Persists observer settings with exact TDB epochs and stable catalog IDs.</summary>
 public static class ScenarioFile
 {
-    private const int Version = 4;
+    private const int Version = 5;
     private const int MaximumBytes = 32 * 1024;
     private static readonly JsonSerializerOptions Json = new()
     {
@@ -111,6 +111,8 @@ public static class ScenarioFile
                 throw new InvalidDataException("The scenario has an invalid Earth observer camera.");
             if (data.Sky is not null && document.Version < 4)
                 throw new InvalidDataException("Sky layers require a version 4 scenario.");
+            if (data.Sky is { DeepSky: true } && document.Version < 5)
+                throw new InvalidDataException("The deep-sky layer requires a version 5 scenario.");
             views[i] = new(epoch, data.Camera, selection, data.Playing)
             {
                 Terrain = data.Terrain,

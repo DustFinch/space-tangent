@@ -98,6 +98,8 @@ public partial class WorkspaceInputSmoke : Node
                 await ExerciseLocalAddOns(scratch.FullName, addonSettings, science!, mission);
             if (System.Environment.GetEnvironmentVariable("SPACETANGENT_PLANETARY_SMOKE") == "1")
                 await ExercisePlanetNavigation(scratch.FullName);
+            if (System.Environment.GetEnvironmentVariable("SPACETANGENT_SPATIAL_SKY_SMOKE") == "1")
+                await ExerciseSpatialSky(scratch.FullName);
             if (!string.IsNullOrWhiteSpace(System.Environment.GetEnvironmentVariable("SPACETANGENT_PLANET_TEXTURES")))
                 await ExerciseEarthOrbit();
             GD.Print($"SpaceTangent workspace input smoke passed ({DisplayServer.GetName()})");

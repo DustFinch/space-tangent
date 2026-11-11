@@ -42,7 +42,7 @@ internal static class AddonLoader
 
     internal sealed record DecodedAddOns(SimulationWorld World, IReadOnlyList<Cached<IReadOnlyList<DecodedSatellite>>> Science,
         Cached<DecodedMission?>? Mission, Cached<DecodedTimeline?>? Timeline, Cached<DecodedTerrain?>? Terrain,
-        PlanetEphemerides Planets, Cached<DecodedBodyTerrain>? MarsTerrain)
+        PlanetEphemerides Planets, Cached<DecodedBodyTerrain>? MarsTerrain, StellarCatalogue Stellar)
     {
         internal bool HasSource(LocalAddonKind kind, LocalDataPath path) => kind switch
         {
@@ -76,6 +76,7 @@ internal static class AddonLoader
         LocalDataPath? terrain = First(LocalAddonKind.Terrain);
         var planetPath = LocalDataPaths.Candidates("SPACETANGENT_PLANET_TEXTURES", "planets", directory: true);
         var pckPath = LocalDataPaths.Candidates("SPACETANGENT_PCK", "timeline/pck00011.tpc");
+        var stellarPath = LocalDataPaths.Candidates("SPACETANGENT_SPATIAL_STARS", "sky/spatial-stars.tsv");
         return Task.Run(() =>
         {
             var satellites = science.Select(path => Cached<IReadOnlyList<DecodedSatellite>>.Load(
@@ -112,9 +113,12 @@ internal static class AddonLoader
                 }
                 tracks.Add(item.Track);
             }
+            string starsFile = stellarPath.Resolve();
+            StellarCatalogue stellar = previous?.Stellar ?? (File.Exists(starsFile)
+                ? StellarCatalogue.Load(starsFile) : StellarCatalogue.Empty);
             var world = AddonDiagnostics.Read(AddonStage.World, null, () => new SimulationWorld(ephemeris, tracks,
-                spice?.Value?.Track, sampled?.Value?.Track, sampled?.Value?.Probe, relief?.Value?.Frame, brightStars, planets, marsTerrain is not null));
-            return new(world, sameScience ? previous!.Science : satellites, spice, sampled, relief, planets, marsTerrain);
+                spice?.Value?.Track, sampled?.Value?.Track, sampled?.Value?.Probe, relief?.Value?.Frame, brightStars, planets, marsTerrain is not null, stellar));
+            return new(world, sameScience ? previous!.Science : satellites, spice, sampled, relief, planets, marsTerrain, stellar);
         }, cancellation);
 
         Cached<T>? Read<T>(Cached<T>? cached, LocalDataPath? path, string category, Func<LocalDataPath, CancellationToken, T> reader) =>

@@ -1,0 +1,41 @@
+// SPDX-License-Identifier: GPL-2.0-or-later
+using Godot;
+using SpaceTangent.Application;
+using SpaceTangent.Contracts;
+
+namespace SpaceTangent.Godot.Tests;
+
+public partial class WorkspaceInputSmoke
+{
+    private async Task ExerciseSpatialSky(string directory)
+    {
+        await FlyTo(0, "Proxima Centauri", new("hip/70890"));
+        await FlyTo(1, "Andromeda Galaxy", new("dso/m31"));
+        Require(_scene.Renderer(0).StellarDiskResolved && _scene.Renderer(1).DeepSkyVisible(new("dso/m31")),
+            "The two views must render a nearby star and a galaxy separately.");
+        var expected = Session.CaptureScenario(1);
+        const string filename = "star-and-galaxy.stscene";
+        await UseScenarioDialog("SaveScenario", 1, directory, filename);
+        RequireScenario(expected, ScenarioFile.Load(Path.Combine(directory, filename)), "Saving interstellar targets");
+        await UseScenarioDialog("OpenScenario", 0, directory, filename);
+        RequireScenario(expected, Session.CaptureScenario(1), "Reopening interstellar targets");
+        GD.Print("UI: flew to Proxima Centauri and Andromeda, then saved and restored the two interstellar cameras");
+
+        async Task FlyTo(int view, string query, ObjectId target)
+        {
+            await Click(Find<SubViewportContainer>($"ViewCanvas{view}"));
+            var search = Find<Button>("SearchTab");
+            if (!search.ButtonPressed)
+                await Click(search);
+            await FillField("ObjectQuery", query);
+            await Click(Result(target));
+            Require(Find<Button>("GoToObject").Text == "Go to", $"The {query} card must offer space flight.");
+            await Click(Find<Button>("GoToObject"));
+            Require(Session.IsFlying(view), $"Flight to {query} must start.");
+            await Until(() => !Session.IsFlying(view), $"Flying to {query}");
+            Require(Session[view].Navigation?.Target == target, $"The camera must arrive at {query}.");
+            await Click(Find<Button>("TrackObject"));
+            Require(Session[view].Navigation is { Tracking: true }, $"Tracking {query} must be available.");
+        }
+    }
+}

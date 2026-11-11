@@ -36,7 +36,9 @@ internal partial class SimulationViewport
         bool available = DrawScene(observer, snapshot, deltaT);
         if (_spaceSky is not null)
         {
-            bool render = observer.Sky.Visible && (observer.Mode != CameraMode.Surface || observer.Navigation is not null);
+            bool localSky = observer.Sky.Stars || observer.Sky.Labels || observer.Sky.EquatorialGrid || observer.Sky.Constellations;
+            bool render = localSky && !SpatialStarFieldVisible &&
+                (observer.Mode != CameraMode.Surface || observer.Navigation is not null);
             _spaceSky.Visible = render;
             SkyEnvironment? background = render ? _canvasBackground : null;
             if (_skyEnvironment!.Environment != background)

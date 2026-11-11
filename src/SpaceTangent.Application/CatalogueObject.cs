@@ -6,13 +6,14 @@ using SpaceTangent.Core.Observing;
 
 namespace SpaceTangent.Application;
 
-public enum CatalogueKind { Star, Planet, Moon, Spacecraft, DwarfPlanet, Asteroid, Comet }
+public enum CatalogueKind { Star, Planet, Moon, Spacecraft, DwarfPlanet, Asteroid, Comet, Galaxy, Nebula, Cluster }
 
 public sealed record CatalogueObject(ObjectId Id, string Name, CatalogueKind Kind, ObjectId? Parent = null);
 
 public sealed class ObjectCatalogue
 {
-    internal ObjectCatalogue(IReadOnlyList<ScienceSatellite> satellites, BrightStarCatalogue stars)
+    internal ObjectCatalogue(IReadOnlyList<ScienceSatellite> satellites, BrightStarCatalogue stars,
+        StellarCatalogue spatialStars)
     {
         var objects = new List<CatalogueObject> { new(SolarSystemSample.SunId, "Sun", CatalogueKind.Star) };
         objects.AddRange(PlanetCatalogue.Planets.Select(planet =>
@@ -25,6 +26,15 @@ public sealed class ObjectCatalogue
         objects.AddRange(stars.Stars.Select(star =>
             new CatalogueObject(star.Id, star.Name.Length == 0 ? FormattableString.Invariant($"HIP {star.Hipparcos}") : star.Name,
                 CatalogueKind.Star)));
+        objects.AddRange(spatialStars.Stars.Where(star => stars.Find(star.Id) is null)
+            .Select(star => new CatalogueObject(star.Id, star.Name, CatalogueKind.Star)));
+        objects.AddRange(DeepSkyCatalogue.Objects.Select(body => new CatalogueObject(body.Id,
+            $"{body.Name} ({body.Designation})", body.Kind switch
+            {
+                DeepSkyKind.Galaxy => CatalogueKind.Galaxy,
+                DeepSkyKind.Nebula => CatalogueKind.Nebula,
+                _ => CatalogueKind.Cluster
+            })));
         Objects = objects.AsReadOnly();
         _byId = objects.ToDictionary(body => body.Id);
     }

@@ -29,6 +29,12 @@ public partial class EarthOrbitProbe : Node
             }
             var session = scene.Session ?? throw new InvalidOperationException("The probe needs DE440.");
             var epoch = JulianInstant.FromJulianDate(2460600.5008, TimeScale.Tdb);
+            if (session.World.Stellar.Stars.Count > 0)
+            {
+                using var process = System.Diagnostics.Process.GetCurrentProcess();
+                const long mebibyte = 1024 * 1024;
+                GD.Print($"Spatial catalogue: {session.World.Stellar.Stars.Count} entries; world ready in {timer.Elapsed.TotalSeconds:F2}s; working set {process.WorkingSet64 / mebibyte} MiB.");
+            }
             SolarSystemSample sample = session.World.Ephemeris.Sample(epoch);
             Vector3d towardSun = (sample.Sun - sample.Earth).PositionKilometers;
             var sun = new Vector3((float)towardSun.X, (float)towardSun.Z, (float)-towardSun.Y).Normalized();
@@ -62,6 +68,8 @@ public partial class EarthOrbitProbe : Node
             }
             await ExercisePlanets(scene, epoch, directory);
             await ExerciseSmallBodies(scene, epoch, directory);
+            if (System.Environment.GetEnvironmentVariable("SPACETANGENT_SPATIAL_SKY_SMOKE") == "1")
+                await ExerciseStellarSpace(scene, epoch, directory);
             result = 0;
         }
         catch (Exception error)

@@ -33,6 +33,7 @@ public partial class SolarSystemScene : Control
     private PlanetTextures? _planetTextures;
     private CheckButton _showPlanetOrbits = null!;
     private BrightSkyData? _brightSky;
+    private CheckButton _deepSky = null!;
     private CheckButton _stars = null!, _starLabels = null!, _equatorialGrid = null!, _constellations = null!;
     private SimulatorWorkspace _workspace = null!;
     private ObjectSearchPanel _objectSearch = null!;
@@ -243,6 +244,7 @@ public partial class SolarSystemScene : Control
         _starLabels = SkyToggle(layers, "StarLabelsLayer", "Star labels");
         _equatorialGrid = SkyToggle(layers, "EquatorialGridLayer", "Equatorial grid");
         _constellations = SkyToggle(layers, "ConstellationLayer", "Constellation figures");
+        _deepSky = SkyToggle(layers, "DeepSkyLayer", "Deep-sky objects");
         layers.AddChild(SimulatorTheme.Section("Earth satellites"));
         _satelliteLayersMode = AddButton(layers, "Earth satellites view", () => SetMode(_active, CameraMode.Satellites));
         _workspace.AddRailSeparator();
@@ -315,7 +317,9 @@ public partial class SolarSystemScene : Control
 
     private void GoToActiveObject()
     {
-        if (Session![_active].Selection is { } selected && Session.World.BrightStars.Find(selected) is { } star)
+        ObserverView observer = Session![_active];
+        if (observer.Selection is { } selected && UseEarthPointing(selected, observer) &&
+            Session.World.BrightStars.Find(selected) is { } star)
         {
             PointAtStar(star);
             return;
@@ -325,13 +329,18 @@ public partial class SolarSystemScene : Control
         Refresh();
     }
 
+    private bool UseEarthPointing(ObjectId id, ObserverView view) =>
+        Session!.World.BrightStars.Find(id) is not null &&
+        ((view.Mode == CameraMode.Surface && view.Navigation is null) || Session.World.Stellar.Find(id) is null);
+
     private CheckButton SkyToggle(Container panel, string name, string title)
     {
         var button = new CheckButton { Name = name, Text = title, Disabled = _brightSky is null };
         button.Toggled += _ =>
         {
             Session!.SetSkyLayers(_active,
-                new(_stars.ButtonPressed, _starLabels.ButtonPressed, _equatorialGrid.ButtonPressed, _constellations.ButtonPressed));
+                new SkyLayerSettings(_stars.ButtonPressed, _starLabels.ButtonPressed, _equatorialGrid.ButtonPressed,
+                    _constellations.ButtonPressed) { DeepSky = _deepSky.ButtonPressed });
             Refresh();
         };
         panel.AddChild(button);
@@ -867,6 +876,7 @@ public partial class SolarSystemScene : Control
         view.Renderer.ReplaceMission(_addOns?.Mission, _addOns?.Timeline, _addOns?.Probe);
         view.Renderer.ReplaceLunarTerrain(_addOns?.Terrain);
         view.Renderer.ReplaceMarsTerrain(_addOns?.MarsTerrain);
+        view.Renderer.SetCatalogueWorld(Session!.World);
         view.Selection.Clear();
         foreach (PreparedSatellite asset in Assets)
             view.Selection.AddItem(asset.Track.Name);
@@ -981,20 +991,26 @@ public partial class SolarSystemScene : Control
         _starLabels.SetPressedNoSignal(active.Sky.Labels);
         _equatorialGrid.SetPressedNoSignal(active.Sky.EquatorialGrid);
         _constellations.SetPressedNoSignal(active.Sky.Constellations);
+        _deepSky.SetPressedNoSignal(active.Sky.DeepSky);
         _objectSearch.UpdateSelection(active.Selection);
         var target = active.Selection is { } selection ? Session.World.Catalogue.Find(selection) : null;
         bool tracking = active.Navigation is { Tracking: true } pose && pose.Target == target?.Id;
-        var star = active.Selection is { } selected ? Session.World.BrightStars.Find(selected) : null;
-        string details = star is null ? DescribeObject(target, _views[_active].Snapshot)
-            : FormattableString.Invariant($"Catalogue ID: {star.Id.Value}\nVisual magnitude: {star.VisualMagnitude:F2}");
-        _workspace.ShowObject(target, details, tracking, Session.IsFlying(_active), star is not null, _surfaceTextures is not null);
+        string details = DescribeObject(target, _views[_active].Snapshot);
+        bool pointAt = target is not null && UseEarthPointing(target.Id, active);
+        _workspace.ShowObject(target, details, tracking, Session.IsFlying(_active), pointAt, _surfaceTextures is not null);
     }
 
-    private static string DescribeObject(CatalogueObject? target, WorldSnapshot? snapshot)
+    private string DescribeObject(CatalogueObject? target, WorldSnapshot? snapshot)
     {
         if (target is null)
             return "";
         var details = $"Catalogue ID: {target.Id.Value}";
+        if (Session!.World.Stellar.Find(target.Id) is { } spatial)
+            return details + FormattableString.Invariant($"\nDistance: {spatial.DistanceParsecs * StellarEntry.KilometersPerParsec / StellarEntry.KilometersPerLightYear:N2} ly\nVisual magnitude: {spatial.VisualMagnitude:F2}");
+        if (Session.World.BrightStars.Find(target.Id) is { } bright)
+            return details + FormattableString.Invariant($"\nVisual magnitude: {bright.VisualMagnitude:F2}");
+        if (DeepSkyCatalogue.Find(target.Id) is { } deep)
+            return details + FormattableString.Invariant($"\nDistance: {deep.DistanceLightYears:N0} ly\nEstimated radius: {deep.RadiusLightYears:N0} ly");
         if (snapshot?.SolarSystem is { } solar && snapshot.TryState(target.Id, out var state))
             return details + FormattableString.Invariant($"\nFrom Earth: {(state - solar.Earth).PositionKilometers.Length:N1} km");
         return details + "\nState unavailable at this epoch";

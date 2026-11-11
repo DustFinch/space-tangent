@@ -236,7 +236,7 @@ internal partial class SimulationViewport : Node3D
         {
             _surface?.Draw(false, sample, deltaT);
             HideOrbitalMarkers();
-            DrawNavigation(navigation, snapshot, sample, deltaT);
+            DrawNavigation(navigation, snapshot, sample, deltaT, observer.Sky);
             return true;
         }
         HideNavigation();

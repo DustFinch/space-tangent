@@ -40,6 +40,7 @@ internal sealed class ObjectSearchPanel
         AddFilter(filters, "Bodies", 1);
         AddFilter(filters, "Spacecraft", 2);
         AddFilter(filters, "Stars", 3);
+        AddFilter(filters, "Deep sky", 4);
         _resultCount = SimulatorTheme.Section("Solar System and add-ons");
         panel.AddChild(_resultCount);
         _results = new VBoxContainer { Name = "ObjectResults" };
@@ -92,7 +93,8 @@ internal sealed class ObjectSearchPanel
             1 => body.Kind is CatalogueKind.Planet or CatalogueKind.Moon or CatalogueKind.DwarfPlanet or CatalogueKind.Asteroid or CatalogueKind.Comet || body.Id.Value == "sol/sun",
             2 => body.Kind == CatalogueKind.Spacecraft,
             3 => body.Kind == CatalogueKind.Star,
-            _ => !browsing || !body.Id.Value.StartsWith("hip/", StringComparison.Ordinal)
+            4 => body.Kind is CatalogueKind.Galaxy or CatalogueKind.Nebula or CatalogueKind.Cluster,
+            _ => !browsing || body.Kind != CatalogueKind.Star || body.Id.Value == "sol/sun"
         }).ToArray();
         _first = matches.FirstOrDefault();
         _resultCount.Text = matches.Length > 100 ? $"FIRST 100 OF {matches.Length}" : $"OBJECTS · {matches.Length}";

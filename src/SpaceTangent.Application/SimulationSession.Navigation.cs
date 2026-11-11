@@ -75,7 +75,7 @@ public sealed partial class SimulationSession
         ObserverView observer = _views[view];
         if (observer.Navigation is not { Target: { } target } pose)
             return;
-        if (!snapshot.TryState(target, out var state))
+        if (!World.TryNavigationState(target, snapshot, out var state))
         {
             CancelFlight(view);
             return;
@@ -86,8 +86,17 @@ public sealed partial class SimulationSession
             double elapsed = Math.Min(FlightDuration, flight.Elapsed + elapsedSeconds);
             double t = elapsed / FlightDuration;
             double pan = Smooth(Math.Min(1, t * 1.8));
-            double zoom = Smooth(t);
-            double range = flight.Start.RangeKilometers * Math.Pow(FramingRange(target) / flight.Start.RangeKilometers, zoom);
+            double destinationRange = FramingRange(target);
+            double range = InterpolateRange(flight.Start.RangeKilometers, destinationRange, Smooth(t));
+            double travel = (position - flight.Start.AnchorKilometers).Length;
+            double wide = Math.Min(NavigationCamera.MaxRange, travel * .35);
+            if (travel > 30_000_000_000 && wide > Math.Max(flight.Start.RangeKilometers, destinationRange) * 2)
+            {
+                pan = Smooth(Math.Clamp((t - .15) / .65, 0, 1));
+                range = t < .45
+                    ? InterpolateRange(flight.Start.RangeKilometers, wide, Smooth(t / .45))
+                    : InterpolateRange(wide, destinationRange, Smooth((t - .45) / .55));
+            }
             pose = pose with
             {
                 AnchorKilometers = flight.Start.AnchorKilometers + (position - flight.Start.AnchorKilometers) * pan,
@@ -101,13 +110,16 @@ public sealed partial class SimulationSession
     }
 
     private static double Smooth(double t) => t * t * (3 - 2 * t);
-    private static double MinimumRange(ObjectId target)
+    private static double InterpolateRange(double start, double end, double fraction) =>
+        start * Math.Pow(end / start, fraction);
+
+    private double MinimumRange(ObjectId target)
     {
-        double radius = NavigationCamera.BodyRadiusKilometers(target);
+        double radius = World.TargetRadiusKilometers(target);
         return target == SolarSystemSample.EarthId ? radius + 20 : Math.Max(NavigationCamera.MinRange, 1.15 * radius);
     }
-    private static double FramingRange(ObjectId target) =>
-        (target == PlanetCatalogue.SaturnId ? 6.4 : 4.2) * NavigationCamera.BodyRadiusKilometers(target);
+    private double FramingRange(ObjectId target) =>
+        (target == PlanetCatalogue.SaturnId ? 6.4 : 4.2) * World.TargetRadiusKilometers(target);
 
     private bool TrySelectedState(int view, out ObjectId target, out WorldSnapshot snapshot, out CartesianState state)
     {
@@ -117,7 +129,7 @@ public sealed partial class SimulationSession
         state = default;
         if (observer.Selection is null)
             return false;
-        if (snapshot.TryState(target, out state))
+        if (World.TryNavigationState(target, snapshot, out state))
             return true;
         ObjectId id = target;
         if (World.Satellites.FirstOrDefault(satellite => satellite.Id == id) is not { } satellite ||

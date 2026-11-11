@@ -32,6 +32,7 @@ internal partial class SimulationViewport
         _navigationSun = CreateNavigationSphere(new Color("ffd18d"), emissive: true);
         _navigationEarth = CreateNavigationSphere(new Color("4a76ad"));
         _navigationMoon = CreateNavigationSphere(new Color("c9c4b6"));
+        InitializeStellarRendering();
     }
 
     private MeshInstance3D CreateNavigationSphere(Color color, bool emissive = false)
@@ -51,7 +52,8 @@ internal partial class SimulationViewport
         return mesh;
     }
 
-    private void DrawNavigation(NavigationCamera pose, WorldSnapshot snapshot, SolarSystemSample solar, DeltaTModel deltaT)
+    private void DrawNavigation(NavigationCamera pose, WorldSnapshot snapshot, SolarSystemSample solar, DeltaTModel deltaT,
+        SkyLayerSettings sky)
     {
         double units = pose.RangeKilometers / NavigationCameraUnits;
         double azimuth = pose.AzimuthRadians, elevation = pose.ElevationRadians;
@@ -80,11 +82,14 @@ internal partial class SimulationViewport
         }
         PlaceBody(_navigationMoon, solar.Moon.PositionKilometers, SolarSystemSample.MoonId);
         HidePlanetGlobes();
-        DrawPlanetGlobes(snapshot, pose, units, position =>
+        DrawPlanetGlobes(snapshot, pose, units, ProjectWithScale);
+        DrawStellarObjects(pose, snapshot, sky, units, ProjectWithScale);
+
+        (Vector3 Position, double Scale) ProjectWithScale(Vector3d position)
         {
             Vector3 projected = Project(position, out double scale);
             return (projected, scale);
-        });
+        }
 
         foreach (var (asset, node) in _satellites.Values)
         {
@@ -128,5 +133,6 @@ internal partial class SimulationViewport
         _navigationEarth.Hide();
         _navigationMoon.Hide();
         HidePlanetGlobes();
+        HideStellarObjects();
     }
 }

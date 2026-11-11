@@ -34,13 +34,15 @@ public sealed class SimulationWorld
 {
     public SimulationWorld(De440Ephemeris ephemeris, IEnumerable<ScienceSatellite> satellites,
         SpiceSpacecraft? mission = null, SscSampledSpacecraft? timeline = null, HuygensMission? probe = null,
-        SpicePolynomialBodyFrame? moonFrame = null, BrightStarCatalogue? brightStars = null, PlanetEphemerides? planets = null, bool hasMarsTerrain = false)
+        SpicePolynomialBodyFrame? moonFrame = null, BrightStarCatalogue? brightStars = null, PlanetEphemerides? planets = null, bool hasMarsTerrain = false, StellarCatalogue? stellar = null)
     {
         Ephemeris = ephemeris;
         Satellites = Array.AsReadOnly(satellites.ToArray());
         BrightStars = brightStars ?? BrightStarCatalogue.Empty;
         HasMarsTerrain = hasMarsTerrain;
-        Catalogue = new(Satellites, BrightStars);
+        Stellar = stellar ?? StellarCatalogue.Empty;
+        StellarOrigin = ephemeris.Sample(JulianInstant.FromJulianDate(2451545, TimeScale.Tdb)).Sun.PositionKilometers;
+        Catalogue = new(Satellites, BrightStars, Stellar);
         var graph = new WorldGraphBuilder();
         graph.AddSolarSystem(ephemeris);
         foreach (PlanetDefinition planet in PlanetCatalogue.Planets)
@@ -81,6 +83,30 @@ public sealed class SimulationWorld
     public IReadOnlyList<ScienceSatellite> Satellites { get; }
     public ObjectCatalogue Catalogue { get; }
     public BrightStarCatalogue BrightStars { get; }
+    public StellarCatalogue Stellar { get; }
+    public Vector3d StellarOrigin { get; }
+
+    public bool TryNavigationState(ObjectId id, WorldSnapshot snapshot, out CartesianState state)
+    {
+        if (snapshot.TryState(id, out state))
+            return true;
+        if (Stellar.Find(id) is { } star)
+        {
+            CartesianState relative = star.StateAt(snapshot.Epoch);
+            state = new(relative.PositionKilometers + StellarOrigin, relative.VelocityKilometersPerSecond);
+            return true;
+        }
+        if (DeepSkyCatalogue.Find(id) is { } deepSky)
+        {
+            state = new(deepSky.PositionKilometers + StellarOrigin, default);
+            return true;
+        }
+        return false;
+    }
+
+    public double TargetRadiusKilometers(ObjectId id) =>
+        Stellar.Find(id)?.RadiusKilometers ?? DeepSkyCatalogue.Find(id)?.RadiusKilometers ??
+        NavigationCamera.BodyRadiusKilometers(id);
     public WorldGraph Graph { get; }
     public ObjectId? MissionId { get; }
     public string? MissionName { get; }

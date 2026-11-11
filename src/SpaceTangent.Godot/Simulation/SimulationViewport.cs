@@ -5,6 +5,7 @@ using SpaceTangent.Contracts;
 using SpaceTangent.Core.Addons;
 using SpaceTangent.Core.Ephemerides;
 using SpaceTangent.Core.Time;
+using SpaceTangent.Core.World;
 
 namespace SpaceTangent.Godot.Simulation;
 
@@ -72,8 +73,9 @@ internal partial class SimulationViewport : Node3D
 
     internal void SetSurfaceControls(bool clouds, bool lunarLight) => _surface!.SetControls(clouds, lunarLight);
 
-    internal bool Draw(ObserverView observer, SolarSystemSample sample, DeltaTModel deltaT)
+    internal bool Draw(ObserverView observer, WorldSnapshot snapshot, DeltaTModel deltaT)
     {
+        SolarSystemSample sample = snapshot.SolarSystem ?? throw new InvalidOperationException("The view needs a solar-system snapshot.");
         if (_surface is { } surface)
         {
             bool isSurface = observer.Mode == CameraMode.Surface;
@@ -93,18 +95,21 @@ internal partial class SimulationViewport : Node3D
 
         foreach (var (asset, node) in _satellites.Values)
         {
-            if (observer.Mode != CameraMode.Satellites || !asset.Track.TrySample(observer.Epoch, out var state))
+            if (observer.Mode != CameraMode.Satellites ||
+                !snapshot.TryState(asset.Track.Id, out var vehicle) ||
+                !snapshot.TryOrientation(asset.Track.Id, out var rotation))
             {
                 node.Hide();
                 continue;
             }
 
-            Basis3d body = state.BodyToTrajectory;
-            Basis3d mesh = state.MeshToBody;
+            CartesianState earthRelative = vehicle - sample.Earth;
+            Basis3d body = rotation.ToWorld;
+            Basis3d mesh = asset.Track.MeshToBody;
             float marker = asset.MarkerScale * (observer.Selection == asset.Track.Id ? 1f : 0.75f);
             Vector3 Column(Vector3d value) => ToGodot(body.Transform(value), 1) * marker;
             node.Transform = new Transform3D(new Basis(Column(mesh.X), Column(mesh.Y), Column(mesh.Z)),
-                ToGodot(state.EarthRelativeState.PositionKilometers, SatelliteKilometersPerUnit));
+                ToGodot(earthRelative.PositionKilometers, SatelliteKilometersPerUnit));
             node.Show();
         }
         return observer.Mode != CameraMode.Surface;

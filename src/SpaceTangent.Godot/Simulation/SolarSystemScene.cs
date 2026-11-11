@@ -262,7 +262,7 @@ public partial class SolarSystemScene : Control
         {
             ViewControls controls = _views[index];
             ObserverView view = session[index];
-            bool available = controls.Renderer.Draw(view, session.World.Ephemeris.Sample(view.Epoch), session.DeltaT);
+            bool available = controls.Renderer.Draw(view, session.World.Graph.Evaluate(view.Epoch), session.DeltaT);
             controls.Epoch.Text = FormattableString.Invariant($"View {index + 1}   JD {view.Epoch.ToJulianDate():F6} TDB");
             if (!available)
                 controls.Epoch.Text += "   Surface view is available for 1900–2099.";

@@ -3,6 +3,7 @@ using SpaceTangent.Contracts;
 using SpaceTangent.Core.Addons;
 using SpaceTangent.Core.Ephemerides;
 using SpaceTangent.Core.Time;
+using SpaceTangent.Core.World;
 
 namespace SpaceTangent.Application;
 
@@ -16,10 +17,16 @@ public sealed class SimulationWorld
     {
         Ephemeris = ephemeris;
         Satellites = Array.AsReadOnly(satellites.ToArray());
+        var graph = new WorldGraphBuilder();
+        graph.AddSolarSystem(ephemeris);
+        foreach (ScienceSatellite satellite in Satellites)
+            graph.AddScienceSatellite(satellite);
+        Graph = graph.Build();
     }
 
     public De440Ephemeris Ephemeris { get; }
     public IReadOnlyList<ScienceSatellite> Satellites { get; }
+    public WorldGraph Graph { get; }
 }
 
 /// <summary>Owns clocks and view preferences independently of rendering resources.</summary>

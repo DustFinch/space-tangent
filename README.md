@@ -33,6 +33,8 @@ The simulation opens with its clock paused at J2000. Switch from **Solar overvie
 - Open the [full-Moon scene](docs/MOON_LIGHTING.md) to see reflected moonlight on Earth's clouds.
 - Search for an object, fly to it, and track its motion. Open [two views](docs/OBSERVERS.md) with independent or synchronized clocks and save both cameras as a scenario.
 
+- Observe [bright stars and constellation figures](docs/SKY_DATA.md) with per-view sky layers.
+
 ## Supported data and current limits
 
 The repository contains the simulator and test fixtures. DE440 is the only external file needed for the first scene. The workflows above link to the separate catalogs, kernels, meshes, and textures they use. Each input retains its own distribution terms.

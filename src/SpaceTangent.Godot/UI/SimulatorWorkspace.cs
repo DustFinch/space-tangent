@@ -131,16 +131,18 @@ internal sealed class SimulatorWorkspace
         return button;
     }
 
-    internal void ShowObject(CatalogueObject? target, string details, bool tracking, bool flying)
+    internal void ShowObject(CatalogueObject? target, string details, bool tracking, bool flying, bool star, bool surfaceAvailable)
     {
         if (_shownObject != target?.Id)
         {
             _shownObject = target?.Id;
             _card.Visible = target is not null;
         }
-        _goTo.Disabled = target is null && !flying;
-        _track.Disabled = target is null;
-        _goTo.Text = flying ? "Stop flight" : "Go to";
+        _goTo.Disabled = star ? !surfaceAvailable : target is null && !flying;
+        _track.Visible = !star;
+        _track.Disabled = target is null || star;
+        _goTo.Text = star ? "Point at" : flying ? "Stop flight" : "Go to";
+        _goTo.TooltipText = star ? "Point the Earth observer at this star" : "Fly to the selected object · Esc cancels the flight";
         _track.Text = tracking ? "Stop tracking" : "Track";
         if (target is null)
             return;

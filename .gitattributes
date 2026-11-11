@@ -2,3 +2,4 @@
 *.py text eol=lf
 .githooks/* text eol=lf
 *.import text eol=lf
+src/SpaceTangent.Godot/SkyData/* text eol=lf

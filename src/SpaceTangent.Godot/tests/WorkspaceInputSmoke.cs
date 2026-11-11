@@ -92,6 +92,7 @@ public partial class WorkspaceInputSmoke : Node
                     Session[0].Navigation == expected.Views[0].Navigation,
                 "A version 2 scenario must restore tracking and keep the original default Earth camera.");
             await ExerciseObserverSites(scratch.FullName, science!);
+            await ExerciseBrightSky(scratch.FullName);
             string? mission = System.Environment.GetEnvironmentVariable("SPACETANGENT_MISSION_CATALOG");
             if (!string.IsNullOrWhiteSpace(mission))
                 await ExerciseLocalAddOns(scratch.FullName, addonSettings, science!, mission);

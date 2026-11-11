@@ -1,0 +1,16 @@
+Bright stars
+------------
+David Nash / Astronexus, HYG v4.1.
+https://github.com/astronexus/HYG-Database/tree/c7f7f883fe678cc7680169a50ccd7dcc49b060ce
+Creative Commons Attribution-ShareAlike 4.0 International
+https://creativecommons.org/licenses/by-sa/4.0/
+
+SpaceTangent filters entries to Hipparcos IDs and visual magnitude <= 6.0
+and exports the identity, name, astrometry, motion and magnitude to TSV.
+The adapted file is distributed under the same licence.
+
+Constellation figures
+---------------------
+Copyright (c) 2015, Olaf Frohn. d3-celestial, BSD 3-Clause.
+https://github.com/ofrohn/d3-celestial/blob/7e720a3de062059d4c5400a379146a601d9010e0/data/constellations.lines.json
+The source geometry is unchanged. See LINES-LICENSE.txt for the notice.

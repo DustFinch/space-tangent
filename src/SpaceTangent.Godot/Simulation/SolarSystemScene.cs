@@ -5,6 +5,7 @@ using SpaceTangent.Application;
 using SpaceTangent.Contracts;
 using SpaceTangent.Core.Addons;
 using SpaceTangent.Core.Ephemerides;
+using SpaceTangent.Core.Observing;
 using SpaceTangent.Core.Time;
 using SpaceTangent.Core.World;
 using SpaceTangent.Godot.UI;
@@ -28,6 +29,8 @@ public partial class SolarSystemScene : Control
     private LocalAddonsPanel _localAddonPanel = null!;
     private IReadOnlyList<PreparedSatellite> Assets => _addOns?.Satellites ?? [];
     private SurfaceTextures? _surfaceTextures;
+    private BrightSkyData? _brightSky;
+    private CheckButton _stars = null!, _starLabels = null!, _equatorialGrid = null!, _constellations = null!;
     private SimulatorWorkspace _workspace = null!;
     private ObjectSearchPanel _objectSearch = null!;
     private Label _timeHeading = null!, _dataSummary = null!;
@@ -102,11 +105,19 @@ public partial class SolarSystemScene : Control
             settingsError = error;
         }
 
-        SimulationWorld world = new(ephemeris, []);
+        try
+        {
+            _brightSky = BrightSkyData.Load();
+        }
+        catch (Exception error) when (IsLoadError(error))
+        {
+            GD.PushWarning($"Could not load the bright sky catalogue. {error.Message}");
+        }
+        SimulationWorld world = new(ephemeris, [], brightStars: _brightSky?.Catalogue);
         try
         {
             _status.Text = "Loading add-ons…";
-            var decoded = await AddonLoader.Load(ephemeris, null, _localAddons, _localAddonFile, token);
+            var decoded = await AddonLoader.Load(ephemeris, null, _localAddons, _localAddonFile, _brightSky?.Catalogue, token);
             if (!CanPublish(generation, token))
                 return;
             _addOns = AddonDiagnostics.Read(AddonStage.RenderResources, null, () => AddonLoader.Publish(decoded, null));
@@ -150,10 +161,9 @@ public partial class SolarSystemScene : Control
         var toolbar = _workspace.Toolbar;
         _spaceMode = AddButton(toolbar, "Space", () => SetMode(_active, CameraMode.Solar));
         _observatoryMode = AddButton(toolbar, "Observatory", () => SetMode(_active, CameraMode.Surface));
+        _spaceMode.Name = "SpaceMode";
         _spaceMode.ToggleMode = _observatoryMode.ToggleMode = true;
         _observatoryMode.Disabled = _surfaceTextures is null;
-        var ship = new Button { Text = "Ship", Disabled = true, TooltipText = "Ship controls are unavailable." };
-        toolbar.AddChild(ship);
         _split = AddButton(toolbar, "Split view", ToggleSplit);
         _split.Name = "SplitViews";
 
@@ -206,10 +216,11 @@ public partial class SolarSystemScene : Control
         layers.AddChild(SimulatorTheme.Section("Objects"));
         AddButton(layers, "Solar overview", () => SetMode(_active, CameraMode.Solar));
         AddButton(layers, "Earth–Moon view", () => SetMode(_active, CameraMode.Lunar));
-        layers.AddChild(SimulatorTheme.Section("Labels"));
-        WorkspacePanelLayout.DisabledChecks(layers, "Star clusters", "Nebulae", "Surface features", "Small bodies");
-        layers.AddChild(SimulatorTheme.Section("Lines and grids"));
-        WorkspacePanelLayout.DisabledChecks(layers, "Orbits", "Constellations", "Equatorial grid");
+        layers.AddChild(SimulatorTheme.Section("Sky in this view"));
+        _stars = SkyToggle(layers, "StarsLayer", "Bright stars");
+        _starLabels = SkyToggle(layers, "StarLabelsLayer", "Star labels");
+        _equatorialGrid = SkyToggle(layers, "EquatorialGridLayer", "Equatorial grid");
+        _constellations = SkyToggle(layers, "ConstellationLayer", "Constellation figures");
         layers.AddChild(SimulatorTheme.Section("Earth satellites"));
         _satelliteLayersMode = AddButton(layers, "Earth satellites view", () => SetMode(_active, CameraMode.Satellites));
         _workspace.AddRailSeparator();
@@ -226,16 +237,10 @@ public partial class SolarSystemScene : Control
             if (_views.Count > 0 && ephemerides.IsVisibleInTree())
                 UpdateActiveFrame();
         };
-        WorkspacePanelLayout.Optics(_workspace.AddPage("Optics", "Eyepieces and telescopes"));
-        WorkspacePanelLayout.SkyCultures(_workspace.AddPage("SkyCultures", "Sky cultures"));
         _workspace.AddRailSeparator();
-        var bookmarks = _workspace.AddPage("Bookmarks", "Bookmarks and events");
-        bookmarks.AddChild(SimulatorTheme.Section("This view"));
+        var bookmarks = _workspace.AddPage("Bookmarks", "Scenarios");
+        bookmarks.AddChild(SimulatorTheme.Section("Scene file"));
         AddScenarioMenu(bookmarks);
-        bookmarks.AddChild(SimulatorTheme.Section("Bookmarks"));
-        WorkspacePanelLayout.DisabledSegments(bookmarks, "Add bookmark", "Copy link");
-        bookmarks.AddChild(SimulatorTheme.Section("Events"));
-        WorkspacePanelLayout.DisabledField(bookmarks, "Search astronomical events");
         var addOns = _workspace.AddPage("AddOns", "Packs and add-ons");
         addOns.AddChild(SimulatorTheme.Section("Loaded inputs"));
         _dataSummary = SimulatorTheme.Detail("");
@@ -244,16 +249,12 @@ public partial class SolarSystemScene : Control
             (kind, enabled) => ReloadAddOns(_localAddons.SetDefault(kind, enabled)),
             (source, enabled) => ReloadAddOns(_localAddons.SetSource(source, enabled)));
         _localAddonPanel.ShowSources(_localAddons, _localAddonFile, _addOns?.Decoded);
-        var scripts = _workspace.AddPage("Scripts", "Scripts and plug-ins");
+        var scripts = _workspace.AddPage("Scripts", "Observer scripts");
         scripts.AddChild(SimulatorTheme.Section("Observer scripts"));
         AddScriptMenu(scripts);
-        scripts.AddChild(SimulatorTheme.Section("Plug-ins"));
-        WorkspacePanelLayout.DisabledField(scripts, "Plug-in manager");
         _workspace.AddRailSeparator();
-        WorkspacePanelLayout.Ship(_workspace.AddPage("Ship", "Ship and autopilot"));
         _workspace.AddRailSpacer();
         var settings = _workspace.AddPage("Settings", "Settings");
-        WorkspacePanelLayout.CameraSettings(settings);
         settings.AddChild(SimulatorTheme.Section("Workspace"));
         AddButton(settings, "Split or close second view", ToggleSplit);
         AddButton(settings, "Open time settings", () => _workspace.Open("Time"));
@@ -292,9 +293,53 @@ public partial class SolarSystemScene : Control
 
     private void GoToActiveObject()
     {
+        if (Session![_active].Selection is { } selected && Session.World.BrightStars.Find(selected) is { } star)
+        {
+            PointAtStar(star);
+            return;
+        }
         _status.Text = Session!.CancelFlight(_active) ? "Flight stopped."
             : Session.GoToSelection(_active) ? "" : "The object has no state at a usable epoch.";
         Refresh();
+    }
+
+    private CheckButton SkyToggle(Container panel, string name, string title)
+    {
+        var button = new CheckButton { Name = name, Text = title, Disabled = _brightSky is null };
+        button.Toggled += _ =>
+        {
+            Session!.SetSkyLayers(_active,
+                new(_stars.ButtonPressed, _starLabels.ButtonPressed, _equatorialGrid.ButtonPressed, _constellations.ButtonPressed));
+            Refresh();
+        };
+        panel.AddChild(button);
+        return button;
+    }
+
+    private void PointAtStar(BrightStar star)
+    {
+        var observer = Session![_active];
+        var camera = observer.EarthObserver ?? EarthObserverCamera.Moscow;
+        if (_views[_active].Snapshot?.SolarSystem is not { } solar || _surfaceTextures is null)
+            return;
+        try
+        {
+            var lighting = EarthSurfaceLighting.Sample(solar, camera.Site, Session.DeltaT);
+            if (EarthObserving.HorizontalDirection(lighting, star.DirectionAt(observer.Epoch)) is not { } position)
+                return;
+            Session.SetEarthObserver(_active, camera with
+            {
+                AzimuthDegrees = position.AzimuthDegrees ?? camera.AzimuthDegrees,
+                ElevationDegrees = position.AltitudeDegrees
+            });
+            Session.SetSkyLayers(_active, observer.Sky with { Stars = true });
+            _status.Text = position.AltitudeDegrees >= 0 ? "" : "The star is below this observer's horizon.";
+            SetMode(_active, CameraMode.Surface);
+        }
+        catch (ArgumentOutOfRangeException)
+        {
+            _status.Text = "The Earth observer is unavailable at this epoch.";
+        }
     }
 
     private void TrackActiveObject()
@@ -618,7 +663,7 @@ public partial class SolarSystemScene : Control
             _localAddonPanel.SetBusy(true);
             LocalAddonSettings settings = requested ?? _localAddons;
             AddonGeneration? previous = _addOns;
-            var decoded = await AddonLoader.Load(Session!.World.Ephemeris, previous?.Decoded, settings, _localAddonFile, token);
+            var decoded = await AddonLoader.Load(Session!.World.Ephemeris, previous?.Decoded, settings, _localAddonFile, _brightSky?.Catalogue, token);
             if (!CanPublish(generation, token))
                 return false;
             AddonGeneration next = AddonDiagnostics.Read(AddonStage.RenderResources, null, () => AddonLoader.Publish(decoded, previous));
@@ -752,6 +797,8 @@ public partial class SolarSystemScene : Control
         viewport.AddChild(renderer);
         if (_surfaceTextures is { } textures)
             renderer.SetSurfaceTextures(textures);
+        if (_brightSky is { } sky)
+            renderer.SetSkyData(sky);
         var controls = new ViewControls(frame, renderer, epoch, play, mode, selection, timelineEpoch,
             terrainTools, terrainCoordinates);
         _views.Add(controls);
@@ -762,6 +809,13 @@ public partial class SolarSystemScene : Control
     {
         if (input is InputEventMouseButton { Pressed: true })
             ActivateView(view);
+        if (input is InputEventMouseButton { Pressed: true, ButtonIndex: MouseButton.Left } pick &&
+            _views[view].Renderer.PickStar(pick.Position) is { } star)
+        {
+            SelectObject(star);
+            GetViewport().SetInputAsHandled();
+            return;
+        }
         bool adjusted = input switch
         {
             InputEventMouseButton { Pressed: true, ButtonIndex: MouseButton.WheelUp } => Session!.AdjustCamera(view, 0, 0, .8),
@@ -890,12 +944,18 @@ public partial class SolarSystemScene : Control
         _timeHeading.Text = FormattableString.Invariant($"JD {active.Epoch.ToJulianDate():F6}");
         _calendarTime.Text = UtcLabel(active.Epoch);
         _playFromPanel.Text = active.Playing ? "Pause" : "Play";
-        _earthObserver.Update(_active, active, _views[_active].Snapshot, Session.World.Ephemeris, Session.DeltaT);
+        _earthObserver.Update(_active, active, _views[_active].Snapshot, Session.World.Ephemeris, Session.DeltaT, Session.World.BrightStars);
+        _stars.SetPressedNoSignal(active.Sky.Stars);
+        _starLabels.SetPressedNoSignal(active.Sky.Labels);
+        _equatorialGrid.SetPressedNoSignal(active.Sky.EquatorialGrid);
+        _constellations.SetPressedNoSignal(active.Sky.Constellations);
         _objectSearch.UpdateSelection(active.Selection);
         var target = active.Selection is { } selection ? Session.World.Catalogue.Find(selection) : null;
         bool tracking = active.Navigation is { Tracking: true } pose && pose.Target == target?.Id;
-        _workspace.ShowObject(target, DescribeObject(target, _views[_active].Snapshot), tracking,
-            Session.IsFlying(_active));
+        var star = active.Selection is { } selected ? Session.World.BrightStars.Find(selected) : null;
+        string details = star is null ? DescribeObject(target, _views[_active].Snapshot)
+            : FormattableString.Invariant($"Catalogue ID: {star.Id.Value}\nVisual magnitude: {star.VisualMagnitude:F2}");
+        _workspace.ShowObject(target, details, tracking, Session.IsFlying(_active), star is not null, _surfaceTextures is not null);
     }
 
     private static string DescribeObject(CatalogueObject? target, WorldSnapshot? snapshot)

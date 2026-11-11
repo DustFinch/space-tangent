@@ -39,6 +39,7 @@ internal sealed class ObjectSearchPanel
         AddFilter(filters, "All", 0);
         AddFilter(filters, "Bodies", 1);
         AddFilter(filters, "Spacecraft", 2);
+        AddFilter(filters, "Stars", 3);
         _resultCount = SimulatorTheme.Section("Solar System and add-ons");
         panel.AddChild(_resultCount);
         _results = new VBoxContainer { Name = "ObjectResults" };
@@ -85,14 +86,20 @@ internal sealed class ObjectSearchPanel
             child.QueueFree();
         }
         _rows.Clear();
-        var matches = _catalogue.Search(_query.Text).Where(body =>
-            _filter == 0 || (body.Kind == CatalogueKind.Spacecraft) == (_filter == 2)).ToArray();
+        bool browsing = string.IsNullOrWhiteSpace(_query.Text);
+        var matches = _catalogue.Search(_query.Text).Where(body => _filter switch
+        {
+            1 => body.Kind is CatalogueKind.Planet or CatalogueKind.Moon || body.Id.Value == "sol/sun",
+            2 => body.Kind == CatalogueKind.Spacecraft,
+            3 => body.Kind == CatalogueKind.Star,
+            _ => !browsing || !body.Id.Value.StartsWith("hip/", StringComparison.Ordinal)
+        }).ToArray();
         _first = matches.FirstOrDefault();
-        _resultCount.Text = $"SOLAR SYSTEM AND ADD-ONS · {matches.Length}";
+        _resultCount.Text = matches.Length > 100 ? $"FIRST 100 OF {matches.Length}" : $"OBJECTS · {matches.Length}";
         if (_first is null)
             _results.AddChild(SimulatorTheme.Detail("No matching objects."));
         bool showHierarchy = _filter == 0 && string.IsNullOrWhiteSpace(_query.Text);
-        foreach (CatalogueObject body in matches)
+        foreach (CatalogueObject body in matches.Take(100))
         {
             var row = new HBoxContainer();
             _results.AddChild(row);

@@ -92,8 +92,8 @@ public partial class BootstrapSmoke : Node
 
     private static void CheckWorkspacePanels(SolarSystemScene scene)
     {
-        string[] panels = ["Search", "Time", "Layers", "Location", "Ephemerides", "Optics", "SkyCultures",
-            "Bookmarks", "AddOns", "Scripts", "Ship", "Settings", "Help"];
+        string[] panels = ["Search", "Time", "Layers", "Location", "Ephemerides",
+            "Bookmarks", "AddOns", "Scripts", "Settings", "Help"];
         foreach (string id in panels)
         {
             var tab = (Button)scene.FindChild(id + "Tab", recursive: true, owned: false);

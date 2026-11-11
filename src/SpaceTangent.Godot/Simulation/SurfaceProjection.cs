@@ -17,6 +17,7 @@ internal sealed class SurfaceProjection
     private readonly ColorRect _surface;
     private readonly ShaderMaterial _material;
     private readonly Label[] _cardinals;
+    private BrightSkyOverlay? _sky;
     private (Vector3 Forward, Vector3 Right, Vector3 Up, Vector3 North, Vector3 East)? _cardinalFrame;
     internal double? PitchDegrees { get; set; }
 
@@ -34,7 +35,19 @@ internal sealed class SurfaceProjection
         _surface.Resized += PlaceCardinals;
     }
 
-    internal bool Draw(bool surface, SolarSystemSample sample, DeltaTModel model, EarthObserverCamera? camera = null)
+    internal void SetSkyData(BrightSkyData data)
+    {
+        _sky = new();
+        _sky.Configure(data, fillBackground: false);
+        _surface.AddChild(_sky);
+        _surface.MoveChild(_sky, 0);
+        _sky.SetAnchorsAndOffsetsPreset(Control.LayoutPreset.FullRect);
+    }
+
+    internal ObjectId? PickStar(Vector2 position) => _sky?.Pick(position);
+
+    internal bool Draw(bool surface, SolarSystemSample sample, DeltaTModel model, EarthObserverCamera? camera = null,
+        SkyLayerSettings sky = default, ObjectId? selection = null)
     {
         _surface.Visible = surface;
         if (!surface)
@@ -74,6 +87,16 @@ internal sealed class SurfaceProjection
         _material.SetShaderParameter("site_north", north);
         _material.SetShaderParameter("site_east", east);
         _material.SetShaderParameter("show_horizon_grid", observer.HorizonGrid);
+        if (_sky is not null && sky.Visible)
+        {
+            float solarAltitude = (float)(lighting.SolarAltitudeRadians / Degrees);
+            Vector3 moon = Convert(lighting.EarthToMoon - lighting.PositionKilometers);
+            float moonRadius = MathF.Asin(MathF.Min(4 * (float)EarthSurfaceLighting.MoonRadiusKilometers / moon.Length(), .1f));
+            _sky.ShowFrame(new(sample.Epoch, sky, selection, forward, right, cameraUp, .087488664f,
+                1 - Mathf.SmoothStep(-12, -4, solarAltitude), up, moon.Normalized(), moonRadius));
+        }
+        else
+            _sky?.Hide();
         _cardinalFrame = observer.CardinalPoints ? (forward, right, cameraUp, north, east) : null;
         PlaceCardinals();
         return true;

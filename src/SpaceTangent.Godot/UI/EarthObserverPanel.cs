@@ -73,7 +73,7 @@ internal sealed class EarthObserverPanel
     }
 
     internal void Update(int view, ObserverView observer, WorldSnapshot? snapshot, De440Ephemeris ephemeris,
-        DeltaTModel model)
+        DeltaTModel model, BrightStarCatalogue brightStars)
     {
         EarthObserverCamera camera = observer.EarthObserver ?? EarthObserverCamera.Moscow;
         if (_view != view || camera.Site != _camera.Site || camera.AzimuthDegrees != _camera.AzimuthDegrees ||
@@ -98,12 +98,16 @@ internal sealed class EarthObserverPanel
         if (observer.Selection is { } target)
         {
             _coordinates.Text = "The selected object has no horizontal coordinates at this epoch.";
-            if (snapshot?.SolarSystem is { } solar && snapshot.TryState(target, out CartesianState state))
+            if (snapshot?.SolarSystem is { } solar)
             {
                 try
                 {
                     SurfaceLighting light = EarthSurfaceLighting.Sample(solar, camera.Site, model);
-                    if (EarthObserving.Horizontal(light, (state - solar.Earth).PositionKilometers) is { } horizontal)
+                    var coordinates = brightStars.Find(target) is { } star
+                        ? EarthObserving.HorizontalDirection(light, star.DirectionAt(observer.Epoch))
+                        : snapshot.TryState(target, out CartesianState state)
+                            ? EarthObserving.Horizontal(light, (state - solar.Earth).PositionKilometers) : null;
+                    if (coordinates is { } horizontal)
                     {
                         string azimuth = horizontal.AzimuthDegrees is { } az
                             ? FormattableString.Invariant($"{az:F2}°") : "undefined";

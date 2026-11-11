@@ -4,6 +4,7 @@ using SpaceTangent.Application.Assets;
 using SpaceTangent.Contracts;
 using SpaceTangent.Core.Addons;
 using SpaceTangent.Core.Ephemerides;
+using SpaceTangent.Core.Observing;
 using SpaceTangent.Core.Spice;
 
 namespace SpaceTangent.Godot.Simulation;
@@ -66,7 +67,7 @@ internal static class AddonLoader
 
     // Godot path resolution runs on the main thread. File probes, hashing and decoding run on the worker.
     internal static Task<DecodedAddOns> Load(De440Ephemeris ephemeris, DecodedAddOns? previous,
-        LocalAddonSettings settings, LocalAddonSettingsFile file, CancellationToken cancellation)
+        LocalAddonSettings settings, LocalAddonSettingsFile file, BrightStarCatalogue? brightStars, CancellationToken cancellation)
     {
         LocalDataPath[] science = Paths(LocalAddonKind.Science).ToArray();
         LocalDataPath? mission = First(LocalAddonKind.Mission);
@@ -101,7 +102,7 @@ internal static class AddonLoader
                 tracks.Add(item.Track);
             }
             var world = AddonDiagnostics.Read(AddonStage.World, null, () => new SimulationWorld(ephemeris, tracks,
-                spice?.Value?.Track, sampled?.Value?.Track, sampled?.Value?.Probe, relief?.Value?.Frame));
+                spice?.Value?.Track, sampled?.Value?.Track, sampled?.Value?.Probe, relief?.Value?.Frame, brightStars));
             return new(world, sameScience ? previous!.Science : satellites, spice, sampled, relief);
         }, cancellation);
 

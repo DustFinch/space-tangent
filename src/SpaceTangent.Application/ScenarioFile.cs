@@ -12,7 +12,7 @@ public sealed record SimulationScenario(IReadOnlyList<ObserverView> Views, bool 
 /// <summary>Persists observer settings with exact TDB epochs and stable catalog IDs.</summary>
 public static class ScenarioFile
 {
-    private const int Version = 3;
+    private const int Version = 4;
     private const int MaximumBytes = 32 * 1024;
     private static readonly JsonSerializerOptions Json = new()
     {
@@ -51,7 +51,8 @@ public static class ScenarioFile
                 Playing = view.Playing,
                 Terrain = view.Terrain,
                 Navigation = view.Navigation is { } pose ? Camera.From(pose) : null,
-                EarthObserver = view.EarthObserver
+                EarthObserver = view.EarthObserver,
+                Sky = view.Sky.Visible ? view.Sky : null
             }).ToArray()
         };
         byte[] bytes = JsonSerializer.SerializeToUtf8Bytes(document, Json);
@@ -108,11 +109,14 @@ public static class ScenarioFile
                 throw new InvalidDataException("The scenario has an invalid camera pose.");
             if (data.EarthObserver is { } earth && (document.Version < 3 || !earth.IsValid()))
                 throw new InvalidDataException("The scenario has an invalid Earth observer camera.");
+            if (data.Sky is not null && document.Version < 4)
+                throw new InvalidDataException("Sky layers require a version 4 scenario.");
             views[i] = new(epoch, data.Camera, selection, data.Playing)
             {
                 Terrain = data.Terrain,
                 Navigation = navigation,
-                EarthObserver = data.EarthObserver
+                EarthObserver = data.EarthObserver,
+                Sky = data.Sky ?? default
             };
         }
         return new(Array.AsReadOnly(views), document.Synchronized, document.ClockOwner, document.ActiveView, document.DeltaT);
@@ -141,6 +145,8 @@ public static class ScenarioFile
         public Camera? Navigation { get; init; }
         [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
         public EarthObserverCamera? EarthObserver { get; init; }
+        [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+        public SkyLayerSettings? Sky { get; init; }
     }
 
     private sealed record Camera(double AnchorX, double AnchorY, double AnchorZ, double RangeKilometers,

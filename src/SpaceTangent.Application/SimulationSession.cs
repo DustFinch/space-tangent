@@ -2,6 +2,7 @@
 using SpaceTangent.Contracts;
 using SpaceTangent.Core.Addons;
 using SpaceTangent.Core.Ephemerides;
+using SpaceTangent.Core.Observing;
 using SpaceTangent.Core.Spice;
 using SpaceTangent.Core.Time;
 using SpaceTangent.Core.World;
@@ -24,6 +25,7 @@ public readonly record struct ObserverView(JulianInstant Epoch, CameraMode Mode,
     public LunarTerrainCamera? Terrain { get; init; }
     public NavigationCamera? Navigation { get; init; }
     public EarthObserverCamera? EarthObserver { get; init; }
+    public SkyLayerSettings Sky { get; init; }
 }
 
 public sealed record HuygensMission(SscHuygensTrack Track, SpkKernel SaturnSystem, SpicePolynomialBodyFrame TitanFrame);
@@ -32,11 +34,12 @@ public sealed class SimulationWorld
 {
     public SimulationWorld(De440Ephemeris ephemeris, IEnumerable<ScienceSatellite> satellites,
         SpiceSpacecraft? mission = null, SscSampledSpacecraft? timeline = null, HuygensMission? probe = null,
-        SpicePolynomialBodyFrame? moonFrame = null)
+        SpicePolynomialBodyFrame? moonFrame = null, BrightStarCatalogue? brightStars = null)
     {
         Ephemeris = ephemeris;
         Satellites = Array.AsReadOnly(satellites.ToArray());
-        Catalogue = new(Satellites);
+        BrightStars = brightStars ?? BrightStarCatalogue.Empty;
+        Catalogue = new(Satellites, BrightStars);
         var graph = new WorldGraphBuilder();
         graph.AddSolarSystem(ephemeris);
         foreach (ScienceSatellite satellite in Satellites)
@@ -72,6 +75,7 @@ public sealed class SimulationWorld
     public De440Ephemeris Ephemeris { get; }
     public IReadOnlyList<ScienceSatellite> Satellites { get; }
     public ObjectCatalogue Catalogue { get; }
+    public BrightStarCatalogue BrightStars { get; }
     public WorldGraph Graph { get; }
     public ObjectId? MissionId { get; }
     public string? MissionName { get; }
@@ -159,6 +163,8 @@ public sealed partial class SimulationSession
             throw new ArgumentOutOfRangeException(nameof(camera));
         _views[view] = _views[view] with { EarthObserver = camera };
     }
+
+    public void SetSkyLayers(int view, SkyLayerSettings sky) => _views[view] = _views[view] with { Sky = sky };
 
     public void Split()
     {

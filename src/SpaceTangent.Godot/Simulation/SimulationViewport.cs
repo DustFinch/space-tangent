@@ -198,7 +198,7 @@ internal partial class SimulationViewport : Node3D
 
     internal void SetSurfacePitch(double degrees) => _surface!.PitchDegrees = degrees;
 
-    internal bool Draw(ObserverView observer, WorldSnapshot snapshot, DeltaTModel deltaT)
+    private bool DrawScene(ObserverView observer, WorldSnapshot snapshot, DeltaTModel deltaT)
     {
         SolarSystemSample sample = snapshot.SolarSystem ?? throw new InvalidOperationException("The view needs a solar-system snapshot.");
         _saturn.Hide();
@@ -223,7 +223,7 @@ internal partial class SimulationViewport : Node3D
         if (_surface is { } surface)
         {
             bool isSurface = observer.Mode == CameraMode.Surface;
-            bool available = surface.Draw(isSurface, sample, deltaT, observer.EarthObserver);
+            bool available = surface.Draw(isSurface, sample, deltaT, observer.EarthObserver, observer.Sky, observer.Selection);
             if (isSurface && available)
                 return true;
         }

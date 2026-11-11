@@ -2,6 +2,7 @@
 using SpaceTangent.Contracts;
 using SpaceTangent.Core.Addons;
 using SpaceTangent.Core.Ephemerides;
+using SpaceTangent.Core.Observing;
 
 namespace SpaceTangent.Application;
 
@@ -11,7 +12,7 @@ public sealed record CatalogueObject(ObjectId Id, string Name, CatalogueKind Kin
 
 public sealed class ObjectCatalogue
 {
-    internal ObjectCatalogue(IReadOnlyList<ScienceSatellite> satellites)
+    internal ObjectCatalogue(IReadOnlyList<ScienceSatellite> satellites, BrightStarCatalogue stars)
     {
         var objects = new List<CatalogueObject>(3 + satellites.Count)
         {
@@ -21,6 +22,9 @@ public sealed class ObjectCatalogue
         };
         objects.AddRange(satellites.Select(satellite =>
             new CatalogueObject(satellite.Id, satellite.Name, CatalogueKind.Spacecraft, SolarSystemSample.EarthId)));
+        objects.AddRange(stars.Stars.Select(star =>
+            new CatalogueObject(star.Id, star.Name.Length == 0 ? FormattableString.Invariant($"HIP {star.Hipparcos}") : star.Name,
+                CatalogueKind.Star)));
         Objects = objects.AsReadOnly();
         _byId = objects.ToDictionary(body => body.Id);
     }

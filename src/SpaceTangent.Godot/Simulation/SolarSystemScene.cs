@@ -14,7 +14,8 @@ public partial class SolarSystemScene : Control
     private sealed record ViewControls(VBoxContainer Panel, SimulationViewport Renderer, Label Epoch,
         Button Play, OptionButton Mode, OptionButton Selection);
     private sealed record DecodedSatellite(ScienceSatellite Track, DecodedScienceModel Model);
-    private sealed record DecodedAddOns(SimulationWorld World, List<DecodedSatellite> Satellites, DecodedScienceModel? Mission);
+    private sealed record DecodedMission(DecodedScienceModel Model, IReadOnlyList<SpiceSensor> Sensors);
+    private sealed record DecodedAddOns(SimulationWorld World, List<DecodedSatellite> Satellites, DecodedMission? Mission);
     private sealed record PublishedAddOns(IReadOnlyList<PreparedSatellite> Satellites, PreparedMission? Mission);
 
     private readonly List<ViewControls> _views = [];
@@ -387,27 +388,34 @@ public partial class SolarSystemScene : Control
         cancellation.ThrowIfCancellationRequested();
         string? missionPath = !string.IsNullOrWhiteSpace(explicitMission) ? explicitMission
             : File.Exists(missionJson) ? missionJson : File.Exists(missionSsc) ? missionSsc : null;
-        SpiceSpacecraft? mission = missionPath is null ? null : ReadMission(missionPath);
-        DecodedScienceModel? model = mission is null ? null : StudioMeshDecoder.Decode(mission.MeshPath, cancellation);
-        return new(new SimulationWorld(ephemeris, satellites.Select(asset => asset.Track), mission), satellites, model);
+        SpiceSpacecraft? mission = null;
+        DecodedMission? geometry = null;
+        if (missionPath is not null)
+        {
+            var (track, sensors) = ReadMission(missionPath);
+            mission = track;
+            geometry = new(StudioMeshDecoder.Decode(track.MeshPath, cancellation), sensors);
+        }
+        return new(new SimulationWorld(ephemeris, satellites.Select(asset => asset.Track), mission), satellites, geometry);
     }
 
-    private static SpiceSpacecraft ReadMission(string path)
+    private static (SpiceSpacecraft Track, IReadOnlyList<SpiceSensor> Sensors) ReadMission(string path)
     {
         string fullPath = Path.GetFullPath(path);
         string root = Path.GetDirectoryName(fullPath)!;
-        IReadOnlyList<SpiceSpacecraft> entries = Path.GetExtension(fullPath).ToLowerInvariant() switch
+        SpiceCatalogResult catalog = Path.GetExtension(fullPath).ToLowerInvariant() switch
         {
-            ".ssc" => SscSpiceCatalog.Load(fullPath, root),
-            ".json" => SpiceJsonCatalog.Load(fullPath, root).Spacecraft,
+            ".ssc" => new(SscSpiceCatalog.Load(fullPath, root), []),
+            ".json" => SpiceJsonCatalog.Load(fullPath, root),
             _ => throw new NotSupportedException("Use an SSC or JSON mission catalogue.")
         };
+        IReadOnlyList<SpiceSpacecraft> entries = catalog.Spacecraft;
         if (entries.Count != 1 || entries[0].Target != -82 || entries[0].Center != 6 || entries[0].AttitudeFrame is null)
             throw new NotSupportedException("This mission view expects a single Cassini track at Saturn with CK pointing.");
         SpiceSpacecraft mission = entries[0];
         if (!mission.TrySample(SimulationSession.MissionPreview, out _) || !mission.TryAttitude(SimulationSession.MissionPreview, out _))
             throw new InvalidDataException("The mission kernels do not cover the Cassini orbit insertion preview.");
-        return mission;
+        return (mission, catalog.Sensors);
     }
 
     private static PublishedAddOns PublishAddOns(DecodedAddOns decoded)
@@ -415,8 +423,9 @@ public partial class SolarSystemScene : Control
         var satellites = new List<PreparedSatellite>(decoded.Satellites.Count);
         foreach (DecodedSatellite item in decoded.Satellites)
             satellites.Add(new(item.Track, ScienceMeshLoader.Publish(item.Model), (float)(18 / item.Model.Diameter)));
-        PreparedMission? mission = decoded.Mission is { } model
-            ? new(decoded.World.MissionId!.Value, ScienceMeshLoader.Publish(model), (float)(18 / model.Diameter)) : null;
+        PreparedMission? mission = decoded.Mission is { } geometry
+            ? new(decoded.World.MissionId!.Value, ScienceMeshLoader.Publish(geometry.Model),
+                (float)(18 / geometry.Model.Diameter), SimulationViewport.CreateFrusta(geometry.Sensors)) : null;
         return new(satellites, mission);
     }
 

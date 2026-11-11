@@ -162,6 +162,21 @@ public partial class BootstrapSmoke : Node
         Vector3 expectedAxis = new(.0731622600765734f, .9970840780335287f, -.021693893899345944f);
         Require(cassini.Position.DistanceTo(expected / 2500) < .0001f &&
             cassini.Basis.X.Normalized().DistanceTo(expectedAxis) < .000001f, "Cassini transform must match SPICE.");
+        MeshInstance3D frusta = renderer.MissionFrusta;
+        bool json = string.Equals(Path.GetExtension(System.Environment.GetEnvironmentVariable("SPACETANGENT_MISSION_CATALOG")),
+            ".json", StringComparison.OrdinalIgnoreCase);
+        Require(frusta.Visible == json, "Only the mission catalogue with instruments should display frusta.");
+        if (json)
+        {
+            var sensorMesh = (ArrayMesh)frusta.Mesh;
+            Require(sensorMesh.GetSurfaceCount() == 2 && sensorMesh.SurfaceGetArrayLen(0) == 16 &&
+                sensorMesh.SurfaceGetArrayLen(1) == 16, "Expected two camera frusta with four corners each.");
+            var vertices = sensorMesh.SurfaceGetArrays(0)[(int)Mesh.ArrayType.Vertex].AsVector3Array();
+            Vector3 referenceCorner = new(-.992803749673713f, .07445288682761675f, -.09379489472700221f);
+            Require(frusta.Position.DistanceTo(cassini.Position) < .00001f &&
+                vertices.Any(vertex => (frusta.Basis * vertex).DistanceTo(referenceCorner * 80) < .0001f),
+                "The rendered camera corner must match CSPICE at the catalogue range.");
+        }
 
         string? capture = System.Environment.GetEnvironmentVariable("SPACETANGENT_MISSION_CAPTURE");
         if (!string.IsNullOrWhiteSpace(capture))
@@ -179,7 +194,8 @@ public partial class BootstrapSmoke : Node
             second.Basis.X.Normalized().DistanceTo(cassini.Basis.X.Normalized()) > .02f,
             "Separate epochs must change both the mission state and pointing.");
         scene.Seek(1, JulianInstant.FromTdbSeconds(141919293.40898937));
-        Require(!second.Visible && cassini.Visible, "A CK gap must hide only that observer's model.");
+        Require(!second.Visible && cassini.Visible && !scene.Renderer(1).MissionFrusta.Visible && frusta.Visible == json,
+            "A CK gap must hide only that observer's model and frusta.");
         ObserverView left = session[0], right = session[1];
         Require(await scene.ReloadAddOns() && left == session[0] && right == session[1] && cassini.Visible && !second.Visible,
             "Mission reload must preserve both clocks and pointing availability.");

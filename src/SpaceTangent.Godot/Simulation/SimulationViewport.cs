@@ -10,7 +10,7 @@ using SpaceTangent.Core.World;
 namespace SpaceTangent.Godot.Simulation;
 
 internal sealed record PreparedSatellite(ScienceSatellite Track, ArrayMesh Mesh, float MarkerScale);
-internal sealed record PreparedMission(ObjectId Id, ArrayMesh Mesh, float MarkerScale);
+internal sealed record PreparedMission(ObjectId Id, ArrayMesh Mesh, float MarkerScale, ArrayMesh? Frusta);
 
 internal partial class SimulationViewport : Node3D
 {
@@ -22,7 +22,7 @@ internal partial class SimulationViewport : Node3D
     private Camera3D _camera = null!;
     private Node3D _sun = null!, _earth = null!, _moon = null!, _saturn = null!;
     private PreparedMission? _mission;
-    private MeshInstance3D _missionNode = null!;
+    private MeshInstance3D _missionNode = null!, _missionFrusta = null!;
     private SurfaceProjection? _surface;
     private readonly Dictionary<ObjectId, (PreparedSatellite Asset, MeshInstance3D Node)> _satellites = new();
 
@@ -49,6 +49,8 @@ internal partial class SimulationViewport : Node3D
         _saturn = CreateMarker("Saturn barycenter", new Color("#d9bb7f"), 9);
         _missionNode = new MeshInstance3D { Visible = false };
         AddChild(_missionNode);
+        _missionFrusta = new MeshInstance3D { Visible = false };
+        AddChild(_missionFrusta);
     }
 
     private void FitCamera()
@@ -77,12 +79,49 @@ internal partial class SimulationViewport : Node3D
     internal MeshInstance3D SatelliteMesh(ObjectId id) => _satellites[id].Node;
 
     internal MeshInstance3D MissionMesh => _missionNode;
+    internal MeshInstance3D MissionFrusta => _missionFrusta;
 
     internal void ReplaceMission(PreparedMission? asset)
     {
         _mission = asset;
         _missionNode.Mesh = asset?.Mesh;
         _missionNode.Hide();
+        _missionFrusta.Mesh = asset?.Frusta;
+        _missionFrusta.Hide();
+    }
+
+    internal static ArrayMesh? CreateFrusta(IReadOnlyList<SpiceSensor> sensors)
+    {
+        if (sensors.Count == 0)
+            return null;
+        var mesh = new ArrayMesh();
+        foreach (SpiceSensor sensor in sensors)
+        {
+            // Body coordinates in the same kilometers-per-unit scale as the mission view.
+            float range = (float)(sensor.RangeKilometers / MissionKilometersPerUnit);
+            if (!float.IsFinite(range) || range <= 0)
+                throw new InvalidDataException("SPICE sensor range cannot be rendered at the mission scale.");
+            Vector3[] rim = sensor.CornersInBody.Select(ray => new Vector3((float)ray.X, (float)ray.Y, (float)ray.Z) * range).ToArray();
+            var lines = new Vector3[rim.Length * 4];
+            for (int corner = 0; corner < rim.Length; corner++)
+            {
+                lines[4 * corner] = Vector3.Zero;
+                lines[4 * corner + 1] = rim[corner];
+                lines[4 * corner + 2] = rim[corner];
+                lines[4 * corner + 3] = rim[(corner + 1) % rim.Length];
+            }
+            var arrays = new global::Godot.Collections.Array();
+            arrays.Resize((int)Mesh.ArrayType.Max);
+            arrays[(int)Mesh.ArrayType.Vertex] = lines;
+            mesh.AddSurfaceFromArrays(Mesh.PrimitiveType.Lines, arrays);
+            mesh.SurfaceSetMaterial(mesh.GetSurfaceCount() - 1, new StandardMaterial3D
+            {
+                AlbedoColor = new((float)sensor.Color.X, (float)sensor.Color.Y, (float)sensor.Color.Z, (float)sensor.FrustumOpacity),
+                ShadingMode = BaseMaterial3D.ShadingModeEnum.Unshaded,
+                Transparency = BaseMaterial3D.TransparencyEnum.Alpha
+            });
+        }
+        return mesh;
     }
 
     internal void SetSurfaceTextures(SurfaceTextures textures) => _surface = new SurfaceProjection(this, textures);
@@ -94,6 +133,7 @@ internal partial class SimulationViewport : Node3D
         SolarSystemSample sample = snapshot.SolarSystem ?? throw new InvalidOperationException("The view needs a solar-system snapshot.");
         _saturn.Visible = observer.Mode == CameraMode.Mission;
         _missionNode.Hide();
+        _missionFrusta.Hide();
         if (_surface is { } surface)
         {
             bool isSurface = observer.Mode == CameraMode.Surface;
@@ -156,9 +196,14 @@ internal partial class SimulationViewport : Node3D
             return false;
 
         Basis3d body = rotation.ToWorld;
-        Vector3 Column(Vector3d axis) => ToGodot(axis, 1) * mission.MarkerScale;
-        _missionNode.Transform = new(new Basis(Column(body.X), Column(body.Y), Column(body.Z)), position);
+        var attitude = new Basis(ToGodot(body.X, 1), ToGodot(body.Y, 1), ToGodot(body.Z, 1));
+        _missionNode.Transform = new(attitude.Scaled(Vector3.One * mission.MarkerScale), position);
         _missionNode.Show();
+        if (mission.Frusta is not null)
+        {
+            _missionFrusta.Transform = new(attitude, position);
+            _missionFrusta.Show();
+        }
         return true;
     }
 

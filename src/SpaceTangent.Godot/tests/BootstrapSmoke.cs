@@ -44,6 +44,8 @@ public partial class BootstrapSmoke : Node
                 await CheckSscOverlays(scene, overlays);
             if (!string.IsNullOrWhiteSpace(System.Environment.GetEnvironmentVariable("SPACETANGENT_TERRAIN_ROOT")))
                 await CheckLunarTerrain(scene);
+            if (System.Environment.GetEnvironmentVariable("SPACETANGENT_TEST_CACHE_TIMELINE") is { Length: > 0 } cacheRoot)
+                await CheckAddonCache(scene, cacheRoot);
 
             GD.Print("SpaceTangent bootstrap smoke passed");
             GetTree().Quit();
@@ -551,6 +553,86 @@ public partial class BootstrapSmoke : Node
             File.Delete(file);
         }
         GD.Print("SpaceTangent real lunar terrain two-view and scenario smoke passed");
+    }
+
+    private async Task CheckAddonCache(SolarSystemScene scene, string source)
+    {
+        const string Variable = "SPACETANGENT_TIMELINE_ROOT";
+        string? previous = System.Environment.GetEnvironmentVariable(Variable);
+        DirectoryInfo root = Directory.CreateTempSubdirectory("space-tangent-addon-cache-");
+        try
+        {
+            foreach (string file in Directory.EnumerateFiles(source, "*", SearchOption.AllDirectories))
+            {
+                string destination = Path.Combine(root.FullName, Path.GetRelativePath(source, file));
+                Directory.CreateDirectory(Path.GetDirectoryName(destination)!);
+                File.Copy(file, destination);
+            }
+            System.Environment.SetEnvironmentVariable(Variable, root.FullName);
+            Require(await scene.ReloadAddOns(), "The isolated original timeline must load.");
+            var session = scene.Session!;
+            scene.SetMode(0, CameraMode.Timeline);
+            scene.Seek(0, JulianInstant.FromJulianDate(2453167.5, TimeScale.Tdb));
+            var renderer = scene.Renderer(0);
+            MeshInstance3D satellite = renderer.SatelliteMesh(new ObjectId("norad/26997"));
+            MeshInstance3D model = renderer.MissionMesh;
+            var originalWorld = session.World;
+            Mesh originalModel = model.Mesh;
+            File.WriteAllText(Path.Combine(root.FullName, "unused.txt"), "The loader never reads this file.");
+            Require(await scene.ReloadAddOns() && ReferenceEquals(originalWorld, session.World) &&
+                ReferenceEquals(originalModel, model.Mesh), "Unobserved files must preserve the cached world and model.");
+
+            string baseModels = Path.Combine(root.FullName, "models");
+            string probe = Path.Combine(baseModels, "huygens.3ds");
+            string carrier = Path.Combine(baseModels, "cassini.3ds");
+            string preferred = Path.Combine(root.FullName, "ssc", "cassini.3ds");
+            File.Copy(probe, preferred);
+            Require(await scene.ReloadAddOns() && ((ArrayMesh)model.Mesh).GetSurfaceCount() == 4,
+                "A previously missing preferred mesh must invalidate the cached timeline.");
+            File.Delete(preferred);
+
+            DirectoryInfo overlays = root.CreateSubdirectory("overrides");
+            string patch = Path.Combine(overlays.FullName, "10-model.ssc");
+            File.Copy(probe, Path.Combine(overlays.FullName, "model-a.3ds"));
+            File.Copy(carrier, Path.Combine(overlays.FullName, "model-b.3ds"));
+            WritePatch("model-a.3ds");
+            Require(await scene.ReloadAddOns() && ((ArrayMesh)model.Mesh).GetSurfaceCount() == 4,
+                "A newly created override directory must be observed.");
+            var epoch = session[0];
+            var other = session[1];
+            var deltaT = session.DeltaT;
+            DateTime timestamp = File.GetLastWriteTimeUtc(patch);
+            long bytes = new FileInfo(patch).Length;
+            WritePatch("model-b.3ds");
+            File.SetLastWriteTimeUtc(patch, timestamp);
+            Require(File.GetLastWriteTimeUtc(patch) == timestamp && new FileInfo(patch).Length == bytes,
+                "The controlled edit must preserve both the original timestamp and file size.");
+            Require(await scene.ReloadAddOns() && ((ArrayMesh)model.Mesh).GetSurfaceCount() == 10 &&
+                ReferenceEquals(satellite, renderer.SatelliteMesh(new ObjectId("norad/26997"))) &&
+                session[0] == epoch && session[1] == other && session.DeltaT == deltaT,
+                "An equal-size SSC edit must refresh only the affected assets and preserve the observer state.");
+
+            var stableWorld = session.World;
+            Mesh stableModel = model.Mesh;
+            WritePatch("model-c.3ds");
+            Require(!await scene.ReloadAddOns() && ReferenceEquals(stableWorld, session.World) &&
+                ReferenceEquals(stableModel, model.Mesh), "A missing required mesh must leave the published generation intact.");
+            File.Copy(probe, Path.Combine(overlays.FullName, "model-c.3ds"));
+            Task<bool> superseded = scene.ReloadAddOns();
+            Task<bool> latest = scene.ReloadAddOns();
+            Require(!await superseded && await latest && ((ArrayMesh)model.Mesh).GetSurfaceCount() == 4,
+                "The latest generation must publish the newly available resource.");
+
+            void WritePatch(string mesh) => File.WriteAllText(patch,
+                $"Modify \"Cassini\" \"Sol/Saturn\" {{ Mesh \"{mesh}\" }}");
+        }
+        finally
+        {
+            System.Environment.SetEnvironmentVariable(Variable, previous);
+            root.Delete(recursive: true);
+        }
+        Require(await scene.ReloadAddOns(), "Restore the original timeline after the cache test.");
+        GD.Print("SpaceTangent exact add-on cache and atomic reload smoke passed");
     }
 
     private static void VerifyMesh(MeshInstance3D node, int triangles, int surfaces, int textureCount)

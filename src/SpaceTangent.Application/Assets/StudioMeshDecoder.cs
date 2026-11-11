@@ -3,6 +3,7 @@ using System.Buffers.Binary;
 using System.Collections.ObjectModel;
 using System.Text;
 using SpaceTangent.Contracts;
+using SpaceTangent.Core.Addons;
 
 namespace SpaceTangent.Application.Assets;
 
@@ -21,7 +22,7 @@ public static class StudioMeshDecoder
 
     public static DecodedScienceModel Decode(string path, CancellationToken cancellation = default, bool centerOnBounds = false)
     {
-        using FileStream stream = File.OpenRead(path);
+        using FileStream stream = AddonDependencies.OpenRead(path, MaximumFileBytes);
         if (stream.Length is < 6 or > MaximumFileBytes)
             throw new InvalidDataException("3DS file size is outside the supported range.");
         var bytes = new byte[(int)stream.Length];

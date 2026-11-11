@@ -34,6 +34,8 @@ internal partial class SimulationViewport : Node3D
     private StandardMaterial3D[] _footprintMaterials = [];
     private SurfaceProjection? _surface;
     private LunarTerrainProjection? _terrain;
+    private LunarTerrainAsset? _terrainAsset;
+    private IReadOnlyList<PreparedSatellite>? _satelliteAssets;
     private readonly Dictionary<ObjectId, (PreparedSatellite Asset, MeshInstance3D Node)> _satellites = new();
 
     internal Vector3 EarthPosition => _earth.Position;
@@ -92,6 +94,9 @@ internal partial class SimulationViewport : Node3D
 
     internal void ReplaceSatellites(IReadOnlyList<PreparedSatellite> assets)
     {
+        if (ReferenceEquals(_satelliteAssets, assets))
+            return;
+        _satelliteAssets = assets;
         foreach (var (_, node) in _satellites.Values)
         {
             RemoveChild(node);
@@ -120,6 +125,8 @@ internal partial class SimulationViewport : Node3D
 
     internal void ReplaceMission(PreparedMission? asset, PreparedMission? timeline, PreparedProbe? probe)
     {
+        if (ReferenceEquals(_mission, asset) && ReferenceEquals(_timeline, timeline) && ReferenceEquals(_probe, probe))
+            return;
         _mission = asset;
         _timeline = timeline;
         _probe = probe;
@@ -170,6 +177,9 @@ internal partial class SimulationViewport : Node3D
 
     internal void ReplaceLunarTerrain(LunarTerrainAsset? asset)
     {
+        if (ReferenceEquals(_terrainAsset, asset))
+            return;
+        _terrainAsset = asset;
         if (asset is not null)
         {
             _terrain ??= new(this);

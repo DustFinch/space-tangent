@@ -3,6 +3,7 @@ using System.Buffers.Binary;
 using System.Collections.ObjectModel;
 using System.Globalization;
 using SpaceTangent.Contracts;
+using SpaceTangent.Core.Addons;
 
 namespace SpaceTangent.Application.Assets;
 
@@ -111,8 +112,9 @@ public static class ScienceModelDecoder
 
     private static byte[] ReadPng(string path)
     {
-        CheckSize(path, MaximumTextureBytes);
-        byte[] bytes = File.ReadAllBytes(path);
+        using FileStream file = OpenAsset(path, MaximumTextureBytes);
+        var bytes = new byte[(int)file.Length];
+        file.ReadExactly(bytes);
         ReadOnlySpan<byte> signature = [137, 80, 78, 71, 13, 10, 26, 10];
         if (bytes.Length < 33 || !bytes.AsSpan().StartsWith(signature))
             throw new InvalidDataException("Invalid PNG companion texture.");
@@ -185,15 +187,15 @@ public static class ScienceModelDecoder
         if (Path.GetFileName(name) != name || !Path.GetExtension(name).Equals(extension, StringComparison.OrdinalIgnoreCase))
             throw new InvalidDataException("OBJ companion assets must use a local filename and supported extension.");
         string path = Path.Combine(directory, name);
-        if ((File.GetAttributes(path) & FileAttributes.ReparsePoint) != 0)
+        if ((AddonDependencies.GetAttributes(path) & FileAttributes.ReparsePoint) != 0)
             throw new InvalidDataException("OBJ companion assets must not use symbolic links.");
         return path;
     }
 
     private static IEnumerable<string[]> ReadFields(string path, long limit, CancellationToken cancellation)
     {
-        CheckSize(path, limit);
-        foreach (string line in File.ReadLines(path))
+        using var reader = new StreamReader(OpenAsset(path, limit));
+        while (reader.ReadLine() is { } line)
         {
             cancellation.ThrowIfCancellationRequested();
             int comment = line.IndexOf('#');
@@ -203,10 +205,13 @@ public static class ScienceModelDecoder
         }
     }
 
-    private static void CheckSize(string path, long limit)
+    private static FileStream OpenAsset(string path, long limit)
     {
-        if (new FileInfo(path).Length > limit)
-            throw new InvalidDataException("OBJ or companion file exceeds the supported size.");
+        FileStream file = AddonDependencies.OpenRead(path, limit);
+        if (file.Length <= limit)
+            return file;
+        file.Dispose();
+        throw new InvalidDataException("OBJ or companion file exceeds the supported size.");
     }
 
     private static Vector3d ReadVector(string[] fields) => new(Number(fields[1]), Number(fields[2]), Number(fields[3]));

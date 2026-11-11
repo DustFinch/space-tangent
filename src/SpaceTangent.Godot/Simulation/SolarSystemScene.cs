@@ -15,6 +15,7 @@ public partial class SolarSystemScene : Control
 
     private readonly List<ViewControls> _views = [];
     private IReadOnlyList<PreparedSatellite> _assets = [];
+    private SurfaceTextures? _surfaceTextures;
     private HBoxContainer _panels = null!;
     private Button _split = null!;
     private CheckButton _sync = null!;
@@ -58,6 +59,14 @@ public partial class SolarSystemScene : Control
         {
             _status.Text = error.Message;
         }
+        try
+        {
+            _surfaceTextures = SurfaceProjection.LoadTextures();
+        }
+        catch (Exception error) when (IsLoadError(error))
+        {
+            _status.Text = error.Message;
+        }
 
         Session = new(new SimulationWorld(ephemeris, _assets.Select(asset => asset.Track)),
             new(JulianInstant.J2000Day, 0, TimeScale.Tdb), ReadDeltaT());
@@ -73,6 +82,8 @@ public partial class SolarSystemScene : Control
         deltaT.ItemSelected += index => SetDeltaT((DeltaTModel)deltaT.GetItemId((int)index));
         toolbar.AddChild(deltaT);
         AddButton(toolbar, "Reload add-ons", () => ReloadAddOns());
+        if (_surfaceTextures is not null)
+            AddButton(toolbar, "Full Moon", () => ShowFullMoon(_active));
         AddView();
         Refresh();
     }
@@ -106,6 +117,19 @@ public partial class SolarSystemScene : Control
         Refresh();
     }
 
+    internal void ShowFullMoon(int view)
+    {
+        SetMode(view, CameraMode.Surface);
+        Seek(view, SurfaceProjection.FullMoonEpoch);
+    }
+
+    internal void Seek(int view, JulianInstant epoch)
+    {
+        _active = view;
+        Session!.Seek(view, epoch);
+        Refresh();
+    }
+
     internal void Synchronize(bool enabled, int source)
     {
         Session!.Synchronize(enabled, source);
@@ -124,6 +148,7 @@ public partial class SolarSystemScene : Control
         {
             _status.Text = $"Could not save ΔT. {error.Message}";
         }
+        Refresh();
     }
 
     internal void ToggleSplit()
@@ -189,6 +214,8 @@ public partial class SolarSystemScene : Control
         mode.AddItem("Solar overview", (int)CameraMode.Solar);
         mode.AddItem("Earth–Moon view", (int)CameraMode.Lunar);
         mode.AddItem("Earth satellites", (int)CameraMode.Satellites);
+        mode.AddItem("Earth surface", (int)CameraMode.Surface);
+        mode.SetItemDisabled((int)CameraMode.Surface, _surfaceTextures is null);
         mode.ItemSelected += item => SetMode(index, (CameraMode)mode.GetItemId((int)item));
         tools.AddChild(mode);
         var selection = new OptionButton();
@@ -210,6 +237,8 @@ public partial class SolarSystemScene : Control
         container.AddChild(viewport);
         var renderer = new SimulationViewport();
         viewport.AddChild(renderer);
+        if (_surfaceTextures is { } textures)
+            renderer.SetSurfaceTextures(textures);
         var controls = new ViewControls(panel, renderer, epoch, play, mode, selection);
         _views.Add(controls);
         ReplaceAssets(controls);
@@ -231,8 +260,10 @@ public partial class SolarSystemScene : Control
         {
             ViewControls controls = _views[index];
             ObserverView view = session[index];
-            controls.Renderer.Draw(view, session.World.Ephemeris.Sample(view.Epoch));
+            bool available = controls.Renderer.Draw(view, session.World.Ephemeris.Sample(view.Epoch), session.DeltaT);
             controls.Epoch.Text = FormattableString.Invariant($"View {index + 1}   JD {view.Epoch.ToJulianDate():F6} TDB");
+            if (!available)
+                controls.Epoch.Text += "   Surface view is available for 1900–2099.";
             controls.Play.Text = view.Playing ? "Pause" : "Play";
             controls.Mode.Select((int)view.Mode);
             controls.Selection.Visible = view.Mode == CameraMode.Satellites;

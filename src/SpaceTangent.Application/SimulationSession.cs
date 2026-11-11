@@ -6,7 +6,7 @@ using SpaceTangent.Core.Time;
 
 namespace SpaceTangent.Application;
 
-public enum CameraMode { Solar, Lunar, Satellites }
+public enum CameraMode { Solar, Lunar, Satellites, Surface }
 
 public readonly record struct ObserverView(JulianInstant Epoch, CameraMode Mode, ObjectId? Selection, bool Playing);
 
@@ -75,7 +75,7 @@ public sealed class SimulationSession
 
     public void SetMode(int view, CameraMode mode)
     {
-        if (mode is < CameraMode.Solar or > CameraMode.Satellites)
+        if (mode is < CameraMode.Solar or > CameraMode.Surface)
             throw new ArgumentOutOfRangeException(nameof(mode));
         ObserverView previous = _views[view];
         if (mode == CameraMode.Satellites)
@@ -103,6 +103,13 @@ public sealed class SimulationSession
     }
 
     public void TogglePlaying(int view) => SetClock(view, _views[view].Epoch, !_views[view].Playing);
+
+    public void Seek(int view, JulianInstant epoch)
+    {
+        if (!Covers(World, epoch))
+            throw new ArgumentOutOfRangeException(nameof(epoch));
+        SetClock(view, epoch, _views[view].Playing);
+    }
 
     public void Step(int view, double seconds)
     {

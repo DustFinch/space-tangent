@@ -4,6 +4,7 @@ using SpaceTangent.Application;
 using SpaceTangent.Contracts;
 using SpaceTangent.Core.Addons;
 using SpaceTangent.Core.Ephemerides;
+using SpaceTangent.Core.Time;
 
 namespace SpaceTangent.Godot.Simulation;
 
@@ -17,6 +18,7 @@ internal partial class SimulationViewport : Node3D
 
     private Camera3D _camera = null!;
     private Node3D _sun = null!, _earth = null!, _moon = null!;
+    private SurfaceProjection? _surface;
     private readonly Dictionary<ObjectId, (PreparedSatellite Asset, MeshInstance3D Node)> _satellites = new();
 
     internal Vector3 EarthPosition => _earth.Position;
@@ -66,8 +68,20 @@ internal partial class SimulationViewport : Node3D
 
     internal MeshInstance3D SatelliteMesh(ObjectId id) => _satellites[id].Node;
 
-    internal void Draw(ObserverView observer, SolarSystemSample sample)
+    internal void SetSurfaceTextures(SurfaceTextures textures) => _surface = new SurfaceProjection(this, textures);
+
+    internal void SetSurfaceControls(bool clouds, bool lunarLight) => _surface!.SetControls(clouds, lunarLight);
+
+    internal bool Draw(ObserverView observer, SolarSystemSample sample, DeltaTModel deltaT)
     {
+        if (_surface is { } surface)
+        {
+            bool isSurface = observer.Mode == CameraMode.Surface;
+            bool available = surface.Draw(isSurface, sample, deltaT);
+            if (isSurface && available)
+                return true;
+        }
+
         ObjectId origin = observer.Mode == CameraMode.Solar ? SolarSystemSample.SunId : SolarSystemSample.EarthId;
         double scale = observer.Mode == CameraMode.Solar ? OverviewKilometersPerUnit : LunarKilometersPerUnit;
         _sun.Position = ToGodot(sample.RelativeState(SolarSystemSample.SunId, origin).PositionKilometers, scale);
@@ -93,6 +107,7 @@ internal partial class SimulationViewport : Node3D
                 ToGodot(state.EarthRelativeState.PositionKilometers, SatelliteKilometersPerUnit));
             node.Show();
         }
+        return observer.Mode != CameraMode.Surface;
     }
 
     private static Vector3 ToGodot(Vector3d value, double scale) =>

@@ -2,6 +2,12 @@
 
 The simulator and its engine-independent core live in separate repositories. The simulator pins its core revision as a Git submodule. Build and export with Godot 4.7.2 .NET and the SDK selected by `global.json`. The Windows package uses the Compatibility renderer and local data beside the executable. [Windows build instructions](WINDOWS_BUILD.md)
 
+## Observer workspace update
+
+The workspace adds target-relative flight and tracking, per-view Earth observing sites and horizon controls, and geometric altitude, azimuth and civil twilight. Local add-on sources can be installed and switched independently. Search and sky picking use the same Hipparcos IDs across two views with independent sky layers. [Observer controls](OBSERVERS.md) · [Local sources](ADDON_CACHE.md) · [Bright sky data](SKY_DATA.md)
+
+The Windows update was built from clean simulator and core checkouts with the pinned core and locked dependencies. The current external-data run passed 151 core and 2 application tests with zero skips. The Godot input and bootstrap suites exercised original Jason-1, SORCE, Cassini and Huygens inputs, saved observers, layer switches and atomic add-on reload. The Windows export restored the two-view scenarios, including the full-Moon case and the bright sky on Earth and in space. Rendering checks ran on a separate Windows desktop.
+
 ## Verified inputs and workflows
 
 | Area | Verified scope |

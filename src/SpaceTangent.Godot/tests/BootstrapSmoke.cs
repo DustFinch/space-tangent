@@ -26,7 +26,10 @@ public partial class BootstrapSmoke : Node
                 await ToSignal(GetTree(), SceneTree.SignalName.ProcessFrame);
             }
             if (!string.IsNullOrWhiteSpace(System.Environment.GetEnvironmentVariable("SPACETANGENT_DE440")))
+            {
+                CheckWorkspacePanels(scene);
                 CheckSimulation(scene);
+            }
             if (!string.IsNullOrWhiteSpace(System.Environment.GetEnvironmentVariable("SPACETANGENT_SCIENCE_ROOT")))
             {
                 await CheckSatellitesAndReload(scene);
@@ -48,6 +51,11 @@ public partial class BootstrapSmoke : Node
             if (System.Environment.GetEnvironmentVariable("SPACETANGENT_TEST_CACHE_TIMELINE") is { Length: > 0 } cacheRoot)
                 await CheckAddonCache(scene, cacheRoot);
 
+            if (!string.IsNullOrWhiteSpace(System.Environment.GetEnvironmentVariable("SPACETANGENT_SCIENCE_ROOT")))
+                await CheckNavigation(scene);
+            if (System.Environment.GetEnvironmentVariable("SPACETANGENT_WORKSPACE_CAPTURE") is { Length: > 0 } workspace)
+                await CaptureWorkspace(scene, workspace);
+
             GD.Print("SpaceTangent bootstrap smoke passed");
             GetTree().Quit();
         }
@@ -58,11 +66,77 @@ public partial class BootstrapSmoke : Node
         }
     }
 
+    private async Task CaptureWorkspace(SolarSystemScene scene, string path)
+    {
+        SimulationSession session = scene.Session!;
+        if (session.ViewCount == 2)
+            scene.ToggleSplit();
+        session.SetPlaying(0, false);
+        scene.ShowFullMoon(0);
+        var searchTab = (Button)scene.FindChild("SearchTab", recursive: true, owned: false);
+        if (!searchTab.ButtonPressed)
+            searchTab.EmitSignal(Button.SignalName.Pressed);
+        var query = (LineEdit)scene.FindChild("ObjectQuery", recursive: true, owned: false);
+        query.Text = "Moon";
+        query.EmitSignal(LineEdit.SignalName.TextChanged, query.Text);
+        query.EmitSignal(LineEdit.SignalName.TextSubmitted, query.Text);
+        query.Text = "";
+        query.EmitSignal(LineEdit.SignalName.TextChanged, query.Text);
+        if (System.Environment.GetEnvironmentVariable("SPACETANGENT_ACCEPTANCE_SCENES") is { Length: > 0 } scenes)
+            Require(scene.SaveScenario(Path.Combine(scenes, "workspace.stscene")), "The workspace showcase must save.");
+        await ToSignal(GetTree(), SceneTree.SignalName.ProcessFrame);
+        await ToSignal(RenderingServer.Singleton, RenderingServer.SignalName.FramePostDraw);
+        using Image image = GetViewport().GetTexture().GetImage();
+        Require(image.SavePng(path) == Error.Ok, "Could not save the workspace view.");
+    }
+
+    private static void CheckWorkspacePanels(SolarSystemScene scene)
+    {
+        string[] panels = ["Search", "Time", "Layers", "Location", "Ephemerides", "Optics", "SkyCultures",
+            "Bookmarks", "AddOns", "Scripts", "Ship", "Settings", "Help"];
+        foreach (string id in panels)
+        {
+            var tab = (Button)scene.FindChild(id + "Tab", recursive: true, owned: false);
+            var page = (VBoxContainer)scene.FindChild(id + "Page", recursive: true, owned: false);
+            if (!tab.ButtonPressed)
+                tab.EmitSignal(Button.SignalName.Pressed);
+            Require(tab.ButtonPressed && page.IsVisibleInTree() && page.GetChildCount() >= 2,
+                $"The {id} workspace panel must show its controls.");
+        }
+        var search = (Button)scene.FindChild("SearchTab", recursive: true, owned: false);
+        search.EmitSignal(Button.SignalName.Pressed);
+        GD.Print("SpaceTangent workspace panel smoke passed");
+    }
+
     private static void CheckSimulation(SolarSystemScene scene)
     {
         SimulationSession session = scene.Session ?? throw new InvalidOperationException("DE440 failed to load.");
+        var searchTab = (Button)scene.FindChild("SearchTab", recursive: true, owned: false);
+        var timeTab = (Button)scene.FindChild("TimeTab", recursive: true, owned: false);
+        var layersTab = (Button)scene.FindChild("LayersTab", recursive: true, owned: false);
+        var sidebar = (Control)scene.FindChild("Sidebar", recursive: true, owned: false);
+        Require(searchTab.ButtonPressed && sidebar.IsVisibleInTree(), "The search panel must open at startup.");
+        var query = (LineEdit)scene.FindChild("ObjectQuery", recursive: true, owned: false);
+        query.Text = "moo";
+        query.EmitSignal(LineEdit.SignalName.TextChanged, query.Text);
+        query.EmitSignal(LineEdit.SignalName.TextSubmitted, query.Text);
+        Require(session[0].Selection == SpaceTangent.Core.Ephemerides.SolarSystemSample.MoonId &&
+                session[0].Mode == CameraMode.Solar, "Search must select the Moon without changing the current camera mode.");
+        layersTab.EmitSignal(Button.SignalName.Pressed);
+        Require(layersTab.ButtonPressed && !searchTab.ButtonPressed, "Only the chosen sidebar tab must be active.");
+        layersTab.EmitSignal(Button.SignalName.Pressed);
+        Require(!sidebar.IsVisibleInTree(), "Clicking the active tab must close the sidebar.");
+        timeTab.EmitSignal(Button.SignalName.Pressed);
+
         var initial = session[0].Epoch;
         Require(initial == new JulianInstant(JulianInstant.J2000Day, 0, TimeScale.Tdb), "The clock must start at J2000.");
+        var utcDate = (LineEdit)scene.FindChild("UtcDate", recursive: true, owned: false);
+        var utcTime = (LineEdit)scene.FindChild("UtcTime", recursive: true, owned: false);
+        utcDate.Text = "2016-12-31";
+        utcTime.Text = "23:59:60";
+        utcTime.EmitSignal(LineEdit.SignalName.TextSubmitted, utcTime.Text);
+        Require(TimeConversion.ToUtc(session[0].Epoch) is { Second: 60 }, "The time panel must accept a published leap second.");
+        scene.Seek(0, initial);
 
         var renderer = scene.Renderer(0);
         Vector3 initialPosition = renderer.EarthPosition;
@@ -82,8 +156,21 @@ public partial class BootstrapSmoke : Node
         var jasonId = new ObjectId("norad/26997");
         var sorceId = new ObjectId("norad/27651");
         SimulationSession session = scene.Session ?? throw new InvalidOperationException("DE440 failed to load.");
+        var query = (LineEdit)scene.FindChild("ObjectQuery", recursive: true, owned: false);
+        JulianInstant beforeSearch = session[0].Epoch;
+        query.Text = "26997";
+        query.EmitSignal(LineEdit.SignalName.TextChanged, query.Text);
+        query.EmitSignal(LineEdit.SignalName.TextSubmitted, query.Text);
+        Require(session[0].Selection == jasonId && session[0].Epoch == beforeSearch,
+            "Searching for Jason-1 by NORAD ID must preserve the active epoch.");
         scene.SetMode(0, CameraMode.Satellites);
-        scene.SelectSatellite(0, jasonId);
+        var card = (Control)scene.FindChild("ObjectCard", recursive: true, owned: false);
+        Require(card.IsVisibleInTree(), "Selecting Jason-1 must open the spacecraft card.");
+        var closeCard = (Button)card.FindChild("CloseObjectCard", recursive: true, owned: false);
+        closeCard.EmitSignal(Button.SignalName.Pressed);
+        Require(!card.IsVisibleInTree(), "The card close control must hide the card.");
+        query.EmitSignal(LineEdit.SignalName.TextSubmitted, query.Text);
+        Require(card.IsVisibleInTree(), "Selecting the same object must reveal the card again.");
         VerifyMesh(scene.Renderer(0).SatelliteMesh(jasonId), 83_233, 28, 2);
         VerifyMesh(scene.Renderer(0).SatelliteMesh(sorceId), 115_711, 20, 1);
 
@@ -249,6 +336,7 @@ public partial class BootstrapSmoke : Node
         session.TogglePlaying(0);
         if (System.Environment.GetEnvironmentVariable("SPACETANGENT_SCENARIO_CAPTURE") is { Length: > 0 } capture)
         {
+            scene.Seek(0, session[0].Epoch);
             await ToSignal(GetTree(), SceneTree.SignalName.ProcessFrame);
             await ToSignal(RenderingServer.Singleton, RenderingServer.SignalName.FramePostDraw);
             using Image image = GetViewport().GetTexture().GetImage();

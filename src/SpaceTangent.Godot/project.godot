@@ -3,10 +3,17 @@ config_version=5
 [application]
 
 config/name="SpaceTangent"
+config/icon="res://UI/space-tangent.png"
+config/windows_native_icon="res://UI/space-tangent.ico"
 run/main_scene="res://Main.tscn"
 config/features=PackedStringArray("4.7", "C#", "GL Compatibility")
 config/use_custom_user_dir=true
 config/custom_user_dir_name="Dustfinch/SpaceTangent"
+
+[display]
+
+window/size/viewport_width=1280
+window/size/viewport_height=720
 
 [dotnet]
 
@@ -14,5 +21,6 @@ project/assembly_name="SpaceTangent.Godot"
 
 [rendering]
 
+environment/defaults/default_clear_color=Color(0.02745, 0.03529, 0.04706, 1)
 renderer/rendering_method="gl_compatibility"
 renderer/rendering_method.mobile="gl_compatibility"

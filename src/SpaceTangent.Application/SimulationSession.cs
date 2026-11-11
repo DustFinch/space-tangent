@@ -22,6 +22,7 @@ public readonly record struct LunarTerrainCamera(double LongitudeDegrees, double
 public readonly record struct ObserverView(JulianInstant Epoch, CameraMode Mode, ObjectId? Selection, bool Playing)
 {
     public LunarTerrainCamera? Terrain { get; init; }
+    public NavigationCamera? Navigation { get; init; }
 }
 
 public sealed record HuygensMission(SscHuygensTrack Track, SpkKernel SaturnSystem, SpicePolynomialBodyFrame TitanFrame);
@@ -34,6 +35,7 @@ public sealed class SimulationWorld
     {
         Ephemeris = ephemeris;
         Satellites = Array.AsReadOnly(satellites.ToArray());
+        Catalogue = new(Satellites);
         var graph = new WorldGraphBuilder();
         graph.AddSolarSystem(ephemeris);
         foreach (ScienceSatellite satellite in Satellites)
@@ -68,6 +70,7 @@ public sealed class SimulationWorld
 
     public De440Ephemeris Ephemeris { get; }
     public IReadOnlyList<ScienceSatellite> Satellites { get; }
+    public ObjectCatalogue Catalogue { get; }
     public WorldGraph Graph { get; }
     public ObjectId? MissionId { get; }
     public string? MissionName { get; }
@@ -78,7 +81,7 @@ public sealed class SimulationWorld
 }
 
 /// <summary>Owns clocks and view preferences independently of rendering resources.</summary>
-public sealed class SimulationSession
+public sealed partial class SimulationSession
 {
     // A recorded Cassini Saturn orbit insertion epoch with both state and pointing coverage.
     public static JulianInstant MissionPreview { get; } = JulianInstant.FromTdbSeconds(141917558.4203589);
@@ -129,8 +132,11 @@ public sealed class SimulationSession
                 throw new InvalidDataException("The scenario has invalid lunar camera coordinates or field width.");
             if (view.Mode == CameraMode.Satellites && World.Satellites.Count == 0)
                 throw new InvalidDataException("The scenario needs the Earth satellite add-ons.");
-            if (view.Selection is { } selection && !World.Satellites.Any(satellite => satellite.Id == selection))
+            if (view.Selection is { } selection && World.Catalogue.Find(selection) is null)
                 throw new InvalidDataException($"The selected object {selection.Value} is missing from the current world.");
+            if (view.Navigation is { } camera &&
+                (!camera.IsValid() || (camera.Target is { } target && World.Catalogue.Find(target) is null)))
+                throw new InvalidDataException("The scenario has an invalid camera pose or unavailable camera target.");
         }
         ObserverView owner = views[scenario.ClockOwner];
         if (scenario.Synchronized && views.Any(view => view.Epoch != owner.Epoch || view.Playing != owner.Playing))
@@ -138,6 +144,7 @@ public sealed class SimulationSession
 
         _views.Clear();
         _views.AddRange(views);
+        Array.Clear(_flights);
         Synchronized = scenario.Synchronized;
         _clockOwner = scenario.ClockOwner;
         DeltaT = scenario.DeltaT;
@@ -153,6 +160,7 @@ public sealed class SimulationSession
     {
         if (_views.Count == 2)
             _views.RemoveAt(1);
+        _flights[1] = null;
         _clockOwner = 0;
     }
 
@@ -206,7 +214,8 @@ public sealed class SimulationSession
             if (!World.Graph.Evaluate(previous.Epoch).TryOrientation(probe.Id, out _))
                 Seek(view, probe.Separation);
         }
-        _views[view] = _views[view] with { Mode = mode };
+        CancelFlight(view);
+        _views[view] = _views[view] with { Mode = mode, Navigation = null };
     }
 
     public void SetLunarTerrainCamera(int view, LunarTerrainCamera camera)
@@ -214,6 +223,13 @@ public sealed class SimulationSession
         if (!camera.IsValid())
             throw new ArgumentOutOfRangeException(nameof(camera));
         _views[view] = _views[view] with { Terrain = camera };
+    }
+
+    public void SelectObject(int view, ObjectId selection)
+    {
+        if (World.Catalogue.Find(selection) is null)
+            throw new ArgumentOutOfRangeException(nameof(selection));
+        _views[view] = _views[view] with { Selection = selection };
     }
 
     public void Select(int view, ObjectId selection)
@@ -286,7 +302,7 @@ public sealed class SimulationSession
         for (int index = 0; index < _views.Count; index++)
         {
             ObserverView previous = _views[index];
-            ObjectId? selected = previous.Selection is { } id && next.Satellites.Any(satellite => satellite.Id == id)
+            ObjectId? selected = previous.Selection is { } id && next.Catalogue.Find(id) is not null
                 ? id
                 : null;
             bool lostMode = (previous.Mode == CameraMode.Satellites && next.Satellites.Count == 0) ||
@@ -297,7 +313,13 @@ public sealed class SimulationSession
             CameraMode mode = lostMode
                 ? CameraMode.Solar
                 : previous.Mode;
-            _views[index] = previous with { Selection = selected, Mode = mode };
+            NavigationCamera? navigation = previous.Navigation;
+            if (navigation is { Target: { } target } camera && next.Catalogue.Find(target) is null)
+            {
+                navigation = camera with { Target = null, Tracking = false };
+                CancelFlight(index);
+            }
+            _views[index] = previous with { Selection = selected, Mode = mode, Navigation = navigation };
         }
         World = next;
         return true;

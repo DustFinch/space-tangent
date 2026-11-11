@@ -31,13 +31,13 @@ The simulation opens with its clock paused at J2000. Switch from **Solar overvie
 - Replay [Cassini and Huygens](docs/CASSINI_MISSION.md), including Cassini's camera fields of view and footprints on Saturn.
 - Inspect [lunar relief from LRO LOLA](docs/LUNAR_TERRAIN.md) from a global or a regional view.
 - Open the [full-Moon scene](docs/MOON_LIGHTING.md) to see reflected moonlight on Earth's clouds.
-- Open [two views](docs/OBSERVERS.md) with independent or synchronized clocks and save their state as a scenario.
+- Search for an object, fly to it, and track its motion. Open [two views](docs/OBSERVERS.md) with independent or synchronized clocks and save both cameras as a scenario.
 
 ## Supported data and current limits
 
 The repository contains the simulator and test fixtures. DE440 is the only external file needed for the first scene. The workflows above link to the separate catalogs, kernels, meshes, and textures they use. Each input retains its own distribution terms.
 
-The preview offers preset camera modes. SSC, SPICE mission JSON, and [observer Lua scripts](docs/LUA_SCRIPTS.md) have documented subsets. The [validation notes](docs/RELEASE_NOTES.md) list the original data and workflows exercised on Windows.
+The preview offers preset camera modes and target-relative flight, tracking, and orbit controls. SSC, SPICE mission JSON, and [observer Lua scripts](docs/LUA_SCRIPTS.md) have documented subsets. The [validation notes](docs/RELEASE_NOTES.md) list the original data and workflows exercised on Windows.
 
 ## Build, test, and contribute
 

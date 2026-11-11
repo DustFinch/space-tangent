@@ -11,3 +11,21 @@ Each new load cancels and supersedes the previous load. The headless test verifi
 Use **Scenario → Save scenario** to save the current one- or two-view scene to a `.stscene` file. **Open scenario** restores exact TDB epochs, playback, time synchronization, camera modes, selections, the active view and the scene's ΔT model. Choose a model directly in the toolbar to change the default saved in your profile.
 
 Scenario files use versioned JSON and refer to loaded objects by their catalog IDs. Keep the required add-ons available when opening a scenario. An invalid file or missing object leaves the current views intact.
+
+## Object navigation
+
+Open **Search** or press **Enter**. Search by name or catalogue ID, then select an object. The card shows its type and distance from Earth at the active view's epoch. **Go to** flies to the object, and **Esc** or **Stop flight** stops at the current camera position. Drag with the right mouse button to orbit the camera pivot, and use the wheel to zoom. **Track** centers the selected object and follows its position as the view's clock advances.
+
+Selecting an object leaves the epoch unchanged. If an Earth satellite has no state at that epoch, starting a flight or tracking may move the clock to the satellite's catalogue epoch. An independent second view keeps its own epoch and camera.
+
+Saving a scenario writes both camera poses and tracking settings. Open the scenario again after restarting to restore those views. Version 1 scenarios open with their original preset cameras.
+
+## Headless workspace input test
+
+After building the Godot project, set `SPACETANGENT_DE440`, `SPACETANGENT_SCIENCE_ROOT` and `SPACETANGENT_SURFACE_TEXTURES` to the local DE440 file, original science add-ons and Earth surface textures. From the repository root, run:
+
+```powershell
+godot --headless --path src/SpaceTangent.Godot res://tests/WorkspaceInputSmoke.tscn
+```
+
+The test sends mouse and keyboard events to the Godot viewport. It searches for Jason-1, flies to it and tracks it while the second view shows the full Moon. It verifies independent and synchronized clocks, both cameras and ΔT after reloading add-ons, and a scenario save and reopen through the file dialogs. The test uses a temporary directory for the scenario and ΔT settings.

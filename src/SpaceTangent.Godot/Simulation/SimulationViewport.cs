@@ -60,6 +60,7 @@ internal partial class SimulationViewport : Node3D
         _sun = CreateMarker("Sun", new Color("#ffce69"), 4);
         _earth = CreateMarker("Earth", new Color("#6fa8ff"), 3);
         _moon = CreateMarker("Moon", new Color("#cbd3e4"), 2.4f);
+        InitializeNavigation();
         _saturn = CreateMarker("Saturn barycenter", new Color("#d9bb7f"), 9);
         _missionNode = new MeshInstance3D { Visible = false };
         AddChild(_missionNode);
@@ -173,7 +174,12 @@ internal partial class SimulationViewport : Node3D
         Transparency = BaseMaterial3D.TransparencyEnum.Alpha
     };
 
-    internal void SetSurfaceTextures(SurfaceTextures textures) => _surface = new SurfaceProjection(this, textures);
+    internal void SetSurfaceTextures(SurfaceTextures textures)
+    {
+        _surface = new SurfaceProjection(this, textures);
+        if (_navigationMoon.MaterialOverride is StandardMaterial3D moon)
+            moon.AlbedoTexture = textures.Moon;
+    }
 
     internal void ReplaceLunarTerrain(LunarTerrainAsset? asset)
     {
@@ -204,6 +210,14 @@ internal partial class SimulationViewport : Node3D
         _footprints.Hide();
         ProbeStatus = null;
         _terrain?.Hide();
+        if (observer.Navigation is { } navigation)
+        {
+            _surface?.Draw(false, sample, deltaT);
+            HideOrbitalMarkers();
+            DrawNavigation(navigation, snapshot, sample);
+            return true;
+        }
+        HideNavigation();
         if (observer.Mode != CameraMode.LunarTerrain && !_camera.Current)
             _camera.MakeCurrent();
         if (_surface is { } surface)

@@ -12,7 +12,7 @@ public sealed record SimulationScenario(IReadOnlyList<ObserverView> Views, bool 
 /// <summary>Persists observer settings with exact TDB epochs and stable catalog IDs.</summary>
 public static class ScenarioFile
 {
-    private const int Version = 1;
+    private const int Version = 2;
     private const int MaximumBytes = 32 * 1024;
     private static readonly JsonSerializerOptions Json = new()
     {
@@ -31,6 +31,8 @@ public static class ScenarioFile
     {
         if (scenario.Views.Count is < 1 or > 2 || scenario.Views.Any(view => view.Epoch.Scale != TimeScale.Tdb))
             throw new InvalidDataException("A scenario needs one or two TDB views.");
+        if (scenario.Views.Any(view => view.Navigation is { } pose && !pose.IsValid()))
+            throw new InvalidDataException("The scenario has an invalid camera pose.");
         var document = new Document
         {
             Version = Version,
@@ -45,7 +47,8 @@ public static class ScenarioFile
                 Camera = view.Mode,
                 Selection = view.Selection?.Value,
                 Playing = view.Playing,
-                Terrain = view.Terrain
+                Terrain = view.Terrain,
+                Navigation = view.Navigation is { } pose ? Camera.From(pose) : null
             }).ToArray()
         };
         byte[] bytes = JsonSerializer.SerializeToUtf8Bytes(document, Json);
@@ -84,7 +87,7 @@ public static class ScenarioFile
             throw new InvalidDataException("The scenario changed while it was being read.");
         Document document = JsonSerializer.Deserialize<Document>(bytes, Json)
             ?? throw new InvalidDataException("The scenario is empty.");
-        if (document.Version != Version)
+        if (document.Version is not (1 or Version))
             throw new InvalidDataException($"Unsupported scenario version {document.Version}.");
         if (document.Views is not { Length: 1 or 2 } || document.Views.Any(view => view is null))
             throw new InvalidDataException("A scenario must have one or two views.");
@@ -95,7 +98,12 @@ public static class ScenarioFile
             View data = document.Views[i];
             var epoch = new JulianInstant(data.DayTdb, data.NanosecondsOfDay, TimeScale.Tdb);
             ObjectId? selection = data.Selection is { } id ? new ObjectId(id) : null;
-            views[i] = new(epoch, data.Camera, selection, data.Playing) { Terrain = data.Terrain };
+            if (document.Version == 1 && data.Navigation is not null)
+                throw new InvalidDataException("Camera poses require a version 2 scenario.");
+            NavigationCamera? navigation = data.Navigation?.ToPose();
+            if (navigation is { } pose && !pose.IsValid())
+                throw new InvalidDataException("The scenario has an invalid camera pose.");
+            views[i] = new(epoch, data.Camera, selection, data.Playing) { Terrain = data.Terrain, Navigation = navigation };
         }
         return new(Array.AsReadOnly(views), document.Synchronized, document.ClockOwner, document.ActiveView, document.DeltaT);
     }
@@ -119,5 +127,18 @@ public static class ScenarioFile
         public required bool Playing { get; init; }
         [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
         public LunarTerrainCamera? Terrain { get; init; }
+        [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+        public Camera? Navigation { get; init; }
+    }
+
+    private sealed record Camera(double AnchorX, double AnchorY, double AnchorZ, double RangeKilometers,
+        double AzimuthRadians, double ElevationRadians, string? Target, bool Tracking)
+    {
+        internal static Camera From(NavigationCamera pose) => new(pose.AnchorKilometers.X, pose.AnchorKilometers.Y,
+            pose.AnchorKilometers.Z, pose.RangeKilometers, pose.AzimuthRadians, pose.ElevationRadians,
+            pose.Target?.Value, pose.Tracking);
+
+        internal NavigationCamera ToPose() => new(new(AnchorX, AnchorY, AnchorZ), RangeKilometers,
+            AzimuthRadians, ElevationRadians, Target is { } id ? new ObjectId(id) : null, Tracking);
     }
 }

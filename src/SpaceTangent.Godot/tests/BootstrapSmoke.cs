@@ -38,6 +38,8 @@ public partial class BootstrapSmoke : Node
                 await CheckLua(scene, script);
             if (!string.IsNullOrWhiteSpace(System.Environment.GetEnvironmentVariable("SPACETANGENT_TIMELINE_ROOT")))
                 await CheckTimeline(scene);
+            if (scene.Session?.World.Probe is not null)
+                await CheckProbe(scene);
 
             GD.Print("SpaceTangent bootstrap smoke passed");
             GetTree().Quit();
@@ -406,6 +408,64 @@ public partial class BootstrapSmoke : Node
             File.Delete(file);
         }
         GD.Print("SpaceTangent original fifteen-phase Cassini timeline smoke passed");
+    }
+
+    private async Task CheckProbe(SolarSystemScene scene)
+    {
+        SimulationSession session = scene.Session!;
+        var probe = session.World.Probe!;
+        Require(probe.Id == new ObjectId("ssc/sol/saturn/titan/huygens"), "The original Huygens entry must load.");
+        if (session.ViewCount == 1)
+            scene.ToggleSplit();
+        scene.Synchronize(false, 0);
+        scene.SetMode(0, CameraMode.Probe);
+        scene.SetMode(1, CameraMode.Probe);
+
+        MeshInstance3D left = scene.Renderer(0).MissionMesh, right = scene.Renderer(1).MissionMesh;
+        scene.Seek(0, probe.Separation.AddSeconds(-1));
+        scene.Seek(1, probe.Landing);
+        Require(left.Visible && right.Visible && !left.Basis.X.IsEqualApprox(right.Basis.X),
+            "The real mounted and landed probe must use distinct poses.");
+        Require(scene.Renderer(0).ProbeStatus?.StartsWith("Attached to Cassini", StringComparison.Ordinal) == true &&
+            scene.Renderer(1).ProbeStatus == "Landed on Titan", "Each view must show its own flight phase.");
+        var mesh = (ArrayMesh)left.Mesh;
+        int vertices = Enumerable.Range(0, mesh.GetSurfaceCount()).Sum(mesh.SurfaceGetArrayLen);
+        Require(mesh.GetSurfaceCount() == 4 && vertices == 6098 * 3, "The original Huygens model must retain its faces and materials.");
+        scene.Seek(0, probe.Separation);
+        Basis first = left.Basis;
+        scene.Seek(0, probe.Separation.AddSeconds(1.99998));
+        Require(left.Visible && right.Visible && Math.Abs(first.Y.Normalized().Dot(left.Basis.Y.Normalized())) < .001f &&
+            first.X.Normalized().Dot(left.Basis.X.Normalized()) > .9999f,
+            "The free-flying model must turn a quarter revolution in about two seconds.");
+        Require(scene.Renderer(0).ProbeStatus?.StartsWith("Free flight", StringComparison.Ordinal) == true,
+            "The phase label must update at separation.");
+
+        string? capture = System.Environment.GetEnvironmentVariable("SPACETANGENT_PROBE_CAPTURE");
+        if (!string.IsNullOrWhiteSpace(capture))
+        {
+            await ToSignal(GetTree(), SceneTree.SignalName.ProcessFrame);
+            await ToSignal(RenderingServer.Singleton, RenderingServer.SignalName.FramePostDraw);
+            using Image image = GetViewport().GetTexture().GetImage();
+            Require(image.SavePng(capture) == Error.Ok, "Could not save both Huygens views.");
+        }
+
+        ObserverView flying = session[0], landed = session[1];
+        string file = Path.Combine(Path.GetTempPath(), $"SpaceTangent-probe-{Guid.NewGuid():N}.stscene");
+        try
+        {
+            Require(scene.SaveScenario(file), "The probe scenario must save.");
+            scene.Seek(0, probe.Start.AddSeconds(-1));
+            Require(!left.Visible && right.Visible, "Missing probe coverage must only hide the affected view.");
+            Require(scene.LoadScenario(file) && flying == session[0] && landed == session[1] && left.Visible && right.Visible,
+                "Scenario opening must restore both probe phases.");
+            Require(await scene.ReloadAddOns() && flying == session[0] && landed == session[1] && left.Visible && right.Visible,
+                "Add-on reload must preserve both probe phases.");
+        }
+        finally
+        {
+            File.Delete(file);
+        }
+        GD.Print("SpaceTangent original three-phase Huygens timeline smoke passed");
     }
 
     private static void VerifyMesh(MeshInstance3D node, int triangles, int surfaces, int textureCount)

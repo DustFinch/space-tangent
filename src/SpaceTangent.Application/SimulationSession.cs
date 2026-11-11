@@ -2,19 +2,22 @@
 using SpaceTangent.Contracts;
 using SpaceTangent.Core.Addons;
 using SpaceTangent.Core.Ephemerides;
+using SpaceTangent.Core.Spice;
 using SpaceTangent.Core.Time;
 using SpaceTangent.Core.World;
 
 namespace SpaceTangent.Application;
 
-public enum CameraMode { Solar, Lunar, Satellites, Surface, Mission, Timeline }
+public enum CameraMode { Solar, Lunar, Satellites, Surface, Mission, Timeline, Probe }
 
 public readonly record struct ObserverView(JulianInstant Epoch, CameraMode Mode, ObjectId? Selection, bool Playing);
+
+public sealed record HuygensMission(SscHuygensTrack Track, SpkKernel SaturnSystem, SpicePolynomialBodyFrame TitanFrame);
 
 public sealed class SimulationWorld
 {
     public SimulationWorld(De440Ephemeris ephemeris, IEnumerable<ScienceSatellite> satellites,
-        SpiceSpacecraft? mission = null, SscSampledSpacecraft? timeline = null)
+        SpiceSpacecraft? mission = null, SscSampledSpacecraft? timeline = null, HuygensMission? probe = null)
     {
         Ephemeris = ephemeris;
         Satellites = Array.AsReadOnly(satellites.ToArray());
@@ -33,6 +36,13 @@ public sealed class SimulationWorld
             TimelineId = timeline.Id;
             TimelineStart = timeline.Start;
         }
+        if (probe is not null)
+        {
+            graph.AddSpkBody(probe.SaturnSystem, 699, 6);
+            graph.AddSpkBody(probe.SaturnSystem, 606, 6, probe.TitanFrame);
+            graph.AddHuygens(probe.Track);
+            Probe = probe.Track;
+        }
         Graph = graph.Build();
     }
 
@@ -43,6 +53,7 @@ public sealed class SimulationWorld
     public string? MissionName { get; }
     public ObjectId? TimelineId { get; }
     public JulianInstant? TimelineStart { get; }
+    public SscHuygensTrack? Probe { get; }
 }
 
 /// <summary>Owns clocks and view preferences independently of rendering resources.</summary>
@@ -89,6 +100,8 @@ public sealed class SimulationSession
                 throw new InvalidDataException("The scenario needs the Cassini mission add-on.");
             if (view.Mode == CameraMode.Timeline && World.TimelineId is null)
                 throw new InvalidDataException("The scenario needs the Cassini timeline catalogue.");
+            if (view.Mode == CameraMode.Probe && World.Probe is null)
+                throw new InvalidDataException("The scenario needs the Huygens timeline and Titan kernels.");
             if (view.Mode == CameraMode.Satellites && World.Satellites.Count == 0)
                 throw new InvalidDataException("The scenario needs the Earth satellite add-ons.");
             if (view.Selection is { } selection && !World.Satellites.Any(satellite => satellite.Id == selection))
@@ -160,6 +173,12 @@ public sealed class SimulationSession
             if (!World.Graph.Evaluate(previous.Epoch).TryState(id, out _))
                 Seek(view, World.TimelineStart!.Value);
         }
+        if (mode == CameraMode.Probe)
+        {
+            var probe = World.Probe ?? throw new InvalidOperationException("The current world has no Huygens track.");
+            if (!World.Graph.Evaluate(previous.Epoch).TryOrientation(probe.Id, out _))
+                Seek(view, probe.Separation);
+        }
         _views[view] = _views[view] with { Mode = mode };
     }
 
@@ -212,8 +231,12 @@ public sealed class SimulationSession
         {
             if (_views[view].Playing)
             {
-                double rate = _views[view].Mode is CameraMode.Satellites or CameraMode.Mission or CameraMode.Timeline
-                    ? 180 : JulianInstant.SecondsPerDay;
+                double rate = _views[view].Mode switch
+                {
+                    CameraMode.Probe => 1,
+                    CameraMode.Satellites or CameraMode.Mission or CameraMode.Timeline => 180,
+                    _ => JulianInstant.SecondsPerDay
+                };
                 Step(view, elapsed * rate);
                 changed = true;
             }
@@ -234,7 +257,8 @@ public sealed class SimulationSession
                 : null;
             bool lostMode = (previous.Mode == CameraMode.Satellites && next.Satellites.Count == 0) ||
                 (previous.Mode == CameraMode.Mission && next.MissionId is null) ||
-                (previous.Mode == CameraMode.Timeline && next.TimelineId is null);
+                (previous.Mode == CameraMode.Timeline && next.TimelineId is null) ||
+                (previous.Mode == CameraMode.Probe && next.Probe is null);
             CameraMode mode = lostMode
                 ? CameraMode.Solar
                 : previous.Mode;

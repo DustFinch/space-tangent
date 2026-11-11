@@ -18,13 +18,15 @@ public partial class SolarSystemScene : Control
     private sealed record DecodedSatellite(ScienceSatellite Track, DecodedScienceModel Model);
     private sealed record DecodedMission(DecodedScienceModel Model, IReadOnlyList<SpiceSensor> Sensors, SaturnSurface? Surface);
     private sealed record DecodedAddOns(SimulationWorld World, List<DecodedSatellite> Satellites, DecodedMission? Mission,
-        DecodedScienceModel? Timeline);
-    private sealed record PublishedAddOns(IReadOnlyList<PreparedSatellite> Satellites, PreparedMission? Mission, PreparedMission? Timeline);
+        DecodedScienceModel? Timeline, DecodedScienceModel? Probe);
+    private sealed record PublishedAddOns(IReadOnlyList<PreparedSatellite> Satellites, PreparedMission? Mission,
+        PreparedMission? Timeline, PreparedProbe? Probe);
 
     private readonly List<ViewControls> _views = [];
     private IReadOnlyList<PreparedSatellite> _assets = [];
     private PreparedMission? _mission;
     private PreparedMission? _timeline;
+    private PreparedProbe? _probe;
     private SurfaceTextures? _surfaceTextures;
     private HBoxContainer _panels = null!;
     private Button _split = null!;
@@ -95,6 +97,7 @@ public partial class SolarSystemScene : Control
             _assets = assets.Satellites;
             _mission = assets.Mission;
             _timeline = assets.Timeline;
+            _probe = assets.Probe;
             _status.Text = "";
         }
         catch (OperationCanceledException)
@@ -141,6 +144,8 @@ public partial class SolarSystemScene : Control
             GD.Print($"SpaceTangent mission ready: {mission}.");
         if (world.TimelineId is not null)
             GD.Print("SpaceTangent Cassini timeline ready.");
+        if (world.Probe is not null)
+            GD.Print("SpaceTangent Huygens ready.");
         if (OS.GetCmdlineUserArgs().Contains("--smoke-startup"))
             GetTree().Quit();
     }
@@ -381,6 +386,7 @@ public partial class SolarSystemScene : Control
             _assets = next.Satellites;
             _mission = next.Mission;
             _timeline = next.Timeline;
+            _probe = next.Probe;
             foreach (ViewControls view in _views)
                 ReplaceAssets(view);
             Refresh();
@@ -437,6 +443,7 @@ public partial class SolarSystemScene : Control
         mode.AddItem("Earth surface", (int)CameraMode.Surface);
         mode.AddItem("Cassini at Saturn", (int)CameraMode.Mission);
         mode.AddItem("Cassini timeline", (int)CameraMode.Timeline);
+        mode.AddItem("Huygens", (int)CameraMode.Probe);
         mode.SetItemDisabled((int)CameraMode.Surface, _surfaceTextures is null);
         mode.ItemSelected += item => SetMode(index, (CameraMode)mode.GetItemId((int)item));
         tools.AddChild(mode);
@@ -473,13 +480,14 @@ public partial class SolarSystemScene : Control
     private void ReplaceAssets(ViewControls view)
     {
         view.Renderer.ReplaceSatellites(_assets);
-        view.Renderer.ReplaceMission(_mission, _timeline);
+        view.Renderer.ReplaceMission(_mission, _timeline, _probe);
         view.Selection.Clear();
         foreach (PreparedSatellite asset in _assets)
             view.Selection.AddItem(asset.Track.Name);
         view.Mode.SetItemDisabled((int)CameraMode.Satellites, _assets.Count == 0);
         view.Mode.SetItemDisabled((int)CameraMode.Mission, _mission is null);
         view.Mode.SetItemDisabled((int)CameraMode.Timeline, _timeline is null);
+        view.Mode.SetItemDisabled((int)CameraMode.Probe, _probe is null);
     }
 
     private void SeekTimeline(int view, string text)
@@ -512,12 +520,15 @@ public partial class SolarSystemScene : Control
                 {
                     CameraMode.Mission => "   Cassini state or pointing is outside kernel coverage.",
                     CameraMode.Timeline => "   Cassini is outside the sampled timeline.",
+                    CameraMode.Probe => "   Huygens is outside the available timeline or kernel coverage.",
                     _ => "   Surface view is available for 1900–2099."
                 };
+            if (controls.Renderer.ProbeStatus is { } phase)
+                controls.Epoch.Text += "\n" + phase;
             controls.Play.Text = view.Playing ? "Pause" : "Play";
             controls.Mode.Select((int)view.Mode);
             controls.Selection.Visible = view.Mode == CameraMode.Satellites;
-            controls.TimelineEpoch.Visible = view.Mode == CameraMode.Timeline;
+            controls.TimelineEpoch.Visible = view.Mode is CameraMode.Timeline or CameraMode.Probe;
             int selected = -1;
             for (int item = 0; item < _assets.Count && selected < 0; item++)
             {
@@ -574,13 +585,23 @@ public partial class SolarSystemScene : Control
         string timelineCatalog = Path.Combine(timelineRoot, "ssc", "cassini.ssc");
         SscSampledSpacecraft? timeline = null;
         DecodedScienceModel? timelineGeometry = null;
+        HuygensMission? probe = null;
+        DecodedScienceModel? probeGeometry = null;
         if (timelineConfigured || File.Exists(timelineCatalog))
         {
             timeline = SscSampledCatalog.Load(timelineCatalog, timelineRoot, "Sol/Saturn/Cassini", cancellation);
             timelineGeometry = StudioMeshDecoder.Decode(timeline.MeshPath, cancellation);
+            string sat083 = Path.Combine(timelineRoot, "sat083.bsp"), pck = Path.Combine(timelineRoot, "pck00011.tpc");
+            if (File.Exists(sat083) && File.Exists(pck))
+            {
+                var titanFrame = new SpicePolynomialBodyFrame(pck, 606);
+                var track = SscHuygensTrack.Load(timelineCatalog, timelineRoot, timeline, titanFrame);
+                probe = new(track, new(sat083), titanFrame);
+                probeGeometry = StudioMeshDecoder.Decode(track.MeshPath, cancellation, centerOnBounds: true);
+            }
         }
-        return new(new SimulationWorld(ephemeris, satellites.Select(asset => asset.Track), mission, timeline),
-            satellites, geometry, timelineGeometry);
+        return new(new SimulationWorld(ephemeris, satellites.Select(asset => asset.Track), mission, timeline, probe),
+            satellites, geometry, timelineGeometry, probeGeometry);
     }
 
     private static (SpiceSpacecraft Track, IReadOnlyList<SpiceSensor> Sensors) ReadMission(string path)
@@ -614,7 +635,10 @@ public partial class SolarSystemScene : Control
         PreparedMission? timeline = decoded.Timeline is { } model
             ? new(decoded.World.TimelineId!.Value, ScienceMeshLoader.Publish(model), (float)(18 / model.Diameter), null, null, [])
             : null;
-        return new(satellites, mission, timeline);
+        PreparedProbe? probe = decoded.Probe is { } probeModel
+            ? new(decoded.World.Probe!, ScienceMeshLoader.Publish(probeModel), (float)(24 / probeModel.Diameter))
+            : null;
+        return new(satellites, mission, timeline, probe);
     }
 
     private static bool IsLoadError(Exception error) =>

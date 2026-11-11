@@ -19,7 +19,7 @@ public static class StudioMeshDecoder
     private sealed record Surface(List<Vector3d> Points, List<Vector3d> Normals);
     private delegate void ChunkVisitor(ushort id, ReadOnlySpan<byte> data);
 
-    public static DecodedScienceModel Decode(string path, CancellationToken cancellation = default)
+    public static DecodedScienceModel Decode(string path, CancellationToken cancellation = default, bool centerOnBounds = false)
     {
         using FileStream stream = File.OpenRead(path);
         if (stream.Length is < 6 or > MaximumFileBytes)
@@ -66,10 +66,17 @@ public static class StudioMeshDecoder
             throw new InvalidDataException("3DS file has no usable triangle geometry.");
 
         var result = new List<DecodedSurface>(surfaces.Count);
+        Vector3d center = centerOnBounds ? (min + max) * .5 : default;
         foreach (var (name, surface) in surfaces)
         {
             cancellation.ThrowIfCancellationRequested();
-            result.Add(new(surface.Points.ToArray(), surface.Normals.ToArray(), new float[surface.Points.Count * 2],
+            Vector3d[] points = surface.Points.ToArray();
+            if (centerOnBounds)
+            {
+                for (int i = 0; i < points.Length; i++)
+                    points[i] -= center;
+            }
+            result.Add(new(points, surface.Normals.ToArray(), new float[points.Length * 2],
                 materials.GetValueOrDefault(name) ?? DefaultMaterial));
         }
         return new(result.AsReadOnly(), new ReadOnlyDictionary<string, ReadOnlyMemory<byte>>(

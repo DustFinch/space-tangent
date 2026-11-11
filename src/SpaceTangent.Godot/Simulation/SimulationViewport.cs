@@ -13,6 +13,7 @@ namespace SpaceTangent.Godot.Simulation;
 internal sealed record PreparedSatellite(ScienceSatellite Track, ArrayMesh Mesh, float MarkerScale);
 internal sealed record PreparedMission(ObjectId Id, ArrayMesh Mesh, float MarkerScale, ArrayMesh? Frusta,
     SaturnSurface? Surface, IReadOnlyList<SpiceSensor> Sensors);
+internal sealed record PreparedProbe(SscHuygensTrack Track, ArrayMesh Mesh, float MarkerScale);
 
 internal partial class SimulationViewport : Node3D
 {
@@ -25,6 +26,7 @@ internal partial class SimulationViewport : Node3D
     private Node3D _sun = null!, _earth = null!, _moon = null!, _saturn = null!;
     private PreparedMission? _mission;
     private PreparedMission? _timeline;
+    private PreparedProbe? _probe;
     private MeshInstance3D _missionNode = null!, _missionFrusta = null!;
     private Label3D _missionLabel = null!;
     private MeshInstance3D _saturnSurface = null!, _projectedFrusta = null!, _footprints = null!;
@@ -36,6 +38,7 @@ internal partial class SimulationViewport : Node3D
     internal Vector3 EarthPosition => _earth.Position;
     internal Vector3 MoonPosition => _moon.Position;
     internal bool MoonVisible => _moon.Visible;
+    internal string? ProbeStatus { get; private set; }
 
     public override void _Ready()
     {
@@ -112,10 +115,11 @@ internal partial class SimulationViewport : Node3D
     internal bool MissionProjectionVisible => _projectedFrusta.Visible;
     internal int MissionFootprintCount => _footprintMesh.GetSurfaceCount();
 
-    internal void ReplaceMission(PreparedMission? asset, PreparedMission? timeline)
+    internal void ReplaceMission(PreparedMission? asset, PreparedMission? timeline, PreparedProbe? probe)
     {
         _mission = asset;
         _timeline = timeline;
+        _probe = probe;
         _missionNode.Hide();
         _missionLabel.Hide();
         _missionFrusta.Mesh = asset?.Frusta;
@@ -173,6 +177,7 @@ internal partial class SimulationViewport : Node3D
         _saturnSurface.Hide();
         _projectedFrusta.Hide();
         _footprints.Hide();
+        ProbeStatus = null;
         if (_surface is { } surface)
         {
             bool isSurface = observer.Mode == CameraMode.Surface;
@@ -183,6 +188,8 @@ internal partial class SimulationViewport : Node3D
 
         if (observer.Mode is CameraMode.Mission or CameraMode.Timeline)
             return DrawMission(snapshot, observer.Mode == CameraMode.Timeline);
+        if (observer.Mode == CameraMode.Probe)
+            return DrawProbe(snapshot);
 
         ObjectId origin = observer.Mode == CameraMode.Solar ? SolarSystemSample.SunId : SolarSystemSample.EarthId;
         double scale = observer.Mode == CameraMode.Solar ? OverviewKilometersPerUnit : LunarKilometersPerUnit;
@@ -218,11 +225,7 @@ internal partial class SimulationViewport : Node3D
 
     private bool DrawMission(WorldSnapshot snapshot, bool timeline)
     {
-        _sun.Hide();
-        _earth.Hide();
-        _moon.Hide();
-        foreach (var (_, node) in _satellites.Values)
-            node.Hide();
+        HideOrbitalMarkers();
 
         _camera.Size = 210;
         PreparedMission? mission = timeline ? _timeline : _mission;
@@ -267,6 +270,38 @@ internal partial class SimulationViewport : Node3D
             _missionFrusta.Show();
         }
         return true;
+    }
+
+    private bool DrawProbe(WorldSnapshot snapshot)
+    {
+        HideOrbitalMarkers();
+        _camera.Size = 60;
+        if (_probe is not { } probe || !snapshot.TryOrientation(probe.Track.Id, out var rotation) ||
+            !snapshot.TryState(probe.Track.Id, out var state) ||
+            !snapshot.TryStateCenter(probe.Track.Id, out var centerId) || !snapshot.TryState(centerId, out var center))
+            return false;
+
+        Basis3d body = rotation.ToWorld, mesh = probe.Track.MeshToBody;
+        Vector3 Column(Vector3d value) => ToGodot(body.Transform(value), 1) * probe.MarkerScale;
+        _missionNode.Mesh = probe.Mesh;
+        _missionNode.Transform = new(new Basis(Column(mesh.X), Column(mesh.Y), Column(mesh.Z)), Vector3.Zero);
+        _missionNode.Show();
+        double distance = (state - center).PositionKilometers.Length;
+        ProbeStatus = centerId == probe.Track.Carrier
+            ? FormattableString.Invariant($"Attached to Cassini · {distance * 1000:F2} m")
+            : snapshot.Epoch.CompareTo(probe.Track.Landing) < 0
+                ? FormattableString.Invariant($"Free flight · {distance:F1} km from Titan center")
+                : "Landed on Titan";
+        return true;
+    }
+
+    private void HideOrbitalMarkers()
+    {
+        _sun.Hide();
+        _earth.Hide();
+        _moon.Hide();
+        foreach (var (_, node) in _satellites.Values)
+            node.Hide();
     }
 
     private void DrawSaturn(SaturnSurfacePose pose)

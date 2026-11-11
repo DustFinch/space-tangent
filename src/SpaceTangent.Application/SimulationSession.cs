@@ -7,13 +7,14 @@ using SpaceTangent.Core.World;
 
 namespace SpaceTangent.Application;
 
-public enum CameraMode { Solar, Lunar, Satellites, Surface }
+public enum CameraMode { Solar, Lunar, Satellites, Surface, Mission }
 
 public readonly record struct ObserverView(JulianInstant Epoch, CameraMode Mode, ObjectId? Selection, bool Playing);
 
 public sealed class SimulationWorld
 {
-    public SimulationWorld(De440Ephemeris ephemeris, IEnumerable<ScienceSatellite> satellites)
+    public SimulationWorld(De440Ephemeris ephemeris, IEnumerable<ScienceSatellite> satellites,
+        SpiceSpacecraft? mission = null)
     {
         Ephemeris = ephemeris;
         Satellites = Array.AsReadOnly(satellites.ToArray());
@@ -21,17 +22,26 @@ public sealed class SimulationWorld
         graph.AddSolarSystem(ephemeris);
         foreach (ScienceSatellite satellite in Satellites)
             graph.AddScienceSatellite(satellite);
+        if (mission is not null)
+        {
+            MissionId = graph.AddSpiceSpacecraft(mission);
+            MissionName = mission.Name;
+        }
         Graph = graph.Build();
     }
 
     public De440Ephemeris Ephemeris { get; }
     public IReadOnlyList<ScienceSatellite> Satellites { get; }
     public WorldGraph Graph { get; }
+    public ObjectId? MissionId { get; }
+    public string? MissionName { get; }
 }
 
 /// <summary>Owns clocks and view preferences independently of rendering resources.</summary>
 public sealed class SimulationSession
 {
+    // A recorded Cassini Saturn orbit insertion epoch with both state and pointing coverage.
+    public static JulianInstant MissionPreview { get; } = JulianInstant.FromTdbSeconds(141917558.4203589);
     private readonly List<ObserverView> _views;
     private int _clockOwner;
 
@@ -82,7 +92,7 @@ public sealed class SimulationSession
 
     public void SetMode(int view, CameraMode mode)
     {
-        if (mode is < CameraMode.Solar or > CameraMode.Surface)
+        if (mode is < CameraMode.Solar or > CameraMode.Mission)
             throw new ArgumentOutOfRangeException(nameof(mode));
         ObserverView previous = _views[view];
         if (mode == CameraMode.Satellites)
@@ -91,6 +101,13 @@ public sealed class SimulationSession
                 ?? World.Satellites.FirstOrDefault()
                 ?? throw new InvalidOperationException("The current world has no satellites.");
             Select(view, target.Id);
+        }
+        if (mode == CameraMode.Mission)
+        {
+            ObjectId mission = World.MissionId ?? throw new InvalidOperationException("The current world has no mission.");
+            WorldSnapshot snapshot = World.Graph.Evaluate(previous.Epoch);
+            if (!snapshot.TryState(mission, out _) || !snapshot.TryOrientation(mission, out _))
+                Seek(view, MissionPreview);
         }
         _views[view] = _views[view] with { Mode = mode };
     }
@@ -142,7 +159,7 @@ public sealed class SimulationSession
         {
             if (_views[view].Playing)
             {
-                double rate = _views[view].Mode == CameraMode.Satellites ? 180 : JulianInstant.SecondsPerDay;
+                double rate = _views[view].Mode is CameraMode.Satellites or CameraMode.Mission ? 180 : JulianInstant.SecondsPerDay;
                 Step(view, elapsed * rate);
                 changed = true;
             }
@@ -161,7 +178,9 @@ public sealed class SimulationSession
             ObjectId? selected = previous.Selection is { } id && next.Satellites.Any(satellite => satellite.Id == id)
                 ? id
                 : null;
-            CameraMode mode = previous.Mode == CameraMode.Satellites && next.Satellites.Count == 0
+            bool lostMode = (previous.Mode == CameraMode.Satellites && next.Satellites.Count == 0) ||
+                (previous.Mode == CameraMode.Mission && next.MissionId is null);
+            CameraMode mode = lostMode
                 ? CameraMode.Solar
                 : previous.Mode;
             _views[index] = previous with { Selection = selected, Mode = mode };

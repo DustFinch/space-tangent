@@ -14,9 +14,12 @@ public partial class SolarSystemScene : Control
     private sealed record ViewControls(VBoxContainer Panel, SimulationViewport Renderer, Label Epoch,
         Button Play, OptionButton Mode, OptionButton Selection);
     private sealed record DecodedSatellite(ScienceSatellite Track, DecodedScienceModel Model);
+    private sealed record DecodedAddOns(SimulationWorld World, List<DecodedSatellite> Satellites, DecodedScienceModel? Mission);
+    private sealed record PublishedAddOns(IReadOnlyList<PreparedSatellite> Satellites, PreparedMission? Mission);
 
     private readonly List<ViewControls> _views = [];
     private IReadOnlyList<PreparedSatellite> _assets = [];
+    private PreparedMission? _mission;
     private SurfaceTextures? _surfaceTextures;
     private HBoxContainer _panels = null!;
     private Button _split = null!;
@@ -72,15 +75,17 @@ public partial class SolarSystemScene : Control
             return;
         }
 
+        SimulationWorld world = new(ephemeris, []);
         try
         {
             _status.Text = "Loading add-ons…";
-            string root = LocalDataPaths.Find("SPACETANGENT_SCIENCE_ROOT", "science", directory: true);
-            bool configured = !string.IsNullOrWhiteSpace(System.Environment.GetEnvironmentVariable("SPACETANGENT_SCIENCE_ROOT"));
-            var decoded = await Task.Run(() => DecodeAddOns(root, configured, token), token);
+            DecodedAddOns decoded = await LoadAddOns(ephemeris, token);
             if (!CanPublish(generation, token))
                 return;
-            _assets = PublishAddOns(decoded);
+            PublishedAddOns assets = PublishAddOns(decoded);
+            world = decoded.World;
+            _assets = assets.Satellites;
+            _mission = assets.Mission;
             _status.Text = "";
         }
         catch (OperationCanceledException)
@@ -102,7 +107,7 @@ public partial class SolarSystemScene : Control
             _status.Text = error.Message;
         }
 
-        Session = new(new SimulationWorld(ephemeris, _assets.Select(asset => asset.Track)),
+        Session = new(world,
             new(JulianInstant.J2000Day, 0, TimeScale.Tdb), ReadDeltaT());
         _split = AddButton(toolbar, "Split view", ToggleSplit);
         _sync = new CheckButton { Text = "Synchronize view time", ButtonPressed = true };
@@ -122,6 +127,8 @@ public partial class SolarSystemScene : Control
         Refresh();
         InitializationFinished = true;
         GD.Print($"SpaceTangent world ready: DE440, {_assets.Count} science satellites, surface view {_surfaceTextures is not null}.");
+        if (world.MissionName is { } mission)
+            GD.Print($"SpaceTangent mission ready: {mission}.");
         if (OS.GetCmdlineUserArgs().Contains("--smoke-startup"))
             GetTree().Quit();
     }
@@ -224,16 +231,14 @@ public partial class SolarSystemScene : Control
         try
         {
             _status.Text = "Reloading add-ons…";
-            string root = LocalDataPaths.Find("SPACETANGENT_SCIENCE_ROOT", "science", directory: true);
-            bool configured = !string.IsNullOrWhiteSpace(System.Environment.GetEnvironmentVariable("SPACETANGENT_SCIENCE_ROOT"));
-            var decoded = await Task.Run(() => DecodeAddOns(root, configured, token), token);
+            DecodedAddOns decoded = await LoadAddOns(Session!.World.Ephemeris, token);
             if (!CanPublish(generation, token))
                 return false;
-            IReadOnlyList<PreparedSatellite> next = PublishAddOns(decoded);
-            var world = new SimulationWorld(Session!.World.Ephemeris, next.Select(asset => asset.Track));
-            if (!Session.TryReplaceWorld(world))
+            PublishedAddOns next = PublishAddOns(decoded);
+            if (!Session.TryReplaceWorld(decoded.World))
                 throw new InvalidOperationException("The new world does not cover the current epochs.");
-            _assets = next;
+            _assets = next.Satellites;
+            _mission = next.Mission;
             foreach (ViewControls view in _views)
                 ReplaceAssets(view);
             Refresh();
@@ -288,6 +293,7 @@ public partial class SolarSystemScene : Control
         mode.AddItem("Earth–Moon view", (int)CameraMode.Lunar);
         mode.AddItem("Earth satellites", (int)CameraMode.Satellites);
         mode.AddItem("Earth surface", (int)CameraMode.Surface);
+        mode.AddItem("Cassini at Saturn", (int)CameraMode.Mission);
         mode.SetItemDisabled((int)CameraMode.Surface, _surfaceTextures is null);
         mode.ItemSelected += item => SetMode(index, (CameraMode)mode.GetItemId((int)item));
         tools.AddChild(mode);
@@ -320,10 +326,12 @@ public partial class SolarSystemScene : Control
     private void ReplaceAssets(ViewControls view)
     {
         view.Renderer.ReplaceSatellites(_assets);
+        view.Renderer.ReplaceMission(_mission);
         view.Selection.Clear();
         foreach (PreparedSatellite asset in _assets)
             view.Selection.AddItem(asset.Track.Name);
         view.Mode.SetItemDisabled((int)CameraMode.Satellites, _assets.Count == 0);
+        view.Mode.SetItemDisabled((int)CameraMode.Mission, _mission is null);
     }
 
     private void Refresh()
@@ -336,7 +344,9 @@ public partial class SolarSystemScene : Control
             bool available = controls.Renderer.Draw(view, session.World.Graph.Evaluate(view.Epoch), session.DeltaT);
             controls.Epoch.Text = FormattableString.Invariant($"View {index + 1}   JD {view.Epoch.ToJulianDate():F6} TDB");
             if (!available)
-                controls.Epoch.Text += "   Surface view is available for 1900–2099.";
+                controls.Epoch.Text += view.Mode == CameraMode.Mission
+                    ? "   Cassini state or pointing is outside kernel coverage."
+                    : "   Surface view is available for 1900–2099.";
             controls.Play.Text = view.Playing ? "Pause" : "Play";
             controls.Mode.Select((int)view.Mode);
             controls.Selection.Visible = view.Mode == CameraMode.Satellites;
@@ -350,27 +360,64 @@ public partial class SolarSystemScene : Control
         }
     }
 
-    private static IReadOnlyList<DecodedSatellite> DecodeAddOns(string root, bool configured, CancellationToken cancellation)
+    private static Task<DecodedAddOns> LoadAddOns(De440Ephemeris ephemeris, CancellationToken cancellation)
     {
-        string catalog = Path.Combine(root, "catalog", "sciencesat.json");
-        if (!configured && !File.Exists(catalog))
-            return [];
-
-        var satellites = new List<DecodedSatellite>();
-        foreach (ScienceSatellite track in ScienceSatelliteCatalog.Load(catalog, root))
-        {
-            cancellation.ThrowIfCancellationRequested();
-            satellites.Add(new(track, ScienceModelDecoder.Decode(track.MeshPath, cancellation)));
-        }
-        return satellites;
+        string root = LocalDataPaths.Find("SPACETANGENT_SCIENCE_ROOT", "science", directory: true);
+        bool configured = !string.IsNullOrWhiteSpace(System.Environment.GetEnvironmentVariable("SPACETANGENT_SCIENCE_ROOT"));
+        string? explicitMission = System.Environment.GetEnvironmentVariable("SPACETANGENT_MISSION_CATALOG");
+        string missionJson = LocalDataPaths.Find("SPACETANGENT_MISSION_CATALOG", "mission/cassini.json");
+        string missionSsc = LocalDataPaths.Find("SPACETANGENT_MISSION_CATALOG", "mission/cassini.ssc");
+        return Task.Run(() => DecodeAddOns(ephemeris, root, configured, explicitMission, missionJson, missionSsc, cancellation),
+            cancellation);
     }
 
-    private static IReadOnlyList<PreparedSatellite> PublishAddOns(IReadOnlyList<DecodedSatellite> decoded)
+    private static DecodedAddOns DecodeAddOns(De440Ephemeris ephemeris, string root, bool configured,
+        string? explicitMission, string missionJson, string missionSsc, CancellationToken cancellation)
     {
-        var satellites = new List<PreparedSatellite>(decoded.Count);
-        foreach (DecodedSatellite item in decoded)
+        string catalog = Path.Combine(root, "catalog", "sciencesat.json");
+        var satellites = new List<DecodedSatellite>();
+        if (configured || File.Exists(catalog))
+        {
+            foreach (ScienceSatellite track in ScienceSatelliteCatalog.Load(catalog, root))
+            {
+                cancellation.ThrowIfCancellationRequested();
+                satellites.Add(new(track, ScienceModelDecoder.Decode(track.MeshPath, cancellation)));
+            }
+        }
+        cancellation.ThrowIfCancellationRequested();
+        string? missionPath = !string.IsNullOrWhiteSpace(explicitMission) ? explicitMission
+            : File.Exists(missionJson) ? missionJson : File.Exists(missionSsc) ? missionSsc : null;
+        SpiceSpacecraft? mission = missionPath is null ? null : ReadMission(missionPath);
+        DecodedScienceModel? model = mission is null ? null : StudioMeshDecoder.Decode(mission.MeshPath, cancellation);
+        return new(new SimulationWorld(ephemeris, satellites.Select(asset => asset.Track), mission), satellites, model);
+    }
+
+    private static SpiceSpacecraft ReadMission(string path)
+    {
+        string fullPath = Path.GetFullPath(path);
+        string root = Path.GetDirectoryName(fullPath)!;
+        IReadOnlyList<SpiceSpacecraft> entries = Path.GetExtension(fullPath).ToLowerInvariant() switch
+        {
+            ".ssc" => SscSpiceCatalog.Load(fullPath, root),
+            ".json" => SpiceJsonCatalog.Load(fullPath, root).Spacecraft,
+            _ => throw new NotSupportedException("Use an SSC or JSON mission catalogue.")
+        };
+        if (entries.Count != 1 || entries[0].Target != -82 || entries[0].Center != 6 || entries[0].AttitudeFrame is null)
+            throw new NotSupportedException("This mission view expects a single Cassini track at Saturn with CK pointing.");
+        SpiceSpacecraft mission = entries[0];
+        if (!mission.TrySample(SimulationSession.MissionPreview, out _) || !mission.TryAttitude(SimulationSession.MissionPreview, out _))
+            throw new InvalidDataException("The mission kernels do not cover the Cassini orbit insertion preview.");
+        return mission;
+    }
+
+    private static PublishedAddOns PublishAddOns(DecodedAddOns decoded)
+    {
+        var satellites = new List<PreparedSatellite>(decoded.Satellites.Count);
+        foreach (DecodedSatellite item in decoded.Satellites)
             satellites.Add(new(item.Track, ScienceMeshLoader.Publish(item.Model), (float)(18 / item.Model.Diameter)));
-        return satellites;
+        PreparedMission? mission = decoded.Mission is { } model
+            ? new(decoded.World.MissionId!.Value, ScienceMeshLoader.Publish(model), (float)(18 / model.Diameter)) : null;
+        return new(satellites, mission);
     }
 
     private static bool IsLoadError(Exception error) =>

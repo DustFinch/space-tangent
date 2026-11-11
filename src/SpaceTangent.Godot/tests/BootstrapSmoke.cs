@@ -28,6 +28,8 @@ public partial class BootstrapSmoke : Node
                 CheckSimulation(scene);
             if (!string.IsNullOrWhiteSpace(System.Environment.GetEnvironmentVariable("SPACETANGENT_SCIENCE_ROOT")))
                 await CheckSatellitesAndReload(scene);
+            if (!string.IsNullOrWhiteSpace(System.Environment.GetEnvironmentVariable("SPACETANGENT_MISSION_CATALOG")))
+                await CheckMission(scene);
 
             GD.Print("SpaceTangent bootstrap smoke passed");
             GetTree().Quit();
@@ -136,6 +138,52 @@ public partial class BootstrapSmoke : Node
         {
             System.Environment.SetEnvironmentVariable("SPACETANGENT_SCIENCE_ROOT", original);
         }
+    }
+
+    private async Task CheckMission(SolarSystemScene scene)
+    {
+        SimulationSession session = scene.Session!;
+        Require(session.World.MissionId == new ObjectId("naif/-82"), "The original mission catalogue must publish Cassini.");
+        if (session.ViewCount == 1)
+            scene.ToggleSplit();
+        scene.Synchronize(false, 0);
+        ObserverView other = session[1];
+        scene.SetMode(0, CameraMode.Mission);
+        var renderer = scene.Renderer(0);
+        MeshInstance3D cassini = renderer.MissionMesh;
+        Require(session[0].Epoch == SimulationSession.MissionPreview && session[1] == other,
+            "Mission preview must move only the independent observer.");
+        Require(cassini.Visible && cassini.Mesh is ArrayMesh mesh && mesh.GetSurfaceCount() == 10 &&
+            Enumerable.Range(0, 10).Sum(mesh.SurfaceGetArrayLen) == 15_750 * 3 &&
+            Enumerable.Range(0, 10).Count(index => mesh.SurfaceGetMaterial(index) is StandardMaterial3D material &&
+                material.AlbedoColor.A == 0) == 1, "Expected the original 3DS geometry and transparency.");
+        // CSPICE position relative to the Saturn barycenter and CK frame X, in J2000.
+        Vector3 expected = new(73711.66990445752f, 12783.15305085113f, 89824.80357842673f);
+        Vector3 expectedAxis = new(.0731622600765734f, .9970840780335287f, -.021693893899345944f);
+        Require(cassini.Position.DistanceTo(expected / 2500) < .0001f &&
+            cassini.Basis.X.Normalized().DistanceTo(expectedAxis) < .000001f, "Cassini transform must match SPICE.");
+
+        string? capture = System.Environment.GetEnvironmentVariable("SPACETANGENT_MISSION_CAPTURE");
+        if (!string.IsNullOrWhiteSpace(capture))
+        {
+            await ToSignal(GetTree(), SceneTree.SignalName.ProcessFrame);
+            await ToSignal(RenderingServer.Singleton, RenderingServer.SignalName.FramePostDraw);
+            using Image image = renderer.GetViewport().GetTexture().GetImage();
+            Require(image.SavePng(capture) == Error.Ok, "Could not save the mission view.");
+        }
+
+        scene.SetMode(1, CameraMode.Mission);
+        scene.Seek(1, JulianInstant.FromTdbSeconds(141918830.41202343));
+        MeshInstance3D second = scene.Renderer(1).MissionMesh;
+        Require(second.Visible && second.Position.DistanceTo(cassini.Position) > 10 &&
+            second.Basis.X.Normalized().DistanceTo(cassini.Basis.X.Normalized()) > .02f,
+            "Separate epochs must change both the mission state and pointing.");
+        scene.Seek(1, JulianInstant.FromTdbSeconds(141919293.40898937));
+        Require(!second.Visible && cassini.Visible, "A CK gap must hide only that observer's model.");
+        ObserverView left = session[0], right = session[1];
+        Require(await scene.ReloadAddOns() && left == session[0] && right == session[1] && cassini.Visible && !second.Visible,
+            "Mission reload must preserve both clocks and pointing availability.");
+        GD.Print("SpaceTangent Cassini geometry, SPICE transform and two-view reload smoke passed");
     }
 
     private static void VerifyMesh(MeshInstance3D node, int triangles, int surfaces, int textureCount)

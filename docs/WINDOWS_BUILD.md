@@ -13,5 +13,6 @@ Keep the exported executable, resource pack and managed assembly directory toget
 - `data/de440.440` contains the verified DE440 input.
 - `data/science` uses the layout in [the science add-on notes](SCIENCE_ADDONS.md).
 - `data/surface` contains the two files in [the full-Moon observation notes](MOON_LIGHTING.md).
+- `data/mission` optionally contains the Cassini mission catalogue, original model and its local kernels. See [the mission setup](CASSINI_MISSION.md).
 
 The source export excludes test scenes and local data. Distribute external data according to its own terms.

@@ -10,15 +10,19 @@ using SpaceTangent.Core.World;
 namespace SpaceTangent.Godot.Simulation;
 
 internal sealed record PreparedSatellite(ScienceSatellite Track, ArrayMesh Mesh, float MarkerScale);
+internal sealed record PreparedMission(ObjectId Id, ArrayMesh Mesh, float MarkerScale);
 
 internal partial class SimulationViewport : Node3D
 {
     private const double OverviewKilometersPerUnit = 1_000_000;
     private const double LunarKilometersPerUnit = 4_000;
     private const double SatelliteKilometersPerUnit = 75;
+    private const double MissionKilometersPerUnit = 2500;
 
     private Camera3D _camera = null!;
-    private Node3D _sun = null!, _earth = null!, _moon = null!;
+    private Node3D _sun = null!, _earth = null!, _moon = null!, _saturn = null!;
+    private PreparedMission? _mission;
+    private MeshInstance3D _missionNode = null!;
     private SurfaceProjection? _surface;
     private readonly Dictionary<ObjectId, (PreparedSatellite Asset, MeshInstance3D Node)> _satellites = new();
 
@@ -42,6 +46,9 @@ internal partial class SimulationViewport : Node3D
         _sun = CreateMarker("Sun", new Color("#ffce69"), 4);
         _earth = CreateMarker("Earth", new Color("#6fa8ff"), 3);
         _moon = CreateMarker("Moon", new Color("#cbd3e4"), 2.4f);
+        _saturn = CreateMarker("Saturn barycenter", new Color("#d9bb7f"), 9);
+        _missionNode = new MeshInstance3D { Visible = false };
+        AddChild(_missionNode);
     }
 
     private void FitCamera()
@@ -69,6 +76,15 @@ internal partial class SimulationViewport : Node3D
 
     internal MeshInstance3D SatelliteMesh(ObjectId id) => _satellites[id].Node;
 
+    internal MeshInstance3D MissionMesh => _missionNode;
+
+    internal void ReplaceMission(PreparedMission? asset)
+    {
+        _mission = asset;
+        _missionNode.Mesh = asset?.Mesh;
+        _missionNode.Hide();
+    }
+
     internal void SetSurfaceTextures(SurfaceTextures textures) => _surface = new SurfaceProjection(this, textures);
 
     internal void SetSurfaceControls(bool clouds, bool lunarLight) => _surface!.SetControls(clouds, lunarLight);
@@ -76,6 +92,8 @@ internal partial class SimulationViewport : Node3D
     internal bool Draw(ObserverView observer, WorldSnapshot snapshot, DeltaTModel deltaT)
     {
         SolarSystemSample sample = snapshot.SolarSystem ?? throw new InvalidOperationException("The view needs a solar-system snapshot.");
+        _saturn.Visible = observer.Mode == CameraMode.Mission;
+        _missionNode.Hide();
         if (_surface is { } surface)
         {
             bool isSurface = observer.Mode == CameraMode.Surface;
@@ -84,11 +102,15 @@ internal partial class SimulationViewport : Node3D
                 return true;
         }
 
+        if (observer.Mode == CameraMode.Mission)
+            return DrawMission(snapshot);
+
         ObjectId origin = observer.Mode == CameraMode.Solar ? SolarSystemSample.SunId : SolarSystemSample.EarthId;
         double scale = observer.Mode == CameraMode.Solar ? OverviewKilometersPerUnit : LunarKilometersPerUnit;
         _sun.Position = ToGodot(sample.RelativeState(SolarSystemSample.SunId, origin).PositionKilometers, scale);
         _earth.Position = ToGodot(sample.RelativeState(SolarSystemSample.EarthId, origin).PositionKilometers, scale);
         _moon.Position = ToGodot(sample.RelativeState(SolarSystemSample.MoonId, origin).PositionKilometers, scale);
+        _earth.Show();
         _sun.Visible = observer.Mode == CameraMode.Solar;
         _moon.Visible = observer.Mode == CameraMode.Lunar;
         _camera.Size = observer.Mode == CameraMode.Solar ? 365 : 250;
@@ -113,6 +135,31 @@ internal partial class SimulationViewport : Node3D
             node.Show();
         }
         return observer.Mode != CameraMode.Surface;
+    }
+
+    private bool DrawMission(WorldSnapshot snapshot)
+    {
+        _sun.Hide();
+        _earth.Hide();
+        _moon.Hide();
+        foreach (var (_, node) in _satellites.Values)
+            node.Hide();
+
+        _camera.Size = 210;
+        if (_mission is not { } mission || !snapshot.TryState(mission.Id, out var state) ||
+            !snapshot.TryState(SolarSystemSample.SaturnBarycenterId, out var center))
+            return false;
+
+        Vector3 position = ToGodot((state - center).PositionKilometers, MissionKilometersPerUnit);
+        _camera.Size = Math.Max(210, 2.5f * position.Length());
+        if (!snapshot.TryOrientation(mission.Id, out var rotation))
+            return false;
+
+        Basis3d body = rotation.ToWorld;
+        Vector3 Column(Vector3d axis) => ToGodot(axis, 1) * mission.MarkerScale;
+        _missionNode.Transform = new(new Basis(Column(body.X), Column(body.Y), Column(body.Z)), position);
+        _missionNode.Show();
+        return true;
     }
 
     private static Vector3 ToGodot(Vector3d value, double scale) =>

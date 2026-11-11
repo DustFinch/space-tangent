@@ -223,7 +223,7 @@ internal partial class SimulationViewport : Node3D
         if (_surface is { } surface)
         {
             bool isSurface = observer.Mode == CameraMode.Surface;
-            bool available = surface.Draw(isSurface, sample, deltaT);
+            bool available = surface.Draw(isSurface, sample, deltaT, observer.EarthObserver);
             if (isSurface && available)
                 return true;
         }

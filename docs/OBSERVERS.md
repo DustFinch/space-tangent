@@ -20,6 +20,14 @@ Selecting an object leaves the epoch unchanged. If an Earth satellite has no sta
 
 Saving a scenario writes both camera poses and tracking settings. Open the scenario again after restarting to restore those views. Version 1 scenarios open with their original preset cameras.
 
+## Observing from Earth
+
+Open **Location** to choose Moscow or Tromsø, or enter latitude, east longitude and height from 0 to 100 kilometres. Set the azimuth clockwise from north and the elevation above the local horizon, then choose **Apply to this view**. Each view can show its own horizon grid and cardinal points. **Full Moon · Moscow** restores the original site, direction and epoch.
+
+**Ephemerides** shows the selected object's geometric altitude and azimuth at the active view's site and epoch. It also estimates civil twilight from the Sun's centre crossing −6° and the conventional level-horizon sunrise and sunset altitude of −0.833°. The date follows local mean solar time and event times are shown in UTC. The model uses a spherical Earth and a mean equator. Terrain and local atmospheric refraction can affect observed rise and set times.
+
+Version 3 scenarios store each view's Earth observer camera and horizon overlays. Versions 1 and 2 keep the original default Moscow camera when they open an Earth surface view.
+
 ## Headless workspace input test
 
 After building the Godot project, set `SPACETANGENT_DE440`, `SPACETANGENT_SCIENCE_ROOT` and `SPACETANGENT_SURFACE_TEXTURES` to the local DE440 file, original science add-ons and Earth surface textures. From the repository root, run:

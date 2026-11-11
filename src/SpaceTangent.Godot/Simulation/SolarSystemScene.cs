@@ -27,7 +27,8 @@ public partial class SolarSystemScene : Control
     private SurfaceTextures? _surfaceTextures;
     private SimulatorWorkspace _workspace = null!;
     private ObjectSearchPanel _objectSearch = null!;
-    private Label _timeHeading = null!, _dataSummary = null!, _ephemerisSummary = null!;
+    private Label _timeHeading = null!, _dataSummary = null!;
+    private EarthObserverPanel _earthObserver = null!;
     private Button _satelliteLayersMode = null!;
     private Button _playFromPanel = null!;
     private Label _calendarTime = null!;
@@ -197,28 +198,18 @@ public partial class SolarSystemScene : Control
         _satelliteLayersMode = AddButton(layers, "Earth satellites view", () => SetMode(_active, CameraMode.Satellites));
         _workspace.AddRailSeparator();
         var location = _workspace.AddPage("Location", "Observer location");
-        location.AddChild(SimulatorTheme.Section("Observer site · Earth"));
-        WorkspacePanelLayout.DisabledField(location, "Find a city or observatory");
-        var site = new HBoxContainer();
-        location.AddChild(site);
-        WorkspacePanelLayout.DisabledField(site, "Latitude");
-        WorkspacePanelLayout.DisabledField(site, "Longitude");
-        var fullMoon = AddButton(location, "Full Moon · Moscow", () => ShowFullMoon(_active));
-        fullMoon.Name = "ShowFullMoon";
-        fullMoon.Disabled = _surfaceTextures is null;
-        location.AddChild(SimulatorTheme.Detail("55.7558° N · 37.6173° E"));
-        location.AddChild(SimulatorTheme.Section("Horizon"));
-        WorkspacePanelLayout.DisabledChecks(location, "Cardinal points", "Horizon grid");
-        location.AddChild(SimulatorTheme.Section("Atmosphere"));
-        WorkspacePanelLayout.DisabledChecks(location, "Refraction", "Meteors");
         var ephemerides = _workspace.AddPage("Ephemerides", "Ephemerides");
-        ephemerides.AddChild(SimulatorTheme.Section("Current view"));
-        _ephemerisSummary = SimulatorTheme.Detail("");
-        ephemerides.AddChild(_ephemerisSummary);
-        ephemerides.AddChild(SimulatorTheme.Section("Twilight"));
-        WorkspacePanelLayout.DisabledSegments(ephemerides, "Morning", "Evening");
-        ephemerides.AddChild(SimulatorTheme.Section("Rise, transit and set"));
-        WorkspacePanelLayout.DisabledField(ephemerides, "Choose an observing site");
+        _earthObserver = new(location, ephemerides, _surfaceTextures is not null, camera =>
+        {
+            Session!.SetEarthObserver(_active, camera);
+            _status.Text = "";
+            SetMode(_active, CameraMode.Surface);
+        }, () => ShowFullMoon(_active), message => _status.Text = message);
+        ephemerides.VisibilityChanged += () =>
+        {
+            if (_views.Count > 0 && ephemerides.IsVisibleInTree())
+                UpdateActiveFrame();
+        };
         WorkspacePanelLayout.Optics(_workspace.AddPage("Optics", "Eyepieces and telescopes"));
         WorkspacePanelLayout.SkyCultures(_workspace.AddPage("SkyCultures", "Sky cultures"));
         _workspace.AddRailSeparator();
@@ -413,6 +404,7 @@ public partial class SolarSystemScene : Control
 
     internal void ShowFullMoon(int view)
     {
+        Session!.SetEarthObserver(view, EarthObserverCamera.Moscow);
         SetMode(view, CameraMode.Surface);
         Seek(view, SurfaceProjection.FullMoonEpoch);
     }
@@ -851,7 +843,7 @@ public partial class SolarSystemScene : Control
         _timeHeading.Text = FormattableString.Invariant($"JD {active.Epoch.ToJulianDate():F6}");
         _calendarTime.Text = UtcLabel(active.Epoch);
         _playFromPanel.Text = active.Playing ? "Pause" : "Play";
-        _ephemerisSummary.Text = _timeHeading.Text + " TDB\nJPL DE440";
+        _earthObserver.Update(_active, active, _views[_active].Snapshot, Session.World.Ephemeris, Session.DeltaT);
         _objectSearch.UpdateSelection(active.Selection);
         var target = active.Selection is { } selection ? Session.World.Catalogue.Find(selection) : null;
         bool tracking = active.Navigation is { Tracking: true } pose && pose.Target == target?.Id;

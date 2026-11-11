@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
 using Godot;
+using SpaceTangent.Application;
 using SpaceTangent.Contracts;
 using SpaceTangent.Core.Ephemerides;
 using SpaceTangent.Core.Observing;
@@ -12,12 +13,12 @@ internal sealed record SurfaceTextures(Texture2D Clouds, Texture2D Moon);
 internal sealed class SurfaceProjection
 {
     internal static readonly JulianInstant FullMoonEpoch = JulianInstant.FromJulianDate(2460600.5008, TimeScale.Tdb);
-    private static readonly EarthSite Site = new(55.7558, 37.6173, .15);
     private const double Degrees = Math.PI / 180;
-    private const double Heading = 237 * Degrees;
     private readonly ColorRect _surface;
     private readonly ShaderMaterial _material;
-    internal double PitchDegrees { get; set; } = 28;
+    private readonly Label[] _cardinals;
+    private (Vector3 Forward, Vector3 Right, Vector3 Up, Vector3 North, Vector3 East)? _cardinalFrame;
+    internal double? PitchDegrees { get; set; }
 
     internal SurfaceProjection(Node owner, SurfaceTextures textures)
     {
@@ -29,18 +30,21 @@ internal sealed class SurfaceProjection
         _surface = new ColorRect { Material = _material, MouseFilter = Control.MouseFilterEnum.Ignore, Visible = false };
         layer.AddChild(_surface);
         _surface.SetAnchorsAndOffsetsPreset(Control.LayoutPreset.FullRect);
+        _cardinals = new[] { "N", "E", "S", "W" }.Select(CreateCardinal).ToArray();
+        _surface.Resized += PlaceCardinals;
     }
 
-    internal bool Draw(bool surface, SolarSystemSample sample, DeltaTModel model)
+    internal bool Draw(bool surface, SolarSystemSample sample, DeltaTModel model, EarthObserverCamera? camera = null)
     {
         _surface.Visible = surface;
         if (!surface)
             return true;
 
+        EarthObserverCamera observer = camera ?? EarthObserverCamera.Moscow;
         SurfaceLighting lighting;
         try
         {
-            lighting = EarthSurfaceLighting.Sample(sample, Site, model);
+            lighting = EarthSurfaceLighting.Sample(sample, observer.Site, model);
         }
         catch (ArgumentOutOfRangeException)
         {
@@ -51,10 +55,11 @@ internal sealed class SurfaceProjection
         Vector3 east = Convert(lighting.EastNorthUp.X);
         Vector3 north = Convert(lighting.EastNorthUp.Y);
         Vector3 up = Convert(lighting.EastNorthUp.Z);
-        Vector3 horizontal = north * (float)Math.Cos(Heading) + east * (float)Math.Sin(Heading);
-        double pitch = PitchDegrees * Degrees;
+        double heading = observer.AzimuthDegrees * Degrees;
+        Vector3 horizontal = north * (float)Math.Cos(heading) + east * (float)Math.Sin(heading);
+        double pitch = (PitchDegrees ?? observer.ElevationDegrees) * Degrees;
         Vector3 forward = horizontal * (float)Math.Cos(pitch) + up * (float)Math.Sin(pitch);
-        Vector3 right = forward.Cross(up).Normalized();
+        Vector3 right = horizontal.Cross(up).Normalized();
         Vector3 cameraUp = right.Cross(forward);
         _material.SetShaderParameter("observer", Convert(lighting.PositionKilometers));
         _material.SetShaderParameter("forward", forward);
@@ -66,7 +71,47 @@ internal sealed class SurfaceProjection
         _material.SetShaderParameter("earth_radius", (float)EarthSurfaceLighting.EarthRadiusKilometers);
         _material.SetShaderParameter("moon_radius", (float)EarthSurfaceLighting.MoonRadiusKilometers);
         _material.SetShaderParameter("lunar_strength", (float)Math.Clamp(.12 * lighting.RelativeLunarFlux, 0, 1));
+        _material.SetShaderParameter("site_north", north);
+        _material.SetShaderParameter("site_east", east);
+        _material.SetShaderParameter("show_horizon_grid", observer.HorizonGrid);
+        _cardinalFrame = observer.CardinalPoints ? (forward, right, cameraUp, north, east) : null;
+        PlaceCardinals();
         return true;
+    }
+
+    private Label CreateCardinal(string text)
+    {
+        var label = new Label { Text = text, MouseFilter = Control.MouseFilterEnum.Ignore, Visible = false };
+        label.AddThemeColorOverride("font_color", new Color(.55f, .78f, .94f));
+        label.AddThemeColorOverride("font_outline_color", Colors.Black);
+        label.AddThemeConstantOverride("outline_size", 4);
+        _surface.AddChild(label);
+        return label;
+    }
+
+    private void PlaceCardinals()
+    {
+        Vector2 size = _surface.Size;
+        const float tanHalfField = .087488664f;
+        for (int index = 0; index < _cardinals.Length; index++)
+        {
+            Label label = _cardinals[index];
+            label.Hide();
+            if (_cardinalFrame is not { } frame || size.X <= 0 || size.Y <= 0)
+                continue;
+            Vector3 axis = index % 2 == 0 ? frame.North : frame.East;
+            if (index >= 2)
+                axis = -axis;
+            float depth = axis.Dot(frame.Forward);
+            if (depth <= 0)
+                continue;
+            float scale = size.Y / (2 * depth * tanHalfField);
+            Vector2 point = size / 2 + new Vector2(axis.Dot(frame.Right), -axis.Dot(frame.Up)) * scale;
+            if (!new Rect2(Vector2.Zero, size).HasPoint(point))
+                continue;
+            label.Position = point - new Vector2(label.GetCombinedMinimumSize().X / 2, label.GetCombinedMinimumSize().Y + 3);
+            label.Show();
+        }
     }
 
     internal void SetControls(bool clouds, bool lunarLight)

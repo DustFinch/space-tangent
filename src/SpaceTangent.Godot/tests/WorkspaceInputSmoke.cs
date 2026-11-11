@@ -4,6 +4,7 @@ using SpaceTangent.Application;
 using SpaceTangent.Contracts;
 using SpaceTangent.Core.Time;
 using SpaceTangent.Godot.Simulation;
+using System.Text.Json.Nodes;
 
 namespace SpaceTangent.Godot.Tests;
 
@@ -80,6 +81,18 @@ public partial class WorkspaceInputSmoke : Node
             Require(Find<OptionButton>("DeltaTModel").GetSelectedId() == (int)expected.DeltaT,
                 "The ΔT control must reflect the restored scenario.");
             GD.Print("UI: saved, changed and reopened the scenario with both cameras and ΔT restored");
+
+            var oldScene = JsonNode.Parse(File.ReadAllText(scenario))!.AsObject();
+            oldScene["version"] = 2;
+            foreach (var view in oldScene["views"]!.AsArray())
+                view!.AsObject().Remove("earthObserver");
+            const string oldFilename = "version-two.stscene";
+            File.WriteAllText(Path.Combine(scratch.FullName, oldFilename), oldScene.ToJsonString());
+            await UseScenarioDialog("OpenScenario", 0, scratch.FullName, oldFilename);
+            Require(Session[1].EarthObserver is null && Session[1].Mode == CameraMode.Surface &&
+                    Session[0].Navigation == expected.Views[0].Navigation,
+                "A version 2 scenario must restore tracking and keep the original default Earth camera.");
+            await ExerciseObserverSites(scratch.FullName, science!);
             GD.Print($"SpaceTangent workspace input smoke passed ({DisplayServer.GetName()})");
             exitCode = 0;
         }
@@ -94,6 +107,82 @@ public partial class WorkspaceInputSmoke : Node
             scratch?.Delete(recursive: true);
             Tree.Quit(exitCode);
         }
+    }
+
+    private async Task ExerciseObserverSites(string directory, string originalScience)
+    {
+        var epochLeft = Session[0].Epoch;
+        var epochRight = Session[1].Epoch;
+        await Click(Find<SubViewportContainer>("ViewCanvas0"));
+        await Click(Find<Button>("LocationTab"));
+        var site = Find<OptionButton>("ObserverSite");
+        await Click(site);
+        await ChooseMenuItem(site.GetPopup(), 2);
+        Require(Session[0].EarthObserver?.Site == EarthObserverCamera.Tromso.Site, "Selecting Tromsø must set the left site.");
+
+        var preset = Session[0];
+        await FillField("ObserverLatitude", "91");
+        await Click(Find<Button>("ApplyObserver"));
+        Require(Session[0] == preset && Find<Label>("WorkspaceStatus").Text.Contains("latitude"),
+            "An out-of-range site must leave the view unchanged and explain the error.");
+        await FillField("ObserverLatitude", "69.6500");
+        await FillField("ObserverLongitude", "18.9500");
+        await FillField("ObserverHeight", "0.025");
+        await FillField("ObserverAzimuth", "180");
+        await FillField("ObserverElevation", "0");
+        await Click(Find<Button>("ApplyObserver"));
+        await Click(Find<CheckButton>("HorizonGrid"));
+        await Click(Find<CheckButton>("CardinalPoints"));
+        EarthObserverCamera left = Session[0].EarthObserver!.Value;
+        Require(left.Site == new SpaceTangent.Core.Observing.EarthSite(69.65, 18.95, .025) &&
+                left.AzimuthDegrees == 180 && left.ElevationDegrees == 0 &&
+                left.HorizonGrid && left.CardinalPoints && Session[0].Mode == CameraMode.Surface &&
+                Session[0].Epoch == epochLeft && Session[1].Epoch == epochRight && Session[1].EarthObserver is null,
+            "The editable direction and overlays must affect only the left view and preserve both clocks.");
+
+        await Click(Find<SubViewportContainer>("ViewCanvas1"));
+        await Click(Find<Button>("ShowFullMoon"));
+        Require(Session[1].EarthObserver == EarthObserverCamera.Moscow && Session[0].EarthObserver == left,
+            "The full-Moon preset must restore Moscow and its original direction in the right view only.");
+        await Click(Find<Button>("SearchTab"));
+        await FillField("ObjectQuery", "Moon");
+        var results = Find<Container>("ObjectResults");
+        var moon = results.FindChildren("*", "Button", recursive: true, owned: false).OfType<Button>()
+            .Single(button => button.TooltipText == "sol/moon");
+        await Click(moon);
+        await Click(Find<Button>("EphemeridesTab"));
+        await Until(() => Find<Label>("HorizontalCoordinates").Text.Contains("Azimuth"),
+            "Showing the selected Moon's horizontal coordinates");
+        Require(Find<Label>("CivilTwilight").Text.Contains("Morning") && Find<Label>("CivilTwilight").Text.Contains("Evening"),
+            "The Moscow ephemerides panel must show both civil twilight intervals.");
+
+        var expected = Session.CaptureScenario(1);
+        var oldWorld = Session.World;
+        System.Environment.SetEnvironmentVariable("SPACETANGENT_SCIENCE_ROOT", originalScience);
+        await Click(Find<Button>("AddOnsTab"));
+        await Click(Find<Button>("ReloadAddOns"));
+        await Until(() => !ReferenceEquals(oldWorld, Session.World), "Reloading with two Earth observers", 20);
+        RequireScenario(expected, Session.CaptureScenario(1), "Reloading with two Earth observers");
+
+        const string filename = "earth-observers.stscene";
+        string path = Path.Combine(directory, filename);
+        await UseScenarioDialog("SaveScenario", 1, directory, filename);
+        RequireScenario(expected, ScenarioFile.Load(path), "Saving both Earth observers");
+        await Click(Find<Button>("SplitViews"));
+        await UseScenarioDialog("OpenScenario", 0, directory, filename);
+        RequireScenario(expected, Session.CaptureScenario(1), "Reopening both Earth observers");
+        if (System.Environment.GetEnvironmentVariable("SPACETANGENT_OBSERVER_SCENE") is { Length: > 0 } capture)
+            File.Copy(path, capture, overwrite: true);
+        GD.Print("UI: verified Moscow and Tromsø, horizontal coordinates, twilight, and both observers after reload and reopen");
+    }
+
+    private async Task FillField(string name, string value)
+    {
+        var field = Find<LineEdit>(name);
+        await Click(field);
+        await KeyPress(Key.A, ctrl: true);
+        await TypeText(value);
+        Require(field.Text == value, $"The {name} field must receive the requested value.");
     }
 
     private async Task ExerciseViews()

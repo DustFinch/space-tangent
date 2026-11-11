@@ -16,6 +16,9 @@ uniform float earth_angle;
 uniform float earth_radius;
 uniform float moon_radius;
 uniform float lunar_strength;
+uniform vec3 site_north;
+uniform vec3 site_east;
+uniform bool show_horizon_grid = false;
 uniform bool show_clouds = true;
 uniform bool lunar_cloud_light = true;
 
@@ -69,6 +72,11 @@ vec3 lunar_disc(vec3 ray, vec3 moon_dir, float moon_distance, vec3 background) {
     return pow(max(lunar, vec3(0.0)), vec3(0.58)) * (0.035 + 1.35 * diffuse);
 }
 
+float grid_line(float coordinate) {
+    float distance = abs(fract(coordinate + 0.5) - 0.5);
+    return 1.0 - smoothstep(0.0, max(fwidth(coordinate), 0.001), distance);
+}
+
 void fragment() {
     vec2 screen = vec2(2.0 * UV.x - 1.0, 1.0 - 2.0 * UV.y);
     screen.x *= SCREEN_PIXEL_SIZE.y / SCREEN_PIXEL_SIZE.x;
@@ -78,9 +86,14 @@ void fragment() {
     vec3 sun_dir = normalize(earth_to_sun - observer);
     vec3 moon_delta = earth_to_moon - observer;
     vec3 moon_dir = normalize(moon_delta);
-    vec3 background = vec3(0.012, 0.018, 0.035);
+    float eye_projection = dot(observer, ray);
+    float eye_radius = length(observer);
+    float ground_offset = max(0.0, eye_radius - earth_radius) * (eye_radius + earth_radius);
+    float ground_discriminant = eye_projection * eye_projection - ground_offset;
+    bool ground = eye_projection < 0.0 && ground_discriminant >= 0.0;
+    vec3 background = ground ? vec3(0.010, 0.009, 0.008) : vec3(0.012, 0.018, 0.035);
 
-    if (dot(moon_dir, site_up) > 0.0) {
+    if (!ground && dot(moon_dir, site_up) > 0.0) {
         background = lunar_disc(ray, moon_dir, length(moon_delta), background);
     }
 
@@ -89,7 +102,7 @@ void fragment() {
     vec3 cloud_radiance = vec3(0.0);
     float cloud_distance = 0.0;
     float coverage = 0.0;
-    if (show_clouds && dot(ray, site_up) > 0.0) {
+    if (show_clouds && eye_radius < earth_radius + 8.0 && dot(ray, site_up) > 0.0) {
         cloud_distance = air_exit(observer, ray, earth_radius + 8.0);
         vec3 cloud = observer + ray * cloud_distance;
         vec3 normal = normalize(cloud);
@@ -112,8 +125,18 @@ void fragment() {
     }
 
     float sky_distance = air_exit(observer, ray, earth_radius + AIR_TOP_KM);
+    if (ground) {
+        sky_distance = ground_offset / (-eye_projection + sqrt(ground_discriminant));
+    }
     float start = coverage > 0.0 ? cloud_distance : 0.0;
     air_integrate(observer, ray, sun_dir, earth_radius, start, sky_distance, 20, view_column, air_radiance);
     vec3 sky = air_compose(background, view_column, air_radiance);
-    COLOR = vec4(air_linear_to_srgb(mix(sky, cloud_radiance, coverage)), 1.0);
+    vec3 color = air_linear_to_srgb(mix(sky, cloud_radiance, coverage));
+    if (show_horizon_grid) {
+        float altitude = asin(clamp(dot(ray, site_up), -1.0, 1.0));
+        float azimuth = atan(dot(ray, site_east), dot(ray, site_north));
+        float lines = max(grid_line(altitude / radians(10.0)), grid_line(azimuth / radians(15.0)));
+        color = mix(color, vec3(0.40, 0.66, 0.83), 0.50 * lines);
+    }
+    COLOR = vec4(color, 1.0);
 }

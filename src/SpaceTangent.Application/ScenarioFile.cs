@@ -12,7 +12,7 @@ public sealed record SimulationScenario(IReadOnlyList<ObserverView> Views, bool 
 /// <summary>Persists observer settings with exact TDB epochs and stable catalog IDs.</summary>
 public static class ScenarioFile
 {
-    private const int Version = 2;
+    private const int Version = 3;
     private const int MaximumBytes = 32 * 1024;
     private static readonly JsonSerializerOptions Json = new()
     {
@@ -33,6 +33,8 @@ public static class ScenarioFile
             throw new InvalidDataException("A scenario needs one or two TDB views.");
         if (scenario.Views.Any(view => view.Navigation is { } pose && !pose.IsValid()))
             throw new InvalidDataException("The scenario has an invalid camera pose.");
+        if (scenario.Views.Any(view => view.EarthObserver is { } earth && !earth.IsValid()))
+            throw new InvalidDataException("The scenario has an invalid Earth observer camera.");
         var document = new Document
         {
             Version = Version,
@@ -48,7 +50,8 @@ public static class ScenarioFile
                 Selection = view.Selection?.Value,
                 Playing = view.Playing,
                 Terrain = view.Terrain,
-                Navigation = view.Navigation is { } pose ? Camera.From(pose) : null
+                Navigation = view.Navigation is { } pose ? Camera.From(pose) : null,
+                EarthObserver = view.EarthObserver
             }).ToArray()
         };
         byte[] bytes = JsonSerializer.SerializeToUtf8Bytes(document, Json);
@@ -87,7 +90,7 @@ public static class ScenarioFile
             throw new InvalidDataException("The scenario changed while it was being read.");
         Document document = JsonSerializer.Deserialize<Document>(bytes, Json)
             ?? throw new InvalidDataException("The scenario is empty.");
-        if (document.Version is not (1 or Version))
+        if (document.Version is < 1 or > Version)
             throw new InvalidDataException($"Unsupported scenario version {document.Version}.");
         if (document.Views is not { Length: 1 or 2 } || document.Views.Any(view => view is null))
             throw new InvalidDataException("A scenario must have one or two views.");
@@ -103,7 +106,14 @@ public static class ScenarioFile
             NavigationCamera? navigation = data.Navigation?.ToPose();
             if (navigation is { } pose && !pose.IsValid())
                 throw new InvalidDataException("The scenario has an invalid camera pose.");
-            views[i] = new(epoch, data.Camera, selection, data.Playing) { Terrain = data.Terrain, Navigation = navigation };
+            if (data.EarthObserver is { } earth && (document.Version < 3 || !earth.IsValid()))
+                throw new InvalidDataException("The scenario has an invalid Earth observer camera.");
+            views[i] = new(epoch, data.Camera, selection, data.Playing)
+            {
+                Terrain = data.Terrain,
+                Navigation = navigation,
+                EarthObserver = data.EarthObserver
+            };
         }
         return new(Array.AsReadOnly(views), document.Synchronized, document.ClockOwner, document.ActiveView, document.DeltaT);
     }
@@ -129,6 +139,8 @@ public static class ScenarioFile
         public LunarTerrainCamera? Terrain { get; init; }
         [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
         public Camera? Navigation { get; init; }
+        [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+        public EarthObserverCamera? EarthObserver { get; init; }
     }
 
     private sealed record Camera(double AnchorX, double AnchorY, double AnchorZ, double RangeKilometers,

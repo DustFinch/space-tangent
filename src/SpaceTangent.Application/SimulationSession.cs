@@ -23,6 +23,7 @@ public readonly record struct ObserverView(JulianInstant Epoch, CameraMode Mode,
 {
     public LunarTerrainCamera? Terrain { get; init; }
     public NavigationCamera? Navigation { get; init; }
+    public EarthObserverCamera? EarthObserver { get; init; }
 }
 
 public sealed record HuygensMission(SscHuygensTrack Track, SpkKernel SaturnSystem, SpicePolynomialBodyFrame TitanFrame);
@@ -128,6 +129,8 @@ public sealed partial class SimulationSession
                 throw new InvalidDataException("The scenario needs the Huygens timeline and Titan kernels.");
             if (view.Mode == CameraMode.LunarTerrain && !World.HasLunarTerrain)
                 throw new InvalidDataException("The scenario needs the lunar elevation map and orientation kernel.");
+            if (view.EarthObserver is { } earth && !earth.IsValid())
+                throw new InvalidDataException("The scenario has an invalid Earth observer camera.");
             if (view.Terrain is { } terrain && !terrain.IsValid())
                 throw new InvalidDataException("The scenario has invalid lunar camera coordinates or field width.");
             if (view.Mode == CameraMode.Satellites && World.Satellites.Count == 0)
@@ -148,6 +151,13 @@ public sealed partial class SimulationSession
         Synchronized = scenario.Synchronized;
         _clockOwner = scenario.ClockOwner;
         DeltaT = scenario.DeltaT;
+    }
+
+    public void SetEarthObserver(int view, EarthObserverCamera camera)
+    {
+        if (!camera.IsValid())
+            throw new ArgumentOutOfRangeException(nameof(camera));
+        _views[view] = _views[view] with { EarthObserver = camera };
     }
 
     public void Split()

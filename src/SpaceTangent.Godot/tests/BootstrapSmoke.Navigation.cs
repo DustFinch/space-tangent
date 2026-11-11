@@ -138,7 +138,7 @@ public partial class BootstrapSmoke
             Require(scene.LoadScenario(oldPath) && session.ViewCount == 1 &&
                     session[0].Mode == CameraMode.Lunar && session[0].Navigation is null && scene.Renderer(0).MoonVisible,
                 "A version 1 scenario must still open with its original preset camera.");
-            Require(scene.LoadScenario(path), "The version 2 camera scenario must still reopen.");
+            Require(scene.LoadScenario(path), "The saved camera scenario must still reopen.");
             if (System.Environment.GetEnvironmentVariable("SPACETANGENT_ACCEPTANCE_SCENES") is { Length: > 0 } scenes)
             {
                 File.Copy(path, Path.Combine(scenes, "two-cameras.stscene"), overwrite: true);

@@ -40,6 +40,8 @@ public partial class BootstrapSmoke : Node
                 await CheckTimeline(scene);
             if (scene.Session?.World.Probe is not null)
                 await CheckProbe(scene);
+            if (System.Environment.GetEnvironmentVariable("SPACETANGENT_TEST_SSC_OVERLAYS") is { Length: > 0 } overlays)
+                await CheckSscOverlays(scene, overlays);
 
             GD.Print("SpaceTangent bootstrap smoke passed");
             GetTree().Quit();
@@ -466,6 +468,38 @@ public partial class BootstrapSmoke : Node
             File.Delete(file);
         }
         GD.Print("SpaceTangent original three-phase Huygens timeline smoke passed");
+    }
+
+    private async Task CheckSscOverlays(SolarSystemScene scene, string root)
+    {
+        const string Variable = "SPACETANGENT_TIMELINE_ROOT";
+        string? previousRoot = System.Environment.GetEnvironmentVariable(Variable);
+        SimulationSession session = scene.Session!;
+        if (session.ViewCount == 1)
+            scene.ToggleSplit();
+        scene.Synchronize(false, 0);
+        scene.SetMode(0, CameraMode.Timeline);
+        scene.Seek(0, JulianInstant.FromJulianDate(2453167.5, TimeScale.Tdb));
+        ObserverView left = session[0], right = session[1];
+        var deltaT = session.DeltaT;
+        MeshInstance3D model = scene.Renderer(0).MissionMesh;
+        Vector3 position = model.Position;
+        Require(model.Visible && ((ArrayMesh)model.Mesh).GetSurfaceCount() == 10,
+            "The unmodified view must show the original Cassini model.");
+        try
+        {
+            System.Environment.SetEnvironmentVariable(Variable, root);
+            Require(await scene.ReloadAddOns() && session[0] == left && session[1] == right && session.DeltaT == deltaT &&
+                model.Visible && model.Position.IsEqualApprox(position) && ((ArrayMesh)model.Mesh).GetSurfaceCount() == 4,
+                "Ordered SSC patches must replace geometry without changing either epoch, the trajectory or ΔT.");
+        }
+        finally
+        {
+            System.Environment.SetEnvironmentVariable(Variable, previousRoot);
+        }
+        Require(await scene.ReloadAddOns() && model.Visible && ((ArrayMesh)model.Mesh).GetSurfaceCount() == 10,
+            "Removing the SSC overrides must restore the original Cassini model.");
+        GD.Print("SpaceTangent ordered SSC overlay reload smoke passed");
     }
 
     private static void VerifyMesh(MeshInstance3D node, int triangles, int surfaces, int textureCount)

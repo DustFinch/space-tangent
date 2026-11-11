@@ -589,13 +589,14 @@ public partial class SolarSystemScene : Control
         DecodedScienceModel? probeGeometry = null;
         if (timelineConfigured || File.Exists(timelineCatalog))
         {
-            timeline = SscSampledCatalog.Load(timelineCatalog, timelineRoot, "Sol/Saturn/Cassini", cancellation);
+            string[] sources = SscSources(timelineCatalog, timelineRoot);
+            timeline = SscSampledCatalog.Load(sources, timelineRoot, "Sol/Saturn/Cassini", cancellation);
             timelineGeometry = StudioMeshDecoder.Decode(timeline.MeshPath, cancellation);
             string sat083 = Path.Combine(timelineRoot, "sat083.bsp"), pck = Path.Combine(timelineRoot, "pck00011.tpc");
             if (File.Exists(sat083) && File.Exists(pck))
             {
                 var titanFrame = new SpicePolynomialBodyFrame(pck, 606);
-                var track = SscHuygensTrack.Load(timelineCatalog, timelineRoot, timeline, titanFrame);
+                var track = SscHuygensTrack.Load(sources, timelineRoot, timeline, titanFrame, cancellation);
                 probe = new(track, new(sat083), titanFrame);
                 probeGeometry = StudioMeshDecoder.Decode(track.MeshPath, cancellation, centerOnBounds: true);
             }
@@ -610,7 +611,7 @@ public partial class SolarSystemScene : Control
         string root = Path.GetDirectoryName(fullPath)!;
         SpiceCatalogResult catalog = Path.GetExtension(fullPath).ToLowerInvariant() switch
         {
-            ".ssc" => new(SscSpiceCatalog.Load(fullPath, root), []),
+            ".ssc" => new(SscSpiceCatalog.Load(SscSources(fullPath, root), root), []),
             ".json" => SpiceJsonCatalog.Load(fullPath, root),
             _ => throw new NotSupportedException("Use an SSC or JSON mission catalogue.")
         };
@@ -621,6 +622,14 @@ public partial class SolarSystemScene : Control
         if (!mission.TrySample(SimulationSession.MissionPreview, out _) || !mission.TryAttitude(SimulationSession.MissionPreview, out _))
             throw new InvalidDataException("The mission kernels do not cover the Cassini orbit insertion preview.");
         return (mission, catalog.Sensors);
+    }
+
+    private static string[] SscSources(string catalog, string root)
+    {
+        string directory = Path.Combine(root, "overrides");
+        if (!Directory.Exists(directory))
+            return [catalog];
+        return [catalog, .. Directory.EnumerateFiles(directory, "*.ssc").OrderBy(path => path, StringComparer.Ordinal)];
     }
 
     private static PublishedAddOns PublishAddOns(DecodedAddOns decoded)

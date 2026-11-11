@@ -5,6 +5,7 @@ using SpaceTangent.Application.Assets;
 using SpaceTangent.Contracts;
 using SpaceTangent.Core.Addons;
 using SpaceTangent.Core.Ephemerides;
+using SpaceTangent.Core.Spice;
 using SpaceTangent.Core.Time;
 
 namespace SpaceTangent.Godot.Simulation;
@@ -14,7 +15,7 @@ public partial class SolarSystemScene : Control
     private sealed record ViewControls(VBoxContainer Panel, SimulationViewport Renderer, Label Epoch,
         Button Play, OptionButton Mode, OptionButton Selection);
     private sealed record DecodedSatellite(ScienceSatellite Track, DecodedScienceModel Model);
-    private sealed record DecodedMission(DecodedScienceModel Model, IReadOnlyList<SpiceSensor> Sensors);
+    private sealed record DecodedMission(DecodedScienceModel Model, IReadOnlyList<SpiceSensor> Sensors, SaturnSurface? Surface);
     private sealed record DecodedAddOns(SimulationWorld World, List<DecodedSatellite> Satellites, DecodedMission? Mission);
     private sealed record PublishedAddOns(IReadOnlyList<PreparedSatellite> Satellites, PreparedMission? Mission);
 
@@ -394,7 +395,10 @@ public partial class SolarSystemScene : Control
         {
             var (track, sensors) = ReadMission(missionPath);
             mission = track;
-            geometry = new(StudioMeshDecoder.Decode(track.MeshPath, cancellation), sensors);
+            string directory = Path.GetDirectoryName(Path.GetFullPath(missionPath))!;
+            string centers = Path.Combine(directory, "sat480.bsp"), pck = Path.Combine(directory, "pck00011.tpc");
+            SaturnSurface? surface = File.Exists(centers) && File.Exists(pck) ? new(centers, pck) : null;
+            geometry = new(StudioMeshDecoder.Decode(track.MeshPath, cancellation), sensors, surface);
         }
         return new(new SimulationWorld(ephemeris, satellites.Select(asset => asset.Track), mission), satellites, geometry);
     }
@@ -425,7 +429,8 @@ public partial class SolarSystemScene : Control
             satellites.Add(new(item.Track, ScienceMeshLoader.Publish(item.Model), (float)(18 / item.Model.Diameter)));
         PreparedMission? mission = decoded.Mission is { } geometry
             ? new(decoded.World.MissionId!.Value, ScienceMeshLoader.Publish(geometry.Model),
-                (float)(18 / geometry.Model.Diameter), SimulationViewport.CreateFrusta(geometry.Sensors)) : null;
+                (float)(18 / geometry.Model.Diameter), SimulationViewport.CreateFrusta(geometry.Sensors),
+                geometry.Surface, geometry.Sensors) : null;
         return new(satellites, mission);
     }
 

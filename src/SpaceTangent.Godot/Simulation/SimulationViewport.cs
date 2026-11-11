@@ -4,13 +4,15 @@ using SpaceTangent.Application;
 using SpaceTangent.Contracts;
 using SpaceTangent.Core.Addons;
 using SpaceTangent.Core.Ephemerides;
+using SpaceTangent.Core.Spice;
 using SpaceTangent.Core.Time;
 using SpaceTangent.Core.World;
 
 namespace SpaceTangent.Godot.Simulation;
 
 internal sealed record PreparedSatellite(ScienceSatellite Track, ArrayMesh Mesh, float MarkerScale);
-internal sealed record PreparedMission(ObjectId Id, ArrayMesh Mesh, float MarkerScale, ArrayMesh? Frusta);
+internal sealed record PreparedMission(ObjectId Id, ArrayMesh Mesh, float MarkerScale, ArrayMesh? Frusta,
+    SaturnSurface? Surface, IReadOnlyList<SpiceSensor> Sensors);
 
 internal partial class SimulationViewport : Node3D
 {
@@ -23,6 +25,9 @@ internal partial class SimulationViewport : Node3D
     private Node3D _sun = null!, _earth = null!, _moon = null!, _saturn = null!;
     private PreparedMission? _mission;
     private MeshInstance3D _missionNode = null!, _missionFrusta = null!;
+    private MeshInstance3D _saturnSurface = null!, _projectedFrusta = null!, _footprints = null!;
+    private readonly ImmediateMesh _projectionMesh = new(), _footprintMesh = new();
+    private StandardMaterial3D[] _footprintMaterials = [];
     private SurfaceProjection? _surface;
     private readonly Dictionary<ObjectId, (PreparedSatellite Asset, MeshInstance3D Node)> _satellites = new();
 
@@ -51,6 +56,21 @@ internal partial class SimulationViewport : Node3D
         AddChild(_missionNode);
         _missionFrusta = new MeshInstance3D { Visible = false };
         AddChild(_missionFrusta);
+        _saturnSurface = new MeshInstance3D
+        {
+            Mesh = new SphereMesh { Radius = 1, Height = 2, RadialSegments = 128, Rings = 64 },
+            MaterialOverride = new StandardMaterial3D
+            {
+                AlbedoColor = new Color("#806e52"),
+                ShadingMode = BaseMaterial3D.ShadingModeEnum.Unshaded
+            },
+            Visible = false
+        };
+        _projectedFrusta = new MeshInstance3D { Mesh = _projectionMesh, Visible = false };
+        _footprints = new MeshInstance3D { Mesh = _footprintMesh, Visible = false };
+        AddChild(_saturnSurface);
+        AddChild(_projectedFrusta);
+        AddChild(_footprints);
     }
 
     private void FitCamera()
@@ -80,6 +100,10 @@ internal partial class SimulationViewport : Node3D
 
     internal MeshInstance3D MissionMesh => _missionNode;
     internal MeshInstance3D MissionFrusta => _missionFrusta;
+    internal MeshInstance3D MissionProjectedFrusta => _projectedFrusta;
+    internal bool MissionFootprintVisible => _footprints.Visible;
+    internal bool MissionProjectionVisible => _projectedFrusta.Visible;
+    internal int MissionFootprintCount => _footprintMesh.GetSurfaceCount();
 
     internal void ReplaceMission(PreparedMission? asset)
     {
@@ -88,6 +112,7 @@ internal partial class SimulationViewport : Node3D
         _missionNode.Hide();
         _missionFrusta.Mesh = asset?.Frusta;
         _missionFrusta.Hide();
+        _footprintMaterials = asset?.Sensors.Select(sensor => LineMaterial(sensor.Color, sensor.FootprintOpacity)).ToArray() ?? [];
     }
 
     internal static ArrayMesh? CreateFrusta(IReadOnlyList<SpiceSensor> sensors)
@@ -114,15 +139,17 @@ internal partial class SimulationViewport : Node3D
             arrays.Resize((int)Mesh.ArrayType.Max);
             arrays[(int)Mesh.ArrayType.Vertex] = lines;
             mesh.AddSurfaceFromArrays(Mesh.PrimitiveType.Lines, arrays);
-            mesh.SurfaceSetMaterial(mesh.GetSurfaceCount() - 1, new StandardMaterial3D
-            {
-                AlbedoColor = new((float)sensor.Color.X, (float)sensor.Color.Y, (float)sensor.Color.Z, (float)sensor.FrustumOpacity),
-                ShadingMode = BaseMaterial3D.ShadingModeEnum.Unshaded,
-                Transparency = BaseMaterial3D.TransparencyEnum.Alpha
-            });
+            mesh.SurfaceSetMaterial(mesh.GetSurfaceCount() - 1, LineMaterial(sensor.Color, sensor.FrustumOpacity));
         }
         return mesh;
     }
+
+    private static StandardMaterial3D LineMaterial(Vector3d color, double opacity) => new()
+    {
+        AlbedoColor = new((float)color.X, (float)color.Y, (float)color.Z, (float)opacity),
+        ShadingMode = BaseMaterial3D.ShadingModeEnum.Unshaded,
+        Transparency = BaseMaterial3D.TransparencyEnum.Alpha
+    };
 
     internal void SetSurfaceTextures(SurfaceTextures textures) => _surface = new SurfaceProjection(this, textures);
 
@@ -134,6 +161,9 @@ internal partial class SimulationViewport : Node3D
         _saturn.Visible = observer.Mode == CameraMode.Mission;
         _missionNode.Hide();
         _missionFrusta.Hide();
+        _saturnSurface.Hide();
+        _projectedFrusta.Hide();
+        _footprints.Hide();
         if (_surface is { } surface)
         {
             bool isSurface = observer.Mode == CameraMode.Surface;
@@ -186,11 +216,18 @@ internal partial class SimulationViewport : Node3D
             node.Hide();
 
         _camera.Size = 210;
-        if (_mission is not { } mission || !snapshot.TryState(mission.Id, out var state) ||
+        if (_mission is not { } mission)
+            return false;
+        SaturnSurfacePose pose = default;
+        bool hasSurface = mission.Surface?.TrySample(snapshot.Epoch, out pose) == true;
+        if (hasSurface)
+            DrawSaturn(pose);
+        if (!snapshot.TryState(mission.Id, out var state) ||
             !snapshot.TryState(SolarSystemSample.SaturnBarycenterId, out var center))
             return false;
 
-        Vector3 position = ToGodot((state - center).PositionKilometers, MissionKilometersPerUnit);
+        Vector3d observer = (state - center).PositionKilometers;
+        Vector3 position = ToGodot(observer, MissionKilometersPerUnit);
         _camera.Size = Math.Max(210, 2.5f * position.Length());
         if (!snapshot.TryOrientation(mission.Id, out var rotation))
             return false;
@@ -199,12 +236,85 @@ internal partial class SimulationViewport : Node3D
         var attitude = new Basis(ToGodot(body.X, 1), ToGodot(body.Y, 1), ToGodot(body.Z, 1));
         _missionNode.Transform = new(attitude.Scaled(Vector3.One * mission.MarkerScale), position);
         _missionNode.Show();
-        if (mission.Frusta is not null)
+        if (hasSurface && mission.Frusta is not null)
+            DrawProjectedFrusta(mission, pose, observer, body);
+        else if (mission.Frusta is not null)
         {
             _missionFrusta.Transform = new(attitude, position);
             _missionFrusta.Show();
         }
         return true;
+    }
+
+    private void DrawSaturn(SaturnSurfacePose pose)
+    {
+        Basis3d matrix = pose.InertialToFixed;
+        Vector3 x = ToGodot(new(matrix.X.X, matrix.Y.X, matrix.Z.X), 1);
+        Vector3 y = ToGodot(new(matrix.X.Y, matrix.Y.Y, matrix.Z.Y), 1);
+        Vector3 z = ToGodot(new(matrix.X.Z, matrix.Y.Z, matrix.Z.Z), 1);
+        Vector3d radii = pose.RadiiKilometers / MissionKilometersPerUnit;
+        _saturnSurface.Transform = new(new Basis(x * (float)radii.X, y * (float)radii.Y, z * (float)radii.Z),
+            ToGodot(pose.CenterKilometers, MissionKilometersPerUnit));
+        _saturn.Hide();
+        _saturnSurface.Show();
+    }
+
+    private void DrawProjectedFrusta(PreparedMission mission, SaturnSurfacePose pose, Vector3d observer, Basis3d attitude)
+    {
+        const int EdgeSamples = 12;
+        _projectionMesh.ClearSurfaces();
+        _footprintMesh.ClearSurfaces();
+        Vector3 apex = ToGodot(observer, MissionKilometersPerUnit);
+        for (int index = 0; index < mission.Sensors.Count; index++)
+        {
+            SpiceSensor sensor = mission.Sensors[index];
+            var surfaceSegments = new List<Vector3>();
+            _projectionMesh.SurfaceBegin(Mesh.PrimitiveType.Lines, mission.Frusta!.SurfaceGetMaterial(index));
+            for (int edge = 0; edge < sensor.CornersInBody.Count; edge++)
+            {
+                Vector3d first = sensor.CornersInBody[edge];
+                Vector3d second = sensor.CornersInBody[(edge + 1) % sensor.CornersInBody.Count];
+                Vector3 previous = default;
+                bool previousHit = false;
+                for (int sample = 0; sample <= EdgeSamples; sample++)
+                {
+                    Vector3d ray = attitude.Transform(first + (second - first) * (sample / (double)EdgeSamples));
+                    bool hit = pose.TryIntercept(observer, ray, sensor.RangeKilometers, out var endpoint);
+                    if (hit)
+                        endpoint = pose.CenterKilometers + (endpoint - pose.CenterKilometers) * 1.0005;
+                    else
+                        endpoint = observer + ray / ray.Length * sensor.RangeKilometers;
+                    Vector3 point = ToGodot(endpoint, MissionKilometersPerUnit);
+                    if (sample == 0)
+                    {
+                        _projectionMesh.SurfaceAddVertex(apex);
+                        _projectionMesh.SurfaceAddVertex(point);
+                    }
+                    else if (hit && previousHit)
+                    {
+                        surfaceSegments.Add(previous);
+                        surfaceSegments.Add(point);
+                    }
+                    else if (!hit && !previousHit)
+                    {
+                        _projectionMesh.SurfaceAddVertex(previous);
+                        _projectionMesh.SurfaceAddVertex(point);
+                    }
+                    previous = point;
+                    previousHit = hit;
+                }
+            }
+            _projectionMesh.SurfaceEnd();
+            if (surfaceSegments.Count > 0)
+            {
+                _footprintMesh.SurfaceBegin(Mesh.PrimitiveType.Lines, _footprintMaterials[index]);
+                foreach (Vector3 point in surfaceSegments)
+                    _footprintMesh.SurfaceAddVertex(point);
+                _footprintMesh.SurfaceEnd();
+            }
+        }
+        _projectedFrusta.Show();
+        _footprints.Visible = _footprintMesh.GetSurfaceCount() > 0;
     }
 
     private static Vector3 ToGodot(Vector3d value, double scale) =>

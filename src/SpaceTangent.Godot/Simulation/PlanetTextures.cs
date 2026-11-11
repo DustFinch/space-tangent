@@ -14,6 +14,9 @@ internal sealed record PlanetTextures(IReadOnlyDictionary<ObjectId, Texture2D> S
         foreach (PlanetDefinition planet in PlanetCatalogue.Planets)
             if (planet.NaifId != 399 && Read(root, planet.Texture) is { } image)
                 surfaces.Add(planet.Id, image);
+        foreach (NaturalBodyDefinition body in NaturalBodyCatalogue.Bodies)
+            if (body.Texture is { } texture && Read(root, texture) is { } image)
+                surfaces.Add(body.Id, image);
         return new(surfaces, Read(root, "saturn-rings.png"));
     }
 

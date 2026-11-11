@@ -6,7 +6,7 @@ using SpaceTangent.Core.Observing;
 
 namespace SpaceTangent.Application;
 
-public enum CatalogueKind { Star, Planet, Moon, Spacecraft }
+public enum CatalogueKind { Star, Planet, Moon, Spacecraft, DwarfPlanet, Asteroid, Comet }
 
 public sealed record CatalogueObject(ObjectId Id, string Name, CatalogueKind Kind, ObjectId? Parent = null);
 
@@ -18,6 +18,8 @@ public sealed class ObjectCatalogue
         objects.AddRange(PlanetCatalogue.Planets.Select(planet =>
             new CatalogueObject(planet.Id, planet.Name, CatalogueKind.Planet, SolarSystemSample.SunId)));
         objects.Add(new(SolarSystemSample.MoonId, "Moon", CatalogueKind.Moon, SolarSystemSample.EarthId));
+        objects.AddRange(NaturalBodyCatalogue.Bodies.Select(body =>
+            new CatalogueObject(body.Id, body.Name, body.Kind, body.Parent)));
         objects.AddRange(satellites.Select(satellite =>
             new CatalogueObject(satellite.Id, satellite.Name, CatalogueKind.Spacecraft, SolarSystemSample.EarthId)));
         objects.AddRange(stars.Stars.Select(star =>

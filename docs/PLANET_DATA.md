@@ -30,3 +30,11 @@ The [NAIF satellite kernel archive](https://naif.jpl.nasa.gov/pub/naif/generic_k
 The local Olympus Mons preset reads `terrain-mars.bin`, an elevation grid in the same signed-height format as the lunar terrain pack. The verified grid comes from [Mars Global Surveyor MOLA](https://pds-geosciences.wustl.edu/missions/mgs/mola.html), is sampled at 4096 × 2048, and has a 3396 km spherical reference radius.
 
 The planetary textures are local sidecar assets. Record the source, author credits and licenses for each map before redistribution.
+
+## Moons and small bodies
+
+The Moon is taken from DE440. The Mars and Jupiter kernel files can also supply Phobos, Deimos, Io, Europa, Ganymede and Callisto. These states are relative to the system barycenter. The graph derives parent-relative motion by subtracting the physical planet center. The optional `moons-6.bsp` uses SAT441 records for Titan. The optional `center-9.bsp` uses PLU058 records for Pluto with the DE440 Pluto system barycenter as its fallback. In the verified pack, these two files cover 1990–2050 TDB.
+
+The optional `ceres.xyzv`, `vesta.xyzv` and `67p.xyzv` files contain geometric heliocentric ICRS vectors from [JPL Horizons](https://ssd.jpl.nasa.gov/horizons/). Use Julian date TDB, kilometers, and kilometers per second. The verified input covers 2010–2050 at three-day intervals. Outside that span the application reports that the target has no usable state. The comet's visible tail is an anti-solar illustration with a nominal scale. Its length and brightness are rendering choices.
+
+Optional maps have the same names as their objects in lowercase, such as `titan.jpg` and `pluto.jpg`. The verified Phobos, Deimos and Vesta renderers use ellipsoid approximations.

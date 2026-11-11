@@ -61,6 +61,7 @@ public partial class EarthOrbitProbe : Node
                 GD.Print($"Earth orbit accepted camera: {name}, {range:F0} km from center.");
             }
             await ExercisePlanets(scene, epoch, directory);
+            await ExerciseSmallBodies(scene, epoch, directory);
             result = 0;
         }
         catch (Exception error)

@@ -89,7 +89,7 @@ internal sealed class ObjectSearchPanel
         bool browsing = string.IsNullOrWhiteSpace(_query.Text);
         var matches = _catalogue.Search(_query.Text).Where(body => _filter switch
         {
-            1 => body.Kind is CatalogueKind.Planet or CatalogueKind.Moon || body.Id.Value == "sol/sun",
+            1 => body.Kind is CatalogueKind.Planet or CatalogueKind.Moon or CatalogueKind.DwarfPlanet or CatalogueKind.Asteroid or CatalogueKind.Comet || body.Id.Value == "sol/sun",
             2 => body.Kind == CatalogueKind.Spacecraft,
             3 => body.Kind == CatalogueKind.Star,
             _ => !browsing || !body.Id.Value.StartsWith("hip/", StringComparison.Ordinal)

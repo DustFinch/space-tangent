@@ -38,6 +38,7 @@ internal partial class SimulationViewport
         AddChild(_planetPathNode);
         _saturnRings = new Node3D { Visible = false };
         AddChild(_saturnRings);
+        InitializeSmallBodies();
     }
 
     internal void SetPlanetTextures(PlanetTextures textures)
@@ -146,17 +147,25 @@ internal partial class SimulationViewport
             float radius = (float)(planet.RadiusKilometers * scale / units);
             if (radius < .025f && pose.Target != planet.Id)
                 continue;
-            bool oriented = snapshot.TryOrientation(planet.Id, out FrameKinematics rotation);
-            Basis basis = oriented ? PlanetBasis(rotation.ToWorld) : Basis.Identity;
             float pole = (float)(planet.PolarRadiusKilometers / planet.RadiusKilometers);
-            globe.Transform = new(basis * Basis.FromScale(new(radius, radius * pole, radius)), position);
-            globe.Show();
+            bool oriented = PlaceWorldGlobe(globe, snapshot, planet.Id, position, new(radius, radius * pole, radius));
+            Basis basis = globe.Transform.Basis.Orthonormalized();
             if (planet.NaifId == 699 && oriented && radius > .12f && _saturnRings.GetChildCount() != 0)
             {
                 _saturnRings.Transform = new(basis * Basis.FromScale(Vector3.One * radius), position);
                 _saturnRings.Show();
             }
         }
+        DrawSmallBodies(snapshot, pose, units, project);
+    }
+
+    private static bool PlaceWorldGlobe(MeshInstance3D globe, WorldSnapshot snapshot, ObjectId id, Vector3 position, Vector3 radii)
+    {
+        bool oriented = snapshot.TryOrientation(id, out FrameKinematics rotation);
+        Basis basis = oriented ? PlanetBasis(rotation.ToWorld) : Basis.Identity;
+        globe.Transform = new(basis * Basis.FromScale(radii), position);
+        globe.Show();
+        return oriented;
     }
 
     private static Basis PlanetBasis(Basis3d fixedToIcrf) =>
@@ -167,5 +176,8 @@ internal partial class SimulationViewport
         foreach (MeshInstance3D globe in _planetGlobes.Values)
             globe.Hide();
         _saturnRings.Hide();
+        _cometTail.Hide();
+        foreach (Label3D label in _moonLabels.Values)
+            label.Hide();
     }
 }

@@ -34,6 +34,6 @@ public readonly record struct NavigationCamera(Vector3d AnchorKilometers, double
             return planet.RadiusKilometers;
         if (target == SolarSystemSample.MoonId)
             return 1737.4;
-        return .007;
+        return NaturalBodyCatalogue.Find(target)?.RadiusKilometers ?? .007;
     }
 }

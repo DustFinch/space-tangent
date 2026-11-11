@@ -62,6 +62,24 @@ public partial class WorkspaceInputSmoke
         Require(_scene.Renderer(0).MarsTerrain is { Visible: true }, "Reloaded relief must be visible on reentering Olympus Mons.");
         GD.Print("UI: missing local Mars relief fell back to the overview and was restored by reloading the pack");
 
+        if (System.Environment.GetEnvironmentVariable("SPACETANGENT_NATURAL_BODIES_SMOKE") == "1")
+        {
+            await FlyTo(0, "Titan", new("sol/titan"));
+            _scene.Seek(1, JulianInstant.FromJulianDate(2460600.5008, TimeScale.Tdb));
+            await FlyTo(1, "Vesta", new("sol/vesta"));
+            var beforeStep = Session[1].Navigation;
+            await Click(Find<Button>("AdvanceHour1"));
+            Require(Session[1].Navigation is { Tracking: true } moved && moved.AnchorKilometers != beforeStep!.Value.AnchorKilometers,
+                "Tracking a sampled minor body must advance its interpolated state.");
+            var natural = Session.CaptureScenario(1);
+            const string naturalScene = "titan-vesta.stscene";
+            await UseScenarioDialog("SaveScenario", 1, directory, naturalScene);
+            RequireScenario(natural, ScenarioFile.Load(Path.Combine(directory, naturalScene)), "Saving a moon and a sampled minor body");
+            await UseScenarioDialog("OpenScenario", 0, directory, naturalScene);
+            RequireScenario(natural, Session.CaptureScenario(1), "Reopening a moon and a sampled minor body");
+            GD.Print("UI: tracked Titan and Vesta in independent views and restored both from disk");
+        }
+
         async Task FlyTo(int index, string name, ObjectId id)
         {
             await Click(Find<SubViewportContainer>($"ViewCanvas{index}"));

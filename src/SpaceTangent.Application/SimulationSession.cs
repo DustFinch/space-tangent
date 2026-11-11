@@ -45,6 +45,8 @@ public sealed class SimulationWorld
         graph.AddSolarSystem(ephemeris);
         foreach (PlanetDefinition planet in PlanetCatalogue.Planets)
             PlanetEphemerides.AddPlanet(graph, planet, planets);
+        foreach (NaturalBodyDefinition body in NaturalBodyCatalogue.Bodies)
+            PlanetEphemerides.AddNaturalBody(graph, body, planets);
         foreach (ScienceSatellite satellite in Satellites)
             graph.AddScienceSatellite(satellite);
         if (mission is not null)

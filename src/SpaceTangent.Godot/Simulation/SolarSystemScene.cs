@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
 using Godot;
 using SpaceTangent.Application;
+using SpaceTangent.Application.Assets;
 using SpaceTangent.Contracts;
 using SpaceTangent.Core.Addons;
 using SpaceTangent.Core.Ephemerides;
@@ -12,6 +13,7 @@ public partial class SolarSystemScene : Control
 {
     private sealed record ViewControls(VBoxContainer Panel, SimulationViewport Renderer, Label Epoch,
         Button Play, OptionButton Mode, OptionButton Selection);
+    private sealed record DecodedSatellite(ScienceSatellite Track, DecodedScienceModel Model);
 
     private readonly List<ViewControls> _views = [];
     private IReadOnlyList<PreparedSatellite> _assets = [];
@@ -21,9 +23,12 @@ public partial class SolarSystemScene : Control
     private CheckButton _sync = null!;
     private Label _status = null!;
     private int _active;
+    private int _loadGeneration;
+    private CancellationTokenSource? _loadCancellation;
     internal SimulationSession? Session { get; private set; }
+    internal bool InitializationFinished { get; private set; }
 
-    public override void _Ready()
+    public override async void _Ready()
     {
         var layout = new VBoxContainer();
         AddChild(layout);
@@ -34,29 +39,58 @@ public partial class SolarSystemScene : Control
         layout.AddChild(_status);
         _panels = new HBoxContainer { SizeFlagsVertical = SizeFlags.ExpandFill };
         layout.AddChild(_panels);
+        _status.Text = "Loading ephemeris…";
 
         De440Ephemeris ephemeris;
+        string ephemerisPath = LocalDataPaths.Find("SPACETANGENT_DE440", "de440.440");
+        CancellationToken token = BeginLoad();
+        int generation = _loadGeneration;
         try
         {
-            ephemeris = De440Ephemeris.Load(LocalDataPaths.Find("SPACETANGENT_DE440", "de440.440"));
+            ephemeris = await Task.Run(() => De440Ephemeris.Load(ephemerisPath), token);
+            if (!CanPublish(generation, token))
+                return;
+        }
+        catch (OperationCanceledException)
+        {
+            return;
         }
         catch (Exception error) when (error is FileNotFoundException or DirectoryNotFoundException)
         {
+            if (!CanPublish(generation, token))
+                return;
             _status.Text = "Set SPACETANGENT_DE440 to a classic JPL DE440 file to start the simulation.";
+            InitializationFinished = true;
             return;
         }
         catch (Exception error) when (IsLoadError(error))
         {
+            if (!CanPublish(generation, token))
+                return;
             _status.Text = error.Message;
+            InitializationFinished = true;
             return;
         }
 
         try
         {
-            _assets = LoadAddOns();
+            _status.Text = "Loading add-ons…";
+            string root = LocalDataPaths.Find("SPACETANGENT_SCIENCE_ROOT", "science", directory: true);
+            bool configured = !string.IsNullOrWhiteSpace(System.Environment.GetEnvironmentVariable("SPACETANGENT_SCIENCE_ROOT"));
+            var decoded = await Task.Run(() => DecodeAddOns(root, configured, token), token);
+            if (!CanPublish(generation, token))
+                return;
+            _assets = PublishAddOns(decoded);
+            _status.Text = "";
+        }
+        catch (OperationCanceledException)
+        {
+            return;
         }
         catch (Exception error) when (IsLoadError(error))
         {
+            if (!CanPublish(generation, token))
+                return;
             _status.Text = error.Message;
         }
         try
@@ -81,12 +115,23 @@ public partial class SolarSystemScene : Control
         deltaT.Select((int)Session.DeltaT);
         deltaT.ItemSelected += index => SetDeltaT((DeltaTModel)deltaT.GetItemId((int)index));
         toolbar.AddChild(deltaT);
-        AddButton(toolbar, "Reload add-ons", () => ReloadAddOns());
+        AddButton(toolbar, "Reload add-ons", async () => await ReloadAddOns());
         if (_surfaceTextures is not null)
             AddButton(toolbar, "Full Moon", () => ShowFullMoon(_active));
         AddView();
         Refresh();
+        InitializationFinished = true;
         GD.Print($"SpaceTangent world ready: DE440, {_assets.Count} science satellites, surface view {_surfaceTextures is not null}.");
+        if (OS.GetCmdlineUserArgs().Contains("--smoke-startup"))
+            GetTree().Quit();
+    }
+
+    public override void _ExitTree()
+    {
+        _loadGeneration++;
+        _loadCancellation?.Cancel();
+        _loadCancellation?.Dispose();
+        _loadCancellation = null;
     }
 
     public override void _Process(double delta)
@@ -172,11 +217,19 @@ public partial class SolarSystemScene : Control
         Refresh();
     }
 
-    internal bool ReloadAddOns()
+    internal async Task<bool> ReloadAddOns()
     {
+        CancellationToken token = BeginLoad();
+        int generation = _loadGeneration;
         try
         {
-            IReadOnlyList<PreparedSatellite> next = LoadAddOns();
+            _status.Text = "Reloading add-ons…";
+            string root = LocalDataPaths.Find("SPACETANGENT_SCIENCE_ROOT", "science", directory: true);
+            bool configured = !string.IsNullOrWhiteSpace(System.Environment.GetEnvironmentVariable("SPACETANGENT_SCIENCE_ROOT"));
+            var decoded = await Task.Run(() => DecodeAddOns(root, configured, token), token);
+            if (!CanPublish(generation, token))
+                return false;
+            IReadOnlyList<PreparedSatellite> next = PublishAddOns(decoded);
             var world = new SimulationWorld(Session!.World.Ephemeris, next.Select(asset => asset.Track));
             if (!Session.TryReplaceWorld(world))
                 throw new InvalidOperationException("The new world does not cover the current epochs.");
@@ -188,12 +241,30 @@ public partial class SolarSystemScene : Control
             GD.Print($"SpaceTangent add-ons reloaded: {_assets.Count} science satellites.");
             return true;
         }
+        catch (OperationCanceledException)
+        {
+            return false;
+        }
         catch (Exception error) when (IsLoadError(error))
         {
-            _status.Text = $"Could not reload add-ons. {error.Message}";
+            if (CanPublish(generation, token))
+                _status.Text = $"Could not reload add-ons. {error.Message}";
             return false;
         }
     }
+
+    private CancellationToken BeginLoad()
+    {
+        _loadGeneration++;
+        _loadCancellation?.Cancel();
+        _loadCancellation?.Dispose();
+        _loadCancellation = new CancellationTokenSource();
+        return _loadCancellation.Token;
+    }
+
+    private bool CanPublish(int generation, CancellationToken token) =>
+        !token.IsCancellationRequested && generation == _loadGeneration &&
+        GodotObject.IsInstanceValid(this) && IsInsideTree();
 
     private void AddView()
     {
@@ -279,23 +350,26 @@ public partial class SolarSystemScene : Control
         }
     }
 
-    private static IReadOnlyList<PreparedSatellite> LoadAddOns()
+    private static IReadOnlyList<DecodedSatellite> DecodeAddOns(string root, bool configured, CancellationToken cancellation)
     {
-        string? configured = System.Environment.GetEnvironmentVariable("SPACETANGENT_SCIENCE_ROOT");
-        string root = LocalDataPaths.Find("SPACETANGENT_SCIENCE_ROOT", "science", directory: true);
         string catalog = Path.Combine(root, "catalog", "sciencesat.json");
-        if (string.IsNullOrWhiteSpace(configured) && !File.Exists(catalog))
+        if (!configured && !File.Exists(catalog))
             return [];
 
-        var satellites = new List<PreparedSatellite>();
+        var satellites = new List<DecodedSatellite>();
         foreach (ScienceSatellite track in ScienceSatelliteCatalog.Load(catalog, root))
         {
-            ArrayMesh mesh = ScienceMeshLoader.Load(track.MeshPath);
-            float diameter = mesh.GetAabb().Size.Length();
-            if (!(diameter > 0 && float.IsFinite(diameter)))
-                throw new InvalidDataException("Satellite mesh has invalid bounds.");
-            satellites.Add(new(track, mesh, 18 / diameter));
+            cancellation.ThrowIfCancellationRequested();
+            satellites.Add(new(track, ScienceModelDecoder.Decode(track.MeshPath, cancellation)));
         }
+        return satellites;
+    }
+
+    private static IReadOnlyList<PreparedSatellite> PublishAddOns(IReadOnlyList<DecodedSatellite> decoded)
+    {
+        var satellites = new List<PreparedSatellite>(decoded.Count);
+        foreach (DecodedSatellite item in decoded)
+            satellites.Add(new(item.Track, ScienceMeshLoader.Publish(item.Model), (float)(18 / item.Model.Diameter)));
         return satellites;
     }
 

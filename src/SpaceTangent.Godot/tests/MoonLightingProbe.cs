@@ -16,6 +16,12 @@ public partial class MoonLightingProbe : Node
             Directory.CreateDirectory(output);
             var scene = GD.Load<PackedScene>("res://Main.tscn").Instantiate<SolarSystemScene>();
             AddChild(scene);
+            var startup = System.Diagnostics.Stopwatch.StartNew();
+            while (!scene.InitializationFinished)
+            {
+                Require(startup.Elapsed.TotalSeconds < 20, "World initialization timed out.");
+                await ToSignal(GetTree(), SceneTree.SignalName.ProcessFrame);
+            }
             string settings = Path.Combine(output, "probe-delta-t.txt");
             string? previousSettings = System.Environment.GetEnvironmentVariable("SPACETANGENT_SETTINGS_PATH");
             System.Environment.SetEnvironmentVariable("SPACETANGENT_SETTINGS_PATH", settings);

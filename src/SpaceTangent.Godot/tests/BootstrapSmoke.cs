@@ -10,7 +10,7 @@ namespace SpaceTangent.Godot.Tests;
 
 public partial class BootstrapSmoke : Node
 {
-    public override void _Ready()
+    public override async void _Ready()
     {
         try
         {
@@ -18,10 +18,16 @@ public partial class BootstrapSmoke : Node
             Assembly.Load("SpaceTangent.Contracts");
             var scene = GD.Load<PackedScene>("res://Main.tscn").Instantiate<SolarSystemScene>();
             AddChild(scene);
+            var startup = System.Diagnostics.Stopwatch.StartNew();
+            while (!scene.InitializationFinished)
+            {
+                Require(startup.Elapsed.TotalSeconds < 20, "World initialization timed out.");
+                await ToSignal(GetTree(), SceneTree.SignalName.ProcessFrame);
+            }
             if (!string.IsNullOrWhiteSpace(System.Environment.GetEnvironmentVariable("SPACETANGENT_DE440")))
                 CheckSimulation(scene);
             if (!string.IsNullOrWhiteSpace(System.Environment.GetEnvironmentVariable("SPACETANGENT_SCIENCE_ROOT")))
-                CheckSatellitesAndReload(scene);
+                await CheckSatellitesAndReload(scene);
 
             GD.Print("SpaceTangent bootstrap smoke passed");
             GetTree().Quit();
@@ -52,7 +58,7 @@ public partial class BootstrapSmoke : Node
         GD.Print("SpaceTangent DE440 scene smoke passed");
     }
 
-    private static void CheckSatellitesAndReload(SolarSystemScene scene)
+    private static async Task CheckSatellitesAndReload(SolarSystemScene scene)
     {
         var jasonId = new ObjectId("norad/26997");
         var sorceId = new ObjectId("norad/27651");
@@ -77,18 +83,31 @@ public partial class BootstrapSmoke : Node
         {
             scene.SetDeltaT(DeltaTModel.MorrisonStephenson2004);
             ObserverView left = session[0], right = session[1];
-            Require(scene.ReloadAddOns(), "Real add-ons must reload.");
+            Require(await scene.ReloadAddOns(), "Real add-ons must reload.");
             Require(left == session[0] && right == session[1] && session.DeltaT == DeltaTModel.MorrisonStephenson2004,
                 "Reload must retain both clocks, selections, camera modes and ΔT.");
             Require(File.ReadAllText(settings) == nameof(DeltaTModel.MorrisonStephenson2004), "ΔT must be saved to the profile.");
             VerifyMesh(scene.Renderer(1).SatelliteMesh(jasonId), 83_233, 28, 2);
-            CheckFailedReload(scene, left, right);
+            await CheckFailedReload(scene, left, right);
+            Task<bool> superseded = scene.ReloadAddOns();
+            Task<bool> latest = scene.ReloadAddOns();
+            bool firstPublished = await superseded;
+            bool latestPublished = await latest;
+            Require(!firstPublished && latestPublished && left == session[0] && right == session[1],
+                "A superseded load must not replace the latest world generation.");
         }
         finally
         {
             System.Environment.SetEnvironmentVariable("SPACETANGENT_SETTINGS_PATH", oldSettings);
             File.Delete(settings);
         }
+
+        var beforeReload = session[1].Epoch;
+        session.TogglePlaying(1);
+        bool loadedWhilePlaying = await scene.ReloadAddOns();
+        session.TogglePlaying(1);
+        Require(loadedWhilePlaying && session[1].Epoch.CompareTo(beforeReload) > 0,
+            "The second view's clock must keep advancing while add-on models decode.");
 
         scene.Synchronize(true, 1);
         Require(session[0].Epoch == session[1].Epoch, "Synchronizing must use the chosen view's epoch.");
@@ -100,7 +119,7 @@ public partial class BootstrapSmoke : Node
         GD.Print("SpaceTangent Jason-1 and SORCE two-view reload smoke passed");
     }
 
-    private static void CheckFailedReload(SolarSystemScene scene, ObserverView left, ObserverView right)
+    private static async Task CheckFailedReload(SolarSystemScene scene, ObserverView left, ObserverView right)
     {
         string? original = System.Environment.GetEnvironmentVariable("SPACETANGENT_SCIENCE_ROOT");
         System.Environment.SetEnvironmentVariable("SPACETANGENT_SCIENCE_ROOT",
@@ -109,7 +128,8 @@ public partial class BootstrapSmoke : Node
         SimulationWorld world = session.World;
         try
         {
-            Require(!scene.ReloadAddOns() && ReferenceEquals(world, session.World) && left == session[0] && right == session[1],
+            bool published = await scene.ReloadAddOns();
+            Require(!published && ReferenceEquals(world, session.World) && left == session[0] && right == session[1],
                 "A failed reload must leave the published world and views intact.");
         }
         finally

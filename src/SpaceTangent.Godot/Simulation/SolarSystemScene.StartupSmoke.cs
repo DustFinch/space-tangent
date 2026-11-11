@@ -10,6 +10,16 @@ public partial class SolarSystemScene
     {
         try
         {
+            if (System.Environment.GetEnvironmentVariable("SPACETANGENT_SMOKE_PORTABLE_ADDONS") is { Length: > 0 } portableCount)
+            {
+                var sources = _localAddons.Sources.Where(source => source.Enabled).ToArray();
+                if (!int.TryParse(portableCount, out int expectedCount) || sources.Length != expectedCount ||
+                    sources.Any(source => !source.RelativeToData ||
+                        _addOns?.Decoded.HasSource(source.Kind, AddonLoader.SourcePath(source, _localAddonFile)) != true))
+                    throw new InvalidDataException("The restarted simulator did not load the expected portable add-on sources.");
+                GD.Print($"SpaceTangent startup loaded {sources.Length} portable add-on sources.");
+            }
+
             string? path = System.Environment.GetEnvironmentVariable("SPACETANGENT_SMOKE_SCENARIO");
             if (!string.IsNullOrWhiteSpace(path))
             {

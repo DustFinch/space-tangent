@@ -23,6 +23,9 @@ public partial class SolarSystemScene : Control
 
     private readonly List<ViewControls> _views = [];
     private AddonGeneration? _addOns;
+    private LocalAddonSettings _localAddons = LocalAddonSettings.Empty;
+    private LocalAddonSettingsFile _localAddonFile = null!;
+    private LocalAddonsPanel _localAddonPanel = null!;
     private IReadOnlyList<PreparedSatellite> Assets => _addOns?.Satellites ?? [];
     private SurfaceTextures? _surfaceTextures;
     private SimulatorWorkspace _workspace = null!;
@@ -88,11 +91,22 @@ public partial class SolarSystemScene : Control
             return;
         }
 
+        _localAddonFile = new();
+        Exception? settingsError = null;
+        try
+        {
+            _localAddons = _localAddonFile.Load();
+        }
+        catch (Exception error) when (IsLoadError(error))
+        {
+            settingsError = error;
+        }
+
         SimulationWorld world = new(ephemeris, []);
         try
         {
             _status.Text = "Loading add-ons…";
-            var decoded = await AddonLoader.Load(ephemeris, null, token);
+            var decoded = await AddonLoader.Load(ephemeris, null, _localAddons, _localAddonFile, token);
             if (!CanPublish(generation, token))
                 return;
             _addOns = AddonDiagnostics.Read(AddonStage.RenderResources, null, () => AddonLoader.Publish(decoded, null));
@@ -121,6 +135,8 @@ public partial class SolarSystemScene : Control
         Session = new(world,
             new(JulianInstant.J2000Day, 0, TimeScale.Tdb), ReadDeltaT());
         BuildWorkspaceControls();
+        if (settingsError is not null)
+            ShowAddonFailure("Could not read local add-on settings.", settingsError);
         AddView();
         Refresh();
         InitializationFinished = true;
@@ -224,7 +240,10 @@ public partial class SolarSystemScene : Control
         addOns.AddChild(SimulatorTheme.Section("Loaded inputs"));
         _dataSummary = SimulatorTheme.Detail("");
         addOns.AddChild(_dataSummary);
-        AddButton(addOns, "Reload add-ons", async () => await ReloadAddOns()).Name = "ReloadAddOns";
+        _localAddonPanel = new(this, addOns, ReloadAddOns, InstallLocalAddon,
+            (kind, enabled) => ReloadAddOns(_localAddons.SetDefault(kind, enabled)),
+            (source, enabled) => ReloadAddOns(_localAddons.SetSource(source, enabled)));
+        _localAddonPanel.ShowSources(_localAddons, _localAddonFile, _addOns?.Decoded);
         var scripts = _workspace.AddPage("Scripts", "Scripts and plug-ins");
         scripts.AddChild(SimulatorTheme.Section("Observer scripts"));
         AddScriptMenu(scripts);
@@ -574,18 +593,37 @@ public partial class SolarSystemScene : Control
         return true;
     }
 
-    internal async Task<bool> ReloadAddOns()
+    internal Task<bool> ReloadAddOns() => ReloadAddOns(null);
+
+    private async Task InstallLocalAddon(LocalAddonKind kind, string path)
+    {
+        try
+        {
+            LocalAddonSource source = _localAddonFile.FindOrCreate(_localAddons, kind, path);
+            await ReloadAddOns(_localAddons.SetSource(source, true));
+        }
+        catch (Exception error) when (IsLoadError(error))
+        {
+            ShowAddonFailure("Could not add local source.", error);
+        }
+    }
+
+    private async Task<bool> ReloadAddOns(LocalAddonSettings? requested)
     {
         CancellationToken token = BeginLoad();
         int generation = _loadGeneration;
         try
         {
             _status.Text = "Reloading add-ons…";
+            _localAddonPanel.SetBusy(true);
+            LocalAddonSettings settings = requested ?? _localAddons;
             AddonGeneration? previous = _addOns;
-            var decoded = await AddonLoader.Load(Session!.World.Ephemeris, previous?.Decoded, token);
+            var decoded = await AddonLoader.Load(Session!.World.Ephemeris, previous?.Decoded, settings, _localAddonFile, token);
             if (!CanPublish(generation, token))
                 return false;
             AddonGeneration next = AddonDiagnostics.Read(AddonStage.RenderResources, null, () => AddonLoader.Publish(decoded, previous));
+            if (requested is not null)
+                _localAddonFile.Save(requested);
             if (!ReferenceEquals(previous, next))
             {
                 if (!Session.TryReplaceWorld(decoded.World))
@@ -597,6 +635,7 @@ public partial class SolarSystemScene : Control
                     ReplaceAssets(view);
                 Refresh();
             }
+            _localAddons = settings;
             _status.Text = "Add-ons reloaded.";
             _status.TooltipText = "";
             LastAddonDiagnostic = null;
@@ -612,6 +651,14 @@ public partial class SolarSystemScene : Control
             if (CanPublish(generation, token))
                 ShowAddonFailure("Could not reload add-ons.", error);
             return false;
+        }
+        finally
+        {
+            if (CanPublish(generation, token))
+            {
+                _localAddonPanel.SetBusy(false);
+                _localAddonPanel.ShowSources(_localAddons, _localAddonFile, _addOns?.Decoded);
+            }
         }
     }
 

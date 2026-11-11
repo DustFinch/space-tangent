@@ -19,7 +19,9 @@ public partial class WorkspaceInputSmoke : Node
     {
         const string settingsVariable = "SPACETANGENT_SETTINGS_PATH";
         const string scienceVariable = "SPACETANGENT_SCIENCE_ROOT";
+        const string addonSettingsVariable = "SPACETANGENT_ADDONS_SETTINGS_PATH";
         string? oldSettings = System.Environment.GetEnvironmentVariable(settingsVariable);
+        string? oldAddonSettings = System.Environment.GetEnvironmentVariable(addonSettingsVariable);
         string? science = System.Environment.GetEnvironmentVariable(scienceVariable);
         int exitCode = 1;
         DirectoryInfo? scratch = null;
@@ -29,7 +31,9 @@ public partial class WorkspaceInputSmoke : Node
                 "Set SPACETANGENT_SCIENCE_ROOT to the original science add-ons.");
             scratch = Directory.CreateTempSubdirectory("SpaceTangent-ui-");
             string settings = Path.Combine(scratch.FullName, "delta-t.txt");
+            string addonSettings = Path.Combine(scratch.FullName, "local-addons.json");
             System.Environment.SetEnvironmentVariable(settingsVariable, settings);
+            System.Environment.SetEnvironmentVariable(addonSettingsVariable, addonSettings);
 
             Tree.Root.Size = new(1600, 900);
             Tree.Root.GuiEmbedSubwindows = true;
@@ -47,12 +51,7 @@ public partial class WorkspaceInputSmoke : Node
                     expected.Views[1].Mode == CameraMode.Surface,
                 "The capture must have Jason-1 tracking and an independent full-Moon view.");
             var copiedScience = Path.Combine(scratch.FullName, "science");
-            foreach (string file in Directory.EnumerateFiles(science!, "*", SearchOption.AllDirectories))
-            {
-                string destination = Path.Combine(copiedScience, Path.GetRelativePath(science!, file));
-                Directory.CreateDirectory(Path.GetDirectoryName(destination)!);
-                File.Copy(file, destination);
-            }
+            CopyDirectory(science!, copiedScience);
             var oldWorld = Session.World;
             System.Environment.SetEnvironmentVariable(scienceVariable, copiedScience);
             await Click(Find<Button>("AddOnsTab"));
@@ -93,6 +92,9 @@ public partial class WorkspaceInputSmoke : Node
                     Session[0].Navigation == expected.Views[0].Navigation,
                 "A version 2 scenario must restore tracking and keep the original default Earth camera.");
             await ExerciseObserverSites(scratch.FullName, science!);
+            string? mission = System.Environment.GetEnvironmentVariable("SPACETANGENT_MISSION_CATALOG");
+            if (!string.IsNullOrWhiteSpace(mission))
+                await ExerciseLocalAddOns(scratch.FullName, addonSettings, science!, mission);
             GD.Print($"SpaceTangent workspace input smoke passed ({DisplayServer.GetName()})");
             exitCode = 0;
         }
@@ -103,6 +105,7 @@ public partial class WorkspaceInputSmoke : Node
         finally
         {
             System.Environment.SetEnvironmentVariable(settingsVariable, oldSettings);
+            System.Environment.SetEnvironmentVariable(addonSettingsVariable, oldAddonSettings);
             System.Environment.SetEnvironmentVariable(scienceVariable, science);
             scratch?.Delete(recursive: true);
             Tree.Quit(exitCode);

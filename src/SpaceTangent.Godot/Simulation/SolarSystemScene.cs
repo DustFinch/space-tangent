@@ -26,6 +26,7 @@ public partial class SolarSystemScene : Control
     private HBoxContainer _panels = null!;
     private Button _split = null!;
     private CheckButton _sync = null!;
+    private OptionButton _deltaT = null!;
     private Label _status = null!;
     private int _active;
     private int _loadGeneration;
@@ -115,13 +116,13 @@ public partial class SolarSystemScene : Control
         _sync = new CheckButton { Text = "Synchronize view time", ButtonPressed = true };
         _sync.Toggled += enabled => Synchronize(enabled, _active);
         toolbar.AddChild(_sync);
-        var deltaT = new OptionButton();
-        deltaT.AddItem("ΔT · Espenak–Meeus", (int)DeltaTModel.EspenakMeeus2006);
-        deltaT.AddItem("ΔT · Morrison–Stephenson", (int)DeltaTModel.MorrisonStephenson2004);
-        deltaT.AddItem("ΔT · Fixed offset", (int)DeltaTModel.FixedOffset);
-        deltaT.Select((int)Session.DeltaT);
-        deltaT.ItemSelected += index => SetDeltaT((DeltaTModel)deltaT.GetItemId((int)index));
-        toolbar.AddChild(deltaT);
+        _deltaT = new OptionButton();
+        _deltaT.AddItem("ΔT · Espenak–Meeus", (int)DeltaTModel.EspenakMeeus2006);
+        _deltaT.AddItem("ΔT · Morrison–Stephenson", (int)DeltaTModel.MorrisonStephenson2004);
+        _deltaT.AddItem("ΔT · Fixed offset", (int)DeltaTModel.FixedOffset);
+        _deltaT.ItemSelected += index => SetDeltaT((DeltaTModel)_deltaT.GetItemId((int)index));
+        toolbar.AddChild(_deltaT);
+        AddScenarioMenu(toolbar);
         AddButton(toolbar, "Reload add-ons", async () => await ReloadAddOns());
         if (_surfaceTextures is not null)
             AddButton(toolbar, "Full Moon", () => ShowFullMoon(_active));
@@ -209,21 +210,85 @@ public partial class SolarSystemScene : Control
     internal void ToggleSplit()
     {
         if (Session!.ViewCount == 1)
-        {
             Session.Split();
-            AddView();
-        }
         else
         {
             Session.CloseSecondView();
+            _active = 0;
+        }
+        UpdateViewLayout();
+        Refresh();
+    }
+
+    private void UpdateViewLayout()
+    {
+        if (_views.Count < Session!.ViewCount)
+            AddView();
+        else if (_views.Count > Session.ViewCount)
+        {
             var panel = _views[1].Panel;
             _views.RemoveAt(1);
             _panels.RemoveChild(panel);
             panel.QueueFree();
-            _active = 0;
         }
         _split.Text = Session.ViewCount == 1 ? "Split view" : "Close second view";
+    }
+
+    private void AddScenarioMenu(Container toolbar)
+    {
+        var menu = new MenuButton { Text = "Scenario" };
+        toolbar.AddChild(menu);
+        var open = new FileDialog { Name = "OpenScenario", Access = FileDialog.AccessEnum.Filesystem,
+            FileMode = FileDialog.FileModeEnum.OpenFile, DeletingEnabled = false };
+        var save = new FileDialog { Name = "SaveScenario", Access = FileDialog.AccessEnum.Filesystem,
+            FileMode = FileDialog.FileModeEnum.SaveFile, DeletingEnabled = false };
+        AddChild(open);
+        AddChild(save);
+        open.AddFilter("*.stscene", "SpaceTangent scenarios");
+        save.AddFilter("*.stscene", "SpaceTangent scenarios");
+        open.FileSelected += path => LoadScenario(path);
+        save.FileSelected += path => SaveScenario(path);
+        PopupMenu popup = menu.GetPopup();
+        popup.AddItem("Open scenario…", 0);
+        popup.AddItem("Save scenario…", 1);
+        popup.IdPressed += id => (id == 0 ? open : save).PopupCentered(new Vector2I(700, 460));
+    }
+
+    internal bool SaveScenario(string path)
+    {
+        try
+        {
+            ScenarioFile.Save(path, Session!.CaptureScenario(_active));
+            _status.Text = "Scenario saved.";
+            return true;
+        }
+        catch (Exception error) when (IsLoadError(error))
+        {
+            _status.Text = $"Could not save scenario. {error.Message}";
+            return false;
+        }
+    }
+
+    internal bool LoadScenario(string path)
+    {
+        try
+        {
+            SimulationScenario scenario = ScenarioFile.Load(path);
+            if (_surfaceTextures is null && scenario.Views.Any(view => view.Mode == CameraMode.Surface))
+                throw new InvalidDataException("The scenario needs the Earth surface textures.");
+            Session!.RestoreScenario(scenario);
+            _active = scenario.ActiveView;
+        }
+        catch (Exception error) when (IsLoadError(error))
+        {
+            _status.Text = $"Could not open scenario. {error.Message}";
+            return false;
+        }
+        UpdateViewLayout();
+        _sync.SetPressedNoSignal(Session.Synchronized);
         Refresh();
+        _status.Text = "Scenario opened.";
+        return true;
     }
 
     internal async Task<bool> ReloadAddOns()
@@ -339,6 +404,7 @@ public partial class SolarSystemScene : Control
     private void Refresh()
     {
         SimulationSession session = Session!;
+        _deltaT.Select((int)session.DeltaT);
         for (int index = 0; index < _views.Count; index++)
         {
             ViewControls controls = _views[index];

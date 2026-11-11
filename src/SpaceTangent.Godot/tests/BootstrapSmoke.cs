@@ -27,7 +27,11 @@ public partial class BootstrapSmoke : Node
             if (!string.IsNullOrWhiteSpace(System.Environment.GetEnvironmentVariable("SPACETANGENT_DE440")))
                 CheckSimulation(scene);
             if (!string.IsNullOrWhiteSpace(System.Environment.GetEnvironmentVariable("SPACETANGENT_SCIENCE_ROOT")))
+            {
                 await CheckSatellitesAndReload(scene);
+                if (!string.IsNullOrWhiteSpace(System.Environment.GetEnvironmentVariable("SPACETANGENT_SURFACE_TEXTURES")))
+                    CheckScenarios(scene);
+            }
             if (!string.IsNullOrWhiteSpace(System.Environment.GetEnvironmentVariable("SPACETANGENT_MISSION_CATALOG")))
                 await CheckMission(scene);
 
@@ -138,6 +142,68 @@ public partial class BootstrapSmoke : Node
         {
             System.Environment.SetEnvironmentVariable("SPACETANGENT_SCIENCE_ROOT", original);
         }
+    }
+
+    private static void CheckScenarios(SolarSystemScene scene)
+    {
+        var jason = new ObjectId("norad/26997");
+        SimulationSession session = scene.Session!;
+        scene.Synchronize(false, 0);
+        scene.SetMode(0, CameraMode.Satellites);
+        scene.SelectSatellite(0, jason);
+        scene.Seek(0, session[0].Epoch.AddNanoseconds(137));
+        scene.ShowFullMoon(1);
+        session.SetDeltaT(DeltaTModel.MorrisonStephenson2004);
+        session.TogglePlaying(0);
+        SimulationScenario expected = session.CaptureScenario(1);
+
+        string root = Directory.CreateTempSubdirectory("SpaceTangent-scenarios-").FullName;
+        string path = Path.Combine(root, "jason-moon.stscene"), invalid = Path.Combine(root, "invalid.stscene");
+        try
+        {
+            scene.GetNode<FileDialog>("SaveScenario").EmitSignal(FileDialog.SignalName.FileSelected, path);
+            Require(File.Exists(path), "The scenario save dialog must write a file.");
+            scene.ToggleSplit();
+            scene.SetMode(0, CameraMode.Solar);
+            session.SetDeltaT(DeltaTModel.FixedOffset);
+            scene.GetNode<FileDialog>("OpenScenario").EmitSignal(FileDialog.SignalName.FileSelected, path);
+            Require(session.ViewCount == 2 && session[0] == expected.Views[0] && session[1] == expected.Views[1] &&
+                !session.Synchronized && session.DeltaT == expected.DeltaT && scene.Renderer(0).SatelliteMesh(jason).Visible,
+                "The scenario must recreate both renderers and preserve exact epochs, ΔT, playback and selection.");
+            scene.GetNode<FileDialog>("SaveScenario").EmitSignal(FileDialog.SignalName.FileSelected, path);
+            Require(ScenarioFile.Load(path).ActiveView == expected.ActiveView, "Scenario reopen must restore the active view.");
+
+            ScenarioFile.Save(invalid, expected with { Synchronized = true });
+            Require(!scene.LoadScenario(invalid) && session[0] == expected.Views[0] && session[1] == expected.Views[1] &&
+                !session.Synchronized, "A scenario with conflicting shared clocks must leave both views unchanged.");
+            var missing = new ObjectId("norad/0");
+            ScenarioFile.Save(invalid, expected with { Views = [expected.Views[0], expected.Views[1] with { Selection = missing }] });
+            Require(!scene.LoadScenario(invalid) && session[0] == expected.Views[0] && session[1] == expected.Views[1],
+                "A scenario with a missing object must leave the published views intact.");
+            File.WriteAllText(invalid, """{"version":1,"views":[null]}""");
+            Require(!scene.LoadScenario(invalid) && session.ViewCount == 2 && session.DeltaT == expected.DeltaT,
+                "A malformed scenario must leave the current state intact.");
+
+            scene.Synchronize(true, 1);
+            Require(scene.SaveScenario(path), "The synchronized two-view scenario must save.");
+            scene.ToggleSplit();
+            Require(scene.SaveScenario(invalid), "The one-view scenario must save.");
+            Require(scene.LoadScenario(path) && session.ViewCount == 2 && session.Synchronized &&
+                session[0].Epoch == session[1].Epoch && session.CaptureScenario(0).ClockOwner == 1,
+                "The saved shared clock must retain its owner and epoch.");
+            Require(scene.LoadScenario(invalid) && session.ViewCount == 1 && session.Synchronized,
+                "Opening a one-view scenario must remove the second renderer.");
+            ScenarioFile.Save(path, expected);
+            Require(scene.LoadScenario(path), "The original two-view scenario must still open.");
+        }
+        finally
+        {
+            File.Delete(path);
+            File.Delete(invalid);
+            Directory.Delete(root);
+        }
+        session.TogglePlaying(0);
+        GD.Print("SpaceTangent Jason-1 and Full Moon scenario save and restore smoke passed");
     }
 
     private async Task CheckMission(SolarSystemScene scene)

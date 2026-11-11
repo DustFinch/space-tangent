@@ -60,6 +60,41 @@ public sealed class SimulationSession
     public int ViewCount => _views.Count;
     public ObserverView this[int view] => _views[view];
 
+    public SimulationScenario CaptureScenario(int activeView) =>
+        new(Array.AsReadOnly(_views.ToArray()), Synchronized, _clockOwner, activeView, DeltaT);
+
+    public void RestoreScenario(SimulationScenario scenario)
+    {
+        ObserverView[] views = scenario.Views.ToArray();
+        if (views.Length is < 1 or > 2 || scenario.ClockOwner < 0 || scenario.ClockOwner >= views.Length ||
+            scenario.ActiveView < 0 || scenario.ActiveView >= views.Length)
+            throw new InvalidDataException("The scenario refers to an unavailable view.");
+        if (!Enum.IsDefined(scenario.DeltaT))
+            throw new InvalidDataException("The scenario has an unknown ΔT model.");
+        foreach (ObserverView view in views)
+        {
+            if (!Covers(World, view.Epoch))
+                throw new InvalidDataException("The scenario epoch is outside the current ephemeris.");
+            if (!Enum.IsDefined(view.Mode))
+                throw new InvalidDataException("The scenario has an unknown camera mode.");
+            if (view.Mode == CameraMode.Mission && World.MissionId is null)
+                throw new InvalidDataException("The scenario needs the Cassini mission add-on.");
+            if (view.Mode == CameraMode.Satellites && World.Satellites.Count == 0)
+                throw new InvalidDataException("The scenario needs the Earth satellite add-ons.");
+            if (view.Selection is { } selection && !World.Satellites.Any(satellite => satellite.Id == selection))
+                throw new InvalidDataException($"The selected object {selection.Value} is missing from the current world.");
+        }
+        ObserverView owner = views[scenario.ClockOwner];
+        if (scenario.Synchronized && views.Any(view => view.Epoch != owner.Epoch || view.Playing != owner.Playing))
+            throw new InvalidDataException("Synchronized scenario clocks must agree.");
+
+        _views.Clear();
+        _views.AddRange(views);
+        Synchronized = scenario.Synchronized;
+        _clockOwner = scenario.ClockOwner;
+        DeltaT = scenario.DeltaT;
+    }
+
     public void Split()
     {
         if (_views.Count == 1)

@@ -22,12 +22,19 @@ internal static class AddonLoader
     internal sealed record Cached<T>(LocalDataPath Path, AddonDependencies Dependencies, T Value)
     {
         internal static Cached<T> Load(Cached<T>? previous, LocalDataPath path,
-            Func<LocalDataPath, CancellationToken, T> read, CancellationToken cancellation)
+            string source, Func<LocalDataPath, CancellationToken, T> read, CancellationToken cancellation)
         {
-            if (previous?.Path == path && previous.Dependencies.IsCurrent(cancellation))
-                return previous;
-            var (value, dependencies) = AddonDependencies.Capture(() => read(path, cancellation), cancellation);
-            return new(path, dependencies, value);
+            try
+            {
+                if (previous?.Path == path && previous.Dependencies.IsCurrent(cancellation))
+                    return previous;
+                var (value, dependencies) = AddonDependencies.Capture(() => read(path, cancellation), cancellation);
+                return new(path, dependencies, value);
+            }
+            catch (Exception error) when (AddonDiagnostics.Annotate(error, AddonStage.Catalog, path.Explicit, source: source))
+            {
+                throw;
+            }
         }
     }
 
@@ -43,16 +50,17 @@ internal static class AddonLoader
         var terrain = LocalDataPaths.Candidates("SPACETANGENT_TERRAIN_ROOT", "terrain", directory: true);
         return Task.Run(() =>
         {
-            var satellites = Cached<IReadOnlyList<DecodedSatellite>>.Load(previous?.Science, science, ReadScience, cancellation);
-            var spice = Cached<DecodedMission?>.Load(previous?.Mission, mission, ReadMission, cancellation);
-            var sampled = Cached<DecodedTimeline?>.Load(previous?.Timeline, timeline, ReadTimeline, cancellation);
-            var relief = Cached<DecodedTerrain?>.Load(previous?.Terrain, terrain, ReadTerrain, cancellation);
+            var satellites = Cached<IReadOnlyList<DecodedSatellite>>.Load(previous?.Science, science, "Science satellites", ReadScience, cancellation);
+            var spice = Cached<DecodedMission?>.Load(previous?.Mission, mission, "SPICE mission", ReadMission, cancellation);
+            var sampled = Cached<DecodedTimeline?>.Load(previous?.Timeline, timeline, "Sampled timeline", ReadTimeline, cancellation);
+            var relief = Cached<DecodedTerrain?>.Load(previous?.Terrain, terrain, "Lunar terrain", ReadTerrain, cancellation);
             cancellation.ThrowIfCancellationRequested();
             if (previous is not null && ReferenceEquals(previous.Science, satellites) && ReferenceEquals(previous.Mission, spice) &&
                 ReferenceEquals(previous.Timeline, sampled) && ReferenceEquals(previous.Terrain, relief))
                 return previous;
-            var world = new SimulationWorld(ephemeris, satellites.Value.Select(asset => asset.Track), spice.Value?.Track,
-                sampled.Value?.Track, sampled.Value?.Probe, relief.Value?.Frame);
+            var world = AddonDiagnostics.Read(AddonStage.World, null, () => new SimulationWorld(ephemeris,
+                satellites.Value.Select(asset => asset.Track), spice.Value?.Track, sampled.Value?.Track,
+                sampled.Value?.Probe, relief.Value?.Frame));
             return new(world, satellites, spice, sampled, relief);
         }, cancellation);
     }
@@ -64,10 +72,10 @@ internal static class AddonLoader
 
         IReadOnlyList<PreparedSatellite> satellites = previous is not null && ReferenceEquals(previous.Decoded.Science, decoded.Science)
             ? previous.Satellites : Array.AsReadOnly(decoded.Science.Value.Select(item => new PreparedSatellite(
-                item.Track, ScienceMeshLoader.Publish(item.Model), Scale(item.Model))).ToArray());
+                item.Track, ScienceMeshLoader.Publish(item.Model, item.Track.MeshPath), Scale(item.Model))).ToArray());
         PreparedMission? mission = previous is not null && ReferenceEquals(previous.Decoded.Mission, decoded.Mission)
             ? previous.Mission : decoded.Mission.Value is { } geometry
-                ? new(decoded.World.MissionId!.Value, ScienceMeshLoader.Publish(geometry.Model), Scale(geometry.Model),
+                ? new(decoded.World.MissionId!.Value, ScienceMeshLoader.Publish(geometry.Model, geometry.Track.MeshPath), Scale(geometry.Model),
                     SimulationViewport.CreateFrusta(geometry.Sensors), geometry.Surface, geometry.Sensors)
                 : null;
         PreparedMission? timeline = previous?.Timeline;
@@ -75,10 +83,11 @@ internal static class AddonLoader
         if (!ReferenceEquals(previous?.Decoded.Timeline, decoded.Timeline))
         {
             var track = decoded.Timeline.Value;
-            timeline = track is null ? null : new(track.Track.Id, ScienceMeshLoader.Publish(track.Model),
+            timeline = track is null ? null : new(track.Track.Id, ScienceMeshLoader.Publish(track.Model, track.Track.MeshPath),
                 Scale(track.Model), null, null, []);
             probe = track?.ProbeModel is { } probeModel && track.Probe is { } probeMission
-                ? new(probeMission.Track, ScienceMeshLoader.Publish(probeModel), (float)(24 / probeModel.Diameter)) : null;
+                ? new(probeMission.Track, ScienceMeshLoader.Publish(probeModel, probeMission.Track.MeshPath),
+                    (float)(24 / probeModel.Diameter)) : null;
         }
         LunarTerrainAsset? terrain = previous is not null && ReferenceEquals(previous.Decoded.Terrain, decoded.Terrain)
             ? previous.Terrain : decoded.Terrain.Value is { } relief ? LunarTerrainAsset.Publish(relief.Model) : null;
@@ -121,6 +130,11 @@ internal static class AddonLoader
         if (path is null)
             return null;
         string fullPath = Path.GetFullPath(path);
+        return AddonDiagnostics.Read(AddonStage.Catalog, fullPath, () => ReadMissionFile(fullPath, cancellation));
+    }
+
+    private static DecodedMission ReadMissionFile(string fullPath, CancellationToken cancellation)
+    {
         string root = Path.GetDirectoryName(fullPath)!;
         SpiceCatalogResult catalog = Path.GetExtension(fullPath).ToLowerInvariant() switch
         {
@@ -147,14 +161,16 @@ internal static class AddonLoader
         if (location.Explicit is null && !AddonDependencies.FileExists(catalog))
             return null;
         string[] sources = SscSources(catalog, root);
-        var track = SscSampledCatalog.Load(sources, root, "Sol/Saturn/Cassini", cancellation);
+        var track = AddonDiagnostics.Read(AddonStage.Catalog, catalog,
+            () => SscSampledCatalog.Load(sources, root, "Sol/Saturn/Cassini", cancellation));
         var geometry = StudioMeshDecoder.Decode(track.MeshPath, cancellation);
         string sat083 = Path.Combine(root, "sat083.bsp"), pck = Path.Combine(root, "pck00011.tpc");
         if (!AddonDependencies.FileExists(sat083) || !AddonDependencies.FileExists(pck))
             return new(track, geometry, null, null);
 
         var frame = new SpicePolynomialBodyFrame(pck, 606);
-        var probe = SscHuygensTrack.Load(sources, root, track, frame, cancellation);
+        var probe = AddonDiagnostics.Read(AddonStage.Catalog, catalog,
+            () => SscHuygensTrack.Load(sources, root, track, frame, cancellation));
         return new(track, geometry, new(probe, new(sat083), frame),
             StudioMeshDecoder.Decode(probe.MeshPath, cancellation, centerOnBounds: true));
     }
@@ -166,7 +182,8 @@ internal static class AddonLoader
         if (!AddonDependencies.FileExists(path))
             return null;
         var frame = new SpicePolynomialBodyFrame(Path.Combine(root, "pck00011.tpc"), 301);
-        return new(frame, DecodedLunarTerrain.Load(path, frame.RadiiKilometers.X, cancellation));
+        return new(frame, AddonDiagnostics.Read(AddonStage.Terrain, path,
+            () => DecodedLunarTerrain.Load(path, frame.RadiiKilometers.X, cancellation)));
     }
 
     private static string[] SscSources(string catalog, string root)

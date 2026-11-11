@@ -3,6 +3,7 @@ using Godot;
 using System.Globalization;
 using SpaceTangent.Application;
 using SpaceTangent.Contracts;
+using SpaceTangent.Core.Addons;
 using SpaceTangent.Core.Ephemerides;
 using SpaceTangent.Core.Time;
 
@@ -30,6 +31,7 @@ public partial class SolarSystemScene : Control
     private PopupMenu _scriptMenu = null!;
     internal SimulationSession? Session { get; private set; }
     internal bool InitializationFinished { get; private set; }
+    internal AddonDiagnostic? LastAddonDiagnostic { get; private set; }
 
     public override async void _Ready()
     {
@@ -82,7 +84,7 @@ public partial class SolarSystemScene : Control
             var decoded = await AddonLoader.Load(ephemeris, null, token);
             if (!CanPublish(generation, token))
                 return;
-            _addOns = AddonLoader.Publish(decoded, null);
+            _addOns = AddonDiagnostics.Read(AddonStage.RenderResources, null, () => AddonLoader.Publish(decoded, null));
             world = decoded.World;
             _status.Text = "";
         }
@@ -94,7 +96,7 @@ public partial class SolarSystemScene : Control
         {
             if (!CanPublish(generation, token))
                 return;
-            _status.Text = error.Message;
+            ShowAddonFailure("Could not load add-ons.", error);
         }
         try
         {
@@ -376,7 +378,7 @@ public partial class SolarSystemScene : Control
             var decoded = await AddonLoader.Load(Session!.World.Ephemeris, previous?.Decoded, token);
             if (!CanPublish(generation, token))
                 return false;
-            AddonGeneration next = AddonLoader.Publish(decoded, previous);
+            AddonGeneration next = AddonDiagnostics.Read(AddonStage.RenderResources, null, () => AddonLoader.Publish(decoded, previous));
             if (!ReferenceEquals(previous, next))
             {
                 if (!Session.TryReplaceWorld(decoded.World))
@@ -387,6 +389,8 @@ public partial class SolarSystemScene : Control
                 Refresh();
             }
             _status.Text = "Add-ons reloaded.";
+            _status.TooltipText = "";
+            LastAddonDiagnostic = null;
             GD.Print($"SpaceTangent add-ons reloaded: {Assets.Count} science satellites.");
             return true;
         }
@@ -397,9 +401,23 @@ public partial class SolarSystemScene : Control
         catch (Exception error) when (IsLoadError(error))
         {
             if (CanPublish(generation, token))
-                _status.Text = $"Could not reload add-ons. {error.Message}";
+                ShowAddonFailure("Could not reload add-ons.", error);
             return false;
         }
+    }
+
+    private void ShowAddonFailure(string prefix, Exception error)
+    {
+        AddonDiagnostics.Annotate(error, AddonStage.World);
+        var issue = AddonDiagnostics.Get(error)!;
+        LastAddonDiagnostic = issue;
+        string? filename = issue.File is null ? null : Path.GetFileName(issue.File);
+        if (filename is not null && issue.Line is { } line)
+            filename = $"{filename}:{line}";
+        string context = string.Join(" · ", new[] { issue.Source, issue.Stage.ToString(), filename }.OfType<string>());
+        _status.Text = $"{prefix} {context}. {issue.Detail}";
+        _status.TooltipText = issue.File ?? "";
+        GD.Print($"SpaceTangent import [{issue.Code}] {context} · {issue.File ?? "-"} · {issue.Detail}");
     }
 
     private CancellationToken BeginLoad()

@@ -2,12 +2,16 @@
 using Godot;
 using SpaceTangent.Application.Assets;
 using SpaceTangent.Contracts;
+using SpaceTangent.Core.Addons;
 
 namespace SpaceTangent.Godot.Simulation;
 
 internal static class ScienceMeshLoader
 {
-    internal static ArrayMesh Publish(DecodedScienceModel source)
+    internal static ArrayMesh Publish(DecodedScienceModel source, string meshPath) =>
+        AddonDiagnostics.Read(AddonStage.RenderResources, meshPath, () => PublishCore(source, meshPath));
+
+    private static ArrayMesh PublishCore(DecodedScienceModel source, string meshPath)
     {
         var mesh = new ArrayMesh();
         var textures = new Dictionary<string, Texture2D>(StringComparer.Ordinal);
@@ -37,7 +41,12 @@ internal static class ScienceMeshLoader
                     using var image = new Image();
                     Error status = image.LoadPngFromBuffer(source.Textures[texture].ToArray());
                     if (status != Error.Ok || image.IsEmpty())
-                        throw new InvalidDataException("Could not decode the model's PNG texture.");
+                    {
+                        var error = new InvalidDataException("Could not decode the model's PNG texture.");
+                        AddonDiagnostics.Annotate(error, AddonStage.Texture,
+                            Path.Combine(Path.GetDirectoryName(meshPath)!, texture));
+                        throw error;
+                    }
                     textures.Add(texture, gpuTexture = ImageTexture.CreateFromImage(image));
                 }
                 material.AlbedoTexture = gpuTexture;

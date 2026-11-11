@@ -20,7 +20,10 @@ public static class StudioMeshDecoder
     private sealed record Surface(List<Vector3d> Points, List<Vector3d> Normals);
     private delegate void ChunkVisitor(ushort id, ReadOnlySpan<byte> data);
 
-    public static DecodedScienceModel Decode(string path, CancellationToken cancellation = default, bool centerOnBounds = false)
+    public static DecodedScienceModel Decode(string path, CancellationToken cancellation = default, bool centerOnBounds = false) =>
+        AddonDiagnostics.Read(AddonStage.Mesh, path, () => DecodeCore(path, cancellation, centerOnBounds));
+
+    private static DecodedScienceModel DecodeCore(string path, CancellationToken cancellation, bool centerOnBounds)
     {
         using FileStream stream = AddonDependencies.OpenRead(path, MaximumFileBytes);
         if (stream.Length is < 6 or > MaximumFileBytes)

@@ -23,7 +23,10 @@ public static class ScienceModelDecoder
     private readonly record struct Corner(Vector3d Position, float U, float V, Vector3d? Normal);
     private static readonly DecodedMaterial DefaultMaterial = new(new(1, 1, 1), 1, null);
 
-    public static DecodedScienceModel Decode(string path, CancellationToken cancellation = default)
+    public static DecodedScienceModel Decode(string path, CancellationToken cancellation = default) =>
+        AddonDiagnostics.Read(AddonStage.Mesh, path, () => DecodeCore(path, cancellation));
+
+    private static DecodedScienceModel DecodeCore(string path, CancellationToken cancellation)
     {
         string directory = Path.GetDirectoryName(path)!;
         var positions = new List<Vector3d>();
@@ -48,7 +51,7 @@ public static class ScienceModelDecoder
                     uvs.Add((Number(fields[1]), 1 - Number(fields[2])));
                     break;
                 case "mtllib" when fields.Length == 2:
-                    ReadMaterials(Companion(directory, fields[1], ".mtl"), materials, cancellation);
+                    ReadMaterials(directory, fields[1], materials, cancellation);
                     break;
                 case "usemtl" when fields.Length > 1:
                     material = string.Join(' ', fields.Skip(1));
@@ -100,7 +103,8 @@ public static class ScienceModelDecoder
             }
             DecodedMaterial definition = materials.GetValueOrDefault(name) ?? DefaultMaterial;
             if (definition.Texture is { } texture && !textures.ContainsKey(texture))
-                textures.Add(texture, ReadPng(Companion(directory, texture, ".png")));
+                textures.Add(texture, AddonDiagnostics.Read(AddonStage.Texture, Path.Combine(directory, texture),
+                    () => ReadPng(Companion(directory, texture, ".png"))));
             decoded.Add(new(vertexPositions, vertexNormals, vertexUvs, definition));
         }
         cancellation.ThrowIfCancellationRequested();
@@ -153,7 +157,20 @@ public static class ScienceModelDecoder
         return index;
     }
 
-    private static void ReadMaterials(string path, Dictionary<string, DecodedMaterial> materials, CancellationToken cancellation)
+    private static void ReadMaterials(string directory, string name, Dictionary<string, DecodedMaterial> materials,
+        CancellationToken cancellation)
+    {
+        try
+        {
+            ReadMaterialFile(Companion(directory, name, ".mtl"), materials, cancellation);
+        }
+        catch (Exception error) when (AddonDiagnostics.Annotate(error, AddonStage.Mesh, Path.Combine(directory, name)))
+        {
+            throw;
+        }
+    }
+
+    private static void ReadMaterialFile(string path, Dictionary<string, DecodedMaterial> materials, CancellationToken cancellation)
     {
         string? name = null;
         DecodedMaterial value = DefaultMaterial;

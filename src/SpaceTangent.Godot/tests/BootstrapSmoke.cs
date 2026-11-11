@@ -3,6 +3,7 @@ using System.Reflection;
 using Godot;
 using SpaceTangent.Application;
 using SpaceTangent.Contracts;
+using SpaceTangent.Core.Addons;
 using SpaceTangent.Core.Time;
 using SpaceTangent.Godot.Simulation;
 
@@ -149,10 +150,41 @@ public partial class BootstrapSmoke : Node
             bool published = await scene.ReloadAddOns();
             Require(!published && ReferenceEquals(world, session.World) && left == session[0] && right == session[1],
                 "A failed reload must leave the published world and views intact.");
+            Require(scene.LastAddonDiagnostic is { Code: AddonIssue.MissingResource, Stage: AddonStage.Catalog,
+                    Source: "Science satellites" } catalog && Path.GetFileName(catalog.File) == "sciencesat.json",
+                "Missing catalogue diagnostics must identify their input.");
         }
         finally
         {
             System.Environment.SetEnvironmentVariable("SPACETANGENT_SCIENCE_ROOT", original);
+        }
+
+        DirectoryInfo copy = Directory.CreateTempSubdirectory("space-tangent-science-diagnostic-");
+        try
+        {
+            string? missing = null;
+            foreach (string file in Directory.EnumerateFiles(original!, "*", SearchOption.AllDirectories))
+            {
+                string target = Path.Combine(copy.FullName, Path.GetRelativePath(original!, file));
+                if (Path.GetFileName(file) == "jas_brsh.png")
+                {
+                    missing = target;
+                    continue;
+                }
+                Directory.CreateDirectory(Path.GetDirectoryName(target)!);
+                File.Copy(file, target);
+            }
+            Require(missing is not null, "The real Jason-1 texture must exist in the original input.");
+            System.Environment.SetEnvironmentVariable("SPACETANGENT_SCIENCE_ROOT", copy.FullName);
+            Require(!await scene.ReloadAddOns() && ReferenceEquals(world, session.World) &&
+                scene.LastAddonDiagnostic is { Code: AddonIssue.MissingResource, Stage: AddonStage.Texture,
+                    Source: "Science satellites" } issue && issue.File == missing,
+                "An absent PNG must report the actual texture and keep the published world.");
+        }
+        finally
+        {
+            System.Environment.SetEnvironmentVariable("SPACETANGENT_SCIENCE_ROOT", original);
+            copy.Delete(recursive: true);
         }
     }
 
@@ -614,13 +646,22 @@ public partial class BootstrapSmoke : Node
 
             var stableWorld = session.World;
             Mesh stableModel = model.Mesh;
+            File.WriteAllText(patch, "Modify \"Cassini\" \"Sol/Saturn\" {\n    Mesh }");
+            Require(!await scene.ReloadAddOns() && ReferenceEquals(stableWorld, session.World) &&
+                scene.LastAddonDiagnostic is { Code: AddonIssue.InvalidInput, Stage: AddonStage.Catalog,
+                    Source: "Sampled timeline", Line: 2 } syntax && syntax.File == patch,
+                "SSC syntax errors must identify the override and line.");
             WritePatch("model-c.3ds");
             Require(!await scene.ReloadAddOns() && ReferenceEquals(stableWorld, session.World) &&
                 ReferenceEquals(stableModel, model.Mesh), "A missing required mesh must leave the published generation intact.");
+            Require(scene.LastAddonDiagnostic is { Code: AddonIssue.MissingResource, Stage: AddonStage.Mesh,
+                    Source: "Sampled timeline" } absent && absent.File == Path.Combine(overlays.FullName, "model-c.3ds"),
+                "A missing mesh must name the actual file selected by the override.");
             File.Copy(probe, Path.Combine(overlays.FullName, "model-c.3ds"));
             Task<bool> superseded = scene.ReloadAddOns();
             Task<bool> latest = scene.ReloadAddOns();
-            Require(!await superseded && await latest && ((ArrayMesh)model.Mesh).GetSurfaceCount() == 4,
+            Require(!await superseded && await latest && ((ArrayMesh)model.Mesh).GetSurfaceCount() == 4 &&
+                scene.LastAddonDiagnostic is null,
                 "The latest generation must publish the newly available resource.");
 
             void WritePatch(string mesh) => File.WriteAllText(patch,
@@ -633,6 +674,7 @@ public partial class BootstrapSmoke : Node
         }
         Require(await scene.ReloadAddOns(), "Restore the original timeline after the cache test.");
         GD.Print("SpaceTangent exact add-on cache and atomic reload smoke passed");
+        GD.Print("SpaceTangent import diagnostics smoke passed");
     }
 
     private static void VerifyMesh(MeshInstance3D node, int triangles, int surfaces, int textureCount)

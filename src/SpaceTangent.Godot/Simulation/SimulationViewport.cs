@@ -33,16 +33,21 @@ internal partial class SimulationViewport : Node3D
     private readonly ImmediateMesh _projectionMesh = new(), _footprintMesh = new();
     private StandardMaterial3D[] _footprintMaterials = [];
     private SurfaceProjection? _surface;
-    private LunarTerrainProjection? _terrain;
-    private LunarTerrainAsset? _terrainAsset;
+    private BodyTerrainProjection? _terrain;
+    private BodyTerrainAsset? _terrainAsset;
+    private BodyTerrainProjection? _marsTerrain;
+    private BodyTerrainAsset? _marsTerrainAsset;
+    private Texture2D? _marsSurface;
     private IReadOnlyList<PreparedSatellite>? _satelliteAssets;
     private readonly Dictionary<ObjectId, (PreparedSatellite Asset, MeshInstance3D Node)> _satellites = new();
 
+    internal De440Ephemeris? PlanetEphemeris { get; set; }
     internal Vector3 EarthPosition => _earth.Position;
     internal Vector3 MoonPosition => _moon.Position;
     internal bool MoonVisible => _moon.Visible;
     internal string? ProbeStatus { get; private set; }
-    internal LunarTerrainProjection? Terrain => _terrain;
+    internal BodyTerrainProjection? Terrain => _terrain;
+    internal BodyTerrainProjection? MarsTerrain => _marsTerrain;
 
     public override void _Ready()
     {
@@ -61,6 +66,7 @@ internal partial class SimulationViewport : Node3D
         _earth = CreateMarker("Earth", new Color("#6fa8ff"), 3);
         _moon = CreateMarker("Moon", new Color("#cbd3e4"), 2.4f);
         InitializeNavigation();
+        InitializePlanets();
         _saturn = CreateMarker("Saturn barycenter", new Color("#d9bb7f"), 9);
         _missionNode = new MeshInstance3D { Visible = false };
         AddChild(_missionNode);
@@ -91,6 +97,7 @@ internal partial class SimulationViewport : Node3D
         Vector2 size = GetViewport().GetVisibleRect().Size;
         _camera.KeepAspect = size.X >= size.Y ? Camera3D.KeepAspectEnum.Height : Camera3D.KeepAspectEnum.Width;
         _terrain?.FitCamera(size);
+        _marsTerrain?.FitCamera(size);
     }
 
     internal void ReplaceSatellites(IReadOnlyList<PreparedSatellite> assets)
@@ -181,7 +188,7 @@ internal partial class SimulationViewport : Node3D
             moon.AlbedoTexture = textures.Moon;
     }
 
-    internal void ReplaceLunarTerrain(LunarTerrainAsset? asset)
+    internal void ReplaceLunarTerrain(BodyTerrainAsset? asset)
     {
         if (ReferenceEquals(_terrainAsset, asset))
             return;
@@ -192,6 +199,19 @@ internal partial class SimulationViewport : Node3D
             _terrain.FitCamera(GetViewport().GetVisibleRect().Size);
         }
         _terrain?.Replace(asset);
+    }
+
+    internal void ReplaceMarsTerrain(BodyTerrainAsset? asset)
+    {
+        if (ReferenceEquals(_marsTerrainAsset, asset))
+            return;
+        _marsTerrainAsset = asset;
+        if (asset is not null)
+        {
+            _marsTerrain ??= new(this, _marsSurface);
+            _marsTerrain.FitCamera(GetViewport().GetVisibleRect().Size);
+        }
+        _marsTerrain?.Replace(asset);
     }
 
     internal void SetSurfaceControls(bool clouds, bool lunarLight) => _surface!.SetControls(clouds, lunarLight);
@@ -210,6 +230,8 @@ internal partial class SimulationViewport : Node3D
         _footprints.Hide();
         ProbeStatus = null;
         _terrain?.Hide();
+        _marsTerrain?.Hide();
+        HidePlanetOverview();
         if (observer.Navigation is { } navigation)
         {
             _surface?.Draw(false, sample, deltaT);
@@ -218,7 +240,7 @@ internal partial class SimulationViewport : Node3D
             return true;
         }
         HideNavigation();
-        if (observer.Mode != CameraMode.LunarTerrain && !_camera.Current)
+        if (observer.Mode is not (CameraMode.LunarTerrain or CameraMode.MarsTerrain) && !_camera.Current)
             _camera.MakeCurrent();
         if (_surface is { } surface)
         {
@@ -241,15 +263,31 @@ internal partial class SimulationViewport : Node3D
             return _terrain.Draw(observer.Terrain ?? LunarTerrainCamera.Globe, moonFrame.ToWorld.Transpose().Transform(sun));
         }
 
-        ObjectId origin = observer.Mode == CameraMode.Solar ? SolarSystemSample.SunId : SolarSystemSample.EarthId;
-        double scale = observer.Mode == CameraMode.Solar ? OverviewKilometersPerUnit : LunarKilometersPerUnit;
+        if (observer.Mode == CameraMode.MarsTerrain)
+        {
+            HideOrbitalMarkers();
+            if (_marsTerrain is null || !snapshot.TryOrientation(PlanetCatalogue.MarsId, out var frame) ||
+                !snapshot.TryState(PlanetCatalogue.MarsId, out CartesianState mars))
+                return false;
+            Vector3d sun = (sample.Sun - mars).PositionKilometers;
+            return _marsTerrain.Draw(new(-133.8, 18.65, 950), frame.ToWorld.Transpose().Transform(sun));
+        }
+
+        bool solar = observer.Mode is CameraMode.Solar or CameraMode.SolarOuter;
+        bool outer = observer.Mode == CameraMode.SolarOuter;
+        ObjectId origin = solar ? SolarSystemSample.SunId : SolarSystemSample.EarthId;
+        double scale = solar
+            ? (outer ? OuterOverviewKilometersPerUnit : OverviewKilometersPerUnit)
+            : LunarKilometersPerUnit;
+        if (solar && PlanetEphemeris is { } ephemeris)
+            DrawPlanetOverview(snapshot, ephemeris, sample.Sun.PositionKilometers, outer);
         _sun.Position = ToGodot(sample.RelativeState(SolarSystemSample.SunId, origin).PositionKilometers, scale);
         _earth.Position = ToGodot(sample.RelativeState(SolarSystemSample.EarthId, origin).PositionKilometers, scale);
         _moon.Position = ToGodot(sample.RelativeState(SolarSystemSample.MoonId, origin).PositionKilometers, scale);
-        _earth.Show();
-        _sun.Visible = observer.Mode == CameraMode.Solar;
+        _earth.Visible = !outer;
+        _sun.Visible = solar;
         _moon.Visible = observer.Mode == CameraMode.Lunar;
-        _camera.Size = observer.Mode == CameraMode.Solar ? 365 : 250;
+        _camera.Size = solar ? (outer ? 410 : 520) : 250;
 
         foreach (var (asset, node) in _satellites.Values)
         {

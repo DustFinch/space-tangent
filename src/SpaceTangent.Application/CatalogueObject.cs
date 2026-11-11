@@ -14,12 +14,10 @@ public sealed class ObjectCatalogue
 {
     internal ObjectCatalogue(IReadOnlyList<ScienceSatellite> satellites, BrightStarCatalogue stars)
     {
-        var objects = new List<CatalogueObject>(3 + satellites.Count)
-        {
-            new(SolarSystemSample.SunId, "Sun", CatalogueKind.Star),
-            new(SolarSystemSample.EarthId, "Earth", CatalogueKind.Planet, SolarSystemSample.SunId),
-            new(SolarSystemSample.MoonId, "Moon", CatalogueKind.Moon, SolarSystemSample.EarthId)
-        };
+        var objects = new List<CatalogueObject> { new(SolarSystemSample.SunId, "Sun", CatalogueKind.Star) };
+        objects.AddRange(PlanetCatalogue.Planets.Select(planet =>
+            new CatalogueObject(planet.Id, planet.Name, CatalogueKind.Planet, SolarSystemSample.SunId)));
+        objects.Add(new(SolarSystemSample.MoonId, "Moon", CatalogueKind.Moon, SolarSystemSample.EarthId));
         objects.AddRange(satellites.Select(satellite =>
             new CatalogueObject(satellite.Id, satellite.Name, CatalogueKind.Spacecraft, SolarSystemSample.EarthId)));
         objects.AddRange(stars.Stars.Select(star =>

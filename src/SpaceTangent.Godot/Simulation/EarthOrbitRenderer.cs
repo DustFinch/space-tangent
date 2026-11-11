@@ -12,19 +12,8 @@ internal sealed record EarthOrbitTextures(Texture2D Day, Texture2D? Night, Textu
     internal static EarthOrbitTextures? Load(SurfaceTextures? surface)
     {
         string root = LocalDataPaths.Find("SPACETANGENT_PLANET_TEXTURES", "planets", directory: true);
-        Texture2D? day = Read(Path.Combine(root, "earth.jpg"));
-        return day is null ? null : new(day, Read(Path.Combine(root, "earth-night.jpg")), surface?.Clouds);
-
-        static Texture2D? Read(string path)
-        {
-            if (!File.Exists(path))
-                return null;
-            using Image image = Image.LoadFromFile(path);
-            if (image is null || image.IsEmpty())
-                throw new InvalidDataException($"Could not decode the planetary texture {Path.GetFileName(path)}.");
-            image.GenerateMipmaps();
-            return ImageTexture.CreateFromImage(image);
-        }
+        Texture2D? day = PlanetTextures.Read(root, "earth.jpg");
+        return day is null ? null : new(day, PlanetTextures.Read(root, "earth-night.jpg"), surface?.Clouds);
     }
 }
 

@@ -10,3 +10,23 @@ For the orbital Earth view, set `SPACETANGENT_PLANET_TEXTURES` to an absolute di
 Blue Marble imagery credit goes to NASA Earth Observatory, Reto Stöckli and Robert Simmon. Black Marble uses NASA and NOAA Suomi NPP VIIRS observations. The maps are optional local assets.
 
 The orbital renderer and the surface observer share the single-scattering profiles. The texture orientation uses the Earth observer's selected ΔT model and is available inside its 1900–2099 range. At more distant epochs, the orbital renderer uses the generic Earth material. The global maps show broad features from orbit. Regional detail requires a separate surface dataset.
+
+## Other planets
+
+Place equirectangular images in the same directory with the filenames `mercury.jpg`, `venus-clouds.jpg`, `mars.jpg`, `jupiter.jpg`, `saturn.jpg`, `uranus.jpg` and `neptune.jpg`. Place the Saturn ring profile in `saturn-rings.png` as a horizontal strip with alpha, sampled from the inner edge at the left to the outer edge at the right. The renderer also supports solid-color planets when the optional image files are absent.
+
+For body-fixed orientation, use the [NAIF text PCK](https://naif.jpl.nasa.gov/pub/naif/generic_kernels/pck/pck00011.tpc) as `pck00011.tpc`. The existing timeline pack's PCK can also supply these frames. Without a PCK, the globes use an inertial orientation and the ring plane is unavailable.
+
+| System | Center correction | TDB coverage of the locally verified input |
+| --- | --- | --- |
+| Mars | `center-4.bsp` · MAR099s | 1995-01-01 through 2050-01-01 |
+| Jupiter | `center-5.bsp` · JUP365 | 1990-01-01 through 2050-01-01 |
+| Saturn | `center-6.bsp` · SAT480 | 1950-01-01 through 2050-01-01 |
+| Uranus | `center-7.bsp` · URA111 | 1990-01-01 through 2050-01-01 |
+| Neptune | `center-8.bsp` · NEP097 | 1990-01-01 through 2050-01-01 |
+
+The [NAIF satellite kernel archive](https://naif.jpl.nasa.gov/pub/naif/generic_kernels/spk/satellites/) supplies these offsets in J2000 axes, with each planet relative to its own system barycenter. Outside the supplied kernel coverage the planet camera falls back to its DE440 system barycenter. The overview always draws the heliocentric DE440 system paths. Mercury, Venus and Earth already have physical center states in DE440. The default inner and outer views cover different groups. Use **Layers → Planet orbits** to toggle the guide paths.
+
+The local Olympus Mons preset reads `terrain-mars.bin`, an elevation grid in the same signed-height format as the lunar terrain pack. The verified grid comes from [Mars Global Surveyor MOLA](https://pds-geosciences.wustl.edu/missions/mgs/mola.html), is sampled at 4096 × 2048, and has a 3396 km spherical reference radius.
+
+The planetary textures are local sidecar assets. Record the source, author credits and licenses for each map before redistribution.

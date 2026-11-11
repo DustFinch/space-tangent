@@ -3,6 +3,8 @@ shader_type spatial;
 render_mode unshaded, cull_disabled;
 
 uniform sampler2D heights : filter_linear, repeat_enable;
+uniform sampler2D surface_map : source_color, filter_linear_mipmap, repeat_enable;
+uniform bool textured_surface = false;
 uniform float radius_km = 1737.4;
 uniform bool regional = false;
 uniform vec3 site_up;
@@ -12,6 +14,7 @@ uniform float patch_span;
 uniform vec3 sun_direction;
 
 varying vec3 terrain_normal;
+varying vec3 terrain_radial;
 
 float elevation_km(vec2 uv, float half_row) {
     uv.y = clamp(uv.y, half_row, 1.0 - half_row);
@@ -37,11 +40,15 @@ void vertex() {
     float latitude_distance = 2.0 * radius_km * PI * step_uv.y;
     float east_slope = (elevation_km(uv + x_step, half_row) - elevation_km(uv - x_step, half_row)) / longitude_distance;
     float north_slope = (elevation_km(uv - y_step, half_row) - elevation_km(uv + y_step, half_row)) / latitude_distance;
+    terrain_radial = radial;
     terrain_normal = normalize(radial - east_slope * east - north_slope * north);
     VERTEX = radial * (radius_km + height);
 }
 
 void fragment() {
     float illumination = 0.055 + 0.945 * max(dot(normalize(terrain_normal), sun_direction), 0.0);
-    ALBEDO = vec3(0.59, 0.57, 0.54) * illumination;
+    vec3 radial = normalize(terrain_radial);
+    vec2 surface_uv = vec2(0.5 + atan(-radial.z, radial.x) / TAU, 0.5 - asin(clamp(radial.y, -1.0, 1.0)) / PI);
+    vec3 surface = textured_surface ? texture(surface_map, surface_uv).rgb : vec3(0.59, 0.57, 0.54);
+    ALBEDO = surface * illumination;
 }

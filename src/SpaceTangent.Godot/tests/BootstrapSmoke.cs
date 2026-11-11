@@ -646,7 +646,7 @@ public partial class BootstrapSmoke : Node
         scene.SetLunarTerrainCamera(1, LunarTerrainCamera.Copernicus);
         scene.Seek(0, SurfaceProjection.FullMoonEpoch);
         scene.Seek(1, SurfaceProjection.FullMoonEpoch.AddSeconds(-3.8 * JulianInstant.SecondsPerDay));
-        LunarTerrainProjection left = scene.Renderer(0).Terrain!, right = scene.Renderer(1).Terrain!;
+        BodyTerrainProjection left = scene.Renderer(0).Terrain!, right = scene.Renderer(1).Terrain!;
         Require(left.Visible && right.Visible && !left.Regional && right.Regional &&
             left.SunDirection.DistanceTo(right.SunDirection) > .5f, "Terrain must draw at separate scales and solar epochs.");
         Require(Math.Abs(left.SunDirection.Length() - 1) < 1e-6f && Math.Abs(right.SunDirection.Length() - 1) < 1e-6f,

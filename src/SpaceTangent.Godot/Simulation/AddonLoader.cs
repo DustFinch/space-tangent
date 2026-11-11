@@ -10,7 +10,7 @@ using SpaceTangent.Core.Spice;
 namespace SpaceTangent.Godot.Simulation;
 
 internal sealed record AddonGeneration(AddonLoader.DecodedAddOns Decoded, IReadOnlyList<PreparedSatellite> Satellites,
-    PreparedMission? Mission, PreparedMission? Timeline, PreparedProbe? Probe, LunarTerrainAsset? Terrain);
+    PreparedMission? Mission, PreparedMission? Timeline, PreparedProbe? Probe, BodyTerrainAsset? Terrain, BodyTerrainAsset? MarsTerrain);
 
 internal static class AddonLoader
 {
@@ -19,7 +19,7 @@ internal static class AddonLoader
         IReadOnlyList<SpiceSensor> Sensors, SaturnSurface? Surface);
     internal sealed record DecodedTimeline(SscSampledSpacecraft Track, DecodedScienceModel Model, HuygensMission? Probe,
         DecodedScienceModel? ProbeModel);
-    internal sealed record DecodedTerrain(SpicePolynomialBodyFrame Frame, DecodedLunarTerrain Model);
+    internal sealed record DecodedTerrain(SpicePolynomialBodyFrame Frame, DecodedBodyTerrain Model);
 
     internal sealed record Cached<T>(LocalDataPath Path, AddonDependencies Dependencies, T Value)
     {
@@ -41,7 +41,8 @@ internal static class AddonLoader
     }
 
     internal sealed record DecodedAddOns(SimulationWorld World, IReadOnlyList<Cached<IReadOnlyList<DecodedSatellite>>> Science,
-        Cached<DecodedMission?>? Mission, Cached<DecodedTimeline?>? Timeline, Cached<DecodedTerrain?>? Terrain)
+        Cached<DecodedMission?>? Mission, Cached<DecodedTimeline?>? Timeline, Cached<DecodedTerrain?>? Terrain,
+        PlanetEphemerides Planets, Cached<DecodedBodyTerrain>? MarsTerrain)
     {
         internal bool HasSource(LocalAddonKind kind, LocalDataPath path) => kind switch
         {
@@ -73,6 +74,8 @@ internal static class AddonLoader
         LocalDataPath? mission = First(LocalAddonKind.Mission);
         LocalDataPath? timeline = First(LocalAddonKind.Timeline);
         LocalDataPath? terrain = First(LocalAddonKind.Terrain);
+        var planetPath = LocalDataPaths.Candidates("SPACETANGENT_PLANET_TEXTURES", "planets", directory: true);
+        var pckPath = LocalDataPaths.Candidates("SPACETANGENT_PCK", "timeline/pck00011.tpc");
         return Task.Run(() =>
         {
             var satellites = science.Select(path => Cached<IReadOnlyList<DecodedSatellite>>.Load(
@@ -81,11 +84,19 @@ internal static class AddonLoader
             var spice = Read(previous?.Mission, mission, "SPICE mission", ReadMission);
             var sampled = Read(previous?.Timeline, timeline, "Sampled timeline", ReadTimeline);
             var relief = Read(previous?.Terrain, terrain, "Lunar terrain", ReadTerrain);
+            PlanetEphemerides planets = previous?.Planets ?? new(planetPath.Resolve(), pckPath.Resolve());
+            string marsPath = Path.Combine(planetPath.Resolve(), "terrain-mars.bin");
+            Cached<DecodedBodyTerrain>? marsTerrain = planets.HasOrientation(499) && File.Exists(marsPath)
+                ? Read(previous?.MarsTerrain, new LocalDataPath(marsPath, "", "", "", false), "Mars terrain",
+                    (path, token) => AddonDiagnostics.Read(AddonStage.Terrain, marsPath,
+                        () => DecodedBodyTerrain.Load(path.Resolve(), 3396, token)))
+                : null;
             cancellation.ThrowIfCancellationRequested();
 
             bool sameScience = previous is not null && previous.Science.SequenceEqual(satellites);
             if (previous is not null && sameScience && ReferenceEquals(previous.Mission, spice) &&
-                ReferenceEquals(previous.Timeline, sampled) && ReferenceEquals(previous.Terrain, relief))
+                ReferenceEquals(previous.Timeline, sampled) && ReferenceEquals(previous.Terrain, relief) &&
+                ReferenceEquals(previous.MarsTerrain, marsTerrain))
                 return previous;
 
             var tracks = new List<ScienceSatellite>();
@@ -102,8 +113,8 @@ internal static class AddonLoader
                 tracks.Add(item.Track);
             }
             var world = AddonDiagnostics.Read(AddonStage.World, null, () => new SimulationWorld(ephemeris, tracks,
-                spice?.Value?.Track, sampled?.Value?.Track, sampled?.Value?.Probe, relief?.Value?.Frame, brightStars));
-            return new(world, sameScience ? previous!.Science : satellites, spice, sampled, relief);
+                spice?.Value?.Track, sampled?.Value?.Track, sampled?.Value?.Probe, relief?.Value?.Frame, brightStars, planets, marsTerrain is not null));
+            return new(world, sameScience ? previous!.Science : satellites, spice, sampled, relief, planets, marsTerrain);
         }, cancellation);
 
         Cached<T>? Read<T>(Cached<T>? cached, LocalDataPath? path, string category, Func<LocalDataPath, CancellationToken, T> reader) =>
@@ -143,9 +154,11 @@ internal static class AddonLoader
                 ? new(probeMission.Track, ScienceMeshLoader.Publish(probeModel, probeMission.Track.MeshPath),
                     (float)(24 / probeModel.Diameter)) : null;
         }
-        LunarTerrainAsset? terrain = previous is not null && ReferenceEquals(previous.Decoded.Terrain, decoded.Terrain)
-            ? previous.Terrain : decoded.Terrain?.Value is { } relief ? LunarTerrainAsset.Publish(relief.Model) : null;
-        return new(decoded, satellites, mission, timeline, probe, terrain);
+        BodyTerrainAsset? terrain = previous is not null && ReferenceEquals(previous.Decoded.Terrain, decoded.Terrain)
+            ? previous.Terrain : decoded.Terrain?.Value is { } relief ? BodyTerrainAsset.Publish(relief.Model) : null;
+        BodyTerrainAsset? marsTerrain = previous is not null && ReferenceEquals(previous.Decoded.MarsTerrain, decoded.MarsTerrain)
+            ? previous.MarsTerrain : decoded.MarsTerrain?.Value is { } mars ? BodyTerrainAsset.Publish(mars) : null;
+        return new(decoded, satellites, mission, timeline, probe, terrain, marsTerrain);
 
         static float Scale(DecodedScienceModel model) => (float)(18 / model.Diameter);
 
@@ -253,7 +266,7 @@ internal static class AddonLoader
         }
         var frame = new SpicePolynomialBodyFrame(Path.Combine(root, "pck00011.tpc"), 301);
         return new(frame, AddonDiagnostics.Read(AddonStage.Terrain, path,
-            () => DecodedLunarTerrain.Load(path, frame.RadiiKilometers.X, cancellation)));
+            () => DecodedBodyTerrain.Load(path, frame.RadiiKilometers.X, cancellation)));
     }
 
     private static string[] SscSources(string catalog, string root)

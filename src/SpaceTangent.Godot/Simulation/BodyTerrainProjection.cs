@@ -7,41 +7,41 @@ using SpaceTangent.Core.Surfaces;
 
 namespace SpaceTangent.Godot.Simulation;
 
-internal sealed record DecodedLunarTerrain(int Width, int Height, float RadiusKilometers, byte[] Meters)
+internal sealed record DecodedBodyTerrain(int Width, int Height, float RadiusKilometers, byte[] Meters)
 {
-    internal static DecodedLunarTerrain Load(string path, double expectedRadius, CancellationToken cancellation)
+    internal static DecodedBodyTerrain Load(string path, double expectedRadius, CancellationToken cancellation)
     {
         ElevationMap map = ElevationMap.Load(path, cancellation);
         if (Math.Abs(map.ReferenceRadiusKilometers - expectedRadius) > 0.001)
-            throw new InvalidDataException("The lunar terrain datum does not match the Moon's radius.");
+            throw new InvalidDataException("The terrain datum does not match the reference radius.");
         var bytes = new byte[checked(map.Width * map.Height * sizeof(float))];
         map.CopyHeightsMeters(MemoryMarshal.Cast<byte, float>(bytes), cancellation);
         return new(map.Width, map.Height, (float)map.ReferenceRadiusKilometers, bytes);
     }
 }
 
-internal sealed record LunarTerrainAsset(Texture2D Heights, float RadiusKilometers, Mesh Globe, Mesh Patch)
+internal sealed record BodyTerrainAsset(Texture2D Heights, float RadiusKilometers, Mesh Globe, Mesh Patch)
 {
-    internal static LunarTerrainAsset Publish(DecodedLunarTerrain decoded)
+    internal static BodyTerrainAsset Publish(DecodedBodyTerrain decoded)
     {
         using Image image = Image.CreateFromData(decoded.Width, decoded.Height, false, Image.Format.Rf, decoded.Meters);
         if (image.IsEmpty())
-            throw new InvalidDataException("Could not create the lunar terrain texture.");
+            throw new InvalidDataException("Could not create the terrain height texture.");
         return new(ImageTexture.CreateFromImage(image), decoded.RadiusKilometers,
             new SphereMesh { Radius = 1, Height = 2, RadialSegments = 256, Rings = 128 },
             new PlaneMesh { Size = new(2, 2), SubdivideWidth = 191, SubdivideDepth = 191 });
     }
 }
 
-internal sealed class LunarTerrainProjection
+internal sealed class BodyTerrainProjection
 {
     private readonly Camera3D _camera;
     private readonly MeshInstance3D _mesh;
     private readonly ShaderMaterial _material;
-    private LunarTerrainAsset? _asset;
+    private BodyTerrainAsset? _asset;
     private LunarTerrainCamera? _lastView;
 
-    internal LunarTerrainProjection(Node owner)
+    internal BodyTerrainProjection(Node owner, Texture2D? surface = null)
     {
         _camera = new Camera3D
         {
@@ -56,6 +56,9 @@ internal sealed class LunarTerrainProjection
         };
         owner.AddChild(_camera);
         _material = new ShaderMaterial { Shader = GD.Load<Shader>("res://Shaders/lunar_terrain.gdshader") };
+        _material.SetShaderParameter("textured_surface", surface is not null);
+        if (surface is not null)
+            _material.SetShaderParameter("surface_map", surface);
         _mesh = new MeshInstance3D { Visible = false, MaterialOverride = _material };
         owner.AddChild(_mesh);
     }
@@ -64,7 +67,7 @@ internal sealed class LunarTerrainProjection
     internal bool Regional => _asset is not null && _mesh.Mesh == _asset.Patch;
     internal Vector3 SunDirection { get; private set; }
 
-    internal void Replace(LunarTerrainAsset? asset)
+    internal void Replace(BodyTerrainAsset? asset)
     {
         _asset = asset;
         _lastView = null;

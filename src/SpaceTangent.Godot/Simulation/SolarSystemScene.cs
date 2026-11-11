@@ -30,6 +30,8 @@ public partial class SolarSystemScene : Control
     private IReadOnlyList<PreparedSatellite> Assets => _addOns?.Satellites ?? [];
     private SurfaceTextures? _surfaceTextures;
     private EarthOrbitTextures? _earthOrbitTextures;
+    private PlanetTextures? _planetTextures;
+    private CheckButton _showPlanetOrbits = null!;
     private BrightSkyData? _brightSky;
     private CheckButton _stars = null!, _starLabels = null!, _equatorialGrid = null!, _constellations = null!;
     private SimulatorWorkspace _workspace = null!;
@@ -147,6 +149,7 @@ public partial class SolarSystemScene : Control
         try
         {
             _earthOrbitTextures = EarthOrbitTextures.Load(_surfaceTextures);
+            _planetTextures = PlanetTextures.Load();
         }
         catch (Exception error) when (IsLoadError(error))
         {
@@ -224,7 +227,16 @@ public partial class SolarSystemScene : Control
 
         var layers = _workspace.AddPage("Layers", "Layers and view");
         layers.AddChild(SimulatorTheme.Section("Objects"));
-        AddButton(layers, "Solar overview", () => SetMode(_active, CameraMode.Solar));
+        AddButton(layers, "Inner planets", () => SetMode(_active, CameraMode.Solar));
+        AddButton(layers, "Outer planets", () => SetMode(_active, CameraMode.SolarOuter));
+        _showPlanetOrbits = new CheckButton { Text = "Planet orbits", ButtonPressed = true };
+        _showPlanetOrbits.Toggled += visible =>
+        {
+            foreach (ViewControls view in _views)
+                view.Renderer.ShowPlanetOrbits = visible;
+            Refresh();
+        };
+        layers.AddChild(_showPlanetOrbits);
         AddButton(layers, "Earth–Moon view", () => SetMode(_active, CameraMode.Lunar));
         layers.AddChild(SimulatorTheme.Section("Sky in this view"));
         _stars = SkyToggle(layers, "StarsLayer", "Bright stars");
@@ -759,7 +771,7 @@ public partial class SolarSystemScene : Control
         Button play = AddButton(tools, "Play", () => TogglePlaying(index));
         AddButton(tools, "+1 h", () => Advance(index, 3600)).Name = $"AdvanceHour{index}";
         var mode = new OptionButton();
-        mode.AddItem("Solar overview", (int)CameraMode.Solar);
+        mode.AddItem("Inner planets", (int)CameraMode.Solar);
         mode.AddItem("Earth–Moon view", (int)CameraMode.Lunar);
         mode.AddItem("Earth satellites", (int)CameraMode.Satellites);
         mode.AddItem("Earth surface", (int)CameraMode.Surface);
@@ -767,6 +779,8 @@ public partial class SolarSystemScene : Control
         mode.AddItem("Cassini timeline", (int)CameraMode.Timeline);
         mode.AddItem("Huygens", (int)CameraMode.Probe);
         mode.AddItem("Lunar terrain", (int)CameraMode.LunarTerrain);
+        mode.AddItem("Outer planets", (int)CameraMode.SolarOuter);
+        mode.AddItem("Olympus Mons", (int)CameraMode.MarsTerrain);
         mode.AddItem("Object camera", NavigationOption);
         mode.SetItemDisabled(NavigationOption, true);
         mode.SetItemDisabled((int)CameraMode.Surface, _surfaceTextures is null);
@@ -809,6 +823,10 @@ public partial class SolarSystemScene : Control
             renderer.SetSurfaceTextures(textures);
         if (_earthOrbitTextures is { } earthOrbit)
             renderer.SetEarthOrbitTextures(earthOrbit);
+        if (_planetTextures is { } planets)
+            renderer.SetPlanetTextures(planets);
+        renderer.PlanetEphemeris = Session!.World.Ephemeris;
+        renderer.ShowPlanetOrbits = _showPlanetOrbits.ButtonPressed;
         if (_brightSky is { } sky)
             renderer.SetSkyData(sky);
         var controls = new ViewControls(frame, renderer, epoch, play, mode, selection, timelineEpoch,
@@ -848,6 +866,7 @@ public partial class SolarSystemScene : Control
         view.Renderer.ReplaceSatellites(Assets);
         view.Renderer.ReplaceMission(_addOns?.Mission, _addOns?.Timeline, _addOns?.Probe);
         view.Renderer.ReplaceLunarTerrain(_addOns?.Terrain);
+        view.Renderer.ReplaceMarsTerrain(_addOns?.MarsTerrain);
         view.Selection.Clear();
         foreach (PreparedSatellite asset in Assets)
             view.Selection.AddItem(asset.Track.Name);
@@ -856,6 +875,7 @@ public partial class SolarSystemScene : Control
         view.Mode.SetItemDisabled((int)CameraMode.Timeline, _addOns?.Timeline is null);
         view.Mode.SetItemDisabled((int)CameraMode.Probe, _addOns?.Probe is null);
         view.Mode.SetItemDisabled((int)CameraMode.LunarTerrain, _addOns?.Terrain is null);
+        view.Mode.SetItemDisabled((int)CameraMode.MarsTerrain, _addOns?.MarsTerrain is null);
     }
 
     private void SeekUtc(string dateText, string clockText)
@@ -1004,6 +1024,7 @@ public partial class SolarSystemScene : Control
                     CameraMode.Timeline => "   Cassini is outside the sampled timeline.",
                     CameraMode.Probe => "   Huygens is outside the available timeline or kernel coverage.",
                     CameraMode.LunarTerrain => "   Lunar terrain is unavailable.",
+                    CameraMode.MarsTerrain => "   Olympus Mons needs the local Mars data pack.",
                     _ => "   Surface view is available for 1900–2099."
                 };
             if (controls.Renderer.ProbeStatus is { } phase)

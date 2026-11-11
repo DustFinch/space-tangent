@@ -106,7 +106,8 @@ public sealed partial class SimulationSession
         double radius = NavigationCamera.BodyRadiusKilometers(target);
         return target == SolarSystemSample.EarthId ? radius + 20 : Math.Max(NavigationCamera.MinRange, 1.15 * radius);
     }
-    private static double FramingRange(ObjectId target) => 4.2 * NavigationCamera.BodyRadiusKilometers(target);
+    private static double FramingRange(ObjectId target) =>
+        (target == PlanetCatalogue.SaturnId ? 6.4 : 4.2) * NavigationCamera.BodyRadiusKilometers(target);
 
     private bool TrySelectedState(int view, out ObjectId target, out WorldSnapshot snapshot, out CartesianState state)
     {
@@ -135,8 +136,11 @@ public sealed partial class SimulationSession
         (Vector3d position, double range) = observer.Mode switch
         {
             CameraMode.Solar => (solar.Sun.PositionKilometers, 310_000_000),
+            CameraMode.SolarOuter => (solar.Sun.PositionKilometers, 5_400_000_000),
             CameraMode.Lunar => (solar.Earth.PositionKilometers, 950_000),
             CameraMode.LunarTerrain => (solar.Moon.PositionKilometers, 5400),
+            CameraMode.MarsTerrain when snapshot.TryState(PlanetCatalogue.MarsId, out CartesianState mars)
+                => (mars.PositionKilometers, 12_000),
             _ => (solar.Earth.PositionKilometers, 25_000)
         };
         return new(position, range, .35, 1.47, null, false);

@@ -79,6 +79,12 @@ internal partial class SimulationViewport
             _earthOrbit.Update(solar, deltaT, _navigationEarth.Scale.X > projectedDistance * .004f);
         }
         PlaceBody(_navigationMoon, solar.Moon.PositionKilometers, SolarSystemSample.MoonId);
+        HidePlanetGlobes();
+        DrawPlanetGlobes(snapshot, pose, units, position =>
+        {
+            Vector3 projected = Project(position, out double scale);
+            return (projected, scale);
+        });
 
         foreach (var (asset, node) in _satellites.Values)
         {
@@ -121,5 +127,6 @@ internal partial class SimulationViewport
         _navigationSun.Hide();
         _navigationEarth.Hide();
         _navigationMoon.Hide();
+        HidePlanetGlobes();
     }
 }

@@ -96,6 +96,8 @@ public partial class WorkspaceInputSmoke : Node
             string? mission = System.Environment.GetEnvironmentVariable("SPACETANGENT_MISSION_CATALOG");
             if (!string.IsNullOrWhiteSpace(mission))
                 await ExerciseLocalAddOns(scratch.FullName, addonSettings, science!, mission);
+            if (System.Environment.GetEnvironmentVariable("SPACETANGENT_PLANETARY_SMOKE") == "1")
+                await ExercisePlanetNavigation(scratch.FullName);
             if (!string.IsNullOrWhiteSpace(System.Environment.GetEnvironmentVariable("SPACETANGENT_PLANET_TEXTURES")))
                 await ExerciseEarthOrbit();
             GD.Print($"SpaceTangent workspace input smoke passed ({DisplayServer.GetName()})");

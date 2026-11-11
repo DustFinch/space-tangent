@@ -9,7 +9,7 @@ using SpaceTangent.Core.World;
 
 namespace SpaceTangent.Application;
 
-public enum CameraMode { Solar, Lunar, Satellites, Surface, Mission, Timeline, Probe, LunarTerrain }
+public enum CameraMode { Solar, Lunar, Satellites, Surface, Mission, Timeline, Probe, LunarTerrain, SolarOuter, MarsTerrain }
 
 public readonly record struct LunarTerrainCamera(double LongitudeDegrees, double LatitudeDegrees, double FieldKilometers)
 {
@@ -34,14 +34,17 @@ public sealed class SimulationWorld
 {
     public SimulationWorld(De440Ephemeris ephemeris, IEnumerable<ScienceSatellite> satellites,
         SpiceSpacecraft? mission = null, SscSampledSpacecraft? timeline = null, HuygensMission? probe = null,
-        SpicePolynomialBodyFrame? moonFrame = null, BrightStarCatalogue? brightStars = null)
+        SpicePolynomialBodyFrame? moonFrame = null, BrightStarCatalogue? brightStars = null, PlanetEphemerides? planets = null, bool hasMarsTerrain = false)
     {
         Ephemeris = ephemeris;
         Satellites = Array.AsReadOnly(satellites.ToArray());
         BrightStars = brightStars ?? BrightStarCatalogue.Empty;
+        HasMarsTerrain = hasMarsTerrain;
         Catalogue = new(Satellites, BrightStars);
         var graph = new WorldGraphBuilder();
         graph.AddSolarSystem(ephemeris);
+        foreach (PlanetDefinition planet in PlanetCatalogue.Planets)
+            PlanetEphemerides.AddPlanet(graph, planet, planets);
         foreach (ScienceSatellite satellite in Satellites)
             graph.AddScienceSatellite(satellite);
         if (mission is not null)
@@ -83,6 +86,7 @@ public sealed class SimulationWorld
     public JulianInstant? TimelineStart { get; }
     public SscHuygensTrack? Probe { get; }
     public bool HasLunarTerrain { get; }
+    public bool HasMarsTerrain { get; }
 }
 
 /// <summary>Owns clocks and view preferences independently of rendering resources.</summary>
@@ -133,6 +137,8 @@ public sealed partial class SimulationSession
                 throw new InvalidDataException("The scenario needs the Huygens timeline and Titan kernels.");
             if (view.Mode == CameraMode.LunarTerrain && !World.HasLunarTerrain)
                 throw new InvalidDataException("The scenario needs the lunar elevation map and orientation kernel.");
+            if (view.Mode == CameraMode.MarsTerrain && !World.HasMarsTerrain)
+                throw new InvalidDataException("The scenario needs the Martian elevation map and orientation kernel.");
             if (view.EarthObserver is { } earth && !earth.IsValid())
                 throw new InvalidDataException("The scenario has an invalid Earth observer camera.");
             if (view.Terrain is { } terrain && !terrain.IsValid())
@@ -203,6 +209,8 @@ public sealed partial class SimulationSession
             throw new ArgumentOutOfRangeException(nameof(mode));
         if (mode == CameraMode.LunarTerrain && !World.HasLunarTerrain)
             throw new InvalidOperationException("The current world has no lunar terrain.");
+        if (mode == CameraMode.MarsTerrain && !World.HasMarsTerrain)
+            throw new InvalidOperationException("The current world has no Martian terrain.");
         ObserverView previous = _views[view];
         if (mode == CameraMode.Satellites)
         {
@@ -325,7 +333,8 @@ public sealed partial class SimulationSession
                 (previous.Mode == CameraMode.Mission && next.MissionId is null) ||
                 (previous.Mode == CameraMode.Timeline && next.TimelineId is null) ||
                 (previous.Mode == CameraMode.Probe && next.Probe is null) ||
-                (previous.Mode == CameraMode.LunarTerrain && !next.HasLunarTerrain);
+                (previous.Mode == CameraMode.LunarTerrain && !next.HasLunarTerrain) ||
+                (previous.Mode == CameraMode.MarsTerrain && !next.HasMarsTerrain);
             CameraMode mode = lostMode
                 ? CameraMode.Solar
                 : previous.Mode;

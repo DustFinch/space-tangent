@@ -10,10 +10,9 @@ public readonly record struct NavigationCamera(Vector3d AnchorKilometers, double
 {
     internal const double MaxElevation = 1.55;
     internal const double MinRange = .005;
-    internal const double MaxRange = 3_000_000_000;
+    internal const double MaxRange = 12_000_000_000;
 
-    public bool IsValid() => AnchorKilometers.IsFinite &&
-        AnchorKilometers.Length <= MaxRange &&
+    public bool IsValid() => AnchorKilometers.IsFinite && AnchorKilometers.Length <= 1e23 &&
         RangeKilometers is >= MinRange and <= MaxRange &&
         AzimuthRadians is >= -Math.PI and <= Math.PI &&
         ElevationRadians is >= -MaxElevation and <= MaxElevation &&
@@ -31,8 +30,8 @@ public readonly record struct NavigationCamera(Vector3d AnchorKilometers, double
     {
         if (target == SolarSystemSample.SunId)
             return 695_700;
-        if (target == SolarSystemSample.EarthId)
-            return 6378.137;
+        if (PlanetCatalogue.Find(target) is { } planet)
+            return planet.RadiusKilometers;
         if (target == SolarSystemSample.MoonId)
             return 1737.4;
         return .007;

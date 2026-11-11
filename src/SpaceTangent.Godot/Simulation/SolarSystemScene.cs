@@ -38,7 +38,7 @@ public partial class SolarSystemScene : Control
         De440Ephemeris ephemeris;
         try
         {
-            ephemeris = De440Ephemeris.Load(FindEphemeris());
+            ephemeris = De440Ephemeris.Load(LocalDataPaths.Find("SPACETANGENT_DE440", "de440.440"));
         }
         catch (Exception error) when (error is FileNotFoundException or DirectoryNotFoundException)
         {
@@ -86,6 +86,7 @@ public partial class SolarSystemScene : Control
             AddButton(toolbar, "Full Moon", () => ShowFullMoon(_active));
         AddView();
         Refresh();
+        GD.Print($"SpaceTangent world ready: DE440, {_assets.Count} science satellites, surface view {_surfaceTextures is not null}.");
     }
 
     public override void _Process(double delta)
@@ -184,6 +185,7 @@ public partial class SolarSystemScene : Control
                 ReplaceAssets(view);
             Refresh();
             _status.Text = "Add-ons reloaded.";
+            GD.Print($"SpaceTangent add-ons reloaded: {_assets.Count} science satellites.");
             return true;
         }
         catch (Exception error) when (IsLoadError(error))
@@ -280,9 +282,7 @@ public partial class SolarSystemScene : Control
     private static IReadOnlyList<PreparedSatellite> LoadAddOns()
     {
         string? configured = System.Environment.GetEnvironmentVariable("SPACETANGENT_SCIENCE_ROOT");
-        string root = string.IsNullOrWhiteSpace(configured)
-            ? ProjectSettings.GlobalizePath("res://.local-data/science")
-            : configured;
+        string root = LocalDataPaths.Find("SPACETANGENT_SCIENCE_ROOT", "science", directory: true);
         string catalog = Path.Combine(root, "catalog", "sciencesat.json");
         if (string.IsNullOrWhiteSpace(configured) && !File.Exists(catalog))
             return [];
@@ -303,15 +303,6 @@ public partial class SolarSystemScene : Control
         error is IOException or UnauthorizedAccessException or InvalidDataException or FormatException
             or OverflowException or System.Text.Json.JsonException or KeyNotFoundException or InvalidOperationException
             or ArgumentException or NotSupportedException;
-
-    private static string FindEphemeris()
-    {
-        string? configured = System.Environment.GetEnvironmentVariable("SPACETANGENT_DE440");
-        if (!string.IsNullOrWhiteSpace(configured))
-            return configured;
-        string local = ProjectSettings.GlobalizePath("res://.local-data/de440.440");
-        return File.Exists(local) ? local : ProjectSettings.GlobalizePath("user://de440.440");
-    }
 
     private static string SettingsPath() => System.Environment.GetEnvironmentVariable("SPACETANGENT_SETTINGS_PATH")
         ?? ProjectSettings.GlobalizePath("user://delta-t.txt");

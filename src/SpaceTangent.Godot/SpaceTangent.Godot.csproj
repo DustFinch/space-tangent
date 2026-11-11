@@ -2,6 +2,9 @@
   <PropertyGroup>
     <TargetFramework>net8.0</TargetFramework>
   </PropertyGroup>
+  <ItemGroup Condition="'$(Configuration)' == 'ExportRelease'">
+    <Compile Remove="tests/**/*.cs" />
+  </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="../SpaceTangent.Application/SpaceTangent.Application.csproj" />
     <ProjectReference Include="../../deps/space-tangent-core/src/SpaceTangent.Core/SpaceTangent.Core.csproj" />

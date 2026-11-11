@@ -75,10 +75,7 @@ internal sealed class SurfaceProjection
 
     internal static SurfaceTextures? LoadTextures()
     {
-        string? configured = System.Environment.GetEnvironmentVariable("SPACETANGENT_SURFACE_TEXTURES");
-        string directory = string.IsNullOrWhiteSpace(configured)
-            ? ProjectSettings.GlobalizePath("res://.local-data/surface")
-            : configured;
+        string directory = LocalDataPaths.Find("SPACETANGENT_SURFACE_TEXTURES", "surface", directory: true);
         string clouds = Path.Combine(directory, "earth-clouds.png");
         string moon = Path.Combine(directory, "moon.jpg");
         if (!File.Exists(clouds) || !File.Exists(moon))

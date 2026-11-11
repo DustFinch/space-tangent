@@ -9,3 +9,7 @@ The original local model has SHA-256 `342B3E2DCB789C0E2C638081B0BE1BAACF5C9DCC75
 The JSON catalogue displays both camera frusta. To display Saturn's ellipsoid and trace the camera footprints, place `sat480.bsp` and `pck00011.tpc` next to the catalogue. The nearest hit within each camera's range shortens its ray. Boundary samples that hit the surface form the footprint outlines. Between a hit and a miss the outline stops at the nearest sampled hit. With either optional kernel absent, the view uses the Saturn barycenter marker and draws the full-range frusta.
 
 [NAIF Saturn ephemeris](https://naif.jpl.nasa.gov/pub/naif/generic_kernels/spk/satellites/sat480.bsp) · [NAIF IAU body orientation and radii](https://naif.jpl.nasa.gov/pub/naif/generic_kernels/pck/pck00011.tpc)
+
+The **Cassini timeline** camera loads the original 15-phase sampled trajectory alongside the SPICE mission. Put the source world layout under `src/SpaceTangent.Godot/.local-data/timeline` for source builds or `data/timeline` beside the executable. It needs `ssc/cassini.ssc`, `models/cassini.3ds` and the 15 original Cassini XYZV files under `models/trajectories`. Alternatively, set `SPACETANGENT_TIMELINE_ROOT` to the existing world root.
+
+Use the **JD TDB** field and press Enter to seek. The first center change is at JD 2453167.5. Both views select their phases independently with independent clocks. The view adapts its scale to the spacecraft's distance from the active center. Saving a scenario retains the timeline camera and exact epoch.

@@ -36,6 +36,8 @@ public partial class BootstrapSmoke : Node
                 await CheckMission(scene);
             if (System.Environment.GetEnvironmentVariable("SPACETANGENT_PAUSE_SCRIPT") is { Length: > 0 } script)
                 await CheckLua(scene, script);
+            if (!string.IsNullOrWhiteSpace(System.Environment.GetEnvironmentVariable("SPACETANGENT_TIMELINE_ROOT")))
+                await CheckTimeline(scene);
 
             GD.Print("SpaceTangent bootstrap smoke passed");
             GetTree().Quit();
@@ -354,6 +356,56 @@ public partial class BootstrapSmoke : Node
             Require(time.Elapsed.TotalSeconds < 15, "Lua script did not finish.");
             await ToSignal(GetTree(), SceneTree.SignalName.ProcessFrame);
         }
+    }
+
+    private async Task CheckTimeline(SolarSystemScene scene)
+    {
+        SimulationSession session = scene.Session!;
+        Require(session.World.TimelineId == new ObjectId("ssc/sol/saturn/cassini"), "The original sampled catalogue must load.");
+        if (session.ViewCount == 1)
+            scene.ToggleSplit();
+        scene.Synchronize(false, 0);
+        scene.SetMode(0, CameraMode.Timeline);
+        scene.SetMode(1, CameraMode.Timeline);
+        var inputs = scene.FindChildren("TimelineEpoch", "LineEdit", recursive: true, owned: false);
+        Require(inputs.Count == 2, "Both timeline views need a date input.");
+        ((LineEdit)inputs[0]).EmitSignal(LineEdit.SignalName.TextSubmitted, "2453167.499988426");
+        ((LineEdit)inputs[1]).EmitSignal(LineEdit.SignalName.TextSubmitted, "2453167.5");
+        SimulationViewport left = scene.Renderer(0), right = scene.Renderer(1);
+        Require(left.MissionMesh.Visible && left.MissionUsesSun && !left.MissionUsesSaturn &&
+            right.MissionMesh.Visible && right.MissionUsesSaturn && !right.MissionUsesSun,
+            "The two real phases must display their own centers simultaneously.");
+        Require(left.MissionMesh.Position.Length() is > 0 and <= 75.001f &&
+            right.MissionMesh.Position.Length() is > 0 and <= 75.001f &&
+            left.MissionMesh.Position.DistanceTo(right.MissionMesh.Position) > 1,
+            "Both models must be in view at their own display scale.");
+
+        string? capture = System.Environment.GetEnvironmentVariable("SPACETANGENT_TIMELINE_CAPTURE");
+        if (!string.IsNullOrWhiteSpace(capture))
+        {
+            await ToSignal(GetTree(), SceneTree.SignalName.ProcessFrame);
+            await ToSignal(RenderingServer.Singleton, RenderingServer.SignalName.FramePostDraw);
+            using Image image = GetViewport().GetTexture().GetImage();
+            Require(image.SavePng(capture) == Error.Ok, "Could not save both Cassini timeline views.");
+        }
+
+        ObserverView first = session[0], second = session[1];
+        string file = Path.Combine(Path.GetTempPath(), $"SpaceTangent-timeline-{Guid.NewGuid():N}.stscene");
+        try
+        {
+            Require(scene.SaveScenario(file), "The timeline scenario must save.");
+            ((LineEdit)inputs[1]).EmitSignal(LineEdit.SignalName.TextSubmitted, "2459000");
+            Require(!right.MissionMesh.Visible && left.MissionMesh.Visible, "Only the observer outside the timeline must hide Cassini.");
+            Require(scene.LoadScenario(file) && first == session[0] && second == session[1] &&
+                left.MissionUsesSun && right.MissionUsesSaturn, "Scenario opening must restore both timeline phases.");
+            Require(await scene.ReloadAddOns() && first == session[0] && second == session[1] &&
+                left.MissionUsesSun && right.MissionUsesSaturn, "Reload must keep both sampled phases selected.");
+        }
+        finally
+        {
+            File.Delete(file);
+        }
+        GD.Print("SpaceTangent original fifteen-phase Cassini timeline smoke passed");
     }
 
     private static void VerifyMesh(MeshInstance3D node, int triangles, int surfaces, int textureCount)

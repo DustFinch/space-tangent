@@ -24,7 +24,9 @@ internal partial class SimulationViewport : Node3D
     private Camera3D _camera = null!;
     private Node3D _sun = null!, _earth = null!, _moon = null!, _saturn = null!;
     private PreparedMission? _mission;
+    private PreparedMission? _timeline;
     private MeshInstance3D _missionNode = null!, _missionFrusta = null!;
+    private Label3D _missionLabel = null!;
     private MeshInstance3D _saturnSurface = null!, _projectedFrusta = null!, _footprints = null!;
     private readonly ImmediateMesh _projectionMesh = new(), _footprintMesh = new();
     private StandardMaterial3D[] _footprintMaterials = [];
@@ -54,6 +56,9 @@ internal partial class SimulationViewport : Node3D
         _saturn = CreateMarker("Saturn barycenter", new Color("#d9bb7f"), 9);
         _missionNode = new MeshInstance3D { Visible = false };
         AddChild(_missionNode);
+        _missionLabel = CreateLabel("Cassini", Vector3.Zero);
+        _missionLabel.Hide();
+        AddChild(_missionLabel);
         _missionFrusta = new MeshInstance3D { Visible = false };
         AddChild(_missionFrusta);
         _saturnSurface = new MeshInstance3D
@@ -99,17 +104,20 @@ internal partial class SimulationViewport : Node3D
     internal MeshInstance3D SatelliteMesh(ObjectId id) => _satellites[id].Node;
 
     internal MeshInstance3D MissionMesh => _missionNode;
+    internal bool MissionUsesSun => _sun.Visible;
+    internal bool MissionUsesSaturn => _saturn.Visible || _saturnSurface.Visible;
     internal MeshInstance3D MissionFrusta => _missionFrusta;
     internal MeshInstance3D MissionProjectedFrusta => _projectedFrusta;
     internal bool MissionFootprintVisible => _footprints.Visible;
     internal bool MissionProjectionVisible => _projectedFrusta.Visible;
     internal int MissionFootprintCount => _footprintMesh.GetSurfaceCount();
 
-    internal void ReplaceMission(PreparedMission? asset)
+    internal void ReplaceMission(PreparedMission? asset, PreparedMission? timeline)
     {
         _mission = asset;
-        _missionNode.Mesh = asset?.Mesh;
+        _timeline = timeline;
         _missionNode.Hide();
+        _missionLabel.Hide();
         _missionFrusta.Mesh = asset?.Frusta;
         _missionFrusta.Hide();
         _footprintMaterials = asset?.Sensors.Select(sensor => LineMaterial(sensor.Color, sensor.FootprintOpacity)).ToArray() ?? [];
@@ -158,8 +166,9 @@ internal partial class SimulationViewport : Node3D
     internal bool Draw(ObserverView observer, WorldSnapshot snapshot, DeltaTModel deltaT)
     {
         SolarSystemSample sample = snapshot.SolarSystem ?? throw new InvalidOperationException("The view needs a solar-system snapshot.");
-        _saturn.Visible = observer.Mode == CameraMode.Mission;
+        _saturn.Hide();
         _missionNode.Hide();
+        _missionLabel.Hide();
         _missionFrusta.Hide();
         _saturnSurface.Hide();
         _projectedFrusta.Hide();
@@ -172,8 +181,8 @@ internal partial class SimulationViewport : Node3D
                 return true;
         }
 
-        if (observer.Mode == CameraMode.Mission)
-            return DrawMission(snapshot);
+        if (observer.Mode is CameraMode.Mission or CameraMode.Timeline)
+            return DrawMission(snapshot, observer.Mode == CameraMode.Timeline);
 
         ObjectId origin = observer.Mode == CameraMode.Solar ? SolarSystemSample.SunId : SolarSystemSample.EarthId;
         double scale = observer.Mode == CameraMode.Solar ? OverviewKilometersPerUnit : LunarKilometersPerUnit;
@@ -207,7 +216,7 @@ internal partial class SimulationViewport : Node3D
         return observer.Mode != CameraMode.Surface;
     }
 
-    private bool DrawMission(WorldSnapshot snapshot)
+    private bool DrawMission(WorldSnapshot snapshot, bool timeline)
     {
         _sun.Hide();
         _earth.Hide();
@@ -216,26 +225,40 @@ internal partial class SimulationViewport : Node3D
             node.Hide();
 
         _camera.Size = 210;
-        if (_mission is not { } mission)
+        PreparedMission? mission = timeline ? _timeline : _mission;
+        if (mission is null)
             return false;
         SaturnSurfacePose pose = default;
-        bool hasSurface = mission.Surface?.TrySample(snapshot.Epoch, out pose) == true;
+        bool hasSurface = !timeline && mission.Surface?.TrySample(snapshot.Epoch, out pose) == true;
+        _saturn.Visible = !timeline;
         if (hasSurface)
             DrawSaturn(pose);
         if (!snapshot.TryState(mission.Id, out var state) ||
-            !snapshot.TryState(SolarSystemSample.SaturnBarycenterId, out var center))
+            !snapshot.TryStateCenter(mission.Id, out ObjectId centerId) || !snapshot.TryState(centerId, out var center))
             return false;
 
         Vector3d observer = (state - center).PositionKilometers;
-        Vector3 position = ToGodot(observer, MissionKilometersPerUnit);
+        double scale = MissionKilometersPerUnit;
+        if (timeline)
+        {
+            scale = Math.Max(scale, observer.Length / 75);
+            _saturn.Visible = centerId == SolarSystemSample.SaturnBarycenterId;
+            _sun.Visible = centerId == SolarSystemSample.SunId;
+            _sun.Position = Vector3.Zero;
+        }
+        Vector3 position = ToGodot(observer, scale);
         _camera.Size = Math.Max(210, 2.5f * position.Length());
         if (!snapshot.TryOrientation(mission.Id, out var rotation))
             return false;
 
         Basis3d body = rotation.ToWorld;
         var attitude = new Basis(ToGodot(body.X, 1), ToGodot(body.Y, 1), ToGodot(body.Z, 1));
+        if (_missionNode.Mesh != mission.Mesh)
+            _missionNode.Mesh = mission.Mesh;
         _missionNode.Transform = new(attitude.Scaled(Vector3.One * mission.MarkerScale), position);
         _missionNode.Show();
+        _missionLabel.Position = position + new Vector3(0, 0, 9);
+        _missionLabel.Show();
         if (hasSurface && mission.Frusta is not null)
             DrawProjectedFrusta(mission, pose, observer, body);
         else if (mission.Frusta is not null)
@@ -328,15 +351,17 @@ internal partial class SimulationViewport : Node3D
             Mesh = new SphereMesh { Radius = radius, Height = 2 * radius },
             MaterialOverride = new StandardMaterial3D { AlbedoColor = color, ShadingMode = BaseMaterial3D.ShadingModeEnum.Unshaded }
         });
-        marker.AddChild(new Label3D
-        {
-            Text = name,
-            Position = new(0, 0, radius + 5),
-            PixelSize = 0.27f,
-            Billboard = BaseMaterial3D.BillboardModeEnum.Enabled,
-            NoDepthTest = true
-        });
+        marker.AddChild(CreateLabel(name, new(0, 0, radius + 5)));
         AddChild(marker);
         return marker;
     }
+
+    private static Label3D CreateLabel(string name, Vector3 position) => new()
+    {
+        Text = name,
+        Position = position,
+        PixelSize = 0.27f,
+        Billboard = BaseMaterial3D.BillboardModeEnum.Enabled,
+        NoDepthTest = true
+    };
 }

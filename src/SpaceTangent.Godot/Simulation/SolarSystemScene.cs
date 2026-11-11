@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
 using Godot;
+using System.Globalization;
 using SpaceTangent.Application;
 using SpaceTangent.Application.Assets;
 using SpaceTangent.Contracts;
@@ -13,15 +14,17 @@ namespace SpaceTangent.Godot.Simulation;
 public partial class SolarSystemScene : Control
 {
     private sealed record ViewControls(VBoxContainer Panel, SimulationViewport Renderer, Label Epoch,
-        Button Play, OptionButton Mode, OptionButton Selection);
+        Button Play, OptionButton Mode, OptionButton Selection, LineEdit TimelineEpoch);
     private sealed record DecodedSatellite(ScienceSatellite Track, DecodedScienceModel Model);
     private sealed record DecodedMission(DecodedScienceModel Model, IReadOnlyList<SpiceSensor> Sensors, SaturnSurface? Surface);
-    private sealed record DecodedAddOns(SimulationWorld World, List<DecodedSatellite> Satellites, DecodedMission? Mission);
-    private sealed record PublishedAddOns(IReadOnlyList<PreparedSatellite> Satellites, PreparedMission? Mission);
+    private sealed record DecodedAddOns(SimulationWorld World, List<DecodedSatellite> Satellites, DecodedMission? Mission,
+        DecodedScienceModel? Timeline);
+    private sealed record PublishedAddOns(IReadOnlyList<PreparedSatellite> Satellites, PreparedMission? Mission, PreparedMission? Timeline);
 
     private readonly List<ViewControls> _views = [];
     private IReadOnlyList<PreparedSatellite> _assets = [];
     private PreparedMission? _mission;
+    private PreparedMission? _timeline;
     private SurfaceTextures? _surfaceTextures;
     private HBoxContainer _panels = null!;
     private Button _split = null!;
@@ -91,6 +94,7 @@ public partial class SolarSystemScene : Control
             world = decoded.World;
             _assets = assets.Satellites;
             _mission = assets.Mission;
+            _timeline = assets.Timeline;
             _status.Text = "";
         }
         catch (OperationCanceledException)
@@ -135,6 +139,8 @@ public partial class SolarSystemScene : Control
         GD.Print($"SpaceTangent world ready: DE440, {_assets.Count} science satellites, surface view {_surfaceTextures is not null}.");
         if (world.MissionName is { } mission)
             GD.Print($"SpaceTangent mission ready: {mission}.");
+        if (world.TimelineId is not null)
+            GD.Print("SpaceTangent Cassini timeline ready.");
         if (OS.GetCmdlineUserArgs().Contains("--smoke-startup"))
             GetTree().Quit();
     }
@@ -374,6 +380,7 @@ public partial class SolarSystemScene : Control
                 throw new InvalidOperationException("The new world does not cover the current epochs.");
             _assets = next.Satellites;
             _mission = next.Mission;
+            _timeline = next.Timeline;
             foreach (ViewControls view in _views)
                 ReplaceAssets(view);
             Refresh();
@@ -429,12 +436,17 @@ public partial class SolarSystemScene : Control
         mode.AddItem("Earth satellites", (int)CameraMode.Satellites);
         mode.AddItem("Earth surface", (int)CameraMode.Surface);
         mode.AddItem("Cassini at Saturn", (int)CameraMode.Mission);
+        mode.AddItem("Cassini timeline", (int)CameraMode.Timeline);
         mode.SetItemDisabled((int)CameraMode.Surface, _surfaceTextures is null);
         mode.ItemSelected += item => SetMode(index, (CameraMode)mode.GetItemId((int)item));
         tools.AddChild(mode);
         var selection = new OptionButton();
         selection.ItemSelected += item => SelectSatellite(index, _assets[(int)item].Track.Id);
         tools.AddChild(selection);
+        var timelineEpoch = new LineEdit { Name = "TimelineEpoch", PlaceholderText = "JD TDB ↵", Visible = false,
+            TooltipText = "Enter a TDB Julian date, such as 2453167.5, and press Enter." };
+        timelineEpoch.TextSubmitted += text => SeekTimeline(index, text);
+        panel.AddChild(timelineEpoch);
 
         var container = new SubViewportContainer
         {
@@ -453,7 +465,7 @@ public partial class SolarSystemScene : Control
         viewport.AddChild(renderer);
         if (_surfaceTextures is { } textures)
             renderer.SetSurfaceTextures(textures);
-        var controls = new ViewControls(panel, renderer, epoch, play, mode, selection);
+        var controls = new ViewControls(panel, renderer, epoch, play, mode, selection, timelineEpoch);
         _views.Add(controls);
         ReplaceAssets(controls);
     }
@@ -461,12 +473,28 @@ public partial class SolarSystemScene : Control
     private void ReplaceAssets(ViewControls view)
     {
         view.Renderer.ReplaceSatellites(_assets);
-        view.Renderer.ReplaceMission(_mission);
+        view.Renderer.ReplaceMission(_mission, _timeline);
         view.Selection.Clear();
         foreach (PreparedSatellite asset in _assets)
             view.Selection.AddItem(asset.Track.Name);
         view.Mode.SetItemDisabled((int)CameraMode.Satellites, _assets.Count == 0);
         view.Mode.SetItemDisabled((int)CameraMode.Mission, _mission is null);
+        view.Mode.SetItemDisabled((int)CameraMode.Timeline, _timeline is null);
+    }
+
+    private void SeekTimeline(int view, string text)
+    {
+        try
+        {
+            if (!double.TryParse(text, NumberStyles.Float, CultureInfo.InvariantCulture, out double value))
+                throw new FormatException("Enter a Julian date in TDB, for example 2453167.5.");
+            Seek(view, JulianInstant.FromJulianDate(value, TimeScale.Tdb));
+            _status.Text = "";
+        }
+        catch (Exception error) when (error is ArgumentException or FormatException)
+        {
+            _status.Text = $"Could not set the epoch. {error.Message}";
+        }
     }
 
     private void Refresh()
@@ -480,12 +508,16 @@ public partial class SolarSystemScene : Control
             bool available = controls.Renderer.Draw(view, session.World.Graph.Evaluate(view.Epoch), session.DeltaT);
             controls.Epoch.Text = FormattableString.Invariant($"View {index + 1}   JD {view.Epoch.ToJulianDate():F6} TDB");
             if (!available)
-                controls.Epoch.Text += view.Mode == CameraMode.Mission
-                    ? "   Cassini state or pointing is outside kernel coverage."
-                    : "   Surface view is available for 1900–2099.";
+                controls.Epoch.Text += view.Mode switch
+                {
+                    CameraMode.Mission => "   Cassini state or pointing is outside kernel coverage.",
+                    CameraMode.Timeline => "   Cassini is outside the sampled timeline.",
+                    _ => "   Surface view is available for 1900–2099."
+                };
             controls.Play.Text = view.Playing ? "Pause" : "Play";
             controls.Mode.Select((int)view.Mode);
             controls.Selection.Visible = view.Mode == CameraMode.Satellites;
+            controls.TimelineEpoch.Visible = view.Mode == CameraMode.Timeline;
             int selected = -1;
             for (int item = 0; item < _assets.Count && selected < 0; item++)
             {
@@ -503,12 +535,17 @@ public partial class SolarSystemScene : Control
         string? explicitMission = System.Environment.GetEnvironmentVariable("SPACETANGENT_MISSION_CATALOG");
         string missionJson = LocalDataPaths.Find("SPACETANGENT_MISSION_CATALOG", "mission/cassini.json");
         string missionSsc = LocalDataPaths.Find("SPACETANGENT_MISSION_CATALOG", "mission/cassini.ssc");
-        return Task.Run(() => DecodeAddOns(ephemeris, root, configured, explicitMission, missionJson, missionSsc, cancellation),
+        const string TimelineEnvironment = "SPACETANGENT_TIMELINE_ROOT";
+        string timelineRoot = LocalDataPaths.Find(TimelineEnvironment, "timeline", directory: true);
+        bool timelineConfigured = !string.IsNullOrWhiteSpace(System.Environment.GetEnvironmentVariable(TimelineEnvironment));
+        return Task.Run(() => DecodeAddOns(ephemeris, root, configured, explicitMission, missionJson, missionSsc,
+            timelineRoot, timelineConfigured, cancellation),
             cancellation);
     }
 
     private static DecodedAddOns DecodeAddOns(De440Ephemeris ephemeris, string root, bool configured,
-        string? explicitMission, string missionJson, string missionSsc, CancellationToken cancellation)
+        string? explicitMission, string missionJson, string missionSsc, string timelineRoot, bool timelineConfigured,
+        CancellationToken cancellation)
     {
         string catalog = Path.Combine(root, "catalog", "sciencesat.json");
         var satellites = new List<DecodedSatellite>();
@@ -534,7 +571,16 @@ public partial class SolarSystemScene : Control
             SaturnSurface? surface = File.Exists(centers) && File.Exists(pck) ? new(centers, pck) : null;
             geometry = new(StudioMeshDecoder.Decode(track.MeshPath, cancellation), sensors, surface);
         }
-        return new(new SimulationWorld(ephemeris, satellites.Select(asset => asset.Track), mission), satellites, geometry);
+        string timelineCatalog = Path.Combine(timelineRoot, "ssc", "cassini.ssc");
+        SscSampledSpacecraft? timeline = null;
+        DecodedScienceModel? timelineGeometry = null;
+        if (timelineConfigured || File.Exists(timelineCatalog))
+        {
+            timeline = SscSampledCatalog.Load(timelineCatalog, timelineRoot, "Sol/Saturn/Cassini", cancellation);
+            timelineGeometry = StudioMeshDecoder.Decode(timeline.MeshPath, cancellation);
+        }
+        return new(new SimulationWorld(ephemeris, satellites.Select(asset => asset.Track), mission, timeline),
+            satellites, geometry, timelineGeometry);
     }
 
     private static (SpiceSpacecraft Track, IReadOnlyList<SpiceSensor> Sensors) ReadMission(string path)
@@ -565,7 +611,10 @@ public partial class SolarSystemScene : Control
             ? new(decoded.World.MissionId!.Value, ScienceMeshLoader.Publish(geometry.Model),
                 (float)(18 / geometry.Model.Diameter), SimulationViewport.CreateFrusta(geometry.Sensors),
                 geometry.Surface, geometry.Sensors) : null;
-        return new(satellites, mission);
+        PreparedMission? timeline = decoded.Timeline is { } model
+            ? new(decoded.World.TimelineId!.Value, ScienceMeshLoader.Publish(model), (float)(18 / model.Diameter), null, null, [])
+            : null;
+        return new(satellites, mission, timeline);
     }
 
     private static bool IsLoadError(Exception error) =>

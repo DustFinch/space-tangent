@@ -7,14 +7,14 @@ using SpaceTangent.Core.World;
 
 namespace SpaceTangent.Application;
 
-public enum CameraMode { Solar, Lunar, Satellites, Surface, Mission }
+public enum CameraMode { Solar, Lunar, Satellites, Surface, Mission, Timeline }
 
 public readonly record struct ObserverView(JulianInstant Epoch, CameraMode Mode, ObjectId? Selection, bool Playing);
 
 public sealed class SimulationWorld
 {
     public SimulationWorld(De440Ephemeris ephemeris, IEnumerable<ScienceSatellite> satellites,
-        SpiceSpacecraft? mission = null)
+        SpiceSpacecraft? mission = null, SscSampledSpacecraft? timeline = null)
     {
         Ephemeris = ephemeris;
         Satellites = Array.AsReadOnly(satellites.ToArray());
@@ -27,6 +27,12 @@ public sealed class SimulationWorld
             MissionId = graph.AddSpiceSpacecraft(mission);
             MissionName = mission.Name;
         }
+        if (timeline is not null)
+        {
+            graph.AddSampledSpacecraft(timeline);
+            TimelineId = timeline.Id;
+            TimelineStart = timeline.Start;
+        }
         Graph = graph.Build();
     }
 
@@ -35,6 +41,8 @@ public sealed class SimulationWorld
     public WorldGraph Graph { get; }
     public ObjectId? MissionId { get; }
     public string? MissionName { get; }
+    public ObjectId? TimelineId { get; }
+    public JulianInstant? TimelineStart { get; }
 }
 
 /// <summary>Owns clocks and view preferences independently of rendering resources.</summary>
@@ -79,6 +87,8 @@ public sealed class SimulationSession
                 throw new InvalidDataException("The scenario has an unknown camera mode.");
             if (view.Mode == CameraMode.Mission && World.MissionId is null)
                 throw new InvalidDataException("The scenario needs the Cassini mission add-on.");
+            if (view.Mode == CameraMode.Timeline && World.TimelineId is null)
+                throw new InvalidDataException("The scenario needs the Cassini timeline catalogue.");
             if (view.Mode == CameraMode.Satellites && World.Satellites.Count == 0)
                 throw new InvalidDataException("The scenario needs the Earth satellite add-ons.");
             if (view.Selection is { } selection && !World.Satellites.Any(satellite => satellite.Id == selection))
@@ -127,7 +137,7 @@ public sealed class SimulationSession
 
     public void SetMode(int view, CameraMode mode)
     {
-        if (mode is < CameraMode.Solar or > CameraMode.Mission)
+        if (!Enum.IsDefined(mode))
             throw new ArgumentOutOfRangeException(nameof(mode));
         ObserverView previous = _views[view];
         if (mode == CameraMode.Satellites)
@@ -143,6 +153,12 @@ public sealed class SimulationSession
             WorldSnapshot snapshot = World.Graph.Evaluate(previous.Epoch);
             if (!snapshot.TryState(mission, out _) || !snapshot.TryOrientation(mission, out _))
                 Seek(view, MissionPreview);
+        }
+        if (mode == CameraMode.Timeline)
+        {
+            ObjectId id = World.TimelineId ?? throw new InvalidOperationException("The current world has no sampled timeline.");
+            if (!World.Graph.Evaluate(previous.Epoch).TryState(id, out _))
+                Seek(view, World.TimelineStart!.Value);
         }
         _views[view] = _views[view] with { Mode = mode };
     }
@@ -196,7 +212,8 @@ public sealed class SimulationSession
         {
             if (_views[view].Playing)
             {
-                double rate = _views[view].Mode is CameraMode.Satellites or CameraMode.Mission ? 180 : JulianInstant.SecondsPerDay;
+                double rate = _views[view].Mode is CameraMode.Satellites or CameraMode.Mission or CameraMode.Timeline
+                    ? 180 : JulianInstant.SecondsPerDay;
                 Step(view, elapsed * rate);
                 changed = true;
             }
@@ -216,7 +233,8 @@ public sealed class SimulationSession
                 ? id
                 : null;
             bool lostMode = (previous.Mode == CameraMode.Satellites && next.Satellites.Count == 0) ||
-                (previous.Mode == CameraMode.Mission && next.MissionId is null);
+                (previous.Mode == CameraMode.Mission && next.MissionId is null) ||
+                (previous.Mode == CameraMode.Timeline && next.TimelineId is null);
             CameraMode mode = lostMode
                 ? CameraMode.Solar
                 : previous.Mode;

@@ -1,169 +1,252 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
 using Godot;
+using SpaceTangent.Application;
 using SpaceTangent.Contracts;
 using SpaceTangent.Core.Addons;
 using SpaceTangent.Core.Ephemerides;
+using SpaceTangent.Core.Time;
 
 namespace SpaceTangent.Godot.Simulation;
 
-public partial class SolarSystemScene : Node3D
+public partial class SolarSystemScene : Control
 {
-    private const double OverviewKilometersPerUnit = 1_000_000;
-    private const double LunarKilometersPerUnit = 4_000;
-    private const double SatelliteKilometersPerUnit = 75;
-    private const double SimulatedSecondsPerSecond = JulianInstant.SecondsPerDay;
-    private enum View { Solar, Lunar, Satellites }
-    private sealed record SatelliteDisplay(ScienceSatellite Track, MeshInstance3D Node, float MarkerScale);
+    private sealed record ViewControls(VBoxContainer Panel, SimulationViewport Renderer, Label Epoch,
+        Button Play, OptionButton Mode, OptionButton Selection);
 
-    private readonly List<SatelliteDisplay> _satellites = [];
-    private De440Ephemeris? _ephemeris;
-    private Camera3D _camera = null!;
-    private Node3D _sun = null!, _earth = null!, _moon = null!;
+    private readonly List<ViewControls> _views = [];
+    private IReadOnlyList<PreparedSatellite> _assets = [];
+    private HBoxContainer _panels = null!;
+    private Button _split = null!;
+    private CheckButton _sync = null!;
     private Label _status = null!;
-    private Button _play = null!, _scale = null!;
-    private bool _playing;
-    private View _view;
-
-    internal SolarSystemSample? CurrentSample { get; private set; }
+    private int _active;
+    internal SimulationSession? Session { get; private set; }
 
     public override void _Ready()
     {
-        _camera = new Camera3D { Projection = Camera3D.ProjectionType.Orthogonal, Position = new(0, 400, 0) };
-        AddChild(_camera);
-        _camera.LookAt(Vector3.Zero, Vector3.Forward);
-        _camera.MakeCurrent();
-
-        _sun = CreateMarker("Sun", new Color("#ffce69"), 4);
-        _earth = CreateMarker("Earth", new Color("#6fa8ff"), 3);
-        _moon = CreateMarker("Moon", new Color("#cbd3e4"), 2.4f);
-        VBoxContainer controls = CreateControls();
+        var layout = new VBoxContainer();
+        AddChild(layout);
+        layout.SetAnchorsAndOffsetsPreset(LayoutPreset.FullRect);
+        var toolbar = new HBoxContainer();
+        layout.AddChild(toolbar);
         _status = new Label();
-        controls.AddChild(_status);
+        layout.AddChild(_status);
+        _panels = new HBoxContainer { SizeFlagsVertical = SizeFlags.ExpandFill };
+        layout.AddChild(_panels);
 
-        if (!TryOpenEphemeris(FindEphemerisPath()))
-            return;
-
-        var buttons = new HBoxContainer();
-        controls.AddChild(buttons);
-        AddButton(buttons, "−1 day", () => Advance(-JulianInstant.SecondsPerDay));
-        _play = AddButton(buttons, "Play", ToggleClock);
-        AddButton(buttons, "+1 day", () => Advance(JulianInstant.SecondsPerDay));
-        _scale = AddButton(buttons, "Earth–Moon view", () => SetLunarView(_view != View.Lunar));
-        LoadSatellites(controls, buttons);
-        Seek(new(JulianInstant.J2000Day, 0, TimeScale.Tdb));
-    }
-
-    public override void _Process(double delta)
-    {
-        if (_playing)
-            Advance(delta * (_view == View.Satellites ? 180 : SimulatedSecondsPerSecond));
-    }
-
-    internal void Seek(JulianInstant epoch)
-    {
-        De440Ephemeris model = _ephemeris ?? throw new InvalidOperationException("Load DE440 before setting the clock.");
-        CurrentSample = model.Sample(epoch);
-        DrawSample();
-    }
-
-    internal void SetLunarView(bool enabled)
-    {
-        SetView(enabled ? View.Lunar : View.Solar);
-    }
-
-    internal void SetSatelliteView()
-    {
-        if (_satellites.Count == 0)
-            throw new InvalidOperationException("Load a satellite catalogue before opening its view.");
-
-        SetView(View.Satellites);
-        if (CurrentSample is { } current && !_satellites[0].Track.TrySample(current.Epoch, out _))
-            Seek(_satellites[0].Track.Epoch);
-    }
-
-    private void SetView(View view)
-    {
-        _view = view;
-        _scale.Text = view == View.Lunar ? "Solar overview" : "Earth–Moon view";
-        DrawSample();
-    }
-
-    internal void Advance(double simulatedSeconds)
-    {
-        if (CurrentSample is not { } sample || _ephemeris is not { } model)
-            return;
-
-        JulianInstant epoch = sample.Epoch.AddSeconds(simulatedSeconds);
-        if (epoch.CompareTo(model.Start) <= 0)
-        {
-            epoch = model.Start;
-            SetPlaying(false);
-        }
-        else if (epoch.CompareTo(model.End) >= 0)
-        {
-            epoch = model.End;
-            SetPlaying(false);
-        }
-
-        Seek(epoch);
-    }
-
-    private static string FindEphemerisPath()
-    {
-        string? configured = System.Environment.GetEnvironmentVariable("SPACETANGENT_DE440");
-        if (!string.IsNullOrWhiteSpace(configured))
-            return configured;
-
-        string local = ProjectSettings.GlobalizePath("res://.local-data/de440.440");
-        return File.Exists(local) ? local : ProjectSettings.GlobalizePath("user://de440.440");
-    }
-
-    private bool TryOpenEphemeris(string path)
-    {
+        De440Ephemeris ephemeris;
         try
         {
-            _ephemeris = De440Ephemeris.Load(path);
-            return true;
+            ephemeris = De440Ephemeris.Load(FindEphemeris());
         }
         catch (Exception error) when (error is FileNotFoundException or DirectoryNotFoundException)
         {
             _status.Text = "Set SPACETANGENT_DE440 to a classic JPL DE440 file to start the simulation.";
+            return;
         }
-        catch (Exception error) when (error is IOException or InvalidDataException or UnauthorizedAccessException)
+        catch (Exception error) when (IsLoadError(error))
+        {
+            _status.Text = error.Message;
+            return;
+        }
+
+        try
+        {
+            _assets = LoadAddOns();
+        }
+        catch (Exception error) when (IsLoadError(error))
         {
             _status.Text = error.Message;
         }
 
-        _sun.Hide();
-        _earth.Hide();
-        _moon.Hide();
-        return false;
+        Session = new(new SimulationWorld(ephemeris, _assets.Select(asset => asset.Track)),
+            new(JulianInstant.J2000Day, 0, TimeScale.Tdb), ReadDeltaT());
+        _split = AddButton(toolbar, "Split view", ToggleSplit);
+        _sync = new CheckButton { Text = "Synchronize view time", ButtonPressed = true };
+        _sync.Toggled += enabled => Synchronize(enabled, _active);
+        toolbar.AddChild(_sync);
+        var deltaT = new OptionButton();
+        deltaT.AddItem("ΔT · Espenak–Meeus", (int)DeltaTModel.EspenakMeeus2006);
+        deltaT.AddItem("ΔT · Morrison–Stephenson", (int)DeltaTModel.MorrisonStephenson2004);
+        deltaT.AddItem("ΔT · Fixed offset", (int)DeltaTModel.FixedOffset);
+        deltaT.Select((int)Session.DeltaT);
+        deltaT.ItemSelected += index => SetDeltaT((DeltaTModel)deltaT.GetItemId((int)index));
+        toolbar.AddChild(deltaT);
+        AddButton(toolbar, "Reload add-ons", () => ReloadAddOns());
+        AddView();
+        Refresh();
     }
 
-    private void DrawSample()
+    public override void _Process(double delta)
     {
-        if (CurrentSample is not { } sample)
-            return;
-
-        ObjectId origin = _view == View.Solar ? SolarSystemSample.SunId : SolarSystemSample.EarthId;
-        double scale = _view == View.Solar ? OverviewKilometersPerUnit : LunarKilometersPerUnit;
-        _sun.Position = ToGodot(sample.RelativeState(SolarSystemSample.SunId, origin).PositionKilometers, scale);
-        _earth.Position = ToGodot(sample.RelativeState(SolarSystemSample.EarthId, origin).PositionKilometers, scale);
-        _moon.Position = ToGodot(sample.RelativeState(SolarSystemSample.MoonId, origin).PositionKilometers, scale);
-        _sun.Visible = _view == View.Solar;
-        _moon.Visible = _view == View.Lunar;
-        _camera.Size = _view == View.Solar ? 365 : 250;
-        DrawSatellites(sample.Epoch);
-        string epoch = FormattableString.Invariant($"JD {sample.Epoch.ToJulianDate():F6} TDB");
-        _status.Text = _view switch
-        {
-            View.Solar => $"{epoch}   Solar overview",
-            View.Lunar => $"{epoch}   Earth–Moon view",
-            _ => $"{epoch}   Earth satellites"
-        };
+        if (Session?.Tick(delta) == true)
+            Refresh();
     }
 
-    private void LoadSatellites(Container controls, Container buttons)
+    internal SimulationViewport Renderer(int view) => _views[view].Renderer;
+
+    internal void SetMode(int view, CameraMode mode)
+    {
+        _active = view;
+        Session!.SetMode(view, mode);
+        Refresh();
+    }
+
+    internal void SelectSatellite(int view, ObjectId id)
+    {
+        _active = view;
+        Session!.Select(view, id);
+        Refresh();
+    }
+
+    internal void Advance(int view, double seconds)
+    {
+        _active = view;
+        Session!.Step(view, seconds);
+        Refresh();
+    }
+
+    internal void Synchronize(bool enabled, int source)
+    {
+        Session!.Synchronize(enabled, source);
+        _sync.SetPressedNoSignal(enabled);
+        Refresh();
+    }
+
+    internal void SetDeltaT(DeltaTModel model)
+    {
+        Session!.SetDeltaT(model);
+        try
+        {
+            SaveDeltaT(model);
+        }
+        catch (Exception error) when (error is IOException or UnauthorizedAccessException)
+        {
+            _status.Text = $"Could not save ΔT. {error.Message}";
+        }
+    }
+
+    internal void ToggleSplit()
+    {
+        if (Session!.ViewCount == 1)
+        {
+            Session.Split();
+            AddView();
+        }
+        else
+        {
+            Session.CloseSecondView();
+            var panel = _views[1].Panel;
+            _views.RemoveAt(1);
+            _panels.RemoveChild(panel);
+            panel.QueueFree();
+            _active = 0;
+        }
+        _split.Text = Session.ViewCount == 1 ? "Split view" : "Close second view";
+        Refresh();
+    }
+
+    internal bool ReloadAddOns()
+    {
+        try
+        {
+            IReadOnlyList<PreparedSatellite> next = LoadAddOns();
+            var world = new SimulationWorld(Session!.World.Ephemeris, next.Select(asset => asset.Track));
+            if (!Session.TryReplaceWorld(world))
+                throw new InvalidOperationException("The new world does not cover the current epochs.");
+            _assets = next;
+            foreach (ViewControls view in _views)
+                ReplaceAssets(view);
+            Refresh();
+            _status.Text = "Add-ons reloaded.";
+            return true;
+        }
+        catch (Exception error) when (IsLoadError(error))
+        {
+            _status.Text = $"Could not reload add-ons. {error.Message}";
+            return false;
+        }
+    }
+
+    private void AddView()
+    {
+        int index = _views.Count;
+        var panel = new VBoxContainer { SizeFlagsHorizontal = SizeFlags.ExpandFill };
+        _panels.AddChild(panel);
+        var tools = new HBoxContainer();
+        panel.AddChild(tools);
+        var epoch = new Label();
+        panel.AddChild(epoch);
+        AddButton(tools, "−1 h", () => Advance(index, -3600));
+        Button play = AddButton(tools, "Play", () =>
+        {
+            _active = index;
+            Session!.TogglePlaying(index);
+            Refresh();
+        });
+        AddButton(tools, "+1 h", () => Advance(index, 3600));
+        var mode = new OptionButton();
+        mode.AddItem("Solar overview", (int)CameraMode.Solar);
+        mode.AddItem("Earth–Moon view", (int)CameraMode.Lunar);
+        mode.AddItem("Earth satellites", (int)CameraMode.Satellites);
+        mode.ItemSelected += item => SetMode(index, (CameraMode)mode.GetItemId((int)item));
+        tools.AddChild(mode);
+        var selection = new OptionButton();
+        selection.ItemSelected += item => SelectSatellite(index, _assets[(int)item].Track.Id);
+        tools.AddChild(selection);
+
+        var container = new SubViewportContainer
+        {
+            Stretch = true,
+            SizeFlagsVertical = SizeFlags.ExpandFill
+        };
+        container.GuiInput += input =>
+        {
+            if (input is InputEventMouseButton { Pressed: true })
+                _active = index;
+        };
+        panel.AddChild(container);
+        var viewport = new SubViewport { OwnWorld3D = true, RenderTargetUpdateMode = SubViewport.UpdateMode.Always };
+        container.AddChild(viewport);
+        var renderer = new SimulationViewport();
+        viewport.AddChild(renderer);
+        var controls = new ViewControls(panel, renderer, epoch, play, mode, selection);
+        _views.Add(controls);
+        ReplaceAssets(controls);
+    }
+
+    private void ReplaceAssets(ViewControls view)
+    {
+        view.Renderer.ReplaceSatellites(_assets);
+        view.Selection.Clear();
+        foreach (PreparedSatellite asset in _assets)
+            view.Selection.AddItem(asset.Track.Name);
+        view.Mode.SetItemDisabled((int)CameraMode.Satellites, _assets.Count == 0);
+    }
+
+    private void Refresh()
+    {
+        SimulationSession session = Session!;
+        for (int index = 0; index < _views.Count; index++)
+        {
+            ViewControls controls = _views[index];
+            ObserverView view = session[index];
+            controls.Renderer.Draw(view, session.World.Ephemeris.Sample(view.Epoch));
+            controls.Epoch.Text = FormattableString.Invariant($"View {index + 1}   JD {view.Epoch.ToJulianDate():F6} TDB");
+            controls.Play.Text = view.Playing ? "Pause" : "Play";
+            controls.Mode.Select((int)view.Mode);
+            controls.Selection.Visible = view.Mode == CameraMode.Satellites;
+            int selected = -1;
+            for (int item = 0; item < _assets.Count && selected < 0; item++)
+            {
+                if (_assets[item].Track.Id == view.Selection)
+                    selected = item;
+            }
+            controls.Selection.Select(selected);
+        }
+    }
+
+    private static IReadOnlyList<PreparedSatellite> LoadAddOns()
     {
         string? configured = System.Environment.GetEnvironmentVariable("SPACETANGENT_SCIENCE_ROOT");
         string root = string.IsNullOrWhiteSpace(configured)
@@ -171,93 +254,64 @@ public partial class SolarSystemScene : Node3D
             : configured;
         string catalog = Path.Combine(root, "catalog", "sciencesat.json");
         if (string.IsNullOrWhiteSpace(configured) && !File.Exists(catalog))
-            return;
+            return [];
 
+        var satellites = new List<PreparedSatellite>();
+        foreach (ScienceSatellite track in ScienceSatelliteCatalog.Load(catalog, root))
+        {
+            ArrayMesh mesh = ScienceMeshLoader.Load(track.MeshPath);
+            float diameter = mesh.GetAabb().Size.Length();
+            if (!(diameter > 0 && float.IsFinite(diameter)))
+                throw new InvalidDataException("Satellite mesh has invalid bounds.");
+            satellites.Add(new(track, mesh, 18 / diameter));
+        }
+        return satellites;
+    }
+
+    private static bool IsLoadError(Exception error) =>
+        error is IOException or UnauthorizedAccessException or InvalidDataException or FormatException
+            or OverflowException or System.Text.Json.JsonException or KeyNotFoundException or InvalidOperationException
+            or ArgumentException or NotSupportedException;
+
+    private static string FindEphemeris()
+    {
+        string? configured = System.Environment.GetEnvironmentVariable("SPACETANGENT_DE440");
+        if (!string.IsNullOrWhiteSpace(configured))
+            return configured;
+        string local = ProjectSettings.GlobalizePath("res://.local-data/de440.440");
+        return File.Exists(local) ? local : ProjectSettings.GlobalizePath("user://de440.440");
+    }
+
+    private static string SettingsPath() => System.Environment.GetEnvironmentVariable("SPACETANGENT_SETTINGS_PATH")
+        ?? ProjectSettings.GlobalizePath("user://delta-t.txt");
+
+    private static DeltaTModel ReadDeltaT()
+    {
         try
         {
-            foreach (ScienceSatellite track in ScienceSatelliteCatalog.Load(catalog, root))
-            {
-                ArrayMesh mesh = ScienceMeshLoader.Load(track.MeshPath);
-                var node = new MeshInstance3D { Name = track.Name, Mesh = mesh, Visible = false };
-                float diameter = mesh.GetAabb().Size.Length();
-                if (!(diameter > 0 && float.IsFinite(diameter)))
-                    throw new InvalidDataException("Satellite mesh has invalid bounds.");
-                _satellites.Add(new(track, node, 18 / diameter));
-            }
+            if (Enum.TryParse(File.ReadAllText(SettingsPath()), out DeltaTModel selected) && Enum.IsDefined(selected))
+                return selected;
         }
-        catch (Exception error) when (error is IOException or UnauthorizedAccessException or InvalidDataException
-                                      or FormatException or OverflowException or System.Text.Json.JsonException)
+        catch (Exception error) when (error is IOException or UnauthorizedAccessException)
         {
-            foreach (SatelliteDisplay display in _satellites)
-                display.Node.Free();
-            _satellites.Clear();
-            controls.AddChild(new Label { Text = $"Science catalogue unavailable. {error.Message}" });
+            // A fresh profile has no preference yet.
         }
-
-        foreach (SatelliteDisplay display in _satellites)
-            AddChild(display.Node);
-        if (_satellites.Count > 0)
-            AddButton(buttons, "Earth satellites", SetSatelliteView);
+        return DeltaTModel.EspenakMeeus2006;
     }
 
-    private void DrawSatellites(JulianInstant epoch)
+    private static void SaveDeltaT(DeltaTModel model)
     {
-        foreach (SatelliteDisplay display in _satellites)
+        string path = SettingsPath();
+        string temporary = path + "." + Guid.NewGuid().ToString("N") + ".tmp";
+        try
         {
-            if (_view != View.Satellites || !display.Track.TrySample(epoch, out var sample))
-            {
-                display.Node.Hide();
-                continue;
-            }
-
-            Basis3d body = sample.BodyToTrajectory;
-            Basis3d mesh = sample.MeshToBody;
-            Vector3 Column(Vector3d value) => ToGodot(body.Transform(value), 1) * display.MarkerScale;
-            var basis = new Basis(Column(mesh.X), Column(mesh.Y), Column(mesh.Z));
-            display.Node.Transform = new Transform3D(basis, ToGodot(sample.EarthRelativeState.PositionKilometers,
-                SatelliteKilometersPerUnit));
-            display.Node.Show();
+            File.WriteAllText(temporary, model.ToString());
+            File.Move(temporary, path, overwrite: true);
         }
-    }
-
-    private static Vector3 ToGodot(Vector3d value, double scale) =>
-        new((float)(value.X / scale), (float)(value.Z / scale), (float)(-value.Y / scale));
-
-    private void ToggleClock() => SetPlaying(!_playing);
-
-    private void SetPlaying(bool playing)
-    {
-        _playing = playing;
-        _play.Text = playing ? "Pause" : "Play";
-    }
-
-    private Node3D CreateMarker(string name, Color color, float radius)
-    {
-        var marker = new Node3D { Name = name };
-        marker.AddChild(new MeshInstance3D
+        finally
         {
-            Mesh = new SphereMesh { Radius = radius, Height = 2 * radius },
-            MaterialOverride = new StandardMaterial3D { AlbedoColor = color, ShadingMode = BaseMaterial3D.ShadingModeEnum.Unshaded }
-        });
-        marker.AddChild(new Label3D
-        {
-            Text = name,
-            Position = new(0, 0, radius + 5),
-            PixelSize = 0.27f,
-            Billboard = BaseMaterial3D.BillboardModeEnum.Enabled,
-            NoDepthTest = true
-        });
-        AddChild(marker);
-        return marker;
-    }
-
-    private VBoxContainer CreateControls()
-    {
-        var layer = new CanvasLayer();
-        AddChild(layer);
-        var controls = new VBoxContainer { Position = new(18, 14) };
-        layer.AddChild(controls);
-        return controls;
+            File.Delete(temporary);
+        }
     }
 
     private static Button AddButton(Container parent, string text, Action onPressed)

@@ -1,7 +1,9 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
 using System.Reflection;
 using Godot;
+using SpaceTangent.Application;
 using SpaceTangent.Contracts;
+using SpaceTangent.Core.Time;
 using SpaceTangent.Godot.Simulation;
 
 namespace SpaceTangent.Godot.Tests;
@@ -19,7 +21,7 @@ public partial class BootstrapSmoke : Node
             if (!string.IsNullOrWhiteSpace(System.Environment.GetEnvironmentVariable("SPACETANGENT_DE440")))
                 CheckSimulation(scene);
             if (!string.IsNullOrWhiteSpace(System.Environment.GetEnvironmentVariable("SPACETANGENT_SCIENCE_ROOT")))
-                CheckSatellites(scene);
+                CheckSatellitesAndReload(scene);
 
             GD.Print("SpaceTangent bootstrap smoke passed");
             GetTree().Quit();
@@ -33,49 +35,94 @@ public partial class BootstrapSmoke : Node
 
     private static void CheckSimulation(SolarSystemScene scene)
     {
-        var initial = scene.CurrentSample ?? throw new InvalidOperationException("DE440 failed to load.");
-        if (initial.Epoch != new JulianInstant(JulianInstant.J2000Day, 0, TimeScale.Tdb))
-            throw new InvalidOperationException("The simulation must start at J2000.");
+        SimulationSession session = scene.Session ?? throw new InvalidOperationException("DE440 failed to load.");
+        var initial = session[0].Epoch;
+        Require(initial == new JulianInstant(JulianInstant.J2000Day, 0, TimeScale.Tdb), "The clock must start at J2000.");
 
-        var earth = scene.GetNode<Node3D>("Earth");
-        Vector3 initialPosition = earth.Position;
-        if (initialPosition.Length() is < 140 or > 160)
-            throw new InvalidOperationException("The overview must show Earth at about one AU from the Sun.");
+        var renderer = scene.Renderer(0);
+        Vector3 initialPosition = renderer.EarthPosition;
+        Require(initialPosition.Length() is >= 140 and <= 160, "The solar view must show Earth about one AU from the Sun.");
+        scene.Advance(0, JulianInstant.SecondsPerDay);
+        Require(session[0].Epoch == initial.AddSeconds(JulianInstant.SecondsPerDay) &&
+                renderer.EarthPosition.DistanceTo(initialPosition) >= 1, "Advancing the clock must move Earth.");
 
-        scene.Advance(JulianInstant.SecondsPerDay);
-        var advanced = scene.CurrentSample ?? throw new InvalidOperationException("Simulation stopped unexpectedly.");
-        if (advanced.Epoch != initial.Epoch.AddSeconds(JulianInstant.SecondsPerDay) ||
-            earth.Position.DistanceTo(initialPosition) < 1)
-            throw new InvalidOperationException("Advancing the clock must move Earth.");
-
-        scene.SetLunarView(true);
-        var moon = scene.GetNode<Node3D>("Moon");
-        if (!moon.Visible || earth.Position != Vector3.Zero || moon.Position.Length() is < 85 or > 105)
-            throw new InvalidOperationException("The lunar view must show the Moon around Earth.");
-
+        scene.SetMode(0, CameraMode.Lunar);
+        Require(renderer.MoonVisible && renderer.EarthPosition == Vector3.Zero &&
+                renderer.MoonPosition.Length() is >= 85 and <= 105, "The lunar view must show the Moon around Earth.");
         GD.Print("SpaceTangent DE440 scene smoke passed");
     }
 
-    private static void CheckSatellites(SolarSystemScene scene)
+    private static void CheckSatellitesAndReload(SolarSystemScene scene)
     {
-        scene.SetSatelliteView();
-        VerifyMesh(scene.GetNode<MeshInstance3D>("Jason-1"), 83_233, 28, 2);
-        VerifyMesh(scene.GetNode<MeshInstance3D>("SORCE"), 115_711, 20, 1);
-        var jason = scene.GetNode<MeshInstance3D>("Jason-1");
-        Vector3 before = jason.Position;
-        scene.Advance(600);
-        if (jason.Position.DistanceTo(before) < 5)
-            throw new InvalidOperationException("Advancing time must change Jason-1's scene position.");
+        var jasonId = new ObjectId("norad/26997");
+        var sorceId = new ObjectId("norad/27651");
+        SimulationSession session = scene.Session ?? throw new InvalidOperationException("DE440 failed to load.");
+        scene.SetMode(0, CameraMode.Satellites);
+        scene.SelectSatellite(0, jasonId);
+        VerifyMesh(scene.Renderer(0).SatelliteMesh(jasonId), 83_233, 28, 2);
+        VerifyMesh(scene.Renderer(0).SatelliteMesh(sorceId), 115_711, 20, 1);
 
-        GD.Print("SpaceTangent Jason-1 and SORCE scene smoke passed");
+        scene.ToggleSplit();
+        Require(session.ViewCount == 2 && session[0] == session[1], "Splitting must copy view state.");
+        scene.Synchronize(false, 0);
+        scene.Advance(1, 3600);
+        Require(session[0].Epoch != session[1].Epoch, "Independent clocks must diverge.");
+        Require(scene.Renderer(1).SatelliteMesh(jasonId).Position
+                    .DistanceTo(scene.Renderer(0).SatelliteMesh(jasonId).Position) > 5, "Two epochs must move Jason-1 independently.");
+
+        string? oldSettings = System.Environment.GetEnvironmentVariable("SPACETANGENT_SETTINGS_PATH");
+        string settings = Path.Combine(Path.GetTempPath(), $"SpaceTangent-smoke-{Guid.NewGuid():N}.txt");
+        System.Environment.SetEnvironmentVariable("SPACETANGENT_SETTINGS_PATH", settings);
+        try
+        {
+            scene.SetDeltaT(DeltaTModel.MorrisonStephenson2004);
+            ObserverView left = session[0], right = session[1];
+            Require(scene.ReloadAddOns(), "Real add-ons must reload.");
+            Require(left == session[0] && right == session[1] && session.DeltaT == DeltaTModel.MorrisonStephenson2004,
+                "Reload must retain both clocks, selections, camera modes and ΔT.");
+            Require(File.ReadAllText(settings) == nameof(DeltaTModel.MorrisonStephenson2004), "ΔT must be saved to the profile.");
+            VerifyMesh(scene.Renderer(1).SatelliteMesh(jasonId), 83_233, 28, 2);
+            CheckFailedReload(scene, left, right);
+        }
+        finally
+        {
+            System.Environment.SetEnvironmentVariable("SPACETANGENT_SETTINGS_PATH", oldSettings);
+            File.Delete(settings);
+        }
+
+        scene.Synchronize(true, 1);
+        Require(session[0].Epoch == session[1].Epoch, "Synchronizing must use the chosen view's epoch.");
+        JulianInstant synchronized = session[0].Epoch;
+        scene.Advance(0, 3600);
+        Require(session[0].Epoch == synchronized.AddSeconds(3600) && session[1].Epoch == session[0].Epoch,
+            "A synchronized step must move both clocks.");
+
+        GD.Print("SpaceTangent Jason-1 and SORCE two-view reload smoke passed");
+    }
+
+    private static void CheckFailedReload(SolarSystemScene scene, ObserverView left, ObserverView right)
+    {
+        string? original = System.Environment.GetEnvironmentVariable("SPACETANGENT_SCIENCE_ROOT");
+        System.Environment.SetEnvironmentVariable("SPACETANGENT_SCIENCE_ROOT",
+            Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString("N")));
+        SimulationSession session = scene.Session!;
+        SimulationWorld world = session.World;
+        try
+        {
+            Require(!scene.ReloadAddOns() && ReferenceEquals(world, session.World) && left == session[0] && right == session[1],
+                "A failed reload must leave the published world and views intact.");
+        }
+        finally
+        {
+            System.Environment.SetEnvironmentVariable("SPACETANGENT_SCIENCE_ROOT", original);
+        }
     }
 
     private static void VerifyMesh(MeshInstance3D node, int triangles, int surfaces, int textureCount)
     {
         if (!node.Visible || node.Mesh is not ArrayMesh mesh || node.Position.Length() is < 85 or > 120)
-            throw new InvalidOperationException($"{node.Name} must show a real mesh in Earth orbit.");
-        if (mesh.GetSurfaceCount() != surfaces)
-            throw new InvalidOperationException($"{node.Name} has the wrong number of material surfaces.");
+            throw new InvalidOperationException("Expected a real mesh in Earth orbit.");
+        Require(mesh.GetSurfaceCount() == surfaces, "Unexpected number of material surfaces.");
 
         int vertices = 0;
         var textures = new HashSet<ulong>();
@@ -84,11 +131,16 @@ public partial class BootstrapSmoke : Node
             vertices += mesh.SurfaceGetArrayLen(i);
             if (mesh.SurfaceGetMaterial(i) is not StandardMaterial3D material ||
                 material.Transparency != BaseMaterial3D.TransparencyEnum.Disabled)
-                throw new InvalidOperationException($"{node.Name} contains an unexpected transparent material.");
+                throw new InvalidOperationException("Unexpected transparent material.");
             if (material.AlbedoTexture is { } texture)
                 textures.Add(texture.GetInstanceId());
         }
-        if (vertices != triangles * 3 || textures.Count != textureCount)
-            throw new InvalidOperationException($"{node.Name} has unexpected geometry or texture counts.");
+        Require(vertices == triangles * 3 && textures.Count == textureCount, "Unexpected geometry or texture count.");
+    }
+
+    private static void Require(bool condition, string message)
+    {
+        if (!condition)
+            throw new InvalidOperationException(message);
     }
 }

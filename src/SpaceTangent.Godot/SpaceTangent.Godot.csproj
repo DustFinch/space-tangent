@@ -3,6 +3,7 @@
     <TargetFramework>net8.0</TargetFramework>
   </PropertyGroup>
   <ItemGroup>
+    <ProjectReference Include="../SpaceTangent.Application/SpaceTangent.Application.csproj" />
     <ProjectReference Include="../../deps/space-tangent-core/src/SpaceTangent.Core/SpaceTangent.Core.csproj" />
     <ProjectReference Include="../../deps/space-tangent-core/src/SpaceTangent.Contracts/SpaceTangent.Contracts.csproj" />
   </ItemGroup>

@@ -23,6 +23,12 @@
           "GodotSharp": "4.7.2"
         }
       },
+      "spacetangent.application": {
+        "type": "Project",
+        "dependencies": {
+          "SpaceTangent.Core": "[1.0.0, )"
+        }
+      },
       "spacetangent.contracts": {
         "type": "Project"
       },

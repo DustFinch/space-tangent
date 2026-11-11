@@ -1,0 +1,8 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="../../deps/space-tangent-core/src/SpaceTangent.Core/SpaceTangent.Core.csproj" />
+  </ItemGroup>
+</Project>

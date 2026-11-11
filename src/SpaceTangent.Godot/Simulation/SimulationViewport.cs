@@ -190,6 +190,8 @@ internal partial class SimulationViewport : Node3D
 
     internal void SetSurfaceControls(bool clouds, bool lunarLight) => _surface!.SetControls(clouds, lunarLight);
 
+    internal void SetSurfacePitch(double degrees) => _surface!.PitchDegrees = degrees;
+
     internal bool Draw(ObserverView observer, WorldSnapshot snapshot, DeltaTModel deltaT)
     {
         SolarSystemSample sample = snapshot.SolarSystem ?? throw new InvalidOperationException("The view needs a solar-system snapshot.");

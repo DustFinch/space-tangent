@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
 using System.Text.Json;
 using Godot;
+using SpaceTangent.Contracts;
+using SpaceTangent.Core.Observing;
 using SpaceTangent.Core.Time;
 using SpaceTangent.Godot.Simulation;
 
@@ -40,9 +42,21 @@ public partial class MoonLightingProbe : Node
             using Image nightOff = await Capture(renderer, output, "night-off", true, false);
             using Image noCloudOn = await Capture(renderer, output, "no-cloud-on", false, true);
             using Image noCloudOff = await Capture(renderer, output, "no-cloud-off", false, false);
-            scene.Seek(0, SurfaceProjection.FullMoonEpoch.AddSeconds(43_200));
+            JulianInstant dayEpoch = SurfaceProjection.FullMoonEpoch.AddSeconds(43_200);
+            scene.Seek(0, dayEpoch);
             using Image dayOn = await Capture(renderer, output, "day-on", true, true);
             using Image dayOff = await Capture(renderer, output, "day-off", true, false);
+            using Image daySky = await Capture(renderer, output, "day-sky", false, false);
+            JulianInstant twilightEpoch = FindEveningTwilight(scene);
+            scene.Seek(0, twilightEpoch);
+            using Image twilight = await Capture(renderer, output, "twilight", false, false);
+            const double HorizonPitch = 5;
+            renderer.SetSurfacePitch(HorizonPitch);
+            scene.Seek(0, twilightEpoch);
+            using Image horizon = await Capture(renderer, output, "twilight-horizon", false, false);
+            double daySkyError = CompareAtmosphere(daySky, Sample(scene, dayEpoch));
+            double twilightSkyError = CompareAtmosphere(twilight, Sample(scene, twilightEpoch));
+            double horizonSkyError = CompareAtmosphere(horizon, Sample(scene, twilightEpoch), HorizonPitch);
 
             var (nightDifference, cloudContrast) = Difference(nightOn, nightOff);
             var (noCloudDifference, _) = Difference(noCloudOn, noCloudOff);
@@ -53,6 +67,14 @@ public partial class MoonLightingProbe : Node
             Require(noCloudDifference < .00001, "Lunar cloud control changed pixels with clouds disabled.");
             Require(dayDifference < .00001, "Lunar cloud control changed daylight pixels.");
             Require(moonPixels > 100, "The full-Moon disc is not visible and resolved.");
+            Require(daySkyError < .02 && twilightSkyError < .02 && horizonSkyError < .02,
+                $"Sky RGB differs from the numerical reference. Day {daySkyError:F4}, twilight {twilightSkyError:F4}, horizon {horizonSkyError:F4}.");
+            Color dayColor = daySky.GetPixel(daySky.GetWidth() / 2, daySky.GetHeight() / 2);
+            Color twilightColor = twilight.GetPixel(twilight.GetWidth() / 2, twilight.GetHeight() / 2);
+            Color horizonColor = horizon.GetPixel(horizon.GetWidth() / 2, 3 * horizon.GetHeight() / 4);
+            Require(dayColor.B > dayColor.R + .1f && twilightColor.B < dayColor.B / 2 &&
+                horizonColor.R > horizonColor.B,
+                $"Expected blue daylight, dim twilight and a warm horizon. Horizon RGB {horizonColor}.");
             File.WriteAllText(Path.Combine(output, "result.json"), JsonSerializer.Serialize(new
             {
                 status = "passed",
@@ -65,7 +87,12 @@ public partial class MoonLightingProbe : Node
                 cloudContrast,
                 noCloudDifference,
                 dayDifference,
-                moonPixels
+                moonPixels,
+                twilightTdb = twilightEpoch.ToJulianDate(),
+                twilightSolarElevationDegrees = SolarElevation(Sample(scene, twilightEpoch)),
+                daySkyError,
+                twilightSkyError,
+                horizonSkyError
             }, new JsonSerializerOptions { WriteIndented = true }));
 
             GD.Print("SpaceTangent full Moon cloud rendering probe passed");
@@ -76,6 +103,42 @@ public partial class MoonLightingProbe : Node
             GD.PushError(error.ToString());
             GetTree().Quit(1);
         }
+    }
+
+    private static SurfaceLighting Sample(SolarSystemScene scene, JulianInstant epoch) =>
+        EarthSurfaceLighting.Sample(scene.Session!.World.Ephemeris.Sample(epoch), new EarthSite(55.7558, 37.6173, .15),
+            scene.Session.DeltaT);
+
+    private static double SolarElevation(SurfaceLighting lighting)
+    {
+        Vector3d sun = lighting.EarthToSun - lighting.PositionKilometers;
+        return Math.Asin(Vector3d.Dot(lighting.EastNorthUp.Z, sun) / sun.Length) * (180 / Math.PI);
+    }
+
+    private static JulianInstant FindEveningTwilight(SolarSystemScene scene)
+    {
+        JulianInstant noon = SurfaceProjection.FullMoonEpoch.AddSeconds(43_200);
+        for (int minutes = 0; minutes < 720; minutes++)
+        {
+            JulianInstant time = noon.AddSeconds(minutes * 60);
+            if (SolarElevation(Sample(scene, time)) <= -2.5)
+                return time;
+        }
+        throw new InvalidOperationException("The Earth-surface test could not find evening twilight.");
+    }
+
+    private static double CompareAtmosphere(Image image, SurfaceLighting lighting, double pitch = 28)
+    {
+        double error = 0;
+        foreach (int y in new[] { image.GetHeight() / 4, image.GetHeight() / 2, 3 * image.GetHeight() / 4 })
+        {
+            int x = image.GetWidth() / 2;
+            Vector3d expected = EarthSkyReference.Pixel(lighting, image.GetWidth(), image.GetHeight(), x, y, pitch);
+            Color actual = image.GetPixel(x, y);
+            error = Math.Max(error, Math.Max(Math.Abs(expected.X - actual.R),
+                Math.Max(Math.Abs(expected.Y - actual.G), Math.Abs(expected.Z - actual.B))));
+        }
+        return error;
     }
 
     private async Task<Image> Capture(SimulationViewport renderer, string output, string label, bool clouds, bool lunar)

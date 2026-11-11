@@ -2,6 +2,8 @@
 shader_type canvas_item;
 render_mode unshaded;
 
+#include "res://Shaders/earth_atmosphere.gdshaderinc"
+
 uniform sampler2D cloud_texture : filter_linear_mipmap, repeat_enable;
 uniform sampler2D moon_texture : source_color, filter_linear_mipmap;
 uniform vec3 observer;
@@ -76,26 +78,25 @@ void fragment() {
     vec3 sun_dir = normalize(earth_to_sun - observer);
     vec3 moon_delta = earth_to_moon - observer;
     vec3 moon_dir = normalize(moon_delta);
-    float solar_elevation = dot(site_up, sun_dir);
-    float sky_elevation = clamp(dot(ray, site_up), 0.0, 1.0);
-    float day = smoothstep(-0.105, 0.08, solar_elevation);
-    vec3 day_sky = mix(vec3(0.49, 0.67, 0.87), vec3(0.09, 0.28, 0.61), sky_elevation);
-    vec3 color = mix(vec3(0.012, 0.018, 0.035), day_sky, day);
+    vec3 background = vec3(0.012, 0.018, 0.035);
 
     if (dot(moon_dir, site_up) > 0.0) {
-        color = lunar_disc(ray, moon_dir, length(moon_delta), color);
+        background = lunar_disc(ray, moon_dir, length(moon_delta), background);
     }
 
+    vec2 view_column = vec2(0.0);
+    vec3 air_radiance = vec3(0.0);
+    vec3 cloud_radiance = vec3(0.0);
+    float cloud_distance = 0.0;
+    float coverage = 0.0;
     if (show_clouds && dot(ray, site_up) > 0.0) {
-        float shell = earth_radius + 8.0;
-        float b = dot(observer, ray);
-        float c = dot(observer, observer) - shell * shell;
-        vec3 cloud = observer + ray * (-b + sqrt(max(0.0, b * b - c)));
+        cloud_distance = air_exit(observer, ray, earth_radius + 8.0);
+        vec3 cloud = observer + ray * cloud_distance;
         vec3 normal = normalize(cloud);
         float longitude = atan(normal.y, normal.x) - earth_angle;
         float latitude = asin(clamp(normal.z, -1.0, 1.0));
         float regional_cover = texture(cloud_texture, vec2(fract(0.5 + longitude / TAU), 0.5 - latitude / PI)).r;
-        float coverage = cloud_cover(cloud, regional_cover);
+        coverage = cloud_cover(cloud, regional_cover);
         float solar_incidence = dot(normal, sun_dir);
         float night = 1.0 - smoothstep(-0.105, 0.0, solar_incidence);
         float sunlight = max(0.0, solar_incidence);
@@ -104,8 +105,15 @@ void fragment() {
             moonlight = lunar_strength * night * max(0.0, dot(normal, normalize(earth_to_moon - cloud)));
         }
         float cloud_value = (0.045 + 0.88 * sunlight + 1.65 * moonlight) * (1.0 - 0.40 * coverage);
-        color = mix(color, vec3(cloud_value), coverage);
+        if (coverage > 0.0) {
+            air_integrate(observer, ray, sun_dir, earth_radius, 0.0, cloud_distance, 12, view_column, air_radiance);
+            cloud_radiance = air_compose(vec3(cloud_value), view_column, air_radiance);
+        }
     }
 
-    COLOR = vec4(color, 1.0);
+    float sky_distance = air_exit(observer, ray, earth_radius + AIR_TOP_KM);
+    float start = coverage > 0.0 ? cloud_distance : 0.0;
+    air_integrate(observer, ray, sun_dir, earth_radius, start, sky_distance, 20, view_column, air_radiance);
+    vec3 sky = air_compose(background, view_column, air_radiance);
+    COLOR = vec4(air_linear_to_srgb(mix(sky, cloud_radiance, coverage)), 1.0);
 }

@@ -14,9 +14,10 @@ internal sealed class SurfaceProjection
     internal static readonly JulianInstant FullMoonEpoch = JulianInstant.FromJulianDate(2460600.5008, TimeScale.Tdb);
     private static readonly EarthSite Site = new(55.7558, 37.6173, .15);
     private const double Degrees = Math.PI / 180;
-    private const double Heading = 237 * Degrees, Pitch = 28 * Degrees;
+    private const double Heading = 237 * Degrees;
     private readonly ColorRect _surface;
     private readonly ShaderMaterial _material;
+    internal double PitchDegrees { get; set; } = 28;
 
     internal SurfaceProjection(Node owner, SurfaceTextures textures)
     {
@@ -51,7 +52,8 @@ internal sealed class SurfaceProjection
         Vector3 north = Convert(lighting.EastNorthUp.Y);
         Vector3 up = Convert(lighting.EastNorthUp.Z);
         Vector3 horizontal = north * (float)Math.Cos(Heading) + east * (float)Math.Sin(Heading);
-        Vector3 forward = horizontal * (float)Math.Cos(Pitch) + up * (float)Math.Sin(Pitch);
+        double pitch = PitchDegrees * Degrees;
+        Vector3 forward = horizontal * (float)Math.Cos(pitch) + up * (float)Math.Sin(pitch);
         Vector3 right = forward.Cross(up).Normalized();
         Vector3 cameraUp = right.Cross(forward);
         _material.SetShaderParameter("observer", Convert(lighting.PositionKilometers));

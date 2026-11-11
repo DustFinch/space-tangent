@@ -29,6 +29,7 @@ public partial class SolarSystemScene : Control
     private LocalAddonsPanel _localAddonPanel = null!;
     private IReadOnlyList<PreparedSatellite> Assets => _addOns?.Satellites ?? [];
     private SurfaceTextures? _surfaceTextures;
+    private EarthOrbitTextures? _earthOrbitTextures;
     private BrightSkyData? _brightSky;
     private CheckButton _stars = null!, _starLabels = null!, _equatorialGrid = null!, _constellations = null!;
     private SimulatorWorkspace _workspace = null!;
@@ -141,6 +142,15 @@ public partial class SolarSystemScene : Control
         catch (Exception error) when (IsLoadError(error))
         {
             _status.Text = error.Message;
+        }
+
+        try
+        {
+            _earthOrbitTextures = EarthOrbitTextures.Load(_surfaceTextures);
+        }
+        catch (Exception error) when (IsLoadError(error))
+        {
+            GD.PushWarning(error.Message);
         }
 
         Session = new(world,
@@ -797,6 +807,8 @@ public partial class SolarSystemScene : Control
         viewport.AddChild(renderer);
         if (_surfaceTextures is { } textures)
             renderer.SetSurfaceTextures(textures);
+        if (_earthOrbitTextures is { } earthOrbit)
+            renderer.SetEarthOrbitTextures(earthOrbit);
         if (_brightSky is { } sky)
             renderer.SetSkyData(sky);
         var controls = new ViewControls(frame, renderer, epoch, play, mode, selection, timelineEpoch,

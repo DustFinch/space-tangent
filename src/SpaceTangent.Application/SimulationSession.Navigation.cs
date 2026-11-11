@@ -101,8 +101,11 @@ public sealed partial class SimulationSession
     }
 
     private static double Smooth(double t) => t * t * (3 - 2 * t);
-    private static double MinimumRange(ObjectId target) =>
-        Math.Max(NavigationCamera.MinRange, 1.15 * NavigationCamera.BodyRadiusKilometers(target));
+    private static double MinimumRange(ObjectId target)
+    {
+        double radius = NavigationCamera.BodyRadiusKilometers(target);
+        return target == SolarSystemSample.EarthId ? radius + 20 : Math.Max(NavigationCamera.MinRange, 1.15 * radius);
+    }
     private static double FramingRange(ObjectId target) => 4.2 * NavigationCamera.BodyRadiusKilometers(target);
 
     private bool TrySelectedState(int view, out ObjectId target, out WorldSnapshot snapshot, out CartesianState state)

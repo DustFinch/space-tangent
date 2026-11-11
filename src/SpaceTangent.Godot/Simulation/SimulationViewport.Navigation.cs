@@ -3,6 +3,7 @@ using Godot;
 using SpaceTangent.Application;
 using SpaceTangent.Contracts;
 using SpaceTangent.Core.Ephemerides;
+using SpaceTangent.Core.Time;
 using SpaceTangent.Core.World;
 
 namespace SpaceTangent.Godot.Simulation;
@@ -15,6 +16,11 @@ internal partial class SimulationViewport
     private DirectionalLight3D _navigationLight = null!;
     private MeshInstance3D _navigationSun = null!, _navigationEarth = null!, _navigationMoon = null!;
 
+    private EarthOrbitRenderer? _earthOrbit;
+
+    internal void SetEarthOrbitTextures(EarthOrbitTextures textures) => _earthOrbit = new(_navigationEarth, textures);
+
+    internal bool EarthOrbitAtmosphereActive => _earthOrbit?.Active == true;
     internal bool NavigationCameraCurrent => _navigationCamera.Current;
 
     private void InitializeNavigation()
@@ -45,7 +51,7 @@ internal partial class SimulationViewport
         return mesh;
     }
 
-    private void DrawNavigation(NavigationCamera pose, WorldSnapshot snapshot, SolarSystemSample solar)
+    private void DrawNavigation(NavigationCamera pose, WorldSnapshot snapshot, SolarSystemSample solar, DeltaTModel deltaT)
     {
         double units = pose.RangeKilometers / NavigationCameraUnits;
         double azimuth = pose.AzimuthRadians, elevation = pose.ElevationRadians;
@@ -67,6 +73,11 @@ internal partial class SimulationViewport
         _navigationLight.Show();
         PlaceBody(_navigationSun, solar.Sun.PositionKilometers, SolarSystemSample.SunId);
         PlaceBody(_navigationEarth, solar.Earth.PositionKilometers, SolarSystemSample.EarthId);
+        if (_earthOrbit is not null)
+        {
+            float projectedDistance = _navigationEarth.Position.DistanceTo(_navigationCamera.Position);
+            _earthOrbit.Update(solar, deltaT, _navigationEarth.Scale.X > projectedDistance * .004f);
+        }
         PlaceBody(_navigationMoon, solar.Moon.PositionKilometers, SolarSystemSample.MoonId);
 
         foreach (var (asset, node) in _satellites.Values)

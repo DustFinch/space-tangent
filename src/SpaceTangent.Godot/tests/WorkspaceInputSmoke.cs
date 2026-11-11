@@ -111,6 +111,8 @@ public partial class WorkspaceInputSmoke : Node
                 await ExerciseViewFrames(scratch.FullName, bookmarks);
                 Require(_scene.LoadScenario(restore), "The previous working scene must reopen after frame acceptance.");
             }
+            if (System.Environment.GetEnvironmentVariable("SPACETANGENT_SSC_ADDON_PACK") is { Length: > 0 } bodyPack)
+                await ExerciseSscBodies(scratch.FullName, bodyPack);
             if (!string.IsNullOrWhiteSpace(System.Environment.GetEnvironmentVariable("SPACETANGENT_PLANET_TEXTURES")))
                 await ExerciseEarthOrbit();
             GD.Print($"SpaceTangent workspace input smoke passed ({DisplayServer.GetName()})");

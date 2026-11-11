@@ -111,6 +111,7 @@ internal sealed class LocalAddonsPanel
         LocalAddonKind.Mission => "SPICE mission",
         LocalAddonKind.Timeline => "Sampled timeline",
         LocalAddonKind.Terrain => "Lunar terrain",
+        LocalAddonKind.BodyCatalog => "SSC body catalogue",
         _ => throw new ArgumentOutOfRangeException(nameof(kind))
     };
 }

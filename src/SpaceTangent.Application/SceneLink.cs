@@ -143,6 +143,7 @@ public static class SceneLink
 
         static bool Matches(CatalogueObject candidate, string name) =>
             candidate.Name.Equals(name, StringComparison.OrdinalIgnoreCase) ||
+            candidate.Aliases.Any(alias => alias.Equals(name, StringComparison.OrdinalIgnoreCase)) ||
             candidate.Id.Value.EndsWith("/" + name, StringComparison.OrdinalIgnoreCase) ||
             (candidate.Id == SolarSystemSample.SunId && name.Equals("Sol", StringComparison.OrdinalIgnoreCase));
     }

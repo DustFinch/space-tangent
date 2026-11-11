@@ -10,7 +10,8 @@ internal enum LocalAddonKind
     Science,
     Mission,
     Timeline,
-    Terrain
+    Terrain,
+    BodyCatalog
 }
 
 internal sealed record LocalAddonSource(Guid Id, LocalAddonKind Kind, string Path, bool RelativeToData, bool Enabled);
@@ -19,6 +20,8 @@ internal sealed record LocalAddonSettings(LocalAddonKind[] DisabledDefaults, Loc
 {
     internal static LocalAddonSettings Empty { get; } = new([], []);
 
+    internal static bool AllowsMultiple(LocalAddonKind kind) => kind is LocalAddonKind.Science or LocalAddonKind.BodyCatalog;
+
     internal bool UsesDefault(LocalAddonKind kind) => !DisabledDefaults.Contains(kind);
 
     internal LocalAddonSettings SetDefault(LocalAddonKind kind, bool enabled)
@@ -26,7 +29,7 @@ internal sealed record LocalAddonSettings(LocalAddonKind[] DisabledDefaults, Loc
         var defaults = DisabledDefaults.Where(item => item != kind).ToList();
         if (!enabled)
             defaults.Add(kind);
-        LocalAddonSource[] sources = enabled && kind != LocalAddonKind.Science
+        LocalAddonSource[] sources = enabled && !AllowsMultiple(kind)
             ? Sources.Select(source => source.Kind == kind ? source with { Enabled = false } : source).ToArray()
             : Sources;
         return new(defaults.ToArray(), sources);
@@ -34,16 +37,15 @@ internal sealed record LocalAddonSettings(LocalAddonKind[] DisabledDefaults, Loc
 
     internal LocalAddonSettings SetSource(LocalAddonSource selected, bool enabled)
     {
-        bool firstScienceSource = selected.Kind == LocalAddonKind.Science &&
-            !Sources.Any(source => source.Enabled && source.Kind == LocalAddonKind.Science);
-        var current = enabled && (selected.Kind != LocalAddonKind.Science || firstScienceSource)
+        bool firstSource = !Sources.Any(source => source.Enabled && source.Kind == selected.Kind);
+        var current = enabled && (!AllowsMultiple(selected.Kind) || firstSource)
             ? SetDefault(selected.Kind, false)
             : this;
         var sources = current.Sources.Select(source =>
         {
             if (source.Id == selected.Id)
                 return source with { Enabled = enabled };
-            if (enabled && selected.Kind != LocalAddonKind.Science && source.Kind == selected.Kind)
+            if (enabled && !AllowsMultiple(selected.Kind) && source.Kind == selected.Kind)
                 return source with { Enabled = false };
             return source;
         }).ToList();
@@ -159,7 +161,7 @@ internal sealed class LocalAddonSettingsFile
             _ = Resolve(source);
         foreach (LocalAddonKind kind in Enum.GetValues<LocalAddonKind>())
         {
-            if (kind != LocalAddonKind.Science &&
+            if (!LocalAddonSettings.AllowsMultiple(kind) &&
                 settings.Sources.Count(source => source.Enabled && source.Kind == kind) + (settings.UsesDefault(kind) ? 1 : 0) > 1)
                 throw new InvalidDataException("Only one source may be enabled for this add-on kind.");
         }

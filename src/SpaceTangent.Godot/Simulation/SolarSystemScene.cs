@@ -301,6 +301,7 @@ public partial class SolarSystemScene : Control
     {
         var inputs = new List<string> { "JPL DE440" };
         inputs.AddRange(Assets.Select(asset => asset.Track.Name));
+        inputs.AddRange(Session!.World.SscBodies.Select(body => body.Definition.Name));
         if (Session!.World.MissionName is { } mission)
             inputs.Add(mission);
         if (Session.World.TimelineId is not null)
@@ -402,6 +403,8 @@ public partial class SolarSystemScene : Control
             GD.Print("SpaceTangent Huygens ready.");
         if (world.HasLunarTerrain)
             GD.Print("SpaceTangent lunar terrain ready.");
+        if (world.SscBodies.Count > 0)
+            GD.Print($"SpaceTangent SSC body catalogue ready: {world.SscBodies.Count} bodies.");
     }
 
     public override void _Input(InputEvent input)
@@ -943,6 +946,7 @@ public partial class SolarSystemScene : Control
         view.Renderer.ReplaceLunarTerrain(_addOns?.Terrain);
         view.Renderer.ReplaceMarsTerrain(_addOns?.MarsTerrain);
         view.Renderer.SetCatalogueWorld(Session!.World);
+        view.Renderer.ReplaceSscBodies(_addOns?.SscBodies ?? []);
         view.Selection.Clear();
         foreach (PreparedSatellite asset in Assets)
             view.Selection.AddItem(asset.Track.Name);

@@ -39,7 +39,7 @@ public sealed class SimulationWorld
 {
     public SimulationWorld(De440Ephemeris ephemeris, IEnumerable<ScienceSatellite> satellites,
         SpiceSpacecraft? mission = null, SscSampledSpacecraft? timeline = null, HuygensMission? probe = null,
-        SpicePolynomialBodyFrame? moonFrame = null, BrightStarCatalogue? brightStars = null, PlanetEphemerides? planets = null, bool hasMarsTerrain = false, StellarCatalogue? stellar = null)
+        SpicePolynomialBodyFrame? moonFrame = null, BrightStarCatalogue? brightStars = null, PlanetEphemerides? planets = null, bool hasMarsTerrain = false, StellarCatalogue? stellar = null, IEnumerable<SscBodyDefinition>? bodyCatalog = null)
     {
         Ephemeris = ephemeris;
         Satellites = Array.AsReadOnly(satellites.ToArray());
@@ -47,7 +47,6 @@ public sealed class SimulationWorld
         HasMarsTerrain = hasMarsTerrain;
         Stellar = stellar ?? StellarCatalogue.Empty;
         StellarOrigin = ephemeris.Sample(JulianInstant.FromJulianDate(2451545, TimeScale.Tdb)).Sun.PositionKilometers;
-        Catalogue = new(Satellites, BrightStars, Stellar);
         var graph = new WorldGraphBuilder();
         graph.AddSolarSystem(ephemeris);
         foreach (PlanetDefinition planet in PlanetCatalogue.Planets)
@@ -81,11 +80,16 @@ public sealed class SimulationWorld
             graph.AddOrientation(SolarSystemSample.MoonId, epoch => moonFrame.Sample(epoch));
             HasLunarTerrain = true;
         }
+        SscBodies = InstalledSscBody.Install(graph, bodyCatalog ?? []);
+        _sscById = SscBodies.ToDictionary(body => body.Id);
+        Catalogue = new(Satellites, BrightStars, Stellar, SscBodies);
         Graph = graph.Build();
     }
 
     public De440Ephemeris Ephemeris { get; }
     public IReadOnlyList<ScienceSatellite> Satellites { get; }
+    private readonly Dictionary<ObjectId, InstalledSscBody> _sscById;
+    public IReadOnlyList<InstalledSscBody> SscBodies { get; }
     public ObjectCatalogue Catalogue { get; }
     public BrightStarCatalogue BrightStars { get; }
     public StellarCatalogue Stellar { get; }
@@ -111,7 +115,7 @@ public sealed class SimulationWorld
 
     public double TargetRadiusKilometers(ObjectId id) =>
         Stellar.Find(id)?.RadiusKilometers ?? DeepSkyCatalogue.Find(id)?.RadiusKilometers ??
-        NavigationCamera.BodyRadiusKilometers(id);
+        _sscById.GetValueOrDefault(id)?.Definition.RadiusKilometers ?? NavigationCamera.BodyRadiusKilometers(id);
     public WorldGraph Graph { get; }
     public ObjectId? MissionId { get; }
     public string? MissionName { get; }

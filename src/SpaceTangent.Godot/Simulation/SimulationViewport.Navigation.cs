@@ -94,6 +94,7 @@ internal partial class SimulationViewport
         HidePlanetGlobes();
         DrawPlanetGlobes(snapshot, pose, units, ProjectWithScale);
         DrawStellarObjects(pose, snapshot, sky, units, ProjectWithScale);
+        DrawSscBodies(snapshot, pose, units, ProjectWithScale);
 
         (Vector3 Position, double Scale) ProjectWithScale(Vector3d position)
         {
@@ -144,5 +145,6 @@ internal partial class SimulationViewport
         _navigationMoon.Hide();
         HidePlanetGlobes();
         HideStellarObjects();
+        HideSscBodies();
     }
 }

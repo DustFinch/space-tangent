@@ -41,7 +41,7 @@ public sealed partial class SimulationSession
         };
     }
 
-    public bool GoToSelection(int view) => GoToSelection(view, FlightDuration, null);
+    public bool GoToSelection(int view) => InShip(view) ? SetShipPilot(view, ShipPilot.Approach) : GoToSelection(view, FlightDuration, null);
 
     internal bool GoToSelection(int view, double duration, double? range)
     {
@@ -61,6 +61,8 @@ public sealed partial class SimulationSession
 
     public bool ToggleTracking(int view)
     {
+        if (InShip(view))
+            return SetShipPilot(view, ShipPilot.Orbit);
         ObserverView observer = _views[view];
         if (observer.Navigation is { Tracking: true } tracked && tracked.Target == observer.Selection)
         {
@@ -97,6 +99,8 @@ public sealed partial class SimulationSession
     {
         if (!double.IsFinite(azimuth) || !double.IsFinite(elevation) || !double.IsFinite(zoom) || zoom <= 0)
             return false;
+        if (AdjustShipCamera(view, azimuth, elevation, zoom))
+            return true;
         ObserverView observer = _views[view];
         if (observer.Navigation is not { } camera)
             return false;

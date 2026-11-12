@@ -416,6 +416,11 @@ public partial class SolarSystemScene : Control
 
     public override void _Input(InputEvent input)
     {
+        if (input is InputEventKey shipKey && HandleShipInput(shipKey))
+        {
+            GetViewport().SetInputAsHandled();
+            return;
+        }
         if (_views.Count < 2 || input is not InputEventKey { Keycode: Key.Tab, Pressed: true, Echo: false,
                 CtrlPressed: false, AltPressed: false, MetaPressed: false } ||
             GetViewport().GuiGetFocusOwner() is LineEdit)
@@ -477,7 +482,7 @@ public partial class SolarSystemScene : Control
                     _status.Text = "Flight stopped.";
                     Refresh();
                 }
-                else
+                else if (!ExitShip())
                     _workspace.Open(null);
                 break;
             default:
@@ -495,8 +500,15 @@ public partial class SolarSystemScene : Control
         _loadCancellation = null;
     }
 
+    public override void _Notification(int what)
+    {
+        if (what == NotificationApplicationFocusOut)
+            _shipKeys.Clear();
+    }
+
     public override void _Process(double delta)
     {
+        FlyShip(delta);
         bool changed = Session?.Tick(delta) == true;
         if (_script is { } script)
         {
@@ -508,7 +520,7 @@ public partial class SolarSystemScene : Control
                 _status.Text = script.Error ?? "Lua script finished.";
             }
         }
-        if (changed || Session?.AnyFlight == true)
+        if (changed || Session is { } session && (session.AnyFlight || session.HasShips))
             Refresh(delta);
     }
 
@@ -1237,6 +1249,7 @@ public partial class SolarSystemScene : Control
     {
         if (_active == index)
             return;
+        _shipKeys.Clear();
         _active = index;
         UpdateActiveFrame();
     }
@@ -1297,11 +1310,19 @@ public partial class SolarSystemScene : Control
             ViewControls controls = _views[index];
             var snapshot = session.World.Graph.Evaluate(session[index].Epoch);
             session.UpdateCamera(index, snapshot, elapsed);
+            session.UpdateShip(index, snapshot, elapsed);
+            ShipView? ship = session.Ship(index);
             ObserverView view = session[index];
             controls.Snapshot = snapshot;
             bool available = controls.Renderer.Draw(view, snapshot, session.DeltaT);
+            controls.Renderer.DrawShip(ship, view.Navigation);
             controls.Epoch.Text = FormattableString.Invariant($"View {index + 1}   JD {view.Epoch.ToJulianDate():F6} TDB");
-            if (session.IsFlying(index))
+            if (ship is not null)
+            {
+                string targetName = ship.Target is { } aim ? session.World.Catalogue.Find(aim)?.Name ?? aim.Value : "—";
+                controls.Epoch.Text += FormattableString.Invariant($"   ·   Ship {ship.Pilot} · {ship.SpeedKilometersPerSecond:G4} km/s · {targetName}");
+            }
+            else if (session.IsFlying(index))
                 controls.Epoch.Text += "   ·   Flying to target";
             else if (view.Navigation is { Tracking: true, Target: { } target })
                 controls.Epoch.Text += $"   ·   Tracking {session.World.Catalogue.Find(target)?.Name ?? target.Value}";

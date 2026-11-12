@@ -60,7 +60,7 @@ public readonly record struct NavigationPlacement(Vector3d OffsetKilometers, Vec
             0, 0, 0, 1)));
     }
 
-    private static Vector3d Rotate(Vector3d direction, Vector3d axis, double angle)
+    internal static Vector3d Rotate(Vector3d direction, Vector3d axis, double angle)
     {
         var (sin, cos) = Math.SinCos(angle);
         return direction * cos + Vector3d.Cross(axis, direction) * sin + axis * (Vector3d.Dot(axis, direction) * (1 - cos));

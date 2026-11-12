@@ -212,6 +212,7 @@ public sealed partial class SimulationSession
         if (scenario.Synchronized && views.Any(view => view.Epoch != owner.Epoch || view.Playing != owner.Playing))
             throw new InvalidDataException("Synchronized scenario clocks must agree.");
 
+        _ships.Clear();
         _views.Clear();
         _views.AddRange(views);
         _flights.Clear();
@@ -297,6 +298,7 @@ public sealed partial class SimulationSession
         _views.RemoveAt(view);
         _flights.RemoveAt(view);
         _trackingEpochs.RemoveAt(view);
+        _ships.Remove(ViewIdentity(view));
         _viewIds.RemoveAt(view);
         Layout = Layout.Remove(view)!;
         if (Layout.View is null)
@@ -360,6 +362,7 @@ public sealed partial class SimulationSession
                 Seek(view, probe.Separation);
         }
         CancelFlight(view);
+        LeaveShip(view);
         _views[view] = _views[view] with { Mode = mode, Navigation = null };
     }
 

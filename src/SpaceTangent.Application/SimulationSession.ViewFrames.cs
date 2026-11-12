@@ -8,6 +8,7 @@ public sealed partial class SimulationSession
 {
     public void StartFreeFlight(int view)
     {
+        LeaveShip(view);
         ObserverView observer = _views[view];
         var snapshot = World.Graph.Evaluate(observer.Epoch);
         NavigationCamera camera = observer.Navigation ?? PresetCamera(observer, snapshot);
@@ -122,6 +123,7 @@ public sealed partial class SimulationSession
         };
         if (!next.IsValid())
             return false;
+        LeaveShip(view);
         CancelFlight(view);
         _trackingEpochs[view] = (target, snapshot.Epoch);
         _views[view] = observer with { Navigation = next };

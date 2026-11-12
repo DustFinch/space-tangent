@@ -123,6 +123,7 @@ public partial class WorkspaceInputSmoke : Node
                 await ExerciseOriginalTours(scratch.FullName, tours);
             if (!string.IsNullOrWhiteSpace(System.Environment.GetEnvironmentVariable("SPACETANGENT_PLANET_TEXTURES")))
                 await ExerciseEarthOrbit();
+            await ExerciseShipFlight();
             GD.Print($"SpaceTangent workspace input smoke passed ({DisplayServer.GetName()})");
             exitCode = 0;
         }
@@ -483,11 +484,11 @@ public partial class WorkspaceInputSmoke : Node
             await KeyPress((Key)char.ToUpperInvariant(character), character);
     }
 
-    private async Task KeyPress(Key key, uint unicode = 0, bool ctrl = false)
+    private async Task KeyPress(Key key, uint unicode = 0, bool ctrl = false, bool shift = false)
     {
-        using var down = new InputEventKey { Keycode = key, Unicode = unicode, CtrlPressed = ctrl, Pressed = true };
+        using var down = new InputEventKey { Keycode = key, Unicode = unicode, CtrlPressed = ctrl, ShiftPressed = shift, Pressed = true };
         Tree.Root.PushInput(down, inLocalCoords: true);
-        using var up = new InputEventKey { Keycode = key, CtrlPressed = ctrl };
+        using var up = new InputEventKey { Keycode = key, CtrlPressed = ctrl, ShiftPressed = shift };
         Tree.Root.PushInput(up, inLocalCoords: true);
         await ToSignal(Tree, SceneTree.SignalName.ProcessFrame);
     }

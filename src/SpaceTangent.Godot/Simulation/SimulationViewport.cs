@@ -208,7 +208,7 @@ internal partial class SimulationViewport : Node3D
         _marsTerrainAsset = asset;
         if (asset is not null)
         {
-            _marsTerrain ??= new(this, _marsSurface);
+            _marsTerrain ??= new(this, _marsSurface, _marsTiles);
             _marsTerrain.FitCamera(GetViewport().GetVisibleRect().Size);
         }
         _marsTerrain?.Replace(asset);

@@ -57,6 +57,12 @@ Add a file with the `.mpc` extension to the root or `data` directory of a local 
 
 Select the rows you want to install. The local body sources share a 512-object limit. Malformed rows and duplicate designations within a source are reported in the Godot log. The verified rows include Eros, Apophis, Halley, and three interstellar objects.
 
+### Local color and normal pyramids
+
+Put an original local `NameTemplate` world catalogue or an existing packed `pack.json` in `data/surface-tiles` beside the app. `SPACETANGENT_SURFACE_TILES` can point to the catalogue directory instead. Keep the original texture subdirectories with a source catalogue and the `textures` directory with a packed catalogue. The renderer chooses a level from screen-space derivatives and samples the nearest available ancestor when a tile is missing.
+
+The Mars globe and Olympus Mons relief use the same original color and normal pages. The DDS arrays preserve their compression and mipmaps, including the larger level-zero normal maps. The current implementation uploads the selected local maps at startup. The verified Mars pyramid contains 170 color tiles and 170 normal tiles across four levels.
+
 ## Surface locations
 
 Supply local `*_locs.ssc` files in `data/surface-locations`, or set `SPACETANGENT_SURFACE_LOCATIONS` to their directory. Search for a location on a loaded body and use **Go to** or **G**. The camera approaches above the site and rotates with its parent. The selected label appears on the visible side. **Ctrl+L** toggles additional labels at the current map scale. Locations require a valid state and rotation for their parent at the selected epoch.

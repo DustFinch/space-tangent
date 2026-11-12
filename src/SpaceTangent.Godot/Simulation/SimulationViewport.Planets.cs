@@ -15,6 +15,7 @@ internal partial class SimulationViewport
     private readonly Dictionary<ObjectId, Node3D> _planetMarkers = new();
     private readonly Dictionary<ObjectId, MeshInstance3D> _planetGlobes = new();
     private readonly Dictionary<ObjectId, WorldOrbitAtmosphere> _worldAtmospheres = new();
+    private BodyTileTextures? _marsTiles;
     private readonly ImmediateMesh _planetPaths = new();
     private MeshInstance3D _planetPathNode = null!;
 
@@ -60,14 +61,24 @@ internal partial class SimulationViewport
                 _planetRings.Add(profile.Id, new(this, _planetGlobes[profile.Id], profile, texture, body.RadiusKilometers));
     }
 
-    internal void SetWorldAtmospheres(IReadOnlyDictionary<ObjectId, OrbitAtmosphereTextures> lookups)
+    internal void SetWorldAtmospheres(IReadOnlyDictionary<ObjectId, OrbitAtmosphereTextures> lookups,
+        IReadOnlyDictionary<ObjectId, BodyTileTextures> tiles)
     {
+        _marsTiles = tiles.GetValueOrDefault(PlanetCatalogue.MarsId);
         ObjectId venus = SolarSystemSample.VenusId;
-        _worldAtmospheres.Add(venus, new(_planetGlobes[venus], 6051.8f, null));
+        _worldAtmospheres.Add(venus, new(_planetGlobes[venus], 6051.8f, null, tiles.GetValueOrDefault(venus), hasAtmosphere: true));
         foreach (var (id, lookup) in lookups)
             if (_planetGlobes.TryGetValue(id, out MeshInstance3D? globe))
-                _worldAtmospheres.Add(id, new(globe, lookup.RadiusKilometers, lookup));
+                _worldAtmospheres.Add(id, new(globe, lookup.RadiusKilometers, lookup, tiles.GetValueOrDefault(id), hasAtmosphere: true));
+        foreach (var (id, maps) in tiles)
+        {
+            if (!_worldAtmospheres.ContainsKey(id) && _planetGlobes.TryGetValue(id, out var globe) &&
+                globe.MaterialOverride is StandardMaterial3D)
+                _worldAtmospheres.Add(id, new(globe, (float)NavigationCamera.BodyRadiusKilometers(id), null, maps, hasAtmosphere: false));
+        }
     }
+
+    internal BodyTileTextures? LocalSurfaceTiles(ObjectId id) => _worldAtmospheres.GetValueOrDefault(id)?.Tiles;
 
     internal bool WorldAtmosphereActive(ObjectId id, bool lookup) => id == SolarSystemSample.EarthId
         ? _earthOrbit is { Active: true } air && air.UsesLookup == lookup

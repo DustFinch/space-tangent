@@ -2,6 +2,8 @@
 shader_type spatial;
 render_mode unshaded, cull_disabled;
 
+#include "res://Shaders/surface_tiles.gdshaderinc"
+
 uniform sampler2D heights : filter_linear, repeat_enable;
 uniform sampler2D surface_map : source_color, filter_linear_mipmap, repeat_enable;
 uniform bool textured_surface = false;
@@ -47,9 +49,20 @@ void vertex() {
 }
 
 void fragment() {
-    float illumination = 0.055 + 0.945 * sun_fraction * max(dot(normalize(terrain_normal), sun_direction), 0.0);
     vec3 radial = normalize(terrain_radial);
+    vec3 normal = normalize(terrain_normal);
     vec2 surface_uv = vec2(0.5 + atan(-radial.z, radial.x) / TAU, 0.5 - asin(clamp(radial.y, -1.0, 1.0)) / PI);
-    vec3 surface = textured_surface ? texture(surface_map, surface_uv).rgb : vec3(0.59, 0.57, 0.54);
+    vec2 dx = dFdx(surface_uv), dy = dFdy(surface_uv);
+    dx.x -= round(dx.x);
+    dy.x -= round(dy.x);
+    vec3 surface = textured_surface ? textureGrad(surface_map, surface_uv, dx, dy).rgb : vec3(0.59, 0.57, 0.54);
+    if (native_base_enabled || native_normal_enabled) {
+        vec4 native_color, native_normal;
+        bool color_found, normal_found;
+        native_tile_samples(surface_uv, dx, dy, native_color, native_normal, color_found, normal_found);
+        if (color_found) surface = native_color.rgb;
+        if (normal_found) normal = normalize(normal + native_surface_normal(radial, native_normal) - radial);
+    }
+    float illumination = 0.055 + 0.945 * sun_fraction * max(dot(normal, sun_direction), 0.0);
     ALBEDO = surface * illumination;
 }

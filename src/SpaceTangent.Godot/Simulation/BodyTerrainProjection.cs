@@ -41,7 +41,7 @@ internal sealed class BodyTerrainProjection
     private BodyTerrainAsset? _asset;
     private LunarTerrainCamera? _lastView;
 
-    internal BodyTerrainProjection(Node owner, Texture2D? surface = null)
+    internal BodyTerrainProjection(Node owner, Texture2D? surface = null, BodyTileTextures? tiles = null)
     {
         _camera = new Camera3D
         {
@@ -59,10 +59,13 @@ internal sealed class BodyTerrainProjection
         _material.SetShaderParameter("textured_surface", surface is not null);
         if (surface is not null)
             _material.SetShaderParameter("surface_map", surface);
+        Tiles = tiles;
+        Tiles?.Bind(_material);
         _mesh = new MeshInstance3D { Visible = false, MaterialOverride = _material };
         owner.AddChild(_mesh);
     }
 
+    internal BodyTileTextures? Tiles { get; }
     internal bool Visible => _mesh.Visible;
     internal bool Regional => _asset is not null && _mesh.Mesh == _asset.Patch;
     internal Vector3 SunDirection { get; private set; }

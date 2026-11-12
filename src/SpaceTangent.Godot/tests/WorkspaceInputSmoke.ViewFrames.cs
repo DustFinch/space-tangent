@@ -26,6 +26,15 @@ public partial class WorkspaceInputSmoke
         await Click(Find<Button>("FollowBodyRotation"));
         Require(Session[0].Navigation is { Placement.BodyFixed: true }, "The selected Mars pose must follow the rotating body frame.");
         NavigationCamera mars = Session[0].Navigation!.Value;
+        Require(Session.AdjustCamera(0, .3, -.16, 1), "A rotation-following camera must allow manual orbiting.");
+        NavigationCamera orbited = Session[0].Navigation!.Value;
+        Vector3d originalOffset = mars.Placement!.Value.OffsetKilometers;
+        Vector3d rotatedOffset = orbited.Placement!.Value.OffsetKilometers;
+        double distance = originalOffset.Length;
+        Require((originalOffset - rotatedOffset).Length > distance * .01 &&
+            Math.Abs(rotatedOffset.Length / distance - 1) < 1e-10,
+            $"Orbiting must move the eye at constant distance ({distance:R} to {rotatedOffset.Length:R} km).");
+        mars = orbited;
         var before = mars.ResolvePlacement(Session.World.Graph.Evaluate(Session[0].Epoch));
         await Click(Find<Button>("AdvanceHour0"));
         NavigationCamera rotated = Session[0].Navigation!.Value;
@@ -39,6 +48,20 @@ public partial class WorkspaceInputSmoke
         await KeyPress(Key.W);
         Require(Session[1].Navigation is { Tracking: false, Placement.BodyFixed: false } moved &&
             moved.AnchorKilometers != at!.Value.AnchorKilometers, "A free-flight key must translate the active camera.");
+        NavigationCamera freeStart = Session[1].Navigation!.Value;
+        Session.SelectObject(1, SolarSystemSample.EarthId);
+        Require(Session.GoToSelection(1) && Session[1].Navigation?.Placement == freeStart.Placement &&
+            Session[1].Navigation?.AnchorKilometers == freeStart.AnchorKilometers,
+            "A flight must begin at the actual free-flight eye and attitude.");
+        var snapshot = Session.World.Graph.Evaluate(Session[1].Epoch);
+        Session.UpdateCamera(1, snapshot, .016);
+        NavigationCamera transition = Session[1].Navigation!.Value;
+        Require(transition.IsValid() && transition.Placement is { } attitude &&
+            Vector3d.Dot(attitude.Forward, freeStart.Placement!.Value.Forward) > .999,
+            "The first flight step must preserve a continuous and valid attitude.");
+        Require(Session.CancelFlight(1) && Session[1].Navigation == transition,
+            "Cancelling a flight must preserve its interpolated pose.");
+        Session.StartFreeFlight(1);
         await Click(Find<Button>("StackViews"));
         Require(Find<BoxContainer>("Views").Vertical && Session.SplitLayout == ViewSplit.Stacked,
             "The alternate layout must stack both live views.");

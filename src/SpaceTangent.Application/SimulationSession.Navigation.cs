@@ -48,7 +48,9 @@ public sealed partial class SimulationSession
         if (!TrySelectedState(view, out ObjectId target, out WorldSnapshot snapshot, out _))
             return false;
         ObserverView observer = _views[view];
-        NavigationCamera start = (observer.Navigation ?? PresetCamera(observer, snapshot)) with { Placement = null };
+        NavigationCamera start = observer.Navigation ?? PresetCamera(observer, snapshot);
+        if (start.Placement is not null)
+            start = start with { Placement = start.ResolvePlacement(snapshot) };
         double targetRange = Math.Clamp(range ?? FramingRange(target), MinimumRange(target), NavigationCamera.MaxRange);
         _flights[view] = new(start, 0, Math.Max(duration, .001), targetRange);
         _views[view] = observer with { Navigation = start with { Target = target, Tracking = false } };
@@ -100,8 +102,11 @@ public sealed partial class SimulationSession
         CancelFlight(view);
         NavigationCamera next = camera.Adjust(azimuth, elevation, zoom, minimum);
         if (camera.Placement is { } placement)
-            next = next with { Placement = placement.Turn(azimuth, elevation) with
-                { OffsetKilometers = placement.OffsetKilometers * (next.RangeKilometers / camera.RangeKilometers) } };
+        {
+            var turned = placement.Turn(azimuth, elevation, orbit: camera.Target.HasValue);
+            next = next with { Placement = turned with
+                { OffsetKilometers = turned.OffsetKilometers * (next.RangeKilometers / camera.RangeKilometers) } };
+        }
         _views[view] = observer with { Navigation = next };
         return true;
     }
@@ -131,18 +136,30 @@ public sealed partial class SimulationSession
             double range = InterpolateRange(flight.Start.RangeKilometers, destinationRange, Smooth(t));
             double travel = (position - flight.Start.AnchorKilometers).Length;
             double wide = Math.Min(NavigationCamera.MaxRange, travel * .35);
-            if (travel > 30_000_000_000 && wide > Math.Max(flight.Start.RangeKilometers, destinationRange) * 2)
+            if (wide > Math.Max(flight.Start.RangeKilometers, destinationRange) * 2)
             {
-                pan = Smooth(Math.Clamp((t - .15) / .65, 0, 1));
-                range = t < .45
-                    ? InterpolateRange(flight.Start.RangeKilometers, wide, Smooth(t / .45))
-                    : InterpolateRange(wide, destinationRange, Smooth((t - .45) / .55));
+                const double pullbackEnd = .3, approachStart = .7;
+                pan = Smooth(Math.Clamp((t - pullbackEnd) / (approachStart - pullbackEnd), 0, 1));
+                if (t < pullbackEnd)
+                    range = InterpolateRange(flight.Start.RangeKilometers, wide, Smooth(t / pullbackEnd));
+                else if (t > approachStart)
+                    range = InterpolateRange(wide, destinationRange, Smooth((t - approachStart) / (1 - approachStart)));
+                else
+                    range = wide;
             }
             pose = pose with
             {
-                AnchorKilometers = flight.Start.AnchorKilometers + (position - flight.Start.AnchorKilometers) * pan,
-                RangeKilometers = range
+                AnchorKilometers = pan == 1 ? position : flight.Start.AnchorKilometers + (position - flight.Start.AnchorKilometers) * pan,
+                RangeKilometers = t == 1 ? destinationRange : range,
+                Placement = null
             };
+            if (t < 1 && flight.Start.Placement is { } start)
+            {
+                var end = pose.ResolvePlacement(snapshot);
+                double blend = Smooth(t);
+                var scaledStart = start with { OffsetKilometers = start.OffsetKilometers * (range / flight.Start.RangeKilometers) };
+                pose = pose with { Placement = scaledStart.Interpolate(end, blend) };
+            }
             _flights[view] = elapsed >= flight.Duration ? null : flight with { Elapsed = elapsed };
         }
         else if (pose.Tracking)

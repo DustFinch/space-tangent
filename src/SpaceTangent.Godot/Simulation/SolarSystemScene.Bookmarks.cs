@@ -49,6 +49,22 @@ public partial class SolarSystemScene
         AddButton(links, "Open link", () => OpenSceneLink(_sceneLink.Text)).Name = "OpenSceneLink";
     }
 
+    private void ImportFavorites(string path)
+    {
+        try
+        {
+            var (next, added, skipped) = _bookmarkFile.ImportFavorites(path, _bookmarks, Session!.World, Session.DeltaT);
+            int selected = added == 0 ? Math.Max(0, _bookmarkList.Selected) : _bookmarks.Count;
+            _bookmarks = next;
+            RefreshBookmarks(selected);
+            _status.Text = $"Imported {added} favorites ({skipped} skipped).";
+        }
+        catch (Exception error) when (IsLoadError(error))
+        {
+            _status.Text = $"Could not import favorites. {error.Message}";
+        }
+    }
+
     private void StoreBookmark()
     {
         try

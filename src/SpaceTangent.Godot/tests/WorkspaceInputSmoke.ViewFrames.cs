@@ -173,5 +173,38 @@ public partial class WorkspaceInputSmoke
         if (System.Environment.GetEnvironmentVariable("SPACETANGENT_VIEW_FRAME_SCENE") is { Length: > 0 } output)
             File.Copy(Path.Combine(directory, filename), output, overwrite: true);
         GD.Print("UI: restored rotation, free-flight pose, two fields of view, stacked layout and link after reload");
+
+        const string favorites = "favorites.cel";
+        File.WriteAllText(Path.Combine(directory, favorites), """
+            # Named observer records
+            "Science" { isFolder true parentFolder "" }
+            "Lunar flyby" {
+                isFolder false parentFolder "Science"
+                base [ 0 0 0 ] offset [ 1 0 0 ]
+                axis [ 1 0 0 ] angle 0 time 2460409.5
+                selection "Sol/Earth/Moon" coordsys "geographic"
+            }
+            "Outside the ephemeris" { isFolder false time 0 }
+            """);
+        await UseScenarioDialog("OpenScenario", 0, directory, favorites);
+        var entries = new ObserverBookmarkFile(bookmarks).Load();
+        Require(entries.Count == 2 && entries[1].Name == "Science / Lunar flyby" &&
+            Find<Label>("WorkspaceStatus").Text.Contains("Imported 1 favorites (1 skipped)", StringComparison.Ordinal),
+            "The existing file dialog must import favorites while preserving prior bookmarks.");
+        RequireScenario(expected, Session.CaptureScenario(1), "Importing favorites without replacing the active scenario");
+        await Click(Find<Button>("RestoreBookmark"));
+        var favorite = SceneLink.Read(entries[1].Link, Session.World, Session.DeltaT).Scenario.Views[0];
+        var states = Session.World.Graph.Evaluate(favorite.Epoch);
+        Require(states.TryState(SolarSystemSample.SunId, out var sun) &&
+            states.TryState(SolarSystemSample.MoonId, out _), "The saved favorite requires Sun and Moon positions.");
+        var favoriteCamera = favorite.Navigation!.Value;
+        var eye = favoriteCamera.AnchorKilometers + favoriteCamera.ResolvePlacement(states, Session.DeltaT).OffsetKilometers;
+        Require(Session.ViewCount == 1 && Session[0].Selection == SolarSystemSample.MoonId &&
+            favoriteCamera.Placement is { BodyFixed: true } && favorite.Epoch == imported.Views[0].Epoch &&
+            Session[0].Navigation?.Placement == favoriteCamera.Placement &&
+            Session[0].Epoch.CompareTo(favorite.Epoch) >= 0 && Session[0].Epoch.CompareTo(favorite.Epoch.AddSeconds(1)) < 0 &&
+            (eye - sun.PositionKilometers - new Vector3d(9_460_730.4725808, 0, 0)).Length < 1e-5,
+            "Opening the imported favorite must restore the named body, absolute eye, local frame and epoch.");
+        GD.Print("UI: imported favorites through the existing file dialog and restored a Moon-fixed observer");
     }
 }

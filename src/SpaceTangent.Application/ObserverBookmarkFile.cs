@@ -1,5 +1,7 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
 using System.Text.Json;
+using SpaceTangent.Core.Addons;
+using SpaceTangent.Core.Time;
 
 namespace SpaceTangent.Application;
 
@@ -7,7 +9,7 @@ public sealed record ObserverBookmark(string Name, string Link);
 
 public sealed class ObserverBookmarkFile(string path)
 {
-    private const int MaximumBookmarks = 64;
+    private const int MaximumBookmarks = 256;
     private const int MaximumBytes = 4 * 1024 * 1024;
 
     public IReadOnlyList<ObserverBookmark> Load()
@@ -48,10 +50,40 @@ public sealed class ObserverBookmarkFile(string path)
         }
     }
 
+    public (IReadOnlyList<ObserverBookmark> Bookmarks, int Added, int Skipped) ImportFavorites(string source,
+        IReadOnlyList<ObserverBookmark> current, SimulationWorld world, DeltaTModel deltaT)
+    {
+        using FileStream input = File.OpenRead(source);
+        if (input.Length > ObserverFavorites.MaximumCharacters * 4)
+            throw new InvalidDataException("The favorites file is too large.");
+        using var reader = new StreamReader(input);
+        var favorites = ObserverFavorites.Parse(reader.ReadToEnd());
+        var result = current.ToList();
+        var names = new HashSet<string>(current.Select(item => item.Name), StringComparer.OrdinalIgnoreCase);
+        int skipped = 0;
+        foreach (ObserverFavorite item in favorites)
+        {
+            string name = (string.IsNullOrWhiteSpace(item.Folder) ? item.Name : $"{item.Folder} / {item.Name}").Trim();
+            if (name.Length > 100)
+                name = name[..100];
+            if (result.Count == MaximumBookmarks || name.Length == 0 || name.Any(char.IsControl) || names.Contains(name) ||
+                SceneLink.RestoreFavorite(item, world, deltaT) is not { } scene)
+            {
+                skipped++;
+                continue;
+            }
+            result.Add(new(name, SceneLink.Write(scene)));
+            names.Add(name);
+        }
+        if (result.Count > current.Count)
+            Save(result);
+        return (result.AsReadOnly(), result.Count - current.Count, skipped);
+    }
+
     private static void Validate(IReadOnlyList<ObserverBookmark> bookmarks)
     {
         if (bookmarks.Count > MaximumBookmarks)
-            throw new InvalidDataException("The bookmark list contains more than 64 items.");
+            throw new InvalidDataException("The bookmark list contains more than 256 items.");
         var names = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         foreach (ObserverBookmark item in bookmarks)
         {

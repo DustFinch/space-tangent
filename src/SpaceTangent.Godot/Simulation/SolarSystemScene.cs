@@ -790,9 +790,15 @@ public partial class SolarSystemScene : Control
             FileMode = FileDialog.FileModeEnum.SaveFile, DeletingEnabled = false };
         AddChild(open);
         AddChild(save);
-        open.AddFilter("*.stscene", "SpaceTangent scenarios");
+        open.AddFilter("*.stscene,*.cel", "Scenarios and observer favorites");
         save.AddFilter("*.stscene", "SpaceTangent scenarios");
-        open.FileSelected += path => LoadScenario(path);
+        open.FileSelected += path =>
+        {
+            if (Path.GetExtension(path).Equals(".cel", StringComparison.OrdinalIgnoreCase))
+                ImportFavorites(path);
+            else
+                LoadScenario(path);
+        };
         save.FileSelected += path => SaveScenario(path);
         PopupMenu popup = menu.GetPopup();
         popup.AddItem("Open scenario…", 0);

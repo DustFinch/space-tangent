@@ -40,6 +40,7 @@ internal partial class SimulationViewport : Node3D
     private Texture2D? _marsSurface;
     private IReadOnlyList<PreparedSatellite>? _satelliteAssets;
     private readonly Dictionary<ObjectId, (PreparedSatellite Asset, MeshInstance3D Node)> _satellites = new();
+    internal MeshInstance3D? ScienceBodyNode(ObjectId id) => _satellites.TryGetValue(id, out var entry) ? entry.Node : null;
 
     internal ISolarSystemEphemeris? PlanetEphemeris { get; set; }
     internal Vector3 EarthPosition => _earth.Position;

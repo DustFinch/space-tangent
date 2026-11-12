@@ -76,6 +76,24 @@ public partial class WorkspaceInputSmoke
         await Click(Find<Button>("ReloadAddOns"));
         await WaitForAddOns("Recovering the real source");
 
+        if (System.Environment.GetEnvironmentVariable("SPACETANGENT_PACKED_SCIENCE") is { Length: > 0 } packed)
+        {
+            var observer = Session.CaptureScenario(0);
+            CopyDirectory(packed, science);
+            await Click(Find<Button>("ReloadAddOns"));
+            await WaitForAddOns("Installing the archived packed science models");
+            Require(Session.World.Satellites.Count == 2 && Session.World.Satellites.All(track =>
+                Path.GetExtension(track.MeshPath).Equals(".glb", StringComparison.OrdinalIgnoreCase)),
+                "The archived pack must replace both source meshes while keeping their catalogue IDs.");
+            RequireScenario(observer, Session.CaptureScenario(0), "Switching from source OBJ to packed GLB");
+            File.Move(Path.Combine(science, "pack.json"), Path.Combine(science, "pack.json.disabled"));
+            await Click(Find<Button>("ReloadAddOns"));
+            await WaitForAddOns("Returning to the original source models");
+            Require(Session.World.Satellites.All(track => Path.GetExtension(track.MeshPath) == ".obj"),
+                "Removing the packed manifest must restore both source OBJ models.");
+            RequireScenario(observer, Session.CaptureScenario(0), "Switching from packed GLB back to source OBJ");
+            GD.Print("UI: installed the original Jason-1 and SORCE packed GLBs and returned to the source without losing either view");
+        }
         RemoveChild(_scene);
         _scene.QueueFree();
         _scene = GD.Load<PackedScene>("res://Main.tscn").Instantiate<SolarSystemScene>();

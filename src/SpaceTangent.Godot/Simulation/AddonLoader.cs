@@ -294,7 +294,8 @@ internal static class AddonLoader
                 {
                     ".cmod" => CmodMeshDecoder.Decode(root, file, cancellation),
                     ".3ds" => StudioMeshDecoder.Decode(file, cancellation),
-                    _ => throw new NotSupportedException("This sampled mission needs a CMOD or 3DS mesh.")
+                    ".glb" => PackedModelDecoder.Decode(file, cancellation),
+                    _ => throw new NotSupportedException("This sampled mission needs a CMOD, 3DS or packed GLB mesh.")
                 } : null;
                 tracks.Add(new(mission, mesh));
             }
@@ -322,7 +323,8 @@ internal static class AddonLoader
             {
                 ".cmod" => CmodMeshDecoder.Decode(root, file, cancellation),
                 ".3ds" => StudioMeshDecoder.Decode(file, cancellation),
-                _ => throw new NotSupportedException("This SSC body needs a binary CMOD or 3DS mesh.")
+                ".glb" => PackedModelDecoder.Decode(file, cancellation),
+                _ => throw new NotSupportedException("This SSC body needs a binary CMOD, 3DS or packed GLB mesh.")
             } : null;
             return new DecodedSscBody(body, mesh);
         }).ToArray());
@@ -332,16 +334,17 @@ internal static class AddonLoader
     {
         string root = location.Resolve();
         string catalog = Path.Combine(root, "catalog", "sciencesat.json");
-        var satellites = new List<DecodedSatellite>();
-        if (location.Explicit is not null || AddonDependencies.FileExists(catalog))
+        string pack = Path.Combine(root, "pack.json");
+        IReadOnlyList<ScienceSatellite> tracks = AddonDependencies.FileExists(pack)
+            ? PackedSatelliteCatalog.Load(root, message => global::Godot.GD.Print("Packed satellites: " + message))
+            : location.Explicit is not null || AddonDependencies.FileExists(catalog)
+                ? ScienceSatelliteCatalog.Load(catalog, root) : [];
+        return Array.AsReadOnly(tracks.Select(track =>
         {
-            foreach (ScienceSatellite track in ScienceSatelliteCatalog.Load(catalog, root))
-            {
-                cancellation.ThrowIfCancellationRequested();
-                satellites.Add(new(track, ScienceModelDecoder.Decode(track.MeshPath, cancellation)));
-            }
-        }
-        return satellites.AsReadOnly();
+            cancellation.ThrowIfCancellationRequested();
+            return new DecodedSatellite(track, Path.GetExtension(track.MeshPath).Equals(".glb", StringComparison.OrdinalIgnoreCase)
+                ? PackedModelDecoder.Decode(track.MeshPath, cancellation) : ScienceModelDecoder.Decode(track.MeshPath, cancellation));
+        }).ToArray());
     }
 
     private static DecodedMission? ReadMission(LocalDataPath location, CancellationToken cancellation)

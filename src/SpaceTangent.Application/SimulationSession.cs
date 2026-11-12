@@ -31,6 +31,7 @@ public readonly record struct ObserverView(JulianInstant Epoch, CameraMode Mode,
     public BodyReferenceMarks ReferenceMarks { get; init; }
     public double? FieldOfViewDegrees { get; init; }
     public double? PlaybackRate { get; init; }
+    public bool LightTimeDelayed { get; init; }
     public static bool ValidPlaybackRate(double rate) => rate is >= -100_000_000 and <= 100_000_000;
     public double EffectiveFieldOfView => FieldOfViewDegrees ?? (Mode == CameraMode.Surface && Navigation is null ? 10 : 49);
     public static bool ValidFieldOfView(double field) => field is >= 2 and <= 120;
@@ -516,7 +517,7 @@ public sealed partial class SimulationSession
         {
             if (_views[view].Playing)
             {
-                double rate = _views[view].PlaybackRate ?? DefaultPlaybackRate(_views[view].Mode);
+                double rate = CurrentPlaybackRate(view);
                 Step(view, elapsed * rate);
                 changed = true;
             }

@@ -28,7 +28,6 @@ internal partial class MeasurementOverlay : Control
     internal double? AngleDegrees => _angleFrom is { } from && _angleTo is { } to
         ? Math.Atan2(from.Cross(to).Length(), from.Dot(to)) * 180 / Math.PI : null;
     internal double? DistanceKilometers { get; private set; }
-    internal const double LightKilometersPerSecond = 299_792.458;
 
     internal bool ToggleAngle()
     {
@@ -100,7 +99,7 @@ internal partial class MeasurementOverlay : Control
             double distance = (second - first).PositionKilometers.Length;
             DistanceKilometers = distance;
             _distanceText = FormattableString.Invariant(
-                $"{world.Catalogue.Find(from)?.Name} – {world.Catalogue.Find(to)?.Name}   {distance:N1} km · light {distance / LightKilometersPerSecond:G4} s");
+                $"{world.Catalogue.Find(from)?.Name} – {world.Catalogue.Find(to)?.Name}   {distance:N1} km · light {distance / SimulationSession.LightKilometersPerSecond:G4} s");
             if (observer.Navigation is { } pose &&
                 renderer.ProjectNavigationPoint(pose, first.PositionKilometers) is { } a &&
                 renderer.ProjectNavigationPoint(pose, second.PositionKilometers) is { } b)

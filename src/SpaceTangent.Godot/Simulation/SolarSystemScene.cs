@@ -465,7 +465,7 @@ public partial class SolarSystemScene : Control
         if (key.Echo)
             return;
         if (!key.CtrlPressed && !key.AltPressed && !key.MetaPressed &&
-            GetViewport().GuiGetFocusOwner() is not LineEdit && TryObserverFrameKey(key))
+            GetViewport().GuiGetFocusOwner() is not LineEdit && (TryClockKey(key) || TryObserverFrameKey(key)))
         {
             GetViewport().SetInputAsHandled();
             return;
@@ -1412,6 +1412,8 @@ public partial class SolarSystemScene : Control
             controls.Renderer.DrawReferenceMarks(view, session.ReferenceGeometry(index, snapshot));
             controls.Measurements.Update(controls.Renderer, view, snapshot, session.World, session.DeltaT);
             controls.Epoch.Text = FormattableString.Invariant($"View {index + 1}   JD {view.Epoch.ToJulianDate():F6} TDB");
+            if (view.LightTimeDelayed)
+                controls.Epoch.Text += "   ·   Light time";
             if (ship is not null)
             {
                 string targetName = ship.Target is { } aim ? session.World.Catalogue.Find(aim)?.Name ?? aim.Value : "—";

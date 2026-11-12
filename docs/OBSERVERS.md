@@ -43,3 +43,9 @@ The test sends mouse and keyboard events to the Godot viewport. It searches for 
 Press **Ctrl+A** and drag across a perspective view to measure the angle between the two sight lines. The endpoints keep their world directions as the camera turns. Press **Ctrl+A** again to close the tool.
 
 To measure distance, select the first object and press **Ctrl+M**, then select the second object and press **Ctrl+M** again. The active view reports geometric distance and one-way light time for its epoch. **Ctrl+Shift+M** clears the pair.
+
+## Observer clock shortcuts
+
+Use J to start reverse playback, K and L to change the active clock's rate by a factor of ten, and Space to pause or resume. Changing the rate with K or L preserves pause. The existing UTC fields accept a published leap second, for example `2016-12-31 23:59:60`.
+
+With a body selected, press ? for its light travel time or − to move the clock back by that amount. Press − again to move forward by the light time measured at the current epoch. The existing view caption shows when light time is applied. Independent clocks shift only in their own view. Scenarios with this flag use version 10, and ordinary earlier scenes retain their format.

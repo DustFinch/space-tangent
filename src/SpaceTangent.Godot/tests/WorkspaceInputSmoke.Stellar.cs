@@ -80,6 +80,29 @@ public partial class WorkspaceInputSmoke
             GD.Print("UI: loaded the original STC corpus, flew to Gamma Cephei by its alias and retained both components after reload");
         }
 
+        if (System.Environment.GetEnvironmentVariable("SPACETANGENT_EXOPLANET_CATALOGUE") is { Length: > 0 })
+        {
+            var world = Session.World;
+            Require(world.Exoplanets.Bodies.Count == 6462, "The original exoplanet catalogue must be installed in full.");
+            var id = new ObjectId("exo/70890/proxima-cen-b");
+            await FlyTo(1, "Proxima Cen b", id);
+            Require(_scene.Renderer(1).ExoplanetVisible(id) && _scene.Renderer(1).ExoplanetTextured(id),
+                "The original Proxima planet must have its local rocky surface map.");
+            var planet = world.Exoplanets.Find(id)!;
+            var frame = world.Graph.Evaluate(Session[1].Epoch);
+            world.TryNavigationState(id, frame, out var location);
+            world.TryNavigationState(planet.Host, frame, out var host);
+            Require(((location - host).PositionKilometers - planet.ParentRelativeState(frame.Epoch).PositionKilometers).Length < .05,
+                "The exoplanet camera must use the correct stellar origin and local orbit.");
+            var embedded = world.Exoplanets.Hosts.First(star => world.Stellar.Find(star.Id) is null);
+            Require(world.Catalogue.Find(embedded.Id) is not null && world.TryNavigationState(embedded.Id, frame, out _),
+                "An original host outside the local stellar archive must remain a searchable navigation target.");
+            var accepted = Session.CaptureScenario(1);
+            Require(await _scene.ReloadAddOns(), "Reloading with a selected exoplanet must succeed.");
+            RequireScenario(accepted, Session.CaptureScenario(1), "Reloading a tracked exoplanet");
+            GD.Print("UI: flew to original Proxima Centauri b, verified a distant embedded host and reloaded the exoplanet camera");
+        }
+
         async Task FlyTo(int view, string query, ObjectId target)
         {
             await Click(Find<SubViewportContainer>($"ViewCanvas{view}"));

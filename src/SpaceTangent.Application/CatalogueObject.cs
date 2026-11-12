@@ -16,7 +16,7 @@ public sealed record CatalogueObject(ObjectId Id, string Name, CatalogueKind Kin
 public sealed class ObjectCatalogue
 {
     internal ObjectCatalogue(IReadOnlyList<ScienceSatellite> satellites, BrightStarCatalogue stars,
-        StellarCatalogue spatialStars, DeepSkyIndex deepSky, IReadOnlyList<InstalledSscBody> sscBodies, IEnumerable<SscSurfaceLocation> locations)
+        StellarCatalogue spatialStars, DeepSkyIndex deepSky, ExoplanetCatalogue exoplanets, IReadOnlyList<InstalledSscBody> sscBodies, IEnumerable<SscSurfaceLocation> locations)
     {
         var objects = new List<CatalogueObject> { new(SolarSystemSample.SunId, "Sun", CatalogueKind.Star) };
         objects.AddRange(PlanetCatalogue.Planets.Select(planet =>
@@ -38,6 +38,10 @@ public sealed class ObjectCatalogue
         objects.AddRange(spatialStars.Stars.Where(star => stars.Find(star.Id) is null)
             .Select(star => new CatalogueObject(star.Id, star.Name, CatalogueKind.Star, star.BarycenterId)
                 { Aliases = star.Aliases }));
+        objects.AddRange(exoplanets.Hosts.Where(star => spatialStars.Find(star.Id) is null && stars.Find(star.Id) is null)
+            .Select(star => new CatalogueObject(star.Id, star.Name, CatalogueKind.Star) { Aliases = star.Aliases }));
+        objects.AddRange(exoplanets.Bodies.Select(body => new CatalogueObject(body.Id, body.Name,
+            body.Parent == body.Host ? CatalogueKind.Planet : CatalogueKind.Moon, body.Parent) { Aliases = body.Names }));
         objects.AddRange(deepSky.Objects.Select(body => new CatalogueObject(body.Id,
             body.Name == body.Designation ? body.Name : $"{body.Name} ({body.Designation})", body.Kind switch
             {

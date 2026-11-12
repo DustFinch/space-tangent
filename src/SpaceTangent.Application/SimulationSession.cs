@@ -43,7 +43,7 @@ public sealed class SimulationWorld
     public SimulationWorld(ISolarSystemEphemeris ephemeris, IEnumerable<ScienceSatellite> satellites,
         SpiceSpacecraft? mission = null, SscSampledSpacecraft? timeline = null, HuygensMission? probe = null,
         SpicePolynomialBodyFrame? moonFrame = null, BrightStarCatalogue? brightStars = null, PlanetEphemerides? planets = null, bool hasMarsTerrain = false, StellarCatalogue? stellar = null, IEnumerable<SscBodyDefinition>? bodyCatalog = null,
-        IEnumerable<SscSurfaceLocation>? locations = null, DeepSkyIndex? deepSky = null)
+        IEnumerable<SscSurfaceLocation>? locations = null, DeepSkyIndex? deepSky = null, ExoplanetCatalogue? exoplanets = null)
     {
         Ephemeris = ephemeris;
         Satellites = Array.AsReadOnly(satellites.ToArray());
@@ -51,6 +51,7 @@ public sealed class SimulationWorld
         HasMarsTerrain = hasMarsTerrain;
         Stellar = stellar ?? StellarCatalogue.Empty;
         DeepSky = deepSky ?? DeepSkyIndex.Default;
+        Exoplanets = exoplanets ?? ExoplanetCatalogue.Empty;
         StellarOrigin = ephemeris.Sample(JulianInstant.FromJulianDate(2451545, TimeScale.Tdb)).Sun.PositionKilometers;
         var graph = new WorldGraphBuilder();
         graph.AddSolarSystem(ephemeris);
@@ -89,7 +90,7 @@ public sealed class SimulationWorld
             PlanetEphemerides.AddMoonFrame(graph, planets);
         SscBodies = InstalledSscBody.Install(graph, bodyCatalog ?? []);
         _sscById = SscBodies.ToDictionary(body => body.Id);
-        Catalogue = new(Satellites, BrightStars, Stellar, DeepSky, SscBodies, locations ?? []);
+        Catalogue = new(Satellites, BrightStars, Stellar, DeepSky, Exoplanets, SscBodies, locations ?? []);
         _sitesById = Catalogue.SurfaceSites.ToDictionary(site => site.Id);
         _sitesByBody = Catalogue.SurfaceSites.GroupBy(site => site.Body)
             .ToDictionary(group => group.Key, group => group.OrderByDescending(site => site.Definition.Importance ?? site.Definition.SizeKilometers).ToArray());
@@ -104,6 +105,7 @@ public sealed class SimulationWorld
     public BrightStarCatalogue BrightStars { get; }
     public StellarCatalogue Stellar { get; }
     public DeepSkyIndex DeepSky { get; }
+    public ExoplanetCatalogue Exoplanets { get; }
     public Vector3d StellarOrigin { get; }
 
     private readonly Dictionary<ObjectId, SurfaceSite> _sitesById;
@@ -132,10 +134,22 @@ public sealed class SimulationWorld
             state = body + new CartesianState(offset, Vector3d.Cross(spin, offset));
             return true;
         }
-        if (Stellar.Find(id) is { } star)
+        if (Exoplanets.Find(id) is { } planet && FindStellarTarget(planet.Host) is { } host)
         {
-            CartesianState relative = star.StateAt(snapshot.Epoch);
-            state = new(relative.PositionKilometers + StellarOrigin, relative.VelocityKilometersPerSecond);
+            CartesianState relative = planet.ParentRelativeState(snapshot.Epoch);
+            for (int depth = 0; planet.Parent != planet.Host; depth++)
+            {
+                if (depth == 4 || Exoplanets.Find(planet.Parent) is not { } parent)
+                    return false;
+                relative += parent.ParentRelativeState(snapshot.Epoch);
+                planet = parent;
+            }
+            state = PlaceStar(host, snapshot.Epoch) + relative;
+            return true;
+        }
+        if (FindStellarTarget(id) is { } star)
+        {
+            state = PlaceStar(star, snapshot.Epoch);
             return true;
         }
         if (DeepSky.Find(id) is { } deepSky)
@@ -146,8 +160,17 @@ public sealed class SimulationWorld
         return false;
     }
 
+    public StellarEntry? FindStellarTarget(ObjectId id) => Stellar.Find(id) ?? Exoplanets.FindHost(id);
+
+    private CartesianState PlaceStar(StellarEntry star, JulianInstant epoch)
+    {
+        CartesianState relative = star.StateAt(epoch);
+        return new(relative.PositionKilometers + StellarOrigin, relative.VelocityKilometersPerSecond);
+    }
+
     public double TargetRadiusKilometers(ObjectId id) =>
-        FindSurfaceSite(id)?.ScaleKilometers ?? StarRadius(Stellar.Find(id)) ?? DeepSky.Find(id)?.RadiusKilometers ??
+        FindSurfaceSite(id)?.ScaleKilometers ?? StarRadius(FindStellarTarget(id)) ?? DeepSky.Find(id)?.RadiusKilometers ??
+        Exoplanets.Find(id)?.RadiusKilometers ??
         _sscById.GetValueOrDefault(id)?.Definition.RadiusKilometers ?? NavigationCamera.BodyRadiusKilometers(id);
     private static double? StarRadius(StellarEntry? star) => star is null ? null :
         star.IsBarycenter ? Math.Max(1000, star.SystemRadiusKilometers) : Math.Max(.007, star.RadiusKilometers);

@@ -53,11 +53,12 @@ internal partial class SimulationViewport
         HideStellarObjects();
         if (CatalogueWorld is not { } world)
             return;
-        if (pose.Target is { } starId && world.Stellar.Find(starId) is { } star)
+        if (pose.Target is { } starId && world.FindStellarTarget(world.Exoplanets.Find(starId)?.Host ?? starId) is { } star)
             DrawStellarSystem(star, world, snapshot, units, project);
         Vector3 localEye = _navigationCamera.Position;
         Vector3d eye = pose.AnchorKilometers + new Vector3d(localEye.X, -localEye.Z, localEye.Y) * units;
         DrawDeepSky(world, pose, sky, eye, units, project);
+        DrawExoplanets(world, pose, snapshot, units, project);
         if (sky.Stars && _fieldStars.Count != 0 && (eye - world.StellarOrigin).Length > StellarEntry.KilometersPerLightYear * .025)
             DrawSpatialField(eye, snapshot.Epoch, world.StellarOrigin, pose.Target);
     }
@@ -177,5 +178,6 @@ internal partial class SimulationViewport
         _stellarField.Hide();
         StellarDiskResolved = false;
         HideDeepSky();
+        HideExoplanets();
     }
 }

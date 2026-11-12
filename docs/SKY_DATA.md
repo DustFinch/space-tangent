@@ -35,3 +35,9 @@ Search for a system or a component by name or alias. Flying to a barycenter fram
 ### Local STC sources
 
 Place `.stc` files in `data/sky/stc` or set `SPACETANGENT_STC_ROOT` to their directory. The files add names, stellar positions, sizes and barycentric orbits to the selected catalogue. Numbered edits use the existing star when it is available. Inspect the Godot log for records with invalid coordinates or missing reference stars.
+
+## Archived exoplanets
+
+Place the original converted `exoplanets.txt` in `data/sky` or set `SPACETANGENT_EXOPLANET_CATALOGUE` to its path. Optional texture-class images go in `data/sky/exoplanet-textures` or `SPACETANGENT_EXOPLANET_TEXTURES`. The catalogue identifies these images by filename stem, for example `rocky.jpg` and `exo-class4.jpg`. Search for a planet or host by name, then use **Go to**. The perspective view evaluates the planet's orbit about its host and illuminates its globe from that star.
+
+The verified catalogue contains 6,462 planets from the published data by Thomas W. Tarrants under [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/). Keep the accompanying data and texture credits when redistributing the sidecars.

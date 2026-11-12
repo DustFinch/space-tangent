@@ -31,6 +31,7 @@ public partial class SolarSystemScene : Control
     private SurfaceTextures? _surfaceTextures;
     private EarthOrbitTextures? _earthOrbitTextures;
     private PlanetTextures? _planetTextures;
+    private readonly Dictionary<string, Texture2D> _exoplanetTextures = new(StringComparer.OrdinalIgnoreCase);
     private IReadOnlyDictionary<ObjectId, OrbitAtmosphereTextures> _orbitAtmospheres =
         new Dictionary<ObjectId, OrbitAtmosphereTextures>();
     private IReadOnlyDictionary<ObjectId, BodyTileTextures> _surfaceTiles = new Dictionary<ObjectId, BodyTileTextures>();
@@ -158,6 +159,10 @@ public partial class SolarSystemScene : Control
             _planetTextures = PlanetTextures.Load();
             _orbitAtmospheres = OrbitAtmosphereTextures.LoadAll();
             _surfaceTiles = BodyTileTextures.Load();
+            string maps = LocalDataPaths.Find("SPACETANGENT_EXOPLANET_TEXTURES", "sky/exoplanet-textures", directory: true);
+            foreach (string profile in world.Exoplanets.Bodies.Select(planet => planet.TextureClass).Distinct(StringComparer.OrdinalIgnoreCase))
+                if (PlanetTextures.Read(maps, profile + ".jpg") is { } texture)
+                    _exoplanetTextures.Add(profile, texture);
         }
         catch (Exception error) when (IsLoadError(error))
         {
@@ -1181,6 +1186,7 @@ public partial class SolarSystemScene : Control
         if (_planetTextures is { } planets)
             renderer.SetPlanetTextures(planets);
         renderer.SetWorldAtmospheres(_orbitAtmospheres, _surfaceTiles);
+        renderer.SetExoplanetTextures(_exoplanetTextures);
         renderer.PlanetEphemeris = Session!.World.Ephemeris;
         renderer.ShowPlanetOrbits = _showPlanetOrbits.ButtonPressed;
         if (_brightSky is { } sky)
@@ -1363,22 +1369,25 @@ public partial class SolarSystemScene : Control
     {
         if (target is null)
             return "";
+        SimulationWorld world = Session!.World;
         var details = $"Catalogue ID: {target.Id.Value}";
-        if (Session!.World.FindSurfaceSite(target.Id) is { } site)
+        if (world.FindSurfaceSite(target.Id) is { } site)
         {
-            var parent = Session.World.Catalogue.Find(site.Body)?.Name ?? site.Body.Value;
+            var parent = world.Catalogue.Find(site.Body)?.Name ?? site.Body.Value;
             return details + FormattableString.Invariant($"\nOn {parent}\n{site.Definition.LatitudeDegrees:F2}° latitude, {site.Definition.LongitudeDegrees:F2}° longitude");
         }
-        if (Session.World.Stellar.Find(target.Id) is { } spatial)
+        if (world.FindStellarTarget(target.Id) is { } spatial)
         {
             details += FormattableString.Invariant($"\nDistance: {spatial.DistanceParsecs * StellarEntry.KilometersPerParsec / StellarEntry.KilometersPerLightYear:N2} ly");
             return spatial.IsBarycenter ? details + "\nSystem barycenter" :
                 details + FormattableString.Invariant($"\nVisual magnitude: {spatial.VisualMagnitude:F2}");
         }
-        if (Session.World.BrightStars.Find(target.Id) is { } bright)
+        if (world.BrightStars.Find(target.Id) is { } bright)
             return details + FormattableString.Invariant($"\nVisual magnitude: {bright.VisualMagnitude:F2}");
-        if (Session?.World.DeepSky.Find(target.Id) is { } deep)
+        if (world.DeepSky.Find(target.Id) is { } deep)
             return details + FormattableString.Invariant($"\nDistance: {deep.DistanceLightYears:N0} ly\nEstimated radius: {deep.RadiusLightYears:N0} ly");
+        if (world.Exoplanets.Find(target.Id) is { } planet)
+            return details + FormattableString.Invariant($"\nRadius: {planet.RadiusKilometers:N0} km\nHost: {world.Catalogue.Find(planet.Host)?.Name ?? planet.Host.Value}");
         if (snapshot?.SolarSystem is { } solar && snapshot.TryState(target.Id, out var state))
             return details + FormattableString.Invariant($"\nFrom Earth: {(state - solar.Earth).PositionKilometers.Length:N1} km");
         return details + "\nState unavailable at this epoch";

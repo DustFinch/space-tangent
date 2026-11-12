@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
 using Godot;
+using System.Globalization;
 using SpaceTangent.Application;
 
 namespace SpaceTangent.Godot.Simulation;
@@ -41,6 +42,18 @@ public partial class SolarSystemScene
                     throw new InvalidOperationException("A rendering display driver is required to capture a frame.");
                 await ToSignal(GetTree(), SceneTree.SignalName.ProcessFrame);
                 await ToSignal(RenderingServer.Singleton, RenderingServer.SignalName.FramePostDraw);
+                foreach (ViewControls controls in _views.Where(view => view.FieldOfView.Visible))
+                {
+                    SpinBox field = controls.FieldOfView;
+                    string suffix = " " + field.Suffix;
+                    string displayed = field.GetLineEdit().Text;
+                    if (!displayed.EndsWith(suffix, StringComparison.Ordinal) ||
+                        !double.TryParse(displayed.AsSpan(0, displayed.Length - suffix.Length),
+                            NumberStyles.AllowDecimalPoint, CultureInfo.InvariantCulture, out double degrees) ||
+                        Math.Abs(degrees - field.Value) > .000001)
+                        throw new InvalidDataException($"The lens shows '{displayed}' instead of {field.Value} degrees.");
+                    GD.Print($"SpaceTangent startup verified lens readout {displayed}.");
+                }
                 using Image image = GetViewport().GetTexture().GetImage();
                 if (image.SavePng(capture) != Error.Ok)
                     throw new IOException("Could not write the startup frame.");

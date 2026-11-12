@@ -868,7 +868,7 @@ public partial class SolarSystemScene : Control
         mode.ItemSelected += item => SetMode(index, (CameraMode)mode.GetItemId((int)item));
         tools.AddChild(mode);
         var field = new SpinBox { Name = $"ViewField{index}", MinValue = 2, MaxValue = 120, Step = .01,
-            Value = Session![index].EffectiveFieldOfView,
+            Value = Session![index].EffectiveFieldOfView, LocalizeNumeralSystem = false,
             Suffix = "° FOV", TooltipText = "Vertical field of view" };
         field.ValueChanged += value =>
         {

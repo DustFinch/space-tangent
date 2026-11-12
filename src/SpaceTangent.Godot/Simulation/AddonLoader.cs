@@ -344,6 +344,7 @@ internal static partial class AddonLoader
                     shape.ParticleEmitters?.Select(emitter => new PreparedParticleEmitter(emitter,
                         emitter.TexturePath is { } image ? textures[image] : null)).ToArray())
                 {
+                    Axes = shape.Axes,
                     EllipsoidRadiiKilometers = shape.EllipsoidRadiiKilometers,
                     GlobeMaterial = shape.GlobeTexturePath is { } map ? new global::Godot.StandardMaterial3D
                     {

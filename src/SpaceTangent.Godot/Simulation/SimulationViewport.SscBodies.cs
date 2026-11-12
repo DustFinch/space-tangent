@@ -15,6 +15,7 @@ internal sealed record PreparedMissionGeometry(JulianInstant Start, JulianInstan
     Basis3d MeshRotation, Vector3d MeshOffset, ArrayMesh? Model, double ModelDiameter, MissionSensor? Sensor,
     IReadOnlyList<PreparedParticleEmitter>? Particles)
 {
+    internal MissionAxesStyle? Axes { get; init; }
     internal Vector3d? EllipsoidRadiiKilometers { get; init; }
     internal StandardMaterial3D? GlobeMaterial { get; init; }
 }
@@ -116,6 +117,11 @@ internal partial class SimulationViewport
                 }
                 if (active is null)
                     continue;
+                if (active.Axes is { } axes)
+                {
+                    DrawMissionAxes(node, axes, snapshot, frame.ToWorld, position, projection / units);
+                    continue;
+                }
                 if (active.Sensor is { } sensor)
                 {
                     _missionSensorRendering ??= new(this);

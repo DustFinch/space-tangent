@@ -34,6 +34,6 @@ For the archived native particle format, place the original `pack.json` and its 
 
 ## Archived mission packs
 
-A local mission root can also hold an existing `pack.json` alongside its `models`, `trajectories`, and optional `textures` directories. Preserve the archive paths. The checked version 11 pack supplies fixed and Keplerian states, sampled XYZ and XYZV, moving frames, Q attitudes, oblate globes and embedded GLB textures. A damaged Q table and its dependent objects are reported and omitted. A missing optional globe map leaves the shape available. The axis visualizer frames are available for calculation. Their lines require separate display support.
+A local mission root can also hold an existing `pack.json` alongside its `models`, `trajectories`, and optional `textures` directories. Preserve the archive paths. The checked version 11 pack supplies fixed and Keplerian states, sampled XYZ and XYZV, moving frames, Q attitudes, oblate globes and embedded GLB textures. A damaged Q table and its dependent objects are reported and omitted. A missing optional globe map leaves the shape available. Body and frame axes use the original solid arrow profiles and physical scale in both source and packed catalogues.
 
 The archive probe uses the packed version of the original Jason-1 model at the same two attitude epochs as the source probe.

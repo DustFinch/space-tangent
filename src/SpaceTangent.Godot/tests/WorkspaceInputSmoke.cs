@@ -134,6 +134,7 @@ public partial class WorkspaceInputSmoke : Node
             await ExerciseClockTools(scratch.FullName);
             await ExerciseObservationEvents(scratch.FullName);
             await ExerciseEarthPlaces(scratch.FullName);
+            await ExerciseObserverNight(scratch.FullName);
             GD.Print($"SpaceTangent workspace input smoke passed ({DisplayServer.GetName()})");
             exitCode = 0;
         }
@@ -494,11 +495,11 @@ public partial class WorkspaceInputSmoke : Node
             await KeyPress((Key)char.ToUpperInvariant(character), character);
     }
 
-    private async Task KeyPress(Key key, uint unicode = 0, bool ctrl = false, bool shift = false)
+    private async Task KeyPress(Key key, uint unicode = 0, bool ctrl = false, bool shift = false, bool alt = false)
     {
-        using var down = new InputEventKey { Keycode = key, Unicode = unicode, CtrlPressed = ctrl, ShiftPressed = shift, Pressed = true };
+        using var down = new InputEventKey { Keycode = key, Unicode = unicode, CtrlPressed = ctrl, ShiftPressed = shift, AltPressed = alt, Pressed = true };
         Tree.Root.PushInput(down, inLocalCoords: true);
-        using var up = new InputEventKey { Keycode = key, CtrlPressed = ctrl, ShiftPressed = shift };
+        using var up = new InputEventKey { Keycode = key, CtrlPressed = ctrl, ShiftPressed = shift, AltPressed = alt };
         Tree.Root.PushInput(up, inLocalCoords: true);
         await ToSignal(Tree, SceneTree.SignalName.ProcessFrame);
     }

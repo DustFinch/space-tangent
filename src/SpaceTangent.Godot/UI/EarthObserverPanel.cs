@@ -73,7 +73,7 @@ internal sealed class EarthObserverPanel
     }
 
     internal void Update(int view, ObserverView observer, WorldSnapshot? snapshot, ISolarSystemEphemeris ephemeris,
-        DeltaTModel model, BrightStarCatalogue brightStars)
+        DeltaTModel model, BrightStarCatalogue brightStars, ObserverNight? night)
     {
         EarthObserverCamera camera = observer.EarthObserver ?? EarthObserverCamera.Moscow;
         if (_view != view || camera.Site != _camera.Site || camera.AzimuthDegrees != _camera.AzimuthDegrees ||
@@ -120,6 +120,16 @@ internal sealed class EarthObserverPanel
                     // The surface model can cover fewer epochs than the loaded ephemeris.
                 }
             }
+        }
+        if (night is not null)
+        {
+            _coordinates.Text += FormattableString.Invariant($"\nNight of {night.EveningDate:yyyy-MM-dd}");
+            if (night.UpperCulmination is { Target: { } peak } culmination)
+                _coordinates.Text += FormattableString.Invariant(
+                    $"\nCulmination {peak.AltitudeDegrees:F1}° · {Time(culmination.Epoch, model)}");
+            if (night.BestDarkSample is { Target: { } dark } best)
+                _coordinates.Text += FormattableString.Invariant(
+                    $"\nBest dark sample {dark.AltitudeDegrees:F1}° · {Time(best.Epoch, model)}");
         }
         try
         {
@@ -179,11 +189,16 @@ internal sealed class EarthObserverPanel
     {
         if (instant is not { } time)
             return "—";
-        if (time.Scale == TimeScale.Tdb)
+        try
+        {
+            UtcDateTime utc = TimeConversion.ToUtc(time);
+            return FormattableString.Invariant($"{utc.Date:MM-dd} {utc.Hour:00}:{utc.Minute:00} UTC");
+        }
+        catch (ArgumentOutOfRangeException)
+        {
             return EarthCivilTime.ModeledUt1(time, model) is { } modeled
                 ? FormattableString.Invariant($"{modeled.Date:MM-dd} {modeled.Time:HH:mm} UT1") : "—";
-        UtcDateTime utc = TimeConversion.ToUtc(time);
-        return FormattableString.Invariant($"{utc.Date:MM-dd} {utc.Hour:00}:{utc.Minute:00} UTC");
+        }
     }
 
     private static bool Read(LineEdit field, out double value) =>

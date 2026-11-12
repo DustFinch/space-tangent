@@ -28,7 +28,7 @@ Open **Location** to choose Moscow or Tromsø, or enter latitude, east longitude
 
 Version 3 scenarios store each view's Earth observer camera and horizon overlays. Versions 1 and 2 keep the original default Moscow camera when they open an Earth surface view.
 
-The surface camera and twilight also use the long-range ephemeris. Enter a historical civil date through the existing calendar to use modeled UT1 with the active ΔT preference. The display labels that time as UT1 and scenarios retain the exact TDB epoch. Modern UTC and published leap seconds use the original conversion.
+The surface camera and twilight also use the long-range ephemeris. Enter a historical Julian date in the TDB field to use the surface model with the active ΔT preference. The display labels that time as UT1 and scenarios retain the exact TDB epoch. Modern UTC and published leap seconds use the original conversion.
 
 ## Headless workspace input test
 
@@ -63,3 +63,9 @@ The status line gives the next result and its peak time. Press Ctrl+Shift+E to o
 Place the archived `sites.txt` in `data` or set `SPACETANGENT_EARTH_PLACES` to its path. Keep its accompanying credits when redistributing it. Search for a city or observatory by its original or English name. **Go to** uses that place in the active Earth observer and leaves its epoch and the other views in place.
 
 The optional `data/saved-sites.tsv` or `SPACETANGENT_SAVED_EARTH_PLACES` uses the archived tab-separated format. Each row contains a name, latitude, longitude, altitude in meters, UTC offset in hours, and an optional IANA time zone. Reload add-ons after editing it. A scenario saves the chosen observer coordinates. Selecting the named place again applies its latest coordinates.
+
+## Night ephemerides
+
+Select a target and press **Ctrl+N**. The existing Ephemerides page shows the refined upper culmination and the best half-hour sample with the target at least 10° high and the Sun below −12°. Samples start at 18:00 local mean solar time on the active view's date. Use **Ctrl+Shift+N** to seek to the best dark sample and **Ctrl+Alt+N** to export all 29 rows to the local observations directory.
+
+The CSV records TDB Julian dates and geometric Sun and target altitude and azimuth in degrees. Unavailable quantities are empty. Independent views keep their epochs and cameras. A different target, site, observer, ΔT model or add-on generation requires recalculation.

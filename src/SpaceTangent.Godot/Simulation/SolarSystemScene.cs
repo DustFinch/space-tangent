@@ -510,6 +510,15 @@ public partial class SolarSystemScene : Control
             case Key.E when key.CtrlPressed:
                 _ = FindNextObserverEvent();
                 break;
+            case Key.N when key.CtrlPressed && key.AltPressed && !key.ShiftPressed:
+                ExportObserverNight();
+                break;
+            case Key.N when key.CtrlPressed && key.ShiftPressed && !key.AltPressed:
+                GoToDarkSample();
+                break;
+            case Key.N when key.CtrlPressed && !key.ShiftPressed && !key.AltPressed:
+                _ = FindObserverNight();
+                break;
             case Key.R when key.CtrlPressed:
                 SplitActiveView(ViewSplit.Stacked);
                 break;
@@ -1367,7 +1376,8 @@ public partial class SolarSystemScene : Control
         _timeHeading.Text = FormattableString.Invariant($"JD {active.Epoch.ToJulianDate():F6}");
         _calendarTime.Text = CivilTimeLabel(active.Epoch, Session!.DeltaT);
         _playFromPanel.Text = active.Playing ? "Pause" : "Play";
-        _earthObserver.Update(_active, active, _views[_active].Snapshot, Session.World.Ephemeris, Session.DeltaT, Session.World.BrightStars);
+        _earthObserver.Update(_active, active, _views[_active].Snapshot, Session.World.Ephemeris, Session.DeltaT,
+            Session.World.BrightStars, CurrentObserverNight());
         _stars.SetPressedNoSignal(active.Sky.Stars);
         _starLabels.SetPressedNoSignal(active.Sky.Labels);
         _equatorialGrid.SetPressedNoSignal(active.Sky.EquatorialGrid);

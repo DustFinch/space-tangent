@@ -3,6 +3,7 @@ using Godot;
 using SpaceTangent.Application;
 using SpaceTangent.Contracts;
 using SpaceTangent.Core.Ephemerides;
+using SpaceTangent.Core.Spice;
 
 namespace SpaceTangent.Godot.Tests;
 
@@ -257,6 +258,47 @@ public partial class WorkspaceInputSmoke
             "Changing the reference frame must keep the original archived eye.");
         GD.Print("UI: restored the archived Earth observer and its fixed-frame bookmark through existing entry points");
         var moon = SolarSystemSample.MoonId;
+        var beforeCollection = Session.CaptureScenario(0);
+        const string collection = "Архивные закладки.json";
+        const string label = "Лунный экватор";
+        object Entry(string name, int frame) => new
+        {
+            Name = name, Observer = state, Rate = 0, Frame = frame, SchemaVersion = 3,
+            FieldOfViewDegrees = 38, FrameReference = "Sol/Earth/Moon"
+        };
+        File.WriteAllBytes(Path.Combine(directory, collection),
+            System.Text.Json.JsonSerializer.SerializeToUtf8Bytes(new[] { Entry(label, 5), Entry(label, 5), Entry("invalid", 999) }));
+        await UseScenarioDialog("OpenScenario", 0, directory, collection);
+        RequireScenario(beforeCollection, Session.CaptureScenario(0), "Importing the archived collection");
+        var archivedList = Find<OptionButton>("SavedBookmarks");
+        Require(archivedList.GetItemText(archivedList.Selected) == label &&
+            Find<Label>("WorkspaceStatus").Text.Contains("Imported 1 favorites (2 skipped)", StringComparison.Ordinal),
+            "The archived collection must preserve the Unicode name and report invalid or repeated records.");
+        await Click(Find<Button>("RestoreBookmark"));
+        var mean = Session[0];
+        Require(mean.Selection == earth && mean.FieldOfViewDegrees == 38 && !mean.Playing &&
+            mean.Navigation is { Tracking: true, Placement: { Frame: NavigationFrame.Equatorial } } && mean.Navigation.Value.Target == moon,
+            "The collection must restore the mean-equator Moon frame independently of the Earth selection.");
+        var meanCamera = mean.Navigation!.Value;
+        var current = meanCamera.ResolvePlacement(Session.World.Graph.Evaluate(expectedEpoch), Session.DeltaT);
+        Require((meanCamera.AnchorKilometers + current.OffsetKilometers - expectedEye).Length < 1e-6,
+            "Importing the legacy mean-equator frame must preserve the archived absolute eye.");
+        string planets = System.Environment.GetEnvironmentVariable("SPACETANGENT_PLANET_TEXTURES") ??
+            throw new InvalidOperationException("The mean-equator check needs the original PCK directory.");
+        var pck = new SpicePolynomialBodyFrame(Path.Combine(planets, "pck00011.tpc"), 301);
+        var sixHours = expectedEpoch.AddSeconds(21600);
+        var meanAxes = pck.SampleMeanEquator(sixHours).ToWorld;
+        var local = meanCamera.Placement!.Value;
+        var laterPlacement = meanCamera.ResolvePlacement(Session.World.Graph.Evaluate(sixHours), Session.DeltaT);
+        Require((laterPlacement.Forward - meanAxes.Transform(local.Forward)).Length < 1e-11 &&
+            (laterPlacement.OffsetKilometers - meanAxes.Transform(local.OffsetKilometers)).Length < 1e-7,
+            "The restored lunar equator must follow the native pole while omitting daily spin.");
+        Require(await _scene.ReloadAddOns() && Session[0] == mean,
+            "The imported observer frame must survive a generation replacement.");
+        await Click(Find<Button>("OpenSceneLink"));
+        RequireScenario(beforeCollection, Session.CaptureScenario(0), "Reopening the fixed Earth bookmark");
+        GD.Print("UI: imported a legacy collection with the archived camera, preserved Unicode and restored the lunar mean-equator frame.");
+
         Session.SelectObject(0, moon);
         var snapshot = Session.World.Graph.Evaluate(expectedEpoch);
         Require(snapshot.TryState(moon, out var lunarState), "Centering the Moon needs its ephemeris.");

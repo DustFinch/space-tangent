@@ -1087,16 +1087,22 @@ public partial class SolarSystemScene : Control
         if (extension.Equals(".stframes", StringComparison.OrdinalIgnoreCase) ||
             extension.Equals(".celframe", StringComparison.OrdinalIgnoreCase))
             return StartReplay(path);
-        CloseReplay();
         try
         {
-            if (Path.GetExtension(path).Equals(".json", StringComparison.OrdinalIgnoreCase))
+            if (extension.Equals(".json", StringComparison.OrdinalIgnoreCase))
             {
                 using var input = File.OpenRead(path);
+                if (ObserverBookmarkFile.IsArchivedCollection(input))
+                    return ImportFavorites(path);
+                input.Position = 0;
+                CloseReplay();
                 ApplyScenario(SceneLink.ReadArchivedObserver(input, Session!.World, Session.DeltaT));
             }
             else
+            {
+                CloseReplay();
                 ApplyScenario(ScenarioFile.Load(path));
+            }
         }
         catch (Exception error) when (IsLoadError(error))
         {

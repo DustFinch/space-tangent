@@ -49,7 +49,7 @@ public partial class SolarSystemScene
         AddButton(links, "Open link", () => OpenSceneLink(_sceneLink.Text)).Name = "OpenSceneLink";
     }
 
-    private void ImportFavorites(string path)
+    private bool ImportFavorites(string path)
     {
         try
         {
@@ -58,10 +58,12 @@ public partial class SolarSystemScene
             _bookmarks = next;
             RefreshBookmarks(selected);
             _status.Text = $"Imported {added} favorites ({skipped} skipped).";
+            return true;
         }
         catch (Exception error) when (IsLoadError(error))
         {
             _status.Text = $"Could not import favorites. {error.Message}";
+            return false;
         }
     }
 

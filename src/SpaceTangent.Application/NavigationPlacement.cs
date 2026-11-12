@@ -4,7 +4,7 @@ using SpaceTangent.Contracts;
 
 namespace SpaceTangent.Application;
 
-public enum NavigationFrame { Inertial, Chase, PhaseLock, Surface }
+public enum NavigationFrame { Inertial, Chase, PhaseLock, Surface, Equatorial }
 
 /// <summary>Eye offset and orthonormal attitude, in ICRS axes or the tracked body's local axes.</summary>
 public readonly record struct NavigationPlacement(Vector3d OffsetKilometers, Vector3d Forward, Vector3d Up,
@@ -16,7 +16,12 @@ public readonly record struct NavigationPlacement(Vector3d OffsetKilometers, Vec
     internal bool UsesFrame => BodyFixed || Frame != NavigationFrame.Inertial;
 
     public bool IsValid(double range) => Enum.IsDefined(Frame) &&
-        (Frame == NavigationFrame.Inertial ? Reference is null : Reference.HasValue && !BodyFixed) &&
+                (Frame switch
+        {
+            NavigationFrame.Inertial => Reference is null,
+            NavigationFrame.Equatorial => Reference is null && !BodyFixed,
+            _ => Reference.HasValue && !BodyFixed
+        }) &&
         OffsetKilometers.IsFinite && OffsetKilometers.Length <= range * 1.001 &&
         Forward.IsFinite && Up.IsFinite && Math.Abs(Forward.Length - 1) < .000001 &&
         Math.Abs(Up.Length - 1) < .000001 && Math.Abs(Vector3d.Dot(Forward, Up)) < .000001;

@@ -17,7 +17,7 @@ public sealed record SimulationScenario(IReadOnlyList<ObserverView> Views, bool 
 /// <summary>Persists observer settings with exact TDB epochs and stable catalog IDs.</summary>
 public static class ScenarioFile
 {
-    private const int Version = 16;
+    private const int Version = 17;
     internal const int MaximumBytes = 32 * 1024;
     private static readonly JsonSerializerOptions Json = new()
     {
@@ -57,7 +57,8 @@ public static class ScenarioFile
             throw new InvalidDataException("The scenario has invalid sky layer settings.");
         var document = new Document
         {
-            Version = scenario.Views.Any(view => view.Sky.HasSurveySettings) ? Version :
+            Version = scenario.Views.Any(view => view.Navigation?.Placement?.Frame == NavigationFrame.Equatorial) ? Version :
+                scenario.Views.Any(view => view.Sky.HasSurveySettings) ? 16 :
                 scenario.Views.Any(view => view.Sky.HasCultureSettings) ? 15 :
                 scenario.Views.Any(view => view.Optics is not null) ? 14 :
                 scenario.Views.Any(view => view.EarthObserver?.LandscapeId is not null) ? 13 :
@@ -174,6 +175,8 @@ public static class ScenarioFile
             if ((data.FieldOfViewDegrees is { } field && !ObserverView.ValidFieldOfView(field)) ||
                 (document.Version < 6 && (data.FieldOfViewDegrees.HasValue || navigation?.Placement is not null)))
                 throw new InvalidDataException("The scene field or observer frame is unsupported.");
+            if (document.Version < 17 && navigation?.Placement?.Frame == NavigationFrame.Equatorial)
+                throw new InvalidDataException("Mean-equator observer frames require a version 17 scenario.");
             if (document.Version < 8 && navigation?.Placement?.Reference is not null)
                 throw new InvalidDataException("Moving observer frames require a version 8 scenario.");
             if (data.PlaybackRate is { } rate && (document.Version < 7 || !ObserverView.ValidPlaybackRate(rate)))

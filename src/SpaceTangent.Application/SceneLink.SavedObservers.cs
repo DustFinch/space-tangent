@@ -29,8 +29,14 @@ public static partial class SceneLink
             throw new InvalidDataException("The saved bookmark link exceeds the supported size.");
         using var document = JsonDocument.Parse(DecodeBase64(payload.Replace('-', '+').Replace('_', '/')),
             new JsonDocumentOptions { MaxDepth = 4 });
-        var bookmark = Fields(document.RootElement);
-        return RestoreArchivedObserver(bookmark["Observer"].GetString()!, world, deltaT, bookmark);
+        return RestoreArchivedBookmark(document.RootElement, world, deltaT);
+    }
+
+    internal static SimulationScenario RestoreArchivedBookmark(JsonElement value, SimulationWorld world, DeltaTModel deltaT)
+    {
+        var bookmark = Fields(value);
+        string state = bookmark["Observer"].GetString() ?? throw new InvalidDataException("The bookmark needs an observer state.");
+        return RestoreArchivedObserver(state, world, deltaT, bookmark);
     }
 
     private static SimulationScenario RestoreArchivedObserver(string text, SimulationWorld world, DeltaTModel deltaT,
@@ -69,16 +75,17 @@ public static partial class SceneLink
         int mode = bookmark is null ? 0 : bookmark["Frame"].GetInt32();
         if (bookmark?.TryGetValue("SchemaVersion", out var schema) == true && schema.GetInt32() is not (1 or 2 or 3))
             throw new InvalidDataException("The saved bookmark schema is unsupported.");
-        if (mode is not (0 or 1 or 2 or 3 or 4 or 7))
+        if (mode is not (0 or 1 or 2 or 3 or 4 or 5 or 7))
             throw new InvalidDataException("The saved bookmark uses an unsupported observer frame.");
         ObjectId? target = mode == 0 ? null : OptionalObject("FrameReference") ?? selected;
         var frame = mode switch
         {
             2 => NavigationFrame.Chase,
             3 => NavigationFrame.PhaseLock,
+            5 => NavigationFrame.Equatorial,
             _ => NavigationFrame.Inertial
         };
-        ObjectId? reference = frame == NavigationFrame.Inertial ? null :
+        ObjectId? reference = frame is NavigationFrame.Inertial or NavigationFrame.Equatorial ? null :
             OptionalObject("FrameOther") ?? (target is { } body ? world.Catalogue.Find(body)?.Parent : null);
         double rate = bookmark is null ? 1 : bookmark["Rate"].GetDouble();
         double? field = bookmark?.TryGetValue("FieldOfViewDegrees", out var lens) == true && lens.ValueKind != JsonValueKind.Null
@@ -102,10 +109,17 @@ public static partial class SceneLink
         }
     }
 
-    private static ObjectId ResolveSavedObject(string name, ObjectCatalogue catalogue)
+    private static ObjectId ResolveSavedObject(string? name, ObjectCatalogue catalogue)
     {
-        ObjectId canonical = new(name.ToLowerInvariant());
-        return catalogue.Find(canonical) is not null ? canonical : ResolveObject(name, catalogue);
+        if (string.IsNullOrWhiteSpace(name))
+            throw new InvalidDataException("The saved observer must name a reference object.");
+        if (name.Length > 0 && name.All(character => char.IsAsciiLetterOrDigit(character) || character is '/' or '-' or '_'))
+        {
+            ObjectId canonical = new(name.ToLowerInvariant());
+            if (catalogue.Find(canonical) is not null)
+                return canonical;
+        }
+        return ResolveObject(name, catalogue);
     }
 
     private static Dictionary<string, JsonElement> Fields(JsonElement value)

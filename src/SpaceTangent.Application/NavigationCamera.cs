@@ -50,9 +50,34 @@ public readonly record struct NavigationCamera(Vector3d AnchorKilometers, double
             return false;
         if (placement is { Frame: NavigationFrame.Surface, Reference: { } body })
             return TryBodyBasis(snapshot, body, deltaT, out basis);
+        if (placement.Frame == NavigationFrame.Equatorial)
+            return TryMeanEquator(snapshot, target, out basis);
         return placement.BodyFixed
             ? TryBodyBasis(snapshot, target, deltaT, out basis)
             : placement.Reference is { } reference && TryRelativeBasis(snapshot, placement.Frame, target, reference, out basis);
+    }
+
+    private static bool TryMeanEquator(WorldSnapshot snapshot, ObjectId target, out Basis3d basis)
+    {
+        if (target == SolarSystemSample.EarthId)
+        {
+            basis = Basis3d.Identity;
+            return snapshot.SolarSystem is not null;
+        }
+        basis = default;
+        if (!snapshot.TryOrientation(target, out var orientation))
+            return false;
+        Vector3d pole = orientation.ToWorld.Z;
+        if (!(pole.Length > 0))
+            return false;
+        pole /= pole.Length;
+        Vector3d node = Vector3d.Cross(new(0, 0, 1), pole);
+        if (node.Length < 1e-12)
+            node = new(1, 0, 0);
+        else
+            node /= node.Length;
+        basis = new(node, Vector3d.Cross(pole, node), pole);
+        return true;
     }
 
     internal static bool TryBodyBasis(WorldSnapshot snapshot, ObjectId target, DeltaTModel deltaT, out Basis3d basis)

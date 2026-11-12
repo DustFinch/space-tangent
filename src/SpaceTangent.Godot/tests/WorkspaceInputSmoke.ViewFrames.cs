@@ -206,5 +206,55 @@ public partial class WorkspaceInputSmoke
             (eye - sun.PositionKilometers - new Vector3d(9_460_730.4725808, 0, 0)).Length < 1e-5,
             "Opening the imported favorite must restore the named body, absolute eye, local frame and epoch.");
         GD.Print("UI: imported favorites through the existing file dialog and restored a Moon-fixed observer");
+        await ExerciseArchivedObserver(directory);
+    }
+
+    private async Task ExerciseArchivedObserver(string directory)
+    {
+        // Exact observer record emitted by the previous Windows build during the Earth acceptance run.
+        const string state = """
+            {
+                "schemaVersion":1,
+                "positionConvention":"universal-native-J2000-ecliptic-micro-light-year",
+                "positionBits":{"x":"0000000000000002bc9da85020b386a8","y":"fffffffffffffffffff31c5308625ff8","z":"000000000000000fe0df3253352c3c91"},
+                "frame":"J2000EclipticYUp",
+                "orientationConvention":"active-camera-to-frame-wxyz",
+                "orientationBinary64":{"w":"bfe835018edf9385","x":"3fc21b84627b430c","y":"bfe415d3e238c27f","z":"bfbe0c6f1c3e45e7"},
+                "time":{"wholeDays":"2453187","nanosecondsOfDay":"54000000000000","scale":"Tdb"},
+                "selectedId":"Sol/Earth"
+            }
+            """;
+        const string filename = "old-observer.json";
+        File.WriteAllText(Path.Combine(directory, filename), state);
+        await UseScenarioDialog("OpenScenario", 0, directory, filename);
+        var earth = SolarSystemSample.EarthId;
+        var expectedEye = new Vector3d(25_891_944.206882183, -137_824_623.32902697, -59_756_315.26899842);
+        Require(Session[0].Selection == earth && Session[0].Navigation is { Tracking: false } free &&
+            (free.AnchorKilometers - expectedEye).Length < 1e-6,
+            "Opening the archived observer file must restore its absolute eye and selected Earth.");
+
+        byte[] bookmark = System.Text.Json.JsonSerializer.SerializeToUtf8Bytes(new
+        {
+            Name = "Earth",
+            Observer = state,
+            Rate = 0,
+            Frame = 1,
+            SchemaVersion = 3,
+            FieldOfViewDegrees = 42,
+            FrameReference = "Sol/Earth"
+        });
+        var link = Find<LineEdit>("SceneLinkInput");
+        link.Text = "celestia-godot:" + Convert.ToBase64String(bookmark).TrimEnd('=').Replace('+', '-').Replace('/', '_');
+        await Click(Find<Button>("OpenSceneLink"));
+        var view = Session[0];
+        var expectedEpoch = new JulianInstant(2453187, 54_000_000_000_000, TimeScale.Tdb);
+        Require(view.Epoch == expectedEpoch && view.Selection == earth && view.FieldOfViewDegrees == 42 &&
+            view.Navigation is { Tracking: true, Placement.BodyFixed: true } && !view.Playing,
+            "The archived link must restore its epoch, body-fixed frame, playback rate and lens.");
+        var pose = view.Navigation!.Value;
+        var placement = pose.ResolvePlacement(Session.World.Graph.Evaluate(expectedEpoch), Session.DeltaT);
+        Require((pose.AnchorKilometers + placement.OffsetKilometers - expectedEye).Length < 1e-6,
+            "Changing the reference frame must keep the original archived eye.");
+        GD.Print("UI: restored the archived Earth observer and its fixed-frame bookmark through existing entry points");
     }
 }

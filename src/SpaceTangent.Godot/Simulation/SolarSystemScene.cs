@@ -790,7 +790,7 @@ public partial class SolarSystemScene : Control
             FileMode = FileDialog.FileModeEnum.SaveFile, DeletingEnabled = false };
         AddChild(open);
         AddChild(save);
-        open.AddFilter("*.stscene,*.cel", "Scenarios and observer favorites");
+        open.AddFilter("*.stscene,*.cel,*.json", "Scenarios and observer saves");
         save.AddFilter("*.stscene", "SpaceTangent scenarios");
         open.FileSelected += path =>
         {
@@ -883,7 +883,13 @@ public partial class SolarSystemScene : Control
     {
         try
         {
-            ApplyScenario(ScenarioFile.Load(path));
+            if (Path.GetExtension(path).Equals(".json", StringComparison.OrdinalIgnoreCase))
+            {
+                using var input = File.OpenRead(path);
+                ApplyScenario(SceneLink.ReadArchivedObserver(input, Session!.World, Session.DeltaT));
+            }
+            else
+                ApplyScenario(ScenarioFile.Load(path));
         }
         catch (Exception error) when (IsLoadError(error))
         {

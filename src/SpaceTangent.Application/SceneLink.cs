@@ -27,6 +27,8 @@ public static partial class SceneLink
             string payload = link[Scheme.Length..].Replace('-', '+').Replace('_', '/');
             return (ScenarioFile.Decode(DecodeBase64(payload)), null);
         }
+        if (link.StartsWith(ArchivedBookmarkScheme, StringComparison.OrdinalIgnoreCase))
+            return (ReadArchivedBookmark(link[ArchivedBookmarkScheme.Length..], world, deltaT), null);
         if (!link.StartsWith(LegacyScheme, StringComparison.OrdinalIgnoreCase))
             throw new FormatException("Unrecognized scene link scheme.");
         return ReadExternal(link[LegacyScheme.Length..], world, deltaT);

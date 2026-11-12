@@ -8,5 +8,15 @@
     "path": "docs/LUA_SCRIPTS.md",
     "sha256": "66f1e6be3a16d13f8520852b13ecccf0a4c528dcca2055121d00f25b792b4fd3",
     "reason": "Upstream fixture provenance and attribution."
+  },
+  {
+    "path": "src/SpaceTangent.Application/SceneLink.SavedObservers.cs",
+    "sha256": "7bb9e48dd0688a19ee59bd1d0f7d64a245aa6718d787abdca98808d791d73398",
+    "reason": "Exact identifier required to open bookmark links emitted by the archived simulator."
+  },
+  {
+    "path": "src/SpaceTangent.Godot/tests/WorkspaceInputSmoke.ViewFrames.cs",
+    "sha256": "478f3bb42d4b958117bb12debf199eb3cdb4bdd2787a9022080f6217cf17170e",
+    "reason": "Exercises the exact archived bookmark URI emitted to users."
   }
 ]

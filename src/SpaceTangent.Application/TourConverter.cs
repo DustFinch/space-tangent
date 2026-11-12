@@ -44,17 +44,19 @@ public static class TourConverter
             throw new NotSupportedException("Choose a CEL or CELX tour.");
         Command[] commands = Parse(input);
         var unapplied = new SortedSet<string>(StringComparer.Ordinal);
-        double wait = commands.Where(command => command.Name is "wait" or "orbit")
+        double wait = commands.Where(command => command.Name is "wait" or "orbit" or "rotate")
             .Sum(command => Duration(command.Number("duration")));
         double scale = wait > 110 ? 110 / wait : 1;
         if (scale < 1)
             unapplied.Add("original timing compressed to fit the Lua wait quota");
         var lua = new StringBuilder("""
             local selected = true
-            local function orbit(yaw, pitch, duration)
-                for step = 1, 8 do
-                    st.turn(yaw / 8, pitch / 8)
-                    st.wait(duration / 8)
+            local function turn(x, y, z, angle, duration, orbit)
+                while st.travelling() do st.wait(0) end
+                local steps = math.max(1, math.min(16, math.ceil(duration * 8)))
+                for step = 1, steps do
+                    st.turnaxis(x, y, z, angle / steps, orbit)
+                    if duration > 0 then st.wait(duration / steps) end
                 end
             end
 
@@ -71,9 +73,26 @@ public static class TourConverter
                     lua.AppendLine($"selected = st.tryselect({Quote(command.Get("object"))})");
                     break;
                 case "goto":
-                    if (command.Fields.ContainsKey("upframe") || command.Fields.ContainsKey("up"))
-                        unapplied.Add("goto up vector");
-                    lua.AppendLine($"if selected then st.gotoobject({Number(Duration(command.Number("time", 1.65)) * scale)}, {Number(command.Number("distance", 4.2))}) end");
+                    lua.AppendLine($"if selected then st.legacygoto({FlightTime(command)}, {Number(command.Number("distance", 5))}, " +
+                        $"{Vector(command, "up", "0 1 0")}, {Quote(command.Fields.GetValueOrDefault("upframe") ?? "observer")}) end");
+                    break;
+                case "gotolonglat":
+                    lua.AppendLine($"if selected then st.legacylonglat({FlightTime(command)}, {Number(command.Number("distance", 5))}, " +
+                        $"{Vector(command, "up", "0 1 0")}, {Number(command.Number("longitude"))}, {Number(command.Number("latitude"))}) end");
+                    if (command.Fields.ContainsKey("upframe"))
+                        unapplied.Add("gotolonglat upframe");
+                    break;
+                case "gotoloc" when command.Fields.ContainsKey("position"):
+                    lua.AppendLine($"if selected then st.legacyrelativepose({FlightTime(command)}, {Vector(command, "position", "")}, " +
+                        $"{Number(command.Number("xrot"))}, {Number(command.Number("yrot"))}, {Number(command.Number("zrot"))}) end");
+                    break;
+                case "gotoloc" when command.Fields.ContainsKey("x") && command.Fields.ContainsKey("y") && command.Fields.ContainsKey("z"):
+                    lua.AppendLine($"st.legacyabsolutepose({FlightTime(command)}, {Quote(command.Get("x"))}, {Quote(command.Get("y"))}, " +
+                        $"{Quote(command.Get("z"))}, {Number(command.Number("ow", 1))}, {Number(command.Number("ox"))}, " +
+                        $"{Number(command.Number("oy"))}, {Number(command.Number("oz"))})");
+                    break;
+                case "time" when command.Fields.ContainsKey("jd"):
+                    lua.AppendLine($"st.settime({Number(command.Number("jd"))})");
                     break;
                 case "center":
                     lua.AppendLine($"if selected then st.center({Number(Duration(command.Number("time", 1.65)) * scale)}) end");
@@ -96,11 +115,13 @@ public static class TourConverter
                     AppendFlags(command, false);
                     break;
                 case "orbit":
-                    if (!TryOrbit(command))
-                    {
-                        unapplied.Add("orbit axis");
-                        continue;
-                    }
+                case "rotate":
+                    double duration = Duration(command.Number("duration", 1));
+                    double angle = -command.Number("rate") * duration * Math.PI / 180;
+                    bool orbit = command.Name == "orbit";
+                    string turn = $"turn({Vector(command, "axis", "0 1 0")}, {Number(angle)}, {Number(duration * scale)}, " +
+                        (orbit ? "true)" : "false)");
+                    lua.AppendLine(orbit ? $"if selected then {turn} end" : turn);
                     break;
                 default:
                     unapplied.Add(command.Name);
@@ -133,16 +154,16 @@ public static class TourConverter
             }
         }
 
-        bool TryOrbit(Command command)
-        {
-            double[] axis = command.Get("axis").Split(' ', StringSplitOptions.RemoveEmptyEntries).Select(ParseNumber).ToArray();
-            if (axis.Length != 3 || axis[2] != 0 || Math.Abs(axis[0]) + Math.Abs(axis[1]) != 1)
-                return false;
-            double duration = Duration(command.Number("duration"));
-            double angle = command.Number("rate") * duration * Math.PI / 180;
-            lua.AppendLine($"if selected then orbit({Number(angle * axis[1])}, {Number(angle * axis[0])}, {Number(duration * scale)}) end");
-            return true;
-        }
+        string FlightTime(Command command) => Number(Duration(command.Number("time", 1)) * scale);
+    }
+
+    private static string Vector(Command command, string field, string fallback)
+    {
+        string raw = command.Fields.GetValueOrDefault(field) ?? fallback;
+        string[] fields = raw.Split(' ', StringSplitOptions.RemoveEmptyEntries);
+        if (fields.Length != 3)
+            throw new InvalidDataException($"The {command.Name} command requires a three-component {field} vector.");
+        return string.Join(", ", fields.Select(ParseNumber).Select(Number));
     }
 
     private static TourConversion ConvertRecursiveTour(string source)

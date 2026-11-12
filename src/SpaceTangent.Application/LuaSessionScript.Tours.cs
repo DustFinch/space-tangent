@@ -23,6 +23,7 @@ public sealed partial class LuaSessionScript
         Bind(api, "turn", (_, arguments) => Change(() =>
             _session.AdjustCamera(View, Number(arguments[0]), Number(arguments[1]), 1)));
         Bind(api, "sky", (_, arguments) => SetTourSky(Text(arguments[0]), Boolean(arguments[1])));
+        BindTourGeometry(api);
     }
 
     private DynValue TrySelectForTour(string query)

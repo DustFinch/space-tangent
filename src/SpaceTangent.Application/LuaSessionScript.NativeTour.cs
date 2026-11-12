@@ -27,6 +27,7 @@ public sealed partial class LuaSessionScript
     private void BindNativeObserver(Table upstream)
     {
         Bind(upstream, "getobserver", (_, _) => _nativeObserver ??= MakeNativeObserver());
+        BindNativeQueries(upstream);
     }
 
     private DynValue MakeNativeObserver()
@@ -52,6 +53,7 @@ public sealed partial class LuaSessionScript
             });
         });
         Bind(observer, "travelling", (_, _) => DynValue.NewBoolean(_session.IsFlying(View)));
+        Bind(observer, "getposition", (_, _) => Position(_session.ScriptObserverEye(View, NativeSnapshot())));
         return DynValue.NewTable(observer);
     }
 
@@ -70,6 +72,8 @@ public sealed partial class LuaSessionScript
         Bind(item, "type", (_, _) => DynValue.NewString(catalogue.Kind.ToString().ToLowerInvariant()));
         Bind(item, "radius", (_, _) => DynValue.NewNumber(_session.World.TargetRadiusKilometers(id)));
         Bind(item, "parent", (_, _) => LuaObject(catalogue.Parent));
+        Bind(item, "getposition", (_, _) => ObjectPosition(id));
+        Bind(item, "absmag", (_, _) => AbsoluteMagnitude(id));
         Bind(item, "children", (_, _) => Children(id));
         var value = DynValue.NewTable(item);
         _luaObjects.Add(id, value);

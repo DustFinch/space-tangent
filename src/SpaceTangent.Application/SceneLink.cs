@@ -179,13 +179,13 @@ public static partial class SceneLink
             (candidate.Id == SolarSystemSample.SunId && name.Equals("Sol", StringComparison.OrdinalIgnoreCase));
     }
 
-    private static Vector3d FromEcliptic(Vector3d value)
+    internal static Vector3d FromEcliptic(Vector3d value)
     {
         var (sin, cos) = Math.SinCos(23.4392911 * Math.PI / 180);
         return new(value.X, -value.Z * cos - value.Y * sin, value.Y * cos - value.Z * sin);
     }
 
-    private static double ReadCoordinate(string text)
+    internal static double ReadCoordinate(string text)
     {
         if (text.Length > 24)
             throw new FormatException("The linked position is too large.");

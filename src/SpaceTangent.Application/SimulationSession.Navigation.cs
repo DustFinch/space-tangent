@@ -10,6 +10,7 @@ public sealed partial class SimulationSession
     private sealed record CameraFlight(NavigationCamera Start, double Elapsed, double Duration, double TargetRange)
     {
         internal NavigationPlacement? CenteringEnd { get; init; }
+        internal NavigationCamera? ScriptDestination { get; init; }
     }
 
     private const double FlightDuration = 1.65;
@@ -125,6 +126,11 @@ public sealed partial class SimulationSession
     /// <summary>Updates the view pose against the exact world snapshot used by its renderer.</summary>
     public void UpdateCamera(int view, WorldSnapshot snapshot, double elapsedSeconds)
     {
+        if (_flights[view] is { ScriptDestination: { } destination } scripted)
+        {
+            UpdateScriptFlight(view, scripted, destination, snapshot, elapsedSeconds);
+            return;
+        }
         ObserverView observer = _views[view];
         if (observer.Navigation is not { Target: { } target } pose)
             return;

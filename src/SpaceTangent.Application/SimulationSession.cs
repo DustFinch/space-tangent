@@ -302,6 +302,7 @@ public sealed partial class SimulationSession
         _views.AddRange(views);
         _flights.Clear();
         _trackingEpochs.Clear();
+        _scriptNotices.Clear();
         _viewIds.Clear();
         foreach (ObserverView view in views)
         {
@@ -391,6 +392,7 @@ public sealed partial class SimulationSession
         _flights.RemoveAt(view);
         _trackingEpochs.RemoveAt(view);
         _ships.Remove(ViewIdentity(view));
+        ClearScriptNotice(view);
         _viewIds.RemoveAt(view);
         Layout = Layout.Remove(view)!;
         if (Layout.View is null)
@@ -529,7 +531,7 @@ public sealed partial class SimulationSession
 
     public bool Tick(double elapsed)
     {
-        bool changed = false;
+        bool changed = ExpireScriptNotices(elapsed);
         int start = Synchronized ? _clockOwner : 0;
         int end = Synchronized ? start + 1 : _views.Count;
         for (int view = start; view < end; view++)

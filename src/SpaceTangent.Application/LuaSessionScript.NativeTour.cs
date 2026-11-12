@@ -21,7 +21,7 @@ public sealed partial class LuaSessionScript
             catch (InvalidDataException) { return DynValue.Nil; }
         });
         Bind(api, "selection", (_, _) => LuaObject(_session[View].Selection));
-        Bind(api, "celxprint", (_, arguments) => { Log(Text(arguments[0])); return DynValue.Nil; });
+        Bind(api, "celxprint", (_, arguments) => PrintNotice(arguments, native: true));
     }
 
     private void BindNativeObserver(Table upstream)

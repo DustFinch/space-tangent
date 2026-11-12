@@ -61,6 +61,7 @@ public sealed partial class LuaSessionScript
         }));
         Bind(api, "wait", Wait);
         Bind(api, "log", (_, arguments) => { Log(Text(arguments[0])); return DynValue.Nil; });
+        Bind(api, "notice", (_, arguments) => PrintNotice(arguments, native: false));
         BindTourActions(api);
         BindNativeObjects(api);
         script.Globals.Set("st", DynValue.NewTable(api));
@@ -68,7 +69,8 @@ public sealed partial class LuaSessionScript
 
         var upstream = new Table(script);
         Bind(upstream, "pause", (context, arguments) => Pause(context, arguments.SkipMethodCall()));
-        Bind(upstream, "print", (_, arguments) => { Log(Text(arguments.SkipMethodCall()[0])); return DynValue.Nil; });
+        Bind(upstream, "print", (_, arguments) => PrintNotice(arguments.SkipMethodCall(), native: true));
+        Bind(upstream, "flash", (_, arguments) => PrintNotice(arguments.SkipMethodCall(), native: true));
         Bind(upstream, "settime", (context, arguments) => SetTime(context, arguments.SkipMethodCall()));
         Bind(upstream, "gettime", (_, _) => DynValue.NewNumber(_session[View].Epoch.ToJulianDate()));
         BindNativeObserver(upstream);

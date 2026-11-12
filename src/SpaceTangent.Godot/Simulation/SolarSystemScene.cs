@@ -1043,7 +1043,12 @@ public partial class SolarSystemScene : Control
         try
         {
             LuaSessionScript next = LuaSessionScript.Load(path, Session!, _active, _surfaceTextures is not null, line => GD.Print(line));
-            _script?.Stop();
+            if (_script is { } previous)
+            {
+                previous.Stop();
+                if (previous.View >= 0)
+                    Session!.ClearScriptNotice(previous.View);
+            }
             _script = next;
             _scriptMenu.SetItemDisabled(1, false);
             _status.Text = "Lua script running.";
@@ -1063,7 +1068,11 @@ public partial class SolarSystemScene : Control
         {
             running.Stop();
             if (running.View >= 0)
-                Session!.CancelFlight(running.View);
+            {
+                Session!.ClearScriptNotice(running.View);
+                Session.CancelFlight(running.View);
+                _views[running.View].Renderer.SetScriptNotice(null);
+            }
         }
         _script = null;
         _scriptMenu.SetItemDisabled(1, true);
@@ -1568,6 +1577,7 @@ public partial class SolarSystemScene : Control
             controls.Renderer.SetLandscape(ViewLandscape(view));
             bool available = controls.Renderer.Draw(view, snapshot, session.DeltaT);
             controls.Renderer.DrawShip(ship, view.Navigation);
+            controls.Renderer.SetScriptNotice(session.Notice(index));
             controls.Renderer.DrawReferenceMarks(view, session.ReferenceGeometry(index, snapshot));
             controls.Measurements.Update(controls.Renderer, view, snapshot, session.World, session.DeltaT);
             controls.Epoch.Text = FormattableString.Invariant($"View {index + 1}   JD {view.Epoch.ToJulianDate():F6} TDB");

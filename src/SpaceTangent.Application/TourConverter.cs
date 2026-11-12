@@ -71,7 +71,18 @@ public static class TourConverter
             switch (command.Name)
             {
                 case "print":
-                    lua.AppendLine($"st.log({Quote(command.Get("text"))})");
+                    var (horizontal, vertical) = (command.Fields.GetValueOrDefault("origin") ?? "").ToLowerInvariant() switch
+                    {
+                        "center" => (0, 0), "left" => (-1, 0), "right" => (1, 0),
+                        "topleft" => (-1, 1), "top" => (0, 1), "topright" => (1, 1),
+                        "bottom" => (0, -1), "bottomright" => (1, -1), _ => (-1, -1)
+                    };
+                    double seconds = Math.Clamp(command.Number("duration", 600), 0, 600) * scale;
+                    lua.AppendLine($"st.notice({Quote(command.Fields.GetValueOrDefault("text") ?? "")}, {Number(seconds)}, " +
+                        $"{horizontal}, {vertical}, {Number(Math.Truncate(command.Number("column")))}, {Number(Math.Truncate(command.Number("row")))})");
+                    break;
+                case "cls":
+                    lua.AppendLine("st.notice(\"\", 0)");
                     break;
                 case "select":
                     lua.AppendLine($"selected = st.tryselect({Quote(command.Get("object"))})");
@@ -103,6 +114,9 @@ public static class TourConverter
                     break;
                 case "follow":
                     lua.AppendLine("if selected then st.follow() end");
+                    break;
+                case "synchronous":
+                    lua.AppendLine("if selected then st.legacybodylock() end");
                     break;
                 case "cancel":
                     lua.AppendLine("st.cancelflight()");
@@ -185,7 +199,8 @@ public static class TourConverter
             local flight = math.min(3, 96 / #targets)
             for _, target in ipairs(targets) do
                 if st.tryselect(target) then
-                    st.log(target)
+                    local object = st.selection()
+                    st.celxprint(object:type() .. " - " .. object:name(), 1.5)
                     st.gotoobject(flight, 4.2)
                     st.wait(flight + 0.05)
                     st.follow()
@@ -193,7 +208,7 @@ public static class TourConverter
                 end
             end
             """;
-        return new(lua, 1, Array.AsReadOnly(new[] { "display banner replaced by a tour log entry" }));
+        return new(lua, 1, Array.Empty<string>());
     }
 
     private static Command[] Parse(string input)

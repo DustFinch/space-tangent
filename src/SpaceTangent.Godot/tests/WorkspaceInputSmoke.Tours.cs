@@ -45,6 +45,21 @@ public partial class WorkspaceInputSmoke
         Require(demoTargets.Contains(SolarSystemSample.MoonId) && demoTargets.Contains(PlanetCatalogue.SaturnId) &&
             demoTargets.Contains(SolarSystemSample.SunId) && advanced && Session[0].Navigation?.Target == SolarSystemSample.EarthId,
             "The original demo must visit the Moon, Sun and Saturn, advance time and end at Earth.");
+        string localized = Path.Combine(directory, "demo-localized.lua");
+        var russian = TourConverter.ConvertFile(Path.Combine(sources, "demo_ru.cel"));
+        File.WriteAllText(localized, russian.Lua);
+        Require(russian.Commands == demoConversion.Commands && !russian.Unapplied.Contains("synchronous"),
+            "The localized demo must contain the same flight and body-lock commands.");
+        var opening = _scene.RunScript(localized) ?? throw new InvalidOperationException("Could not open the localized demo.");
+        opening.Step(0);
+        Require(Session.Notice(0) is { HorizontalOrigin: 0, VerticalOrigin: 0 } caption &&
+            caption.Text.StartsWith("Знакомство", StringComparison.Ordinal) &&
+            (Session.ViewCount == 1 || Session.Notice(1) is null), "The original opening must appear only in its own observer.");
+        Session.Tick(6);
+        Require(Session.Notice(0) is null, "A paused observer must still expire its caption.");
+        var (localizedTargets, _) = RunToEnd(localized);
+        Require(localizedTargets.Contains(SolarSystemSample.MoonId) && localizedTargets.Contains(PlanetCatalogue.SaturnId),
+            "The localized demo must visit the original Moon and Saturn.");
         var (tourTargets, _) = RunToEnd(tour);
         Require(tourTargets.Count >= 18 && tourTargets.Contains(new("sol/titan")) && tourTargets.Contains(new("sol/neptune")),
             "The converted recursive tour must visit the loaded Solar System including Titan and Neptune.");

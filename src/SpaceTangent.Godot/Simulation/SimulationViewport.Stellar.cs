@@ -9,7 +9,6 @@ namespace SpaceTangent.Godot.Simulation;
 
 internal partial class SimulationViewport
 {
-    private readonly Dictionary<ObjectId, MeshInstance3D> _deepSkyObjects = new();
     private MeshInstance3D _stellarTarget = null!, _stellarField = null!;
     private IReadOnlyList<StellarEntry> _fieldStars = [];
     private Vector3d? _lastStellarPosition;
@@ -19,7 +18,6 @@ internal partial class SimulationViewport
     internal SimulationWorld? CatalogueWorld { get; private set; }
     internal bool StellarDiskResolved { get; private set; }
     internal bool SpatialStarFieldVisible => _stellarField.Visible;
-    internal bool DeepSkyVisible(ObjectId id) => _deepSkyObjects[id].Visible;
 
     internal void SetCatalogueWorld(SimulationWorld world)
     {
@@ -28,6 +26,8 @@ internal partial class SimulationViewport
             _fieldStars = world.Stellar.Stars.Where(star => star.VisualMagnitude <= 8 || star.DistanceParsecs <= 24).ToArray();
             _lastStellarPosition = null;
         }
+        if (!ReferenceEquals(CatalogueWorld?.DeepSky, world.DeepSky) || CatalogueWorld?.StellarOrigin != world.StellarOrigin)
+            CacheDeepSky(world);
         CatalogueWorld = world;
     }
 
@@ -37,19 +37,6 @@ internal partial class SimulationViewport
         _stellarTarget.MaterialOverride = new ShaderMaterial { Shader = GD.Load<Shader>("res://Shaders/stellar_disk.gdshader") };
         _stellarField = new MeshInstance3D { Visible = false, CastShadow = GeometryInstance3D.ShadowCastingSetting.Off };
         AddChild(_stellarField);
-        Shader shader = GD.Load<Shader>("res://Shaders/deep_sky.gdshader");
-        foreach (DeepSkyObject body in DeepSkyCatalogue.Objects)
-        {
-            var material = new ShaderMaterial { Shader = shader };
-            material.SetShaderParameter("profile", (int)body.Kind);
-            var mesh = new MeshInstance3D
-            {
-                Mesh = new QuadMesh { Size = new(2, 2) }, MaterialOverride = material, Visible = false,
-                CastShadow = GeometryInstance3D.ShadowCastingSetting.Off
-            };
-            AddChild(mesh);
-            _deepSkyObjects.Add(body.Id, mesh);
-        }
     }
 
     private void DrawStellarObjects(NavigationCamera pose, WorldSnapshot snapshot, SkyLayerSettings sky,
@@ -70,22 +57,9 @@ internal partial class SimulationViewport
             ((ShaderMaterial)_stellarTarget.MaterialOverride).SetShaderParameter("photosphere", StarColor(star.ColorIndex));
             _stellarTarget.Show();
         }
-        foreach (DeepSkyObject body in DeepSkyCatalogue.Objects)
-        {
-            if ((!sky.DeepSky && pose.Target != body.Id) || !world.TryNavigationState(body.Id, snapshot, out CartesianState deep))
-                continue;
-            var (center, projection) = project(deep.PositionKilometers);
-            float radius = (float)(body.RadiusKilometers * projection / units);
-            if (radius < .12f)
-                continue;
-            Basis facing = _navigationCamera.Basis;
-            float aspect = body.Kind == DeepSkyKind.Galaxy ? .43f : 1;
-            _deepSkyObjects[body.Id].Transform = new(facing * Basis.FromScale(new(radius, radius * aspect, 1)), center);
-            _deepSkyObjects[body.Id].Show();
-        }
-
         Vector3 localEye = _navigationCamera.Position;
         Vector3d eye = pose.AnchorKilometers + new Vector3d(localEye.X, -localEye.Z, localEye.Y) * units;
+        DrawDeepSky(world, pose, sky, eye, units, project);
         if (sky.Stars && _fieldStars.Count != 0 && (eye - world.StellarOrigin).Length > StellarEntry.KilometersPerLightYear * .025)
             DrawSpatialField(eye, snapshot.Epoch, world.StellarOrigin, pose.Target);
     }
@@ -150,7 +124,6 @@ internal partial class SimulationViewport
         _stellarTarget.Hide();
         _stellarField.Hide();
         StellarDiskResolved = false;
-        foreach (MeshInstance3D node in _deepSkyObjects.Values)
-            node.Hide();
+        HideDeepSky();
     }
 }

@@ -24,14 +24,16 @@ public partial class EarthOrbitProbe
         await Capture("proxima-near", star, proxima.PositionKilometers, 450_000, sky);
         if (!scene.Renderer(0).StellarDiskResolved || !scene.Renderer(0).SpatialStarFieldVisible)
             throw new InvalidOperationException("The nearby star must resolve to a disk, with the field behind it.");
-        foreach (DeepSkyObject body in DeepSkyCatalogue.Objects)
+        string[] nearby = world.DeepSky.Objects.Count > DeepSkyCatalogue.Objects.Count
+            ? ["dso/m31", "dso/m42", "dso/m45", "dso/m13"] : ["dso/m31", "dso/m42", "dso/m45"];
+        foreach (DeepSkyObject body in nearby.Select(id => world.DeepSky.Find(new(id))!))
         {
             var center = body.PositionKilometers + world.StellarOrigin;
             await Capture(body.Designation.ToLowerInvariant(), body.Id, center, body.RadiusKilometers * 4.2, sky);
             if (!scene.Renderer(0).DeepSkyVisible(body.Id))
                 throw new InvalidOperationException($"The deep-sky renderer is missing {body.Designation}.");
         }
-        DeepSkyObject galaxy = DeepSkyCatalogue.Objects.Single(body => body.Kind == DeepSkyKind.Galaxy);
+        DeepSkyObject galaxy = world.DeepSky.Find(new("dso/m31"))!;
         Vector3d galaxyCenter = galaxy.PositionKilometers + world.StellarOrigin;
         await Capture("deep-sky-enabled", null, galaxyCenter, galaxy.RadiusKilometers * 4.2, sky);
         if (!scene.Renderer(0).DeepSkyVisible(galaxy.Id))

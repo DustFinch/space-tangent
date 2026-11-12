@@ -32,6 +32,22 @@ public partial class WorkspaceInputSmoke
             "Advancing time must resume tracking the catalogue position.");
         GD.Print("UI: flew to Proxima Centauri and Andromeda, then saved and restored the two interstellar cameras exactly");
 
+        if (System.Environment.GetEnvironmentVariable("SPACETANGENT_DSC_ROOT") is { Length: > 0 })
+        {
+            Require(Session.World.DeepSky.Objects.Count == 17_610, "All original DSC objects and the built-in nebula must be available.");
+            var m13 = new ObjectId("dso/m13");
+            await FlyTo(1, "NGC 6205", m13);
+            var renderer = _scene.Renderer(1);
+            Require(renderer.DeepSkyVisible(m13) && Session.World.Catalogue.Find(m13)?.Kind == CatalogueKind.Cluster,
+                "The original globular cluster must be searchable and drawn.");
+            Vector2 center = renderer.GetViewport().GetVisibleRect().GetCenter();
+            Require(renderer.PickObject(center) == m13, "The visible original cluster must be selectable in the frame.");
+            var accepted = Session.CaptureScenario(1);
+            Require(await _scene.ReloadAddOns(), "The original DSC catalogues must reload.");
+            RequireScenario(accepted, Session.CaptureScenario(1), "Reloading the original globular cluster");
+            GD.Print("UI: installed all 17,609 original DSC records, searched by NGC 6205, flew to and picked M13, and reloaded the two views");
+        }
+
         async Task FlyTo(int view, string query, ObjectId target)
         {
             await Click(Find<SubViewportContainer>($"ViewCanvas{view}"));

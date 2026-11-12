@@ -16,7 +16,7 @@ public sealed record CatalogueObject(ObjectId Id, string Name, CatalogueKind Kin
 public sealed class ObjectCatalogue
 {
     internal ObjectCatalogue(IReadOnlyList<ScienceSatellite> satellites, BrightStarCatalogue stars,
-        StellarCatalogue spatialStars, IReadOnlyList<InstalledSscBody> sscBodies, IEnumerable<SscSurfaceLocation> locations)
+        StellarCatalogue spatialStars, DeepSkyIndex deepSky, IReadOnlyList<InstalledSscBody> sscBodies, IEnumerable<SscSurfaceLocation> locations)
     {
         var objects = new List<CatalogueObject> { new(SolarSystemSample.SunId, "Sun", CatalogueKind.Star) };
         objects.AddRange(PlanetCatalogue.Planets.Select(planet =>
@@ -33,13 +33,13 @@ public sealed class ObjectCatalogue
                 CatalogueKind.Star)));
         objects.AddRange(spatialStars.Stars.Where(star => stars.Find(star.Id) is null)
             .Select(star => new CatalogueObject(star.Id, star.Name, CatalogueKind.Star)));
-        objects.AddRange(DeepSkyCatalogue.Objects.Select(body => new CatalogueObject(body.Id,
-            $"{body.Name} ({body.Designation})", body.Kind switch
+        objects.AddRange(deepSky.Objects.Select(body => new CatalogueObject(body.Id,
+            body.Name == body.Designation ? body.Name : $"{body.Name} ({body.Designation})", body.Kind switch
             {
                 DeepSkyKind.Galaxy => CatalogueKind.Galaxy,
                 DeepSkyKind.Nebula => CatalogueKind.Nebula,
                 _ => CatalogueKind.Cluster
-            })));
+            }) { Aliases = body.Aliases }));
         Objects = objects.AsReadOnly();
         _byId = objects.ToDictionary(body => body.Id);
         SurfaceSites = SurfaceSite.Bind(this, locations);

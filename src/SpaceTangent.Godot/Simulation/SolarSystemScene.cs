@@ -1373,7 +1373,7 @@ public partial class SolarSystemScene : Control
             return details + FormattableString.Invariant($"\nDistance: {spatial.DistanceParsecs * StellarEntry.KilometersPerParsec / StellarEntry.KilometersPerLightYear:N2} ly\nVisual magnitude: {spatial.VisualMagnitude:F2}");
         if (Session.World.BrightStars.Find(target.Id) is { } bright)
             return details + FormattableString.Invariant($"\nVisual magnitude: {bright.VisualMagnitude:F2}");
-        if (DeepSkyCatalogue.Find(target.Id) is { } deep)
+        if (Session?.World.DeepSky.Find(target.Id) is { } deep)
             return details + FormattableString.Invariant($"\nDistance: {deep.DistanceLightYears:N0} ly\nEstimated radius: {deep.RadiusLightYears:N0} ly");
         if (snapshot?.SolarSystem is { } solar && snapshot.TryState(target.Id, out var state))
             return details + FormattableString.Invariant($"\nFrom Earth: {(state - solar.Earth).PositionKilometers.Length:N1} km");

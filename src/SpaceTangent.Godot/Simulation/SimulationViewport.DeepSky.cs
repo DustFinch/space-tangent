@@ -1,0 +1,113 @@
+// SPDX-License-Identifier: GPL-2.0-or-later
+using Godot;
+using SpaceTangent.Application;
+using SpaceTangent.Contracts;
+using SpaceTangent.Core.Observing;
+
+namespace SpaceTangent.Godot.Simulation;
+
+internal partial class SimulationViewport
+{
+    private const int MaximumDeepSkyMeshes = 64;
+    private readonly List<(MeshInstance3D Mesh, Label3D Label)> _deepSkyPool = [];
+    private readonly Dictionary<ObjectId, MeshInstance3D> _deepSkyObjects = new();
+    private readonly List<(DeepSkyObject Body, Vector3d Center, double Score)> _deepSkyCandidates = [];
+    private (DeepSkyObject Body, Vector3d Center, double Radius)[] _deepSkyPositions = [];
+    private Shader? _deepSkyShader;
+    private QuadMesh? _deepSkyQuad;
+
+    internal bool DeepSkyVisible(ObjectId id) => _deepSkyObjects.GetValueOrDefault(id)?.Visible == true;
+
+    private void CacheDeepSky(SimulationWorld world) => _deepSkyPositions = world.DeepSky.Objects
+        .Select(body => (body, body.PositionKilometers + world.StellarOrigin, body.RadiusKilometers)).ToArray();
+
+    private void DrawDeepSky(SimulationWorld world, NavigationCamera pose, SkyLayerSettings sky, Vector3d eye,
+        double units, Func<Vector3d, (Vector3 Position, double Scale)> project)
+    {
+        var target = pose.Target is { } id ? world.DeepSky.Find(id) : null;
+        if (!sky.DeepSky && target is null)
+            return;
+        _deepSkyCandidates.Clear();
+        if (target is not null)
+            _deepSkyCandidates.Add((target, target.PositionKilometers + world.StellarOrigin, double.PositiveInfinity));
+        if (sky.DeepSky)
+        {
+            Vector3 forward = -_navigationCamera.Basis.Z;
+            var direction = new Vector3d(forward.X, -forward.Z, forward.Y);
+            Vector2 size = GetViewport().GetVisibleRect().Size;
+            double aspect = size.Y > 0 ? size.X / size.Y : 1;
+            double halfAngle = Math.Atan(Math.Tan(_navigationCamera.Fov * Math.PI / 360) * Math.Sqrt(1 + aspect * aspect));
+            double limit = Math.Cos(halfAngle + .20);
+            foreach (var (body, center, radius) in _deepSkyPositions)
+            {
+                if (body.Id == pose.Target)
+                    continue;
+                Vector3d offset = center - eye;
+                double distance = offset.Length;
+                if (distance <= radius || radius < distance * .0012 || Vector3d.Dot(offset, direction) < distance * limit)
+                    continue;
+                _deepSkyCandidates.Add((body, center, radius / distance));
+            }
+            _deepSkyCandidates.Sort((left, right) => right.Score.CompareTo(left.Score));
+        }
+
+        int shown = 0;
+        foreach (var (body, center, _) in _deepSkyCandidates)
+        {
+            var (position, scale) = project(center);
+            float radius = (float)(body.RadiusKilometers * scale / units);
+            if (radius < .12f)
+                continue;
+            if (_deepSkyPool.Count == shown)
+                _deepSkyPool.Add(CreateDeepSkyMesh());
+            var (mesh, label) = _deepSkyPool[shown++];
+            Basis facing = _navigationCamera.Basis;
+            bool elliptical = body.Morphology is { Length: 2 } form && form[0] == 'E' && char.IsAsciiDigit(form[1]);
+            float aspect = elliptical ? 1 - (body.Morphology![1] - '0') * .095f : body.Kind == DeepSkyKind.Galaxy ? .43f : 1;
+            mesh.Transform = new(facing * Basis.FromScale(new(radius, radius * aspect, 1)), position);
+            var material = (ShaderMaterial)mesh.MaterialOverride;
+            material.SetShaderParameter("profile", (int)body.Kind);
+            material.SetShaderParameter("elliptical", elliptical);
+            material.SetShaderParameter("concentration", (float)body.KingConcentration);
+            mesh.Show();
+            if (sky.Labels)
+            {
+                label.Text = body.Designation;
+                label.Position = position - facing.Y * radius * (aspect + .18f);
+                label.Show();
+            }
+            _deepSkyObjects.Add(body.Id, mesh);
+            if (shown == MaximumDeepSkyMeshes)
+                break;
+        }
+    }
+
+    private (MeshInstance3D Mesh, Label3D Label) CreateDeepSkyMesh()
+    {
+        _deepSkyShader ??= GD.Load<Shader>("res://Shaders/deep_sky.gdshader");
+        _deepSkyQuad ??= new QuadMesh { Size = new(2, 2) };
+        var mesh = new MeshInstance3D
+        {
+            Mesh = _deepSkyQuad, MaterialOverride = new ShaderMaterial { Shader = _deepSkyShader }, Visible = false,
+            CastShadow = GeometryInstance3D.ShadowCastingSetting.Off
+        };
+        Label3D label = CreateLabel("", Vector3.Zero);
+        label.FixedSize = true;
+        label.PixelSize = .0018f;
+        label.NoDepthTest = false;
+        label.Hide();
+        AddChild(mesh);
+        AddChild(label);
+        return (mesh, label);
+    }
+
+    private void HideDeepSky()
+    {
+        _deepSkyObjects.Clear();
+        foreach (var (mesh, label) in _deepSkyPool)
+        {
+            mesh.Hide();
+            label.Hide();
+        }
+    }
+}

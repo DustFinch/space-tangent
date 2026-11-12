@@ -43,13 +43,14 @@ public sealed class SimulationWorld
     public SimulationWorld(ISolarSystemEphemeris ephemeris, IEnumerable<ScienceSatellite> satellites,
         SpiceSpacecraft? mission = null, SscSampledSpacecraft? timeline = null, HuygensMission? probe = null,
         SpicePolynomialBodyFrame? moonFrame = null, BrightStarCatalogue? brightStars = null, PlanetEphemerides? planets = null, bool hasMarsTerrain = false, StellarCatalogue? stellar = null, IEnumerable<SscBodyDefinition>? bodyCatalog = null,
-        IEnumerable<SscSurfaceLocation>? locations = null)
+        IEnumerable<SscSurfaceLocation>? locations = null, DeepSkyIndex? deepSky = null)
     {
         Ephemeris = ephemeris;
         Satellites = Array.AsReadOnly(satellites.ToArray());
         BrightStars = brightStars ?? BrightStarCatalogue.Empty;
         HasMarsTerrain = hasMarsTerrain;
         Stellar = stellar ?? StellarCatalogue.Empty;
+        DeepSky = deepSky ?? DeepSkyIndex.Default;
         StellarOrigin = ephemeris.Sample(JulianInstant.FromJulianDate(2451545, TimeScale.Tdb)).Sun.PositionKilometers;
         var graph = new WorldGraphBuilder();
         graph.AddSolarSystem(ephemeris);
@@ -88,7 +89,7 @@ public sealed class SimulationWorld
             PlanetEphemerides.AddMoonFrame(graph, planets);
         SscBodies = InstalledSscBody.Install(graph, bodyCatalog ?? []);
         _sscById = SscBodies.ToDictionary(body => body.Id);
-        Catalogue = new(Satellites, BrightStars, Stellar, SscBodies, locations ?? []);
+        Catalogue = new(Satellites, BrightStars, Stellar, DeepSky, SscBodies, locations ?? []);
         _sitesById = Catalogue.SurfaceSites.ToDictionary(site => site.Id);
         _sitesByBody = Catalogue.SurfaceSites.GroupBy(site => site.Body)
             .ToDictionary(group => group.Key, group => group.OrderByDescending(site => site.Definition.Importance ?? site.Definition.SizeKilometers).ToArray());
@@ -102,6 +103,7 @@ public sealed class SimulationWorld
     public ObjectCatalogue Catalogue { get; }
     public BrightStarCatalogue BrightStars { get; }
     public StellarCatalogue Stellar { get; }
+    public DeepSkyIndex DeepSky { get; }
     public Vector3d StellarOrigin { get; }
 
     private readonly Dictionary<ObjectId, SurfaceSite> _sitesById;
@@ -136,7 +138,7 @@ public sealed class SimulationWorld
             state = new(relative.PositionKilometers + StellarOrigin, relative.VelocityKilometersPerSecond);
             return true;
         }
-        if (DeepSkyCatalogue.Find(id) is { } deepSky)
+        if (DeepSky.Find(id) is { } deepSky)
         {
             state = new(deepSky.PositionKilometers + StellarOrigin, default);
             return true;
@@ -145,7 +147,7 @@ public sealed class SimulationWorld
     }
 
     public double TargetRadiusKilometers(ObjectId id) =>
-        FindSurfaceSite(id)?.ScaleKilometers ?? Stellar.Find(id)?.RadiusKilometers ?? DeepSkyCatalogue.Find(id)?.RadiusKilometers ??
+        FindSurfaceSite(id)?.ScaleKilometers ?? Stellar.Find(id)?.RadiusKilometers ?? DeepSky.Find(id)?.RadiusKilometers ??
         _sscById.GetValueOrDefault(id)?.Definition.RadiusKilometers ?? NavigationCamera.BodyRadiusKilometers(id);
     public WorldGraph Graph { get; }
     public ObjectId? MissionId { get; }

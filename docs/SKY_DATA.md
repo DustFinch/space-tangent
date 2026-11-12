@@ -19,3 +19,9 @@ python scripts/sky/prepare.py C:/data/sky-input src/SpaceTangent.Godot/SkyData
 ```
 
 The script checks both original data hashes before writing. SHA-256 of the derived catalogue is `4d1e54f6467594a6003e4971437266674bd4aa04039fbbee37b74a2ae78bbeb0`.
+
+## Local deep-sky catalogues
+
+Place `.dsc` files in `data/sky/dsc` or set `SPACETANGENT_DSC_ROOT` to their directory. Reload add-ons after editing the files. The existing **Deep sky** search filter includes galaxies, nebulae, globular clusters, and open clusters. Search by a name or catalogue alias, then use **Go to** or select the object in a perspective view. Use the **Deep-sky objects** layer to show untargeted objects.
+
+The verified original files contain 10,937 galaxies, 196 globular clusters, and 6,476 open clusters. Messier IDs stay stable when a source updates an object that has a built-in entry. This renderer uses illustrative profiles and the catalogue's positions and extents.

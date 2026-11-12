@@ -477,6 +477,12 @@ public partial class SolarSystemScene : Control
                 _status.Text = _views[_active].Measurements.ToggleAngle()
                     ? "Angle measurement · drag across the view. Ctrl+A closes the tool." : "Angle measurement closed.";
                 break;
+            case Key.B when key.CtrlPressed && !key.ShiftPressed && GetViewport().GuiGetFocusOwner() is not LineEdit:
+                bool showMarks = Session[_active].ReferenceMarks == BodyReferenceMarks.None;
+                Session.SetReferenceMarks(_active, showMarks ? BodyReferenceMarks.All : BodyReferenceMarks.None);
+                _status.Text = showMarks ? "Reference marks visible in this view." : "Reference marks hidden.";
+                Refresh();
+                break;
             case Key.M when key.CtrlPressed:
                 MeasureSelectedDistance(key.ShiftPressed);
                 break;
@@ -1390,6 +1396,7 @@ public partial class SolarSystemScene : Control
             controls.Renderer.ShowSurfaceSiteLabels = _showSurfaceSites;
             bool available = controls.Renderer.Draw(view, snapshot, session.DeltaT);
             controls.Renderer.DrawShip(ship, view.Navigation);
+            controls.Renderer.DrawReferenceMarks(view, session.ReferenceGeometry(index, snapshot));
             controls.Measurements.Update(controls.Renderer, view, snapshot, session.World, session.DeltaT);
             controls.Epoch.Text = FormattableString.Invariant($"View {index + 1}   JD {view.Epoch.ToJulianDate():F6} TDB");
             if (ship is not null)

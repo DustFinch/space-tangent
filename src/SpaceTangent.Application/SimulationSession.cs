@@ -28,6 +28,7 @@ public readonly record struct ObserverView(JulianInstant Epoch, CameraMode Mode,
     public NavigationCamera? Navigation { get; init; }
     public EarthObserverCamera? EarthObserver { get; init; }
     public SkyLayerSettings Sky { get; init; }
+    public BodyReferenceMarks ReferenceMarks { get; init; }
     public double? FieldOfViewDegrees { get; init; }
     public double? PlaybackRate { get; init; }
     public static bool ValidPlaybackRate(double rate) => rate is >= -100_000_000 and <= 100_000_000;
@@ -223,6 +224,8 @@ public sealed partial class SimulationSession
                 throw new InvalidDataException("The scenario has an invalid field of view.");
             if (view.PlaybackRate is { } rate && !ObserverView.ValidPlaybackRate(rate))
                 throw new InvalidDataException("The scenario has an invalid playback rate.");
+            if ((view.ReferenceMarks & ~BodyReferenceMarks.All) != 0)
+                throw new InvalidDataException("The scenario has unsupported reference marks.");
             if (view.Terrain is { } terrain && !terrain.IsValid())
                 throw new InvalidDataException("The scenario has invalid lunar camera coordinates or field width.");
             if (view.Mode == CameraMode.Satellites && World.Satellites.Count == 0)

@@ -45,17 +45,24 @@ public partial class EarthOrbitProbe : Node
                          ("earth-terminator", (side + sun * .2f).Normalized(), 21_000d),
                          ("earth-night", (-sun + side * .42f).Normalized(), 22_000d),
                          ("earth-low-orbit", (side + sun * .65f).Normalized(), 6_710d),
-                         ("earth-upper-atmosphere", (side + sun * .55f).Normalized(), 6_435d)
+                         ("earth-upper-atmosphere", (side + sun * .55f).Normalized(), 6_435d),
+                         ("earth-reference-marks", (side + sun * .5f).Normalized(), 26_000d)
                      })
             {
                 var pose = new NavigationCamera(sample.Earth.PositionKilometers, range, Math.Atan2(direction.X, direction.Z),
                     Math.Asin(direction.Y), SolarSystemSample.EarthId, true);
-                var view = new ObserverView(epoch, CameraMode.Solar, SolarSystemSample.EarthId, false) { Navigation = pose };
+                var view = new ObserverView(epoch, CameraMode.Solar, SolarSystemSample.EarthId, false)
+                {
+                    Navigation = pose,
+                    ReferenceMarks = name == "earth-reference-marks" ? BodyReferenceMarks.All : BodyReferenceMarks.None
+                };
                 var scenario = new SimulationScenario([view], false, 0, 0, DeltaTModel.MorrisonStephenson2004);
                 string path = Path.Combine(directory, name + ".stscene");
                 ScenarioFile.Save(path, scenario);
                 if (!scene.LoadScenario(path) || !scene.Renderer(0).EarthOrbitAtmosphereActive)
                     throw new InvalidOperationException($"The Earth orbit material is unavailable in {name}.");
+                if (name == "earth-reference-marks" && !scene.Renderer(0).ReferenceMarksVisible)
+                    throw new InvalidOperationException("The saved Earth reference marks were not drawn.");
                 if (DisplayServer.GetName() != "headless")
                 {
                     await ToSignal(GetTree(), SceneTree.SignalName.ProcessFrame);

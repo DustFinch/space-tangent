@@ -16,7 +16,7 @@ public sealed record SimulationScenario(IReadOnlyList<ObserverView> Views, bool 
 /// <summary>Persists observer settings with exact TDB epochs and stable catalog IDs.</summary>
 public static class ScenarioFile
 {
-    private const int Version = 8;
+    private const int Version = 9;
     internal const int MaximumBytes = 32 * 1024;
     private static readonly JsonSerializerOptions Json = new()
     {
@@ -29,6 +29,7 @@ public static class ScenarioFile
             new JsonStringEnumConverter<CameraMode>(JsonNamingPolicy.CamelCase, allowIntegerValues: false),
             new JsonStringEnumConverter<ViewSplit>(JsonNamingPolicy.CamelCase, allowIntegerValues: false),
             new JsonStringEnumConverter<NavigationFrame>(JsonNamingPolicy.CamelCase, allowIntegerValues: false),
+            new JsonStringEnumConverter<BodyReferenceMarks>(JsonNamingPolicy.CamelCase, allowIntegerValues: false),
             new JsonStringEnumConverter<DeltaTModel>(JsonNamingPolicy.CamelCase, allowIntegerValues: false)
         }
     };
@@ -46,9 +47,12 @@ public static class ScenarioFile
             scenario.Views.Any(view => (view.FieldOfViewDegrees is { } field && !ObserverView.ValidFieldOfView(field)) ||
                 (view.PlaybackRate is { } rate && !ObserverView.ValidPlaybackRate(rate))))
             throw new InvalidDataException("The scenario has an invalid layout or field of view.");
+        if (scenario.Views.Any(view => (view.ReferenceMarks & ~BodyReferenceMarks.All) != 0))
+            throw new InvalidDataException("The scenario has unsupported reference marks.");
         var document = new Document
         {
-            Version = scenario.Layout is not null || scenario.Views.Any(view => view.Navigation?.Placement?.Reference is not null) ? Version : 7,
+            Version = scenario.Views.Any(view => view.ReferenceMarks != BodyReferenceMarks.None) ? Version :
+                scenario.Layout is not null || scenario.Views.Any(view => view.Navigation?.Placement?.Reference is not null) ? 8 : 7,
             Synchronized = scenario.Synchronized,
             ClockOwner = scenario.ClockOwner,
             ActiveView = scenario.ActiveView,
@@ -67,7 +71,8 @@ public static class ScenarioFile
                 PlaybackRate = view.PlaybackRate,
                 Navigation = view.Navigation is { } pose ? Camera.From(pose) : null,
                 EarthObserver = view.EarthObserver,
-                Sky = view.Sky.Visible ? view.Sky : null
+                Sky = view.Sky.Visible ? view.Sky : null,
+                ReferenceMarks = view.ReferenceMarks
             }).ToArray()
         };
         byte[] bytes = JsonSerializer.SerializeToUtf8Bytes(document, Json);
@@ -152,6 +157,9 @@ public static class ScenarioFile
                 throw new InvalidDataException("Moving observer frames require a version 8 scenario.");
             if (data.PlaybackRate is { } rate && (document.Version < 7 || !ObserverView.ValidPlaybackRate(rate)))
                 throw new InvalidDataException("The scene playback rate is unsupported.");
+            if ((data.ReferenceMarks & ~BodyReferenceMarks.All) != 0 ||
+                (document.Version < 9 && data.ReferenceMarks != BodyReferenceMarks.None))
+                throw new InvalidDataException("The scene reference marks are unsupported.");
             views[i] = new(epoch, data.Camera, selection, data.Playing)
             {
                 Terrain = data.Terrain,
@@ -159,7 +167,8 @@ public static class ScenarioFile
                 PlaybackRate = data.PlaybackRate,
                 Navigation = navigation,
                 EarthObserver = data.EarthObserver,
-                Sky = data.Sky ?? default
+                Sky = data.Sky ?? default,
+                ReferenceMarks = data.ReferenceMarks
             };
         }
         return new(Array.AsReadOnly(views), document.Synchronized, document.ClockOwner, document.ActiveView, document.DeltaT)
@@ -199,6 +208,8 @@ public static class ScenarioFile
         public EarthObserverCamera? EarthObserver { get; init; }
         [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
         public SkyLayerSettings? Sky { get; init; }
+        [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingDefault)]
+        public BodyReferenceMarks ReferenceMarks { get; init; }
     }
 
     private sealed record Camera(double AnchorX, double AnchorY, double AnchorZ, double RangeKilometers,

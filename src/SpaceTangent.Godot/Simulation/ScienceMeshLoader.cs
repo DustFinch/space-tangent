@@ -31,7 +31,7 @@ internal static class ScienceMeshLoader
                 (float)definition.Color.Z, (float)definition.Opacity);
             Texture2D? albedo = definition.Texture is { } texture ? Texture(texture) : bodySurface;
             Material material;
-            if (shader is not null)
+            if (shader is not null && !definition.AlphaBlend && definition.AlphaCutoff is null)
             {
                 var body = new ShaderMaterial { Shader = shader };
                 body.SetShaderParameter("base_color", definition.Texture is null && bodySurface is not null ? Colors.White : color);
@@ -47,19 +47,37 @@ internal static class ScienceMeshLoader
                     body.SetShaderParameter("packed_normal", Dds(normalMap));
                     arrays[(int)Mesh.ArrayType.Tangent] = Tangents(vertices, normals, uvs);
                 }
+                if (definition.Emission.Length > 0)
+                {
+                    body.SetShaderParameter("emission_color", new Vector3((float)definition.Emission.X,
+                        (float)definition.Emission.Y, (float)definition.Emission.Z));
+                    if (definition.EmissionTexture is { } glow)
+                    {
+                        body.SetShaderParameter("has_emission_texture", true);
+                        body.SetShaderParameter("emission_texture", Texture(glow));
+                    }
+                }
                 material = body;
             }
             else
             {
+                if (litBody && definition.NormalTexture is not null)
+                    arrays[(int)Mesh.ArrayType.Tangent] = Tangents(vertices, normals, uvs);
                 material = new StandardMaterial3D
                 {
                     AlbedoColor = color,
                     AlbedoTexture = albedo,
-                    ShadingMode = BaseMaterial3D.ShadingModeEnum.Unshaded,
+                    ShadingMode = litBody ? BaseMaterial3D.ShadingModeEnum.PerPixel : BaseMaterial3D.ShadingModeEnum.Unshaded,
                     CullMode = BaseMaterial3D.CullModeEnum.Disabled,
-                    Transparency = definition.Opacity < 1
-                        ? BaseMaterial3D.TransparencyEnum.Alpha
-                        : BaseMaterial3D.TransparencyEnum.Disabled
+                    Transparency = definition.AlphaCutoff.HasValue ? BaseMaterial3D.TransparencyEnum.AlphaScissor :
+                        definition.AlphaBlend || definition.Opacity < 1 ? BaseMaterial3D.TransparencyEnum.Alpha :
+                        BaseMaterial3D.TransparencyEnum.Disabled,
+                    NormalEnabled = litBody && definition.NormalTexture is not null,
+                    NormalTexture = litBody && definition.NormalTexture is { } normalMap ? Texture(normalMap) : null,
+                    AlphaScissorThreshold = (float)(definition.AlphaCutoff ?? .5),
+                    EmissionEnabled = definition.Emission.Length > 0,
+                    Emission = new((float)definition.Emission.X, (float)definition.Emission.Y, (float)definition.Emission.Z),
+                    EmissionTexture = definition.EmissionTexture is { } glow ? Texture(glow) : null
                 };
             }
             mesh.AddSurfaceFromArrays(Mesh.PrimitiveType.Triangles, arrays);
@@ -73,7 +91,12 @@ internal static class ScienceMeshLoader
                 return available;
             using var image = new Image();
             var data = source.Textures[name].ToArray();
-            Error status = Dds(name) ? image.LoadDdsFromBuffer(data) : image.LoadPngFromBuffer(data);
+            Error status = Path.GetExtension(name).ToLowerInvariant() switch
+            {
+                ".dds" => image.LoadDdsFromBuffer(data),
+                ".jpg" or ".jpeg" => image.LoadJpgFromBuffer(data),
+                _ => image.LoadPngFromBuffer(data)
+            };
             if (status != Error.Ok || image.IsEmpty())
             {
                 var error = new InvalidDataException("Could not decode the model's texture.");

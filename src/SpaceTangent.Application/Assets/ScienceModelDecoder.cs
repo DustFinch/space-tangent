@@ -10,6 +10,10 @@ namespace SpaceTangent.Application.Assets;
 public sealed record DecodedMaterial(Vector3d Color, double Opacity, string? Texture)
 {
     public string? NormalTexture { get; init; }
+    public string? EmissionTexture { get; init; }
+    public Vector3d Emission { get; init; }
+    public bool AlphaBlend { get; init; }
+    public double? AlphaCutoff { get; init; }
 }
 public sealed record DecodedSurface(ReadOnlyMemory<Vector3d> Positions, ReadOnlyMemory<Vector3d> Normals,
     ReadOnlyMemory<float> TextureCoordinates, DecodedMaterial Material);

@@ -457,8 +457,8 @@ internal static partial class AddonLoader
             ".cmod" => nativeBody ? CmodMeshDecoder.DecodeNativeBody(root, file, cancellation) : CmodMeshDecoder.Decode(root, file, cancellation),
             ".cms" => DisplacedSphereDecoder.Decode(file, cancellation),
             ".3ds" => StudioMeshDecoder.Decode(file, cancellation),
-            ".glb" => PackedModelDecoder.Decode(file, cancellation),
-            _ => throw new NotSupportedException("The add-on mesh needs OBJ, CMOD, CMS, 3DS or packed GLB.")
+            ".glb" or ".gltf" => PackedModelDecoder.Decode(root, file, cancellation),
+            _ => throw new NotSupportedException("The add-on mesh needs OBJ, CMOD, CMS, 3DS, glTF or GLB.")
         };
 
     private static IReadOnlyList<DecodedSatellite> ReadScience(LocalDataPath location, CancellationToken cancellation)
@@ -473,8 +473,8 @@ internal static partial class AddonLoader
         return Array.AsReadOnly(tracks.Select(track =>
         {
             cancellation.ThrowIfCancellationRequested();
-            return new DecodedSatellite(track, Path.GetExtension(track.MeshPath).Equals(".glb", StringComparison.OrdinalIgnoreCase)
-                ? PackedModelDecoder.Decode(track.MeshPath, cancellation) : ScienceModelDecoder.Decode(track.MeshPath, cancellation));
+            return new DecodedSatellite(track, Path.GetExtension(track.MeshPath).ToLowerInvariant() is ".glb" or ".gltf"
+                ? PackedModelDecoder.Decode(root, track.MeshPath, cancellation) : ScienceModelDecoder.Decode(track.MeshPath, cancellation));
         }).ToArray());
     }
 

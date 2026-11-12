@@ -12,6 +12,7 @@ public sealed class PlanetEphemerides
 {
     private readonly Dictionary<int, SpicePolynomialBodyFrame> _frames = new();
     private readonly Dictionary<int, SpkKernel> _centers = new();
+    private readonly Dictionary<int, KernelBackedTrajectory> _planetCenters = new();
     private readonly Dictionary<ObjectId, SampledStateTrajectory> _sampled = new();
     private readonly SpkKernel? _saturnMoons;
 
@@ -27,7 +28,12 @@ public sealed class PlanetEphemerides
                 _frames.Add(planet.NaifId, new(pck, planet.NaifId));
             string kernel = Path.Combine(root, $"center-{planet.NaifId / 100}.bsp");
             if (planet.Id != planet.SystemId && File.Exists(kernel))
-                _centers.Add(planet.NaifId / 100, new(kernel));
+            {
+                int system = planet.NaifId / 100;
+                SpkKernel center = new(kernel);
+                _centers.Add(system, center);
+                _planetCenters.Add(planet.NaifId, new(center, planet.NaifId, system, _ => default, 86400));
+            }
         }
         string saturn = Path.Combine(root, "moons-6.bsp");
         if (hasFrames)
@@ -39,7 +45,7 @@ public sealed class PlanetEphemerides
             _centers.Add(9, new(pluto));
         foreach (NaturalBodyDefinition body in NaturalBodyCatalogue.Bodies)
         {
-            if (hasFrames && body.Kind != CatalogueKind.Comet)
+            if (hasFrames && body.Kind != CatalogueKind.Comet && body.NaifId != NaturalBodyCatalogue.HyperionNaifId)
                 _frames.Add(body.NaifId, new(pck, body.NaifId));
             if (body.SampledOrbit is not { } file)
                 continue;
@@ -55,11 +61,8 @@ public sealed class PlanetEphemerides
     {
         if (planet.Id != planet.SystemId)
         {
-            int system = planet.NaifId / 100;
-            SpkKernel? kernel = source?._centers.GetValueOrDefault(system);
-            graph.AddTrajectory(planet.Id, epoch =>
-                kernel is not null && kernel.TryState(planet.NaifId, system, epoch, out var state)
-                    ? state : default(CartesianState), planet.SystemId);
+            KernelBackedTrajectory? center = source?._planetCenters.GetValueOrDefault(planet.NaifId);
+            graph.AddTrajectory(planet.Id, epoch => center?.Sample(epoch) ?? default(CartesianState), planet.SystemId);
         }
         AddFrame(graph, planet.Id, planet.NaifId, source);
     }
@@ -76,10 +79,23 @@ public sealed class PlanetEphemerides
         {
             int system = body.NaifId / 100;
             SpkKernel? kernel = system == 6 ? source?._saturnMoons : source?._centers.GetValueOrDefault(system);
-            ObjectId barycenter = system == 9 ? SolarSystemSample.PlutoBarycenterId
-                : PlanetCatalogue.Find(body.Parent)!.SystemId;
-            graph.AddTrajectory(body.Id, epoch => kernel is not null && kernel.TryState(body.NaifId, system, epoch, out var state)
-                ? state : body.Id == NaturalBodyCatalogue.PlutoId ? default(CartesianState) : null, barycenter);
+            if (body.Theory is { } theory)
+            {
+                PlanetDefinition planet = PlanetCatalogue.Find(body.Parent)!;
+                KernelBackedTrajectory? center = source?._planetCenters.GetValueOrDefault(planet.NaifId);
+                CartesianState Fallback(JulianInstant epoch) => AnalyticSatelliteOrbit.Sample(theory, epoch) +
+                    (center?.Sample(epoch) ?? default(CartesianState));
+                Func<JulianInstant, CartesianState> trajectory = kernel is null ? Fallback :
+                    new KernelBackedTrajectory(kernel, body.NaifId, system, Fallback, 86400).Sample;
+                graph.AddTrajectory(body.Id, epoch => trajectory(epoch), planet.SystemId);
+            }
+            else
+            {
+                ObjectId barycenter = system == 9 ? SolarSystemSample.PlutoBarycenterId
+                    : PlanetCatalogue.Find(body.Parent)!.SystemId;
+                graph.AddTrajectory(body.Id, epoch => kernel is not null && kernel.TryState(body.NaifId, system, epoch, out var state)
+                    ? state : body.Id == NaturalBodyCatalogue.PlutoId ? default(CartesianState) : null, barycenter);
+            }
         }
         AddFrame(graph, body.Id, body.NaifId, source);
     }

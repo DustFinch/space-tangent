@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
 using SpaceTangent.Application;
 using SpaceTangent.Contracts;
+using SpaceTangent.Core.Ephemerides;
 
 namespace SpaceTangent.Godot.Tests;
 
@@ -45,10 +46,28 @@ public partial class EarthOrbitProbe
                 (actual.VelocityKilometersPerSecond - velocity).Length > .00000005)
                 throw new InvalidOperationException($"CSPICE disagrees for {body.Name} at JD {tdb}.");
         }
-        var uncovered = world.Graph.Evaluate(JulianInstant.FromJulianDate(2420000.5, TimeScale.Tdb));
+        var uncoveredEpoch = JulianInstant.FromJulianDate(2420000.5, TimeScale.Tdb);
+        var uncovered = world.Graph.Evaluate(uncoveredEpoch);
+        int checkedTheories = 0;
         foreach (var body in NaturalBodyCatalogue.Bodies.Where(body => body.Id != NaturalBodyCatalogue.PlutoId))
-            if (uncovered.TryState(body.Id, out _))
-                throw new InvalidOperationException($"{body.Name} must have no available state outside the local kernel span.");
+        {
+            if (body.Theory is not { } theory)
+            {
+                if (uncovered.TryState(body.Id, out _))
+                    throw new InvalidOperationException($"{body.Name} has a state outside its sampled coverage.");
+                continue;
+            }
+            if (!uncovered.TryState(body.Id, out var state) || !uncovered.TryState(body.Parent, out var parent))
+                throw new InvalidOperationException($"The historical orbit for {body.Name} is missing.");
+            CartesianState expected = AnalyticSatelliteOrbit.Sample(theory, uncoveredEpoch);
+            CartesianState actual = state - parent;
+            if ((actual.PositionKilometers - expected.PositionKilometers).Length > .00001 ||
+                (actual.VelocityKilometersPerSecond - expected.VelocityKilometersPerSecond).Length > 1e-9)
+                throw new InvalidOperationException($"Wrong historical reference center for {body.Name}.");
+            checkedTheories++;
+        }
+        if (checkedTheories != Enum.GetValues<SatelliteTheory>().Length)
+            throw new InvalidOperationException("A major moon is missing from the catalogue.");
         global::Godot.GD.Print($"Natural satellites: {cases.Length} parent-relative CSPICE comparisons.");
     }
 }

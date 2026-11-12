@@ -29,7 +29,7 @@ public partial class EarthOrbitProbe
             double distance = (state - parent).PositionKilometers.Length;
             double moved = ((next - nextParent) - (state - parent)).PositionKilometers.Length;
             if (!(distance > body.RadiusKilometers && moved > 0.05) ||
-                (body.Kind == CatalogueKind.Moon && distance > 2_100_000))
+                (body.Kind == CatalogueKind.Moon && distance > 4_000_000))
                 throw new InvalidOperationException($"Invalid parent-relative distance or motion for {body.Name}.");
         }
 
@@ -42,7 +42,8 @@ public partial class EarthOrbitProbe
                 throw new InvalidOperationException($"The Jupiter scene must contain a marker for {moon.Name}.");
 
         foreach (var (name, id, range) in new (string, ObjectId, double)[]
-                 { ("titan", new("sol/titan"), 12_000), ("pluto", NaturalBodyCatalogue.PlutoId, 5600),
+                 { ("titan", new("sol/titan"), 12_000), ("enceladus", new("sol/enceladus"), 1400),
+                   ("miranda", new("sol/miranda"), 1300), ("triton", new("sol/triton"), 7300), ("pluto", NaturalBodyCatalogue.PlutoId, 5600),
                    ("ceres", new("sol/ceres"), 2200), ("vesta", new("sol/vesta"), 1400) })
         {
             snapshot.TryState(id, out CartesianState body);

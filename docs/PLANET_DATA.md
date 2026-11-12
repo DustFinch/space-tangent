@@ -35,7 +35,7 @@ For body-fixed orientation, use the [NAIF text PCK](https://naif.jpl.nasa.gov/pu
 | Uranus | `center-7.bsp` · URA111 | 1990-01-01 through 2050-01-01 |
 | Neptune | `center-8.bsp` · NEP097 | 1990-01-01 through 2050-01-01 |
 
-The [NAIF satellite kernel archive](https://naif.jpl.nasa.gov/pub/naif/generic_kernels/spk/satellites/) supplies these offsets in J2000 axes, with each planet relative to its own system barycenter. Outside the supplied kernel coverage the planet camera falls back to its DE440 system barycenter. The overview always draws the heliocentric DE440 system paths. Mercury, Venus and Earth already have physical center states in DE440. The default inner and outer views cover different groups. Use **Layers → Planet orbits** to toggle the guide paths.
+The [NAIF satellite kernel archive](https://naif.jpl.nasa.gov/pub/naif/generic_kernels/spk/satellites/) supplies these offsets in J2000 axes, with each planet relative to its own system barycenter. Outside the supplied kernel coverage the planet center transitions to the system barycenter over one day. The overview always draws the heliocentric DE440 system paths. Mercury, Venus and Earth already have physical center states in DE440. The default inner and outer views cover different groups. Use **Layers → Planet orbits** to toggle the guide paths.
 
 The local Olympus Mons preset reads `terrain-mars.bin`, an elevation grid in the same signed-height format as the lunar terrain pack. The verified grid comes from [Mars Global Surveyor MOLA](https://pds-geosciences.wustl.edu/missions/mgs/mola.html), is sampled at 4096 × 2048, and has a 3396 km spherical reference radius.
 
@@ -43,7 +43,9 @@ The planetary textures are local sidecar assets. Record the source, author credi
 
 ## Moons and small bodies
 
-The Moon is taken from DE440. The Mars and Jupiter kernel files can also supply Phobos, Deimos, Io, Europa, Ganymede and Callisto. These states are relative to the system barycenter. The graph derives parent-relative motion by subtracting the physical planet center. The optional `moons-6.bsp` uses SAT441 records for Titan. The optional `center-9.bsp` uses PLU058 records for Pluto with the DE440 Pluto system barycenter as its fallback. In the verified pack, these two files cover 1990–2050 TDB.
+The Moon is taken from DE440. The Mars and Jupiter kernel files can also supply Phobos, Deimos, Io, Europa, Ganymede and Callisto. These states are relative to the system barycenter. The graph derives parent-relative motion by subtracting the physical planet center. The optional `moons-6.bsp` uses SAT441 records for Saturn's moons. The optional `center-9.bsp` uses PLU058 records for Pluto with the DE440 Pluto system barycenter as its fallback. In the verified pack, these two files cover 1990–2050 TDB.
+
+The Galilean moons, Mimas through Iapetus, the five major moons of Uranus, and Triton remain navigable beyond the supplied satellite kernels. The orbit uses E5, TASS 1.7, GUST86, or the Triton model for its system. Exact kernel states take priority in coverage, and the graph blends into the analytic state over one day at each boundary. Hyperion currently uses an inertial orientation because the verified PCK supplies no rotation model for it.
 
 The optional `ceres.xyzv`, `vesta.xyzv` and `67p.xyzv` files contain geometric heliocentric ICRS vectors from [JPL Horizons](https://ssd.jpl.nasa.gov/horizons/). Use Julian date TDB, kilometers, and kilometers per second. The verified input covers 2010–2050 at three-day intervals. Outside that span the application reports that the target has no usable state. The comet's visible tail is an anti-solar illustration with a nominal scale. Its length and brightness are rendering choices.
 

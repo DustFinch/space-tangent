@@ -15,6 +15,30 @@ public sealed partial class SimulationSession
 
     public bool IsFlying(int view) => _flights[view] is not null;
 
+    /// <summary>Enters the perspective view near Earth, retaining an existing space pose.</summary>
+    public void OpenSpaceView(int view)
+    {
+        ObserverView observer = _views[view];
+        if (observer.Navigation is not null)
+            return;
+
+        ObjectId earth = SolarSystemSample.EarthId;
+        SolarSystemSample solar = World.Ephemeris.Sample(observer.Epoch);
+        Vector3d sunward = solar.Sun.PositionKilometers - solar.Earth.PositionKilometers;
+        Vector3d outward = sunward / sunward.Length + new Vector3d(0, 0, .7);
+        double azimuth = Math.Atan2(outward.X, -outward.Y);
+        double elevation = Math.Asin(outward.Z / outward.Length);
+        CancelFlight(view);
+        _trackingEpochs[view] = (earth, observer.Epoch);
+        _views[view] = observer with
+        {
+            Mode = CameraMode.Solar,
+            Terrain = null,
+            Selection = earth,
+            Navigation = new(solar.Earth.PositionKilometers, FramingRange(earth), azimuth, elevation, earth, true)
+        };
+    }
+
     public bool GoToSelection(int view) => GoToSelection(view, FlightDuration, null);
 
     internal bool GoToSelection(int view, double duration, double? range)

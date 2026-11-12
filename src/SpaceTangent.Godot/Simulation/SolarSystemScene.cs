@@ -160,6 +160,8 @@ public partial class SolarSystemScene : Control
 
         Session = new(world,
             new(JulianInstant.J2000Day, 0, TimeScale.Tdb), ReadDeltaT());
+        Session.OpenSpaceView(0);
+        Session.SetSkyLayers(0, Session[0].Sky with { Stars = true });
         BuildWorkspaceControls();
         if (settingsError is not null)
             ShowAddonFailure("Could not read local add-on settings.", settingsError);
@@ -174,7 +176,11 @@ public partial class SolarSystemScene : Control
     private void BuildWorkspaceControls()
     {
         var toolbar = _workspace.Toolbar;
-        _spaceMode = AddButton(toolbar, "Space", () => SetMode(_active, CameraMode.Solar));
+        _spaceMode = AddButton(toolbar, "Space", () =>
+        {
+            Session!.OpenSpaceView(_active);
+            Refresh();
+        });
         _observatoryMode = AddButton(toolbar, "Observatory", () => SetMode(_active, CameraMode.Surface));
         _spaceMode.Name = "SpaceMode";
         _spaceMode.ToggleMode = _observatoryMode.ToggleMode = true;
@@ -933,9 +939,9 @@ public partial class SolarSystemScene : Control
         if (input is InputEventMouseButton { Pressed: true })
             ActivateView(view);
         if (input is InputEventMouseButton { Pressed: true, ButtonIndex: MouseButton.Left } pick &&
-            _views[view].Renderer.PickStar(pick.Position) is { } star)
+            _views[view].Renderer.PickObject(pick.Position) is { } target)
         {
-            SelectObject(star);
+            SelectObject(target);
             GetViewport().SetInputAsHandled();
             return;
         }

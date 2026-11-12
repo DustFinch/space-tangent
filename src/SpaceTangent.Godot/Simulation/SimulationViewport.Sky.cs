@@ -58,5 +58,6 @@ internal partial class SimulationViewport
         static Vector3 Icrs(Vector3 value) => new(value.X, -value.Z, value.Y);
     }
 
-    internal ObjectId? PickStar(Vector2 position) => _surface?.PickStar(position) ?? _spaceSky?.Pick(position);
+    internal ObjectId? PickObject(Vector2 position) =>
+        PickNavigationBody(position) ?? _surface?.PickStar(position) ?? _spaceSky?.Pick(position);
 }

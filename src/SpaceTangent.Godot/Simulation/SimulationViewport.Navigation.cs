@@ -137,6 +137,54 @@ internal partial class SimulationViewport
         }
     }
 
+    private ObjectId? PickNavigationBody(Vector2 point)
+    {
+        if (!_navigationCamera.Current)
+            return null;
+
+        Vector3 origin = _navigationCamera.ProjectRayOrigin(point);
+        Vector3 direction = _navigationCamera.ProjectRayNormal(point);
+        ObjectId? result = null;
+        float nearest = _navigationCamera.Far;
+        Consider(SolarSystemSample.SunId, _navigationSun);
+        Consider(SolarSystemSample.EarthId, _navigationEarth);
+        Consider(SolarSystemSample.MoonId, _navigationMoon);
+        foreach (var (id, globe) in _planetGlobes)
+            Consider(id, globe);
+        foreach (var (id, satellite) in _satellites)
+            Consider(id, satellite.Node);
+        foreach (var (id, body) in _sscNodes)
+            Consider(id, body.Node);
+        return result;
+
+        void Consider(ObjectId id, MeshInstance3D node)
+        {
+            if (!node.Visible || node.Mesh is null)
+                return;
+
+            // A globe is a unit sphere in local coordinates. Models use a bounding sphere.
+            Aabb bounds = node.GetAabb();
+            float radius = node.Mesh is SphereMesh ? 1 : bounds.Size.Length() / 2;
+            if (radius <= 0)
+                return;
+            Transform3D inverse = node.Transform.AffineInverse();
+            Vector3 eye = inverse * origin - bounds.GetCenter();
+            Vector3 ray = inverse.Basis * direction;
+            float length = ray.Length();
+            ray /= length;
+            float along = -eye.Dot(ray);
+            float miss = (eye + ray * along).LengthSquared();
+            if (miss > radius * radius)
+                return;
+            float hit = (along - MathF.Sqrt(radius * radius - miss)) / length;
+            if (hit >= _navigationCamera.Near && hit < nearest)
+            {
+                nearest = hit;
+                result = id;
+            }
+        }
+    }
+
     private void HideNavigation()
     {
         _navigationLight.Hide();

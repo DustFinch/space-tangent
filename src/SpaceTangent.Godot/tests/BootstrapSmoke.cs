@@ -139,6 +139,8 @@ public partial class BootstrapSmoke : Node
         scene.Seek(0, initial);
 
         var renderer = scene.Renderer(0);
+        Require(renderer.NavigationCameraCurrent, "The initial Earth view must use the perspective camera.");
+        scene.SetMode(0, CameraMode.Solar);
         Vector3 initialPosition = renderer.EarthPosition;
         Require(initialPosition.Length() is >= 140 and <= 160, "The solar view must show Earth about one AU from the Sun.");
         scene.Advance(0, JulianInstant.SecondsPerDay);

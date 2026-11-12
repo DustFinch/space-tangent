@@ -2,6 +2,7 @@
 using Godot;
 using SpaceTangent.Application;
 using SpaceTangent.Contracts;
+using SpaceTangent.Core.Ephemerides;
 using SpaceTangent.Core.Time;
 using SpaceTangent.Godot.Simulation;
 using System.Text.Json.Nodes;
@@ -48,6 +49,7 @@ public partial class WorkspaceInputSmoke : Node
                 "DE440 and the original Jason-1 add-on must load.");
             Tree.Root.NotifyMouseEntered();
 
+            await ExerciseStartupFlight(scratch.FullName);
             await ExerciseViews();
             var expected = Session.CaptureScenario(1);
             Require(expected.ActiveView == 1 && !expected.Synchronized &&
@@ -88,7 +90,10 @@ public partial class WorkspaceInputSmoke : Node
             var oldScene = JsonNode.Parse(File.ReadAllText(scenario))!.AsObject();
             oldScene["version"] = 2;
             foreach (var view in oldScene["views"]!.AsArray())
+            {
                 view!.AsObject().Remove("earthObserver");
+                view.AsObject().Remove("sky");
+            }
             const string oldFilename = "version-two.stscene";
             File.WriteAllText(Path.Combine(scratch.FullName, oldFilename), oldScene.ToJsonString());
             await UseScenarioDialog("OpenScenario", 0, scratch.FullName, oldFilename);
@@ -170,7 +175,9 @@ public partial class WorkspaceInputSmoke : Node
         await Click(Find<Button>("ShowFullMoon"));
         Require(Session[1].EarthObserver == EarthObserverCamera.Moscow && Session[0].EarthObserver == left,
             "The full-Moon preset must restore Moscow and its original direction in the right view only.");
-        await Click(Find<Button>("SearchTab"));
+        var search = Find<Button>("SearchTab");
+        if (!search.ButtonPressed)
+            await Click(search);
         await FillField("ObjectQuery", "Moon");
         var results = Find<Container>("ObjectResults");
         var moon = results.FindChildren("*", "Button", recursive: true, owned: false).OfType<Button>()
@@ -207,8 +214,59 @@ public partial class WorkspaceInputSmoke : Node
         var field = Find<LineEdit>(name);
         await Click(field);
         await KeyPress(Key.A, ctrl: true);
+        await KeyPress(Key.Backspace);
         await TypeText(value);
-        Require(field.Text == value, $"The {name} field must receive the requested value.");
+        Require(field.Text == value, $"The {name} field received '{field.Text}' instead of '{value}' (focus: {field.HasFocus()}).");
+    }
+
+    private async Task ExerciseStartupFlight(string directory)
+    {
+        var earth = SolarSystemSample.EarthId;
+        var start = Session[0];
+        var renderer = _scene.Renderer(0);
+        var canvas = Find<SubViewportContainer>("ViewCanvas0");
+        Require(start.Selection == earth && start.Navigation is { Tracking: true } && renderer.NavigationCameraCurrent,
+            "The first view must start near Earth with a live perspective camera.");
+        string path = Path.Combine(directory, "start.stscene");
+        ScenarioFile.Save(path, Session.CaptureScenario(0));
+
+        var search = Find<Button>("SearchTab");
+        if (!search.ButtonPressed)
+            await Click(search);
+        await FillField("ObjectQuery", "Moon");
+        await Click(Result(SolarSystemSample.MoonId));
+        await Click(canvas);
+        Require(Session[0].Selection == earth && Session[0].Navigation == start.Navigation,
+            "Clicking Earth in the scene must select it without moving the observer.");
+
+        Window root = Tree.Root;
+        Vector2 center = root.GetScreenTransform().AffineInverse() * (canvas.GetScreenTransform() * (canvas.Size / 2));
+        using (var wheel = new InputEventMouseButton
+        {
+            Position = center, GlobalPosition = center, ButtonIndex = MouseButton.WheelDown, Pressed = true
+        })
+        {
+            root.PushInput(wheel, inLocalCoords: true);
+            wheel.Pressed = false;
+            root.PushInput(wheel, inLocalCoords: true);
+        }
+        Require(Session[0].Navigation!.Value.RangeKilometers > start.Navigation!.Value.RangeKilometers &&
+                renderer.NavigationCameraCurrent, "Zooming away must keep the perspective camera live.");
+
+        await FillField("ObjectQuery", "Saturn");
+        await Click(Result(PlanetCatalogue.SaturnId));
+        await Click(Find<Button>("GoToObject"));
+        Require(Session.IsFlying(0) && renderer.NavigationCameraCurrent, "Flying to Saturn must start in the existing perspective view.");
+        await Until(() => !Session.IsFlying(0), "Flying from Earth to Saturn");
+        await FillField("ObjectQuery", "Earth");
+        await Click(Result(earth));
+        await Click(canvas);
+        Require(Session[0].Selection == PlanetCatalogue.SaturnId && Session[0].Navigation?.Target == PlanetCatalogue.SaturnId &&
+                Session[0].Epoch == start.Epoch && ReferenceEquals(renderer, _scene.Renderer(0)),
+            "Saturn must be pickable in the same view and epoch after the flight.");
+        await FillField("ObjectQuery", "");
+        Require(_scene.LoadScenario(path), "The original startup pose must restore after the flight.");
+        GD.Print("UI: launched at Earth, selected both globes in the viewport, and flew to Saturn in one perspective view");
     }
 
     private async Task ExerciseViews()

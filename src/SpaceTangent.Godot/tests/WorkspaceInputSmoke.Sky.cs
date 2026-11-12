@@ -12,12 +12,16 @@ public partial class WorkspaceInputSmoke
         VerifyStarDirections();
         var star = new ObjectId("hip/24608");
         await Click(Find<Button>("LayersTab"));
-        await Click(Find<CheckButton>("StarsLayer"));
+        var otherSky = Session[0].Sky;
+        var stars = Find<CheckButton>("StarsLayer");
+        if (stars.ButtonPressed)
+            await Click(stars);
+        await Click(stars);
         await Click(Find<CheckButton>("StarLabelsLayer"));
         await Click(Find<CheckButton>("EquatorialGridLayer"));
         await Click(Find<CheckButton>("ConstellationLayer"));
         var layers = new SkyLayerSettings(true, true, true, true);
-        Require(Session[0].Sky == default && Session[1].Sky == layers,
+        Require(Session[0].Sky == otherSky && Session[1].Sky == layers,
             "The sky layers must be independent in split view.");
 
         await Click(Find<Button>("SearchTab"));

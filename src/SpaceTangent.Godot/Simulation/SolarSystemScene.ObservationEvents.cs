@@ -37,7 +37,7 @@ public partial class SolarSystemScene
                 return;
             }
             _nextObserverEvent = (context, found);
-            _status.Text = $"{found.Description} · {UtcLabel(found.Epoch)} · Ctrl+Shift+E to go";
+            _status.Text = $"{found.Description} · {CivilTimeLabel(found.Epoch, context.DeltaT)} · Ctrl+Shift+E to go";
         }
         catch (OperationCanceledException) when (cancellation.IsCancellationRequested) { }
         catch (Exception error) when (error is ArgumentException or InvalidOperationException or ArithmeticException)

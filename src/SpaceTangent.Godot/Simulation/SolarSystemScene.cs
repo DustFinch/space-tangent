@@ -1292,7 +1292,7 @@ public partial class SolarSystemScene : Control
             int.TryParse(value, NumberStyles.None, CultureInfo.InvariantCulture, out field);
     }
 
-    private static string UtcLabel(JulianInstant epoch)
+    private static string CivilTimeLabel(JulianInstant epoch, DeltaTModel model)
     {
         try
         {
@@ -1301,7 +1301,8 @@ public partial class SolarSystemScene : Control
         }
         catch (ArgumentOutOfRangeException)
         {
-            return "TDB";
+            return EarthCivilTime.ModeledUt1(epoch, model) is { } modeled
+                ? FormattableString.Invariant($"{modeled.Date:yyyy-MM-dd}  {modeled.Time:HH:mm:ss} UT1 (modeled)") : "TDB";
         }
     }
 
@@ -1364,7 +1365,7 @@ public partial class SolarSystemScene : Control
         _observatoryMode.SetPressedNoSignal(observatory);
         _workspace.Observation.Text = $"View {_active + 1} · {(active.Playing ? "Playing" : "Paused")}";
         _timeHeading.Text = FormattableString.Invariant($"JD {active.Epoch.ToJulianDate():F6}");
-        _calendarTime.Text = UtcLabel(active.Epoch);
+        _calendarTime.Text = CivilTimeLabel(active.Epoch, Session!.DeltaT);
         _playFromPanel.Text = active.Playing ? "Pause" : "Play";
         _earthObserver.Update(_active, active, _views[_active].Snapshot, Session.World.Ephemeris, Session.DeltaT, Session.World.BrightStars);
         _stars.SetPressedNoSignal(active.Sky.Stars);
@@ -1454,7 +1455,7 @@ public partial class SolarSystemScene : Control
                     CameraMode.Probe => "   Huygens is outside the available timeline or kernel coverage.",
                     CameraMode.LunarTerrain => "   Lunar terrain is unavailable.",
                     CameraMode.MarsTerrain => "   Olympus Mons needs the local Mars data pack.",
-                    _ => "   Surface view is available for 1900–2099."
+                    _ => "   Surface view is unavailable at this epoch."
                 };
             if (controls.Renderer.ProbeStatus is { } phase)
                 controls.Epoch.Text += "\n" + phase;

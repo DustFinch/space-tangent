@@ -24,9 +24,11 @@ Saving a scenario writes both camera poses and tracking settings. Open the scena
 
 Open **Location** to choose Moscow or Tromsø, or enter latitude, east longitude and height from 0 to 100 kilometres. Set the azimuth clockwise from north and the elevation above the local horizon, then choose **Apply to this view**. Each view can show its own horizon grid and cardinal points. **Full Moon · Moscow** restores the original site, direction and epoch.
 
-**Ephemerides** shows the selected object's geometric altitude and azimuth at the active view's site and epoch. It also estimates civil twilight from the Sun's centre crossing −6° and the conventional level-horizon sunrise and sunset altitude of −0.833°. The date follows local mean solar time and event times are shown in UTC. The model uses a spherical Earth and a mean equator. Terrain and local atmospheric refraction can affect observed rise and set times.
+**Ephemerides** shows the selected object's geometric altitude and azimuth at the active view's site and epoch. It also estimates civil twilight from the Sun's centre crossing −6° and the conventional level-horizon sunrise and sunset altitude of −0.833°. The date follows local mean solar time. Event times are shown in UTC when covered by the leap-second table and in modeled UT1 at earlier dates. The model uses a spherical Earth and a mean equator. Terrain and local atmospheric refraction can affect observed rise and set times.
 
 Version 3 scenarios store each view's Earth observer camera and horizon overlays. Versions 1 and 2 keep the original default Moscow camera when they open an Earth surface view.
+
+The surface camera and twilight also use the long-range ephemeris. Enter a historical civil date through the existing calendar to use modeled UT1 with the active ΔT preference. The display labels that time as UT1 and scenarios retain the exact TDB epoch. Modern UTC and published leap seconds use the original conversion.
 
 ## Headless workspace input test
 

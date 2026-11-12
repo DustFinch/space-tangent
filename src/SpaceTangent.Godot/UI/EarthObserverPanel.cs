@@ -123,7 +123,7 @@ internal sealed class EarthObserverPanel
         }
         try
         {
-            DateOnly date = EarthObserving.LocalMeanDate(observer.Epoch, camera.Site);
+            DateOnly date = EarthObserving.LocalMeanDate(observer.Epoch, camera.Site, model);
             var key = (date, camera.Site, model);
             if (key == _twilightKey)
                 return;
@@ -133,9 +133,9 @@ internal sealed class EarthObserverPanel
                 (twilight.Horizon.AlwaysAbove ? "Sun above the horizon all day." :
                  twilight.CivilLimit.AlwaysBelow ? "Sun below the civil limit all day." :
                  twilight.Horizon.AlwaysBelow
-                     ? Interval("Sun below the horizon all day.\nCivil light", twilight.CivilLimit.Rising, twilight.CivilLimit.Setting)
-                     : Interval("Morning", twilight.CivilLimit.Rising, twilight.Horizon.Rising) + "\n" +
-                       Interval("Evening", twilight.Horizon.Setting, twilight.CivilLimit.Setting));
+                     ? Interval("Sun below the horizon all day.\nCivil light", twilight.CivilLimit.Rising, twilight.CivilLimit.Setting, model)
+                     : Interval("Morning", twilight.CivilLimit.Rising, twilight.Horizon.Rising, model) + "\n" +
+                       Interval("Evening", twilight.Horizon.Setting, twilight.CivilLimit.Setting, model));
         }
         catch (ArgumentOutOfRangeException)
         {
@@ -170,15 +170,18 @@ internal sealed class EarthObserverPanel
         return field;
     }
 
-    private static string Interval(string label, JulianInstant? start, JulianInstant? end) =>
+    private static string Interval(string label, JulianInstant? start, JulianInstant? end, DeltaTModel model) =>
         start is not null || end is not null
-            ? $"{label} · {Time(start)} – {Time(end)}"
+            ? $"{label} · {Time(start, model)} – {Time(end, model)}"
             : $"{label} · no crossings";
 
-    private static string Time(JulianInstant? instant)
+    private static string Time(JulianInstant? instant, DeltaTModel model)
     {
         if (instant is not { } time)
             return "—";
+        if (time.Scale == TimeScale.Tdb)
+            return EarthCivilTime.ModeledUt1(time, model) is { } modeled
+                ? FormattableString.Invariant($"{modeled.Date:MM-dd} {modeled.Time:HH:mm} UT1") : "—";
         UtcDateTime utc = TimeConversion.ToUtc(time);
         return FormattableString.Invariant($"{utc.Date:MM-dd} {utc.Hour:00}:{utc.Minute:00} UTC");
     }

@@ -19,6 +19,8 @@ internal sealed partial class SurfaceProjection
     private readonly ShaderMaterial _material;
     private readonly Label[] _cardinals;
     private BrightSkyOverlay? _sky;
+    private Texture2D? _galacticImage;
+    internal bool GalacticSkyVisible => _galacticImage is not null && _surface.Visible;
     private MeteorOverlay? _meteors;
 
     internal bool ShowsMeteorRadiant(string code) => _surface.Visible && _meteors?.ShowsRadiant(code) == true;
@@ -31,6 +33,7 @@ internal sealed partial class SurfaceProjection
         var layer = new CanvasLayer();
         owner.AddChild(layer);
         _material = new ShaderMaterial { Shader = GD.Load<Shader>("res://Shaders/earth_observer.gdshader") };
+        SimulationViewport.ConfigureGalacticAxes(_material);
         _material.SetShaderParameter("cloud_texture", textures.Clouds);
         _material.SetShaderParameter("moon_texture", textures.Moon);
         _surface = new ColorRect { Material = _material, MouseFilter = Control.MouseFilterEnum.Ignore, Visible = false };
@@ -52,6 +55,16 @@ internal sealed partial class SurfaceProjection
         _surface.AddChild(_meteors);
         _surface.MoveChild(_meteors, 1);
         _meteors.SetAnchorsAndOffsetsPreset(Control.LayoutPreset.FullRect);
+    }
+
+    internal void SetGalacticSky(Texture2D? image)
+    {
+        if (ReferenceEquals(_galacticImage, image))
+            return;
+        _galacticImage = image;
+        if (image is not null)
+            _material.SetShaderParameter("galactic_image", image);
+        _material.SetShaderParameter("show_galactic_sky", image is not null);
     }
 
     internal ObjectId? PickStar(Vector2 position) => _sky?.Pick(position);

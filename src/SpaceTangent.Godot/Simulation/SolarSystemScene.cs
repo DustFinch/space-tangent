@@ -68,6 +68,7 @@ public partial class SolarSystemScene : Control
         _workspace = new(this, GoToActiveObject, TrackActiveObject);
         _panels = _workspace.Views;
         _status = _workspace.Status;
+        _galacticSky.Published += () => Refresh();
         if (InspectStartupArchive())
             return;
         ConnectCapture();
@@ -134,6 +135,7 @@ public partial class SolarSystemScene : Control
             if (!CanPublish(generation, token))
                 return;
             _addOns = AddonDiagnostics.Read(AddonStage.RenderResources, null, () => AddonLoader.Publish(decoded, null));
+            _galacticSky.SetDust(decoded.GalacticDust.Value);
             world = decoded.World;
             _status.Text = "";
         }
@@ -604,6 +606,7 @@ public partial class SolarSystemScene : Control
 
     public override void _ExitTree()
     {
+        _galacticSky.Dispose();
         _eventSearch?.Cancel();
         _landscapeLifetime.Cancel();
         DisconnectCapture();
@@ -1133,6 +1136,7 @@ public partial class SolarSystemScene : Control
                 if (!Session.TryReplaceWorld(decoded.World))
                     throw new InvalidOperationException("The new world does not cover the current epochs.");
                 _addOns = next;
+                _galacticSky.SetDust(decoded.GalacticDust.Value);
                 _objectSearch.Replace(Session.World.Catalogue);
                 UpdateLoadedInputs();
                 foreach (ViewControls view in _views)
@@ -1268,7 +1272,7 @@ public partial class SolarSystemScene : Control
         panel.AddChild(container);
         var viewport = new SubViewport { OwnWorld3D = true, RenderTargetUpdateMode = SubViewport.UpdateMode.Always };
         container.AddChild(viewport);
-        var renderer = new SimulationViewport();
+        var renderer = new SimulationViewport { GalacticCache = _galacticSky };
         viewport.AddChild(renderer);
         if (_surfaceTextures is { } textures)
             renderer.SetSurfaceTextures(textures);
@@ -1323,6 +1327,8 @@ public partial class SolarSystemScene : Control
             Refresh();
         }
     }
+
+    private readonly GalacticTextureCache _galacticSky = new();
 
     private void ReplaceAssets(ViewControls view)
     {

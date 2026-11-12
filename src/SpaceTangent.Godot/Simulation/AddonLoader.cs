@@ -50,7 +50,7 @@ internal static partial class AddonLoader
         IReadOnlyList<Cached<IReadOnlyList<DecodedSscBody>>> BodyCatalogues, Cached<IReadOnlyList<SscSurfaceLocation>> Locations, Cached<DeepSkyIndex> DeepSky, Cached<ExoplanetCatalogue> Exoplanets,
         Cached<IReadOnlyList<DecodedSampledMission>> SampledMissions, Cached<IReadOnlyList<LocalTleSatellite>> LocalSatellites,
         Cached<EarthPlaceCatalogue> EarthPlaces, LocalDataPath SavedEarthPlacesPath, bool AllowAddonLua,
-        IReadOnlyDictionary<ObjectId, PreparedMissionObservation> Observations)
+        IReadOnlyDictionary<ObjectId, PreparedMissionObservation> Observations, Cached<GalacticDustGrid?> GalacticDust)
     {
         internal bool HasSource(LocalAddonKind kind, LocalDataPath path) => kind switch
         {
@@ -95,6 +95,7 @@ internal static partial class AddonLoader
         var exoplanetPath = LocalDataPaths.Candidates("SPACETANGENT_EXOPLANET_CATALOGUE", "sky/exoplanets.txt");
         var locationPath = LocalDataPaths.Candidates("SPACETANGENT_SURFACE_LOCATIONS", "surface-locations", directory: true);
         var deepSkyPath = LocalDataPaths.Candidates("SPACETANGENT_DSC_ROOT", "sky/dsc", directory: true);
+        var dustPath = LocalDataPaths.Candidates("SPACETANGENT_DUST_GRID", "sky/dust-vergely2022.bin");
         var missionsPath = LocalDataPaths.Candidates("SPACETANGENT_SAMPLED_MISSIONS_ROOT", "sampled-missions", directory: true);
         var tlePath = LocalDataPaths.Candidates("SPACETANGENT_TLE_ROOT", "satellites", directory: true);
         var earthPlacesPath = LocalDataPaths.Candidates("SPACETANGENT_EARTH_PLACES", "sites.txt");
@@ -123,6 +124,8 @@ internal static partial class AddonLoader
                 (path, token) => SscSurfaceLocations.Load(path.Resolve(), token), cancellation);
             var deepSky = Cached<DeepSkyIndex>.Load(previous?.DeepSky, deepSkyPath, "Deep-sky catalogues",
                 (path, token) => DeepSkyIndex.Load(path.Resolve(), token), cancellation);
+            var galacticDust = Cached<GalacticDustGrid?>.Load(previous?.GalacticDust, dustPath, "Galactic dust grid",
+                (path, _) => ReadGalacticDust(path.Resolve()), cancellation);
             var stellar = Cached<StellarCatalogue>.Load(previous?.Stellar, stellarPath, "Spatial star catalogue",
                 (path, _) =>
                 {
@@ -170,7 +173,7 @@ internal static partial class AddonLoader
             if (previous is not null && sameScience && sameBodies && ReferenceEquals(previous.Mission, spice) &&
                 ReferenceEquals(previous.Timeline, sampled) && ReferenceEquals(previous.Terrain, relief) &&
                 ReferenceEquals(previous.MarsTerrain, marsTerrain) && ReferenceEquals(previous.Locations, locations) &&
-                ReferenceEquals(previous.DeepSky, deepSky) && ReferenceEquals(previous.Stellar, stellar) &&
+                ReferenceEquals(previous.DeepSky, deepSky) && ReferenceEquals(previous.GalacticDust, galacticDust) && ReferenceEquals(previous.Stellar, stellar) &&
                 ReferenceEquals(previous.StellarArchive, archive) && ReferenceEquals(previous.StellarDefinitions, definitions) &&
                 ReferenceEquals(previous.Exoplanets, exoplanets) && ReferenceEquals(previous.SampledMissions, missions) &&
                 ReferenceEquals(previous.LocalSatellites, tle) && ReferenceEquals(previous.EarthPlaces, earthPlaces))
@@ -193,7 +196,7 @@ internal static partial class AddonLoader
                 spice?.Value?.Track, sampled?.Value?.Track, sampled?.Value?.Probe, relief?.Value?.Frame, brightStars, planets, marsTerrain is not null, definitions.Value.Catalogue,
                 bodies.SelectMany(source => source.Value).Select(body => body.Body), locations.Value, deepSky.Value, exoplanets.Value, missions.Value.Select(mission => mission.Track), tle.Value, earthPlaces.Value));
             var observations = PrepareObservations(world, missions.Value, cancellation);
-            return new(world, sameScience ? previous!.Science : satellites, spice, sampled, relief, planets, marsTerrain, stellar, archive, definitions, sameBodies ? previous!.BodyCatalogues : bodies, locations, deepSky, exoplanets, missions, tle, earthPlaces, savedEarthPlacesPath, allowAddonLua, observations);
+            return new(world, sameScience ? previous!.Science : satellites, spice, sampled, relief, planets, marsTerrain, stellar, archive, definitions, sameBodies ? previous!.BodyCatalogues : bodies, locations, deepSky, exoplanets, missions, tle, earthPlaces, savedEarthPlacesPath, allowAddonLua, observations, galacticDust);
         }, cancellation);
 
         Cached<T>? Read<T>(Cached<T>? cached, LocalDataPath? path, string category, Func<LocalDataPath, CancellationToken, T> reader) =>
@@ -208,6 +211,19 @@ internal static partial class AddonLoader
         }
 
         LocalDataPath? First(LocalAddonKind kind) => Paths(kind).Select(path => (LocalDataPath?)path).SingleOrDefault();
+    }
+
+    private static GalacticDustGrid? ReadGalacticDust(string path)
+    {
+        if (!AddonDependencies.FileExists(path))
+            return null;
+        const int maximum = 56 + GalacticDustGrid.MaximumVoxels * 2;
+        using var stream = AddonDependencies.OpenRead(path, maximum);
+        if (stream.Length > maximum)
+            throw new InvalidDataException("The galactic extinction grid exceeds its size limit.");
+        byte[] data = new byte[(int)stream.Length];
+        stream.ReadExactly(data);
+        return GalacticDustGrid.Read(data);
     }
 
     internal static AddonGeneration Publish(DecodedAddOns decoded, AddonGeneration? previous)

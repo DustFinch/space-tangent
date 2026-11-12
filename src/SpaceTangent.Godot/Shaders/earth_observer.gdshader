@@ -3,6 +3,9 @@ shader_type canvas_item;
 render_mode unshaded;
 
 #include "res://Shaders/earth_atmosphere.gdshaderinc"
+#include "res://Shaders/galactic_background.gdshaderinc"
+
+uniform bool show_galactic_sky = false;
 
 uniform sampler2D cloud_texture : filter_linear_mipmap, repeat_enable;
 uniform sampler2D moon_texture : source_color, filter_linear_mipmap;
@@ -99,6 +102,11 @@ void fragment() {
     bool ground = eye_projection < 0.0 && ground_discriminant >= 0.0;
     vec3 background = ground ? vec3(0.010, 0.009, 0.008) : vec3(0.012, 0.018, 0.035);
 
+    if (!ground && show_galactic_sky) {
+        float dark = 1.0 - smoothstep(-0.208, -0.087, dot(sun_dir, site_up));
+        float contrast = dark / (1.0 + 64.0 * sky_glow);
+        background += galactic_radiance(ray) * contrast;
+    }
     if (!ground && dot(moon_seen, site_up) > 0.0) {
         background = lunar_disc(ray, moon_dir, length(moon_delta), background);
     }

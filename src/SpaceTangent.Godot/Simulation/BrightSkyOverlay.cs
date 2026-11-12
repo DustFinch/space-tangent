@@ -48,6 +48,14 @@ internal partial class BrightSkyOverlay : Control
         Hide();
     }
 
+    internal void SetFillBackground(bool fill)
+    {
+        if (_fillBackground == fill)
+            return;
+        _fillBackground = fill;
+        QueueRedraw();
+    }
+
     internal void ShowFrame(SkyFrame frame)
     {
         Visible = frame.Layers.Visible;

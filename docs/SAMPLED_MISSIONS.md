@@ -24,7 +24,7 @@ An `Observations` item names a local sensor and the target it is centered on. Po
 
 ## Local SPICE tracks
 
-Catalogues in one sampled mission directory can declare an ordered `spiceKernels` list. A companion catalogue may contain only kernels. The reader resolves geometric SPK positions and velocities in J2000 across kernel centers. It rotates states in built-in inertial frames, text PCK body-fixed frames, and fixed FK chains, including the velocity contribution from rotating axes. It also accepts CK pointing with local clocks and fixed frame chains, and rectangular instrument fields attached to the parent attitude. The original Cassini mesh and both ISS cameras were tested through this ordinary mission entry point.
+Catalogues in one sampled mission directory can declare an ordered `spiceKernels` list. A companion catalogue may contain only kernels. The reader resolves geometric SPK positions and velocities in J2000 across kernel centers. It rotates states in built-in inertial frames, text PCK body-fixed frames, and fixed FK chains, including the velocity contribution from rotating axes. It accepts CK types 2 and 3 with local clocks and inertial, fixed, text PCK or nested CK references. Available angular velocities accompany the orientation and contribute to state velocities in rotating axes. Rectangular instrument fields follow the parent attitude. The original Cassini mesh and both ISS cameras were tested through this ordinary mission entry point.
 
 ### Particle systems
 

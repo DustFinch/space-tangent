@@ -109,3 +109,7 @@ Pass application arguments after `--`. Use `--startup-scenario <path>` to open a
 Pass `--startup-legacy-settings <settings.json>` after the engine's `--` separator. You can first load a scenario with `--startup-scenario <file.stscene>`, then save the result to a separate file with `--startup-save-scenario <destination.stscene> --startup-exit`.
 
 The import applies ΔT, observer conditions, Earth site coordinates, landscape selection, supported sky layers and reference marks, field of view and optical preferences. It keeps the active observer's camera mode, position, selection and epoch. Other views retain their settings. Keep any optional `optics-v1.json` beside the archived settings for custom optical profiles.
+
+### Saved sites in archived profiles
+
+The startup option `--startup-legacy-settings <path>` can also read archived saved observing sites. It adds valid new sites to the user list and leaves existing entries with the same ID in place. The names are searchable through the existing Earth-place search. When `SPACETANGENT_SAVED_EARTH_PLACES` is set, it identifies the list to update.

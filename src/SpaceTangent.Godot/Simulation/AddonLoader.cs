@@ -73,6 +73,20 @@ internal static partial class AddonLoader
         _ => throw new ArgumentOutOfRangeException(nameof(kind))
     };
 
+    internal static LocalDataPath SavedEarthPlacePath() =>
+        LocalDataPaths.Candidates("SPACETANGENT_SAVED_EARTH_PLACES", "saved-sites.tsv");
+
+    private static IEnumerable<string> SavedEarthPlaceSources(LocalDataPath paths)
+    {
+        if (paths.Explicit is { } explicitPath)
+        {
+            yield return explicitPath;
+            yield break;
+        }
+        yield return AddonDependencies.FileExists(paths.Project) ? paths.Project : paths.Export;
+        yield return paths.User;
+    }
+
     internal static LocalDataPath SourcePath(LocalAddonSource source, LocalAddonSettingsFile file) =>
         new(file.Resolve(source), "", "", "", source.Kind != LocalAddonKind.Mission);
 
@@ -99,7 +113,7 @@ internal static partial class AddonLoader
         var missionsPath = LocalDataPaths.Candidates("SPACETANGENT_SAMPLED_MISSIONS_ROOT", "sampled-missions", directory: true);
         var tlePath = LocalDataPaths.Candidates("SPACETANGENT_TLE_ROOT", "satellites", directory: true);
         var earthPlacesPath = LocalDataPaths.Candidates("SPACETANGENT_EARTH_PLACES", "sites.txt");
-        var savedEarthPlacesPath = LocalDataPaths.Candidates("SPACETANGENT_SAVED_EARTH_PLACES", "saved-sites.tsv");
+        var savedEarthPlacesPath = SavedEarthPlacePath();
         return Task.Run(() =>
         {
             var satellites = science.Select(path => Cached<IReadOnlyList<DecodedSatellite>>.Load(
@@ -167,8 +181,8 @@ internal static partial class AddonLoader
                     message => global::Godot.GD.Print("Local TLE: " + message), token), cancellation);
             var earthPlaces = Cached<EarthPlaceCatalogue>.Load(
                 previous?.SavedEarthPlacesPath == savedEarthPlacesPath ? previous?.EarthPlaces : null,
-                earthPlacesPath, "Earth observing places", (path, token) => EarthPlaceCatalogue.Load(path.Resolve(),
-                    savedEarthPlacesPath.Resolve(), message => global::Godot.GD.Print("Earth places: " + message), token), cancellation);
+                earthPlacesPath, "Earth observing places", (path, token) => EarthPlaceCatalogue.LoadWithSavedSources(path.Resolve(),
+                    SavedEarthPlaceSources(savedEarthPlacesPath), message => global::Godot.GD.Print("Earth places: " + message), token), cancellation);
             DistantStarIndex? openedDistantStars = null;
             try
             {

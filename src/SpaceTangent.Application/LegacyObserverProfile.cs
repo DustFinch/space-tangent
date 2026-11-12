@@ -5,7 +5,10 @@ using SpaceTangent.Core.Time;
 
 namespace SpaceTangent.Application;
 
-public sealed record LegacyObserverProfile(ObserverView Observer, DeltaTModel DeltaT);
+public sealed record LegacyObserverProfile(ObserverView Observer, DeltaTModel DeltaT)
+{
+    public IReadOnlyList<EarthPlace> SavedSites { get; init; } = [];
+}
 
 public static class LegacyObserverProfiles
 {
@@ -92,7 +95,7 @@ public static class LegacyObserverProfiles
         }
         var observer = current with { EarthObserver = camera.IsValid() ? camera : current.EarthObserver,
             Sky = sky, ReferenceMarks = marks, FieldOfViewDegrees = field, Optics = optics };
-        return new(observer, deltaT);
+        return new(observer, deltaT) { SavedSites = EarthPlaceCatalogue.ParseSavedText(Word(root, "SavedSites")) };
     }
 
     private static double? Number(JsonElement element, string name) => element.TryGetProperty(name, out var value) &&

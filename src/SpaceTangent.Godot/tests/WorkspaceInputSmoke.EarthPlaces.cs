@@ -1,4 +1,5 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
+using System.Text.Json.Nodes;
 using Godot;
 using SpaceTangent.Application;
 using SpaceTangent.Core.Observing;
@@ -53,6 +54,25 @@ public partial class WorkspaceInputSmoke
             var changed = Session.World.EarthPlaces.Find(saved.Id);
             Require(changed is { LatitudeDegrees: 51.6 }, "The saved site's stable ID must resolve to its edited coordinates.");
             await OpenPlace(saved.EnglishName, changed!);
+            if (System.Environment.GetEnvironmentVariable("SPACETANGENT_LEGACY_SETTINGS") is { Length: > 0 } archiveProfile)
+            {
+                var profile = JsonNode.Parse(File.ReadAllText(archiveProfile))!.AsObject();
+                profile["SavedSites"] = "Home Observatory\t52\t-0.125\t30\t0\tEurope/London\n" +
+                    "Площадка Орион\t55.1\t37.2\t90\t3\tEurope/Moscow\ninvalid\t1000\t0\t0\t0\n";
+                string copy = Path.Combine(directory, "Архивные площадки.json");
+                File.WriteAllText(copy, profile.ToJsonString());
+                await _scene.ImportStartupSettings(copy);
+                var imported = Session.World.EarthPlaces.Places.Single(place => place.Name == "Площадка Орион");
+                Require(imported.ObserverSite == new EarthSite(55.1, 37.2, .09) && imported.TimeZone == "Europe/Moscow" &&
+                    Session.World.EarthPlaces.Find(saved.Id) is { LatitudeDegrees: 51.6 } &&
+                    Session.World.EarthPlaces.Places.All(place => place.Name != "invalid") && Session[1] == right,
+                    "Archived sites must merge without changing a duplicate, an invalid entry or the second observer.");
+                byte[] once = File.ReadAllBytes(savedFile);
+                await _scene.ImportStartupSettings(copy);
+                Require(File.ReadAllBytes(savedFile).SequenceEqual(once), "Repeating a legacy profile import must leave the saved file unchanged.");
+                await OpenPlace(imported.EnglishName, imported);
+                GD.Print("UI: migrated an archived profile's Cyrillic saved site, preserved a duplicate and the other observer, and reopened it by search");
+            }
             GD.Print("UI: found Paranal and the localized Moscow alias, activated a saved site, and kept both views through reload");
         }
         finally

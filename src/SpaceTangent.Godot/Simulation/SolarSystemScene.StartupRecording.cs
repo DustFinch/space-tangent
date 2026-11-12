@@ -39,7 +39,7 @@ public partial class SolarSystemScene
                 !LoadScenario(RequiredArgument("--startup-scenario")))
                 throw new InvalidDataException(_status.Text);
             if (_startupArguments.Contains("--startup-legacy-settings", StringComparer.Ordinal))
-                ImportStartupSettings(RequiredArgument("--startup-legacy-settings"));
+                await ImportStartupSettings(RequiredArgument("--startup-legacy-settings"));
             ApplyStartupSkyCulture();
             if (_startupArguments.Contains("--startup-save-scenario", StringComparer.Ordinal) &&
                 !SaveScenario(RequiredArgument("--startup-save-scenario")))
@@ -80,15 +80,19 @@ public partial class SolarSystemScene
         }
     }
 
-    private void ImportStartupSettings(string path)
+    internal async Task ImportStartupSettings(string path)
     {
         var session = Session!;
         var profile = LegacyObserverProfiles.Read(path, session[_active], session.DeltaT);
+        var saved = AddonLoader.SavedEarthPlacePath();
+        int sites = LegacySavedEarthPlaces.Merge(saved.Explicit ?? saved.User, profile.SavedSites);
         var current = session.CaptureScenario(_active);
         ObserverView[] views = current.Views.ToArray();
         views[_active] = profile.Observer;
         ApplyScenario(current with { Views = Array.AsReadOnly(views), DeltaT = profile.DeltaT });
-        GD.Print("Legacy observer profile applied to the active view.");
+        if (sites > 0 && !await ReloadAddOns())
+            throw new InvalidDataException("The archived sites were saved, but the add-ons could not be reloaded.");
+        GD.Print($"Legacy observer profile applied to the active view. Added {sites} observing sites.");
     }
 
     private void ApplyStartupSkyCulture()

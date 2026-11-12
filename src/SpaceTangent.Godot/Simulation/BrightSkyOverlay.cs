@@ -2,6 +2,7 @@
 using Godot;
 using SpaceTangent.Application;
 using SpaceTangent.Contracts;
+using SpaceTangent.Core.Observing;
 
 namespace SpaceTangent.Godot.Simulation;
 
@@ -9,12 +10,17 @@ internal partial class BrightSkyOverlay : Control
 {
     internal readonly record struct SkyFrame(JulianInstant Epoch, SkyLayerSettings Layers, ObjectId? Selection,
         Vector3 Forward, Vector3 Right, Vector3 Up, float TangentHalfField, float StarVisibility = 1,
-        Vector3? Horizon = null, Vector3? Moon = null, float MoonRadius = 0);
+        Vector3? Horizon = null, Vector3? Moon = null, float MoonRadius = 0, bool ShowCatalogue = true);
 
     private static readonly (Vector3 From, Vector3 To)[] Grid = MakeGrid().ToArray();
     private BrightSkyData _data = null!;
     private SkyFrame _frame;
     private bool _fillBackground;
+
+    internal bool HasTransientStars => _data.Transients.Stars.Count != 0;
+
+    internal bool TransientVisible(ObjectId id) => Visible && _data.Transients.Find(id) is { } star &&
+        TryTransientPoint(star, out _, out _);
 
     internal void Configure(BrightSkyData data, bool fillBackground)
     {
@@ -38,7 +44,7 @@ internal partial class BrightSkyOverlay : Control
 
     internal ObjectId? Pick(Vector2 point)
     {
-        if (!IsVisibleInTree() || !_frame.Layers.Stars || _frame.StarVisibility < .12f)
+        if (!IsVisibleInTree() || !_frame.ShowCatalogue || !_frame.Layers.Stars || _frame.StarVisibility < .12f)
             return null;
         float best = 10 * 10;
         ObjectId? selected = null;
@@ -69,8 +75,13 @@ internal partial class BrightSkyOverlay : Control
 
     public override void _Draw()
     {
-        if (_fillBackground)
+        if (_fillBackground && _frame.ShowCatalogue)
             DrawRect(new Rect2(Vector2.Zero, Size), new Color(.02745f, .03529f, .04706f));
+        if (!_frame.ShowCatalogue)
+        {
+            DrawTransients();
+            return;
+        }
         if (_frame.Layers.EquatorialGrid)
             DrawSegments(Grid, new(.32f, .52f, .70f, .53f));
         if (_frame.Layers.Constellations)
@@ -100,6 +111,8 @@ internal partial class BrightSkyOverlay : Control
                 LabelStar(star, point);
         }
 
+        DrawTransients();
+
         void LabelStar(SpaceTangent.Core.Observing.BrightStar star, Vector2 point)
         {
             string text = star.Name.Length > 0 ? star.Name : FormattableString.Invariant($"HIP {star.Hipparcos}");
@@ -111,6 +124,36 @@ internal partial class BrightSkyOverlay : Control
             occupied.Add(bounds);
             DrawString(font, baseline, text, fontSize: 13, modulate: new Color(.77f, .87f, 1, _frame.StarVisibility));
         }
+    }
+
+    private void DrawTransients()
+    {
+        foreach (var star in _data.Transients.Stars)
+        {
+            if (!TryTransientPoint(star, out Vector2 point, out float magnitude))
+                continue;
+            float radius = Math.Clamp(3.2f - .48f * magnitude, .65f, 6.5f);
+            float visibility = _frame.StarVisibility * Math.Clamp(1 - .085f * magnitude, .05f, 1);
+            Color tint = star.Supernova ? new(.84f, .90f, 1) : new(1, .97f, .90f);
+            if (magnitude < 1.5f)
+                DrawCircle(point, radius * 1.8f, new Color(tint, visibility * .22f), antialiased: true);
+            DrawCircle(point, radius, new Color(tint, visibility), antialiased: true);
+            if (_frame.Layers.Labels && magnitude <= 2.5f)
+                DrawString(ThemeDB.FallbackFont, point + new Vector2(radius + 5, -4), star.Designation,
+                    fontSize: 13, modulate: new Color(tint, visibility));
+        }
+    }
+
+    private bool TryTransientPoint(TransientStar star, out Vector2 point, out float magnitude)
+    {
+        point = default;
+        magnitude = (float)star.MagnitudeAt(_frame.Epoch.ToJulianDate());
+        if (!_frame.Layers.Stars || _frame.StarVisibility <= 0 || magnitude > 14)
+            return false;
+        Vector3 direction = Convert(star.Direction);
+        if (_frame.Moon is { } moon && direction.Dot(moon) >= MathF.Cos(_frame.MoonRadius))
+            return false;
+        return Project(direction, out point) && new Rect2(Vector2.Zero, Size).Grow(8).HasPoint(point);
     }
 
     private void DrawSegments(IReadOnlyList<(Vector3 From, Vector3 To)> lines, Color color)

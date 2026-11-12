@@ -37,7 +37,8 @@ internal partial class SimulationViewport
         if (_spaceSky is not null)
         {
             bool localSky = observer.Sky.Stars || observer.Sky.Labels || observer.Sky.EquatorialGrid || observer.Sky.Constellations;
-            bool render = localSky && !SpatialStarFieldVisible &&
+            bool catalogue = localSky && !SpatialStarFieldVisible;
+            bool render = (catalogue || (observer.Sky.Stars && _spaceSky.HasTransientStars)) &&
                 (observer.Mode != CameraMode.Surface || observer.Navigation is not null);
             _spaceSky.Visible = render;
             SkyEnvironment? background = render ? _canvasBackground : null;
@@ -50,13 +51,15 @@ internal partial class SimulationViewport
                 if (camera.KeepAspect == Camera3D.KeepAspectEnum.Width && _spaceSky.Size.X > 0)
                     tangent *= _spaceSky.Size.Y / _spaceSky.Size.X;
                 _spaceSky.ShowFrame(new(observer.Epoch, observer.Sky, observer.Selection,
-                    Icrs(-basis.Z), Icrs(basis.X), Icrs(basis.Y), tangent));
+                    Icrs(-basis.Z), Icrs(basis.X), Icrs(basis.Y), tangent, ShowCatalogue: catalogue));
             }
         }
         return available;
 
         static Vector3 Icrs(Vector3 value) => new(value.X, -value.Z, value.Y);
     }
+
+    internal bool TransientStarVisible(ObjectId id) => _spaceSky?.TransientVisible(id) == true;
 
     internal ObjectId? PickObject(Vector2 position) =>
         PickNavigationBody(position) ?? _surface?.PickStar(position) ?? _spaceSky?.Pick(position);

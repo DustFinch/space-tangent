@@ -5,7 +5,7 @@ using System.Text.Json;
 
 namespace SpaceTangent.Godot.Simulation;
 
-internal sealed record BrightSkyData(BrightStarCatalogue Catalogue, IReadOnlyList<(Vector3 From, Vector3 To)> Figures)
+internal sealed record BrightSkyData(BrightStarCatalogue Catalogue, IReadOnlyList<(Vector3 From, Vector3 To)> Figures, TransientStarCatalogue Transients)
 {
     internal static BrightSkyData Load()
     {
@@ -25,7 +25,9 @@ internal sealed record BrightSkyData(BrightStarCatalogue Catalogue, IReadOnlyLis
                 previous = direction;
             }
         }
-        return new(stars, lines.AsReadOnly());
+        string root = LocalDataPaths.Find("SPACETANGENT_TRANSIENT_ROOT", "sky/transients", directory: true);
+        var transients = TransientStarCatalogue.Load(root, message => GD.PushWarning("Transient stars: " + message));
+        return new(stars, lines.AsReadOnly(), transients);
     }
 
     internal static Vector3 Equatorial(float raDegrees, float decDegrees)

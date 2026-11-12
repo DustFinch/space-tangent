@@ -41,3 +41,9 @@ Place `.stc` files in `data/sky/stc` or set `SPACETANGENT_STC_ROOT` to their dir
 Place the original converted `exoplanets.txt` in `data/sky` or set `SPACETANGENT_EXOPLANET_CATALOGUE` to its path. Optional texture-class images go in `data/sky/exoplanet-textures` or `SPACETANGENT_EXOPLANET_TEXTURES`. The catalogue identifies these images by filename stem, for example `rocky.jpg` and `exo-class4.jpg`. Search for a planet or host by name, then use **Go to**. The perspective view evaluates the planet's orbit about its host and illuminates its globe from that star.
 
 The verified catalogue contains 6,462 planets from the published data by Thomas W. Tarrants under [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/). Keep the accompanying data and texture credits when redistributing the sidecars.
+
+## Historical novae and supernovae
+
+Place the original `novae.json` and `supernovae.json` in `data/sky/transients` or set `SPACETANGENT_TRANSIENT_ROOT` to their directory before launching the simulator. The Stars layer renders these events using each view's epoch, so split views can show the same patch of sky before and during an outburst. The local files are optional.
+
+The reference checks use the 119 archived records, a view at the peak of SN 1054, and a view at the peak of V1500 Cygni. Both compare the rendered view against an earlier epoch and check that reloading add-ons preserves the comparison.

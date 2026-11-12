@@ -1,0 +1,89 @@
+// SPDX-License-Identifier: GPL-2.0-or-later
+using System.Text.Json;
+using Godot;
+using SpaceTangent.Application;
+using SpaceTangent.Contracts;
+using SpaceTangent.Godot.Simulation;
+
+namespace SpaceTangent.Godot.Tests;
+
+public partial class EarthOrbitProbe
+{
+    private async Task ExerciseOuterMoonShapes(SolarSystemScene scene, JulianInstant epoch, string directory)
+    {
+        if (System.Environment.GetEnvironmentVariable("SPACETANGENT_OUTER_SHAPE_ORACLE") is not { } reference)
+            return;
+        var session = scene.Session!;
+        using var oracle = JsonDocument.Parse(File.ReadAllText(reference));
+        var source = oracle.RootElement.EnumerateArray().ToArray();
+        for (int pair = 0; pair < source.Length; pair += 2)
+        {
+            var a = source[pair];
+            var b = source[(pair + 1) % source.Length];
+            var left = Observer(a, epoch);
+            var right = Observer(b, epoch.AddSeconds(3600));
+            string name = "outer-moon-shapes-" + pair;
+            string path = Path.Combine(directory, name + ".stscene");
+            ScenarioFile.Save(path, new([left, right], false, 0, 0, session.DeltaT));
+            if (!scene.LoadScenario(path))
+                throw new InvalidOperationException("Could not open the normalized outer moon shapes.");
+            if (pair == 0 && (!await scene.ReloadAddOns() || session[0] != left || session[1] != right))
+                throw new InvalidOperationException("The original moon models or cameras failed to reload.");
+            Check(0, left, a);
+            Check(1, right, b);
+            await ToSignal(GetTree(), SceneTree.SignalName.ProcessFrame);
+            await ToSignal(RenderingServer.Singleton, RenderingServer.SignalName.FramePostDraw);
+            using var image = GetViewport().GetTexture().GetImage();
+            if (image.SavePng(Path.ChangeExtension(path, ".png")) != Error.Ok)
+                throw new IOException("Could not capture the original outer moon shapes.");
+        }
+
+        ObserverView Observer(JsonElement entry, JulianInstant instant)
+        {
+            string name = entry.GetProperty("name").GetString()!;
+            var id = new ObjectId("sol/" + (name == "roughsphere" ? "nereid" : name));
+            var body = NaturalBodyCatalogue.Find(id)!;
+            var snapshot = session.World.Graph.Evaluate(instant);
+            if (!snapshot.TryState(id, out var state))
+                throw new InvalidOperationException($"Missing {body.Name} state at the model probe epoch.");
+            Vector3d sun = (snapshot.SolarSystem!.Value.Sun - state).PositionKilometers;
+            Vector3d eye = sun + Vector3d.Cross(sun, new(0, 0, 1)) * .4;
+            eye /= eye.Length;
+            Vector3d up = new Vector3d(0, 0, 1) - eye * eye.Z;
+            up /= up.Length;
+            double range = body.RadiusKilometers * 4.2;
+            return new(instant, CameraMode.Solar, id, false)
+            {
+                Navigation = new NavigationCamera(state.PositionKilometers, range, 0, 0, id, true)
+                    { Placement = new NavigationPlacement(eye * range, eye * -1, up) }
+            };
+        }
+
+        void Check(int view, ObserverView observer, JsonElement expected)
+        {
+            ObjectId id = observer.Selection!.Value;
+            if (scene.Renderer(view).NaturalMoonModel(id) is not { Visible: true, Mesh: ArrayMesh mesh } ||
+                mesh.GetSurfaceCount() != 1 ||
+                mesh.SurfaceGetArrayLen(0) != expected.GetProperty("TriangleCount").GetInt32() * 3 ||
+                mesh.SurfaceGetMaterial(0) is not ShaderMaterial material)
+                throw new InvalidOperationException($"{id.Value} did not render the original triangle mesh.");
+            Aabb bounds = mesh.GetAabb();
+            if (bounds.Position.DistanceTo(Vector(expected.GetProperty("minimum"))) > .001 ||
+                bounds.End.DistanceTo(Vector(expected.GetProperty("maximum"))) > .001)
+                throw new InvalidOperationException($"{id.Value} differs from the normalized reference bounds: {bounds}.");
+            bool textured = id.Value != "sol/nereid";
+            if (material.GetShaderParameter("has_diffuse").AsBool() != textured)
+                throw new InvalidOperationException($"{id.Value} did not bind its original surface map.");
+            using var arrays = mesh.SurfaceGetArrays(0);
+            Vector3[] vertices = arrays[(int)Mesh.ArrayType.Vertex].AsVector3Array();
+            double area = 0;
+            for (int i = 0; i < vertices.Length; i += 3)
+                area += (vertices[i + 1] - vertices[i]).Cross(vertices[i + 2] - vertices[i]).Length() * .5;
+            if (Math.Abs(area / expected.GetProperty("area").GetDouble() - 1) > .00001)
+                throw new InvalidOperationException($"{id.Value} differs from the reference mesh surface area: {area}.");
+            GD.Print($"Outer moon {id.Value}: {vertices.Length / 3} reference triangles, physical bounds and area; texture={textured}.");
+        }
+
+        static Vector3 Vector(JsonElement value) => new(value[0].GetSingle(), value[1].GetSingle(), value[2].GetSingle());
+    }
+}

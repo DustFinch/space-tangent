@@ -182,7 +182,7 @@ public partial class SolarSystemScene : Control
 
         try
         {
-            _planetMoonModels = PlanetMoonModels.Load();
+            _planetMoonModels = PlanetMoonModels.Load(_planetTextures);
         }
         catch (Exception error) when (IsLoadError(error))
         {

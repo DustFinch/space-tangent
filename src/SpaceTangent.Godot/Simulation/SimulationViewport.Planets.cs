@@ -27,6 +27,8 @@ internal partial class SimulationViewport
     internal bool PlanetRingsVisible(ObjectId id) => _planetRings.GetValueOrDefault(id)?.Visible == true;
     internal bool PlanetGlobeTextured(ObjectId id) => _planetGlobes.TryGetValue(id, out var mesh) && mesh.Visible &&
         (mesh.MaterialOverride is StandardMaterial3D { AlbedoTexture: not null } ||
+            mesh.Mesh is ArrayMesh model && model.GetSurfaceCount() > 0 &&
+                model.SurfaceGetMaterial(0) is ShaderMaterial material && material.GetShaderParameter("has_diffuse").AsBool() ||
             _planetRings.GetValueOrDefault(id)?.Textured == true ||
             _worldAtmospheres.GetValueOrDefault(id)?.Textured == true);
 

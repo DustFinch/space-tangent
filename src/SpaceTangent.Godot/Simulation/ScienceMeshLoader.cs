@@ -8,10 +8,10 @@ namespace SpaceTangent.Godot.Simulation;
 
 internal static class ScienceMeshLoader
 {
-    internal static ArrayMesh Publish(DecodedScienceModel source, string meshPath, bool litBody = false) =>
-        AddonDiagnostics.Read(AddonStage.RenderResources, meshPath, () => PublishCore(source, meshPath, litBody));
+    internal static ArrayMesh Publish(DecodedScienceModel source, string meshPath, bool litBody = false, Texture2D? bodySurface = null) =>
+        AddonDiagnostics.Read(AddonStage.RenderResources, meshPath, () => PublishCore(source, meshPath, litBody, bodySurface));
 
-    private static ArrayMesh PublishCore(DecodedScienceModel source, string meshPath, bool litBody)
+    private static ArrayMesh PublishCore(DecodedScienceModel source, string meshPath, bool litBody, Texture2D? bodySurface)
     {
         var mesh = new ArrayMesh();
         var textures = new Dictionary<string, Texture2D>(StringComparer.Ordinal);
@@ -29,12 +29,12 @@ internal static class ScienceMeshLoader
             DecodedMaterial definition = surface.Material;
             var color = new Color((float)definition.Color.X, (float)definition.Color.Y,
                 (float)definition.Color.Z, (float)definition.Opacity);
-            Texture2D? albedo = definition.Texture is { } texture ? Texture(texture) : null;
+            Texture2D? albedo = definition.Texture is { } texture ? Texture(texture) : bodySurface;
             Material material;
             if (shader is not null)
             {
                 var body = new ShaderMaterial { Shader = shader };
-                body.SetShaderParameter("base_color", color);
+                body.SetShaderParameter("base_color", definition.Texture is null && bodySurface is not null ? Colors.White : color);
                 if (albedo is not null)
                 {
                     body.SetShaderParameter("has_diffuse", true);

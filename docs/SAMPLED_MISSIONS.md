@@ -21,3 +21,7 @@ A `Sensor` uses a resolved target, a range in kilometres, rectangular or ellipti
 The archived sensor fixture attaches authored fields to the original Jason-1 and SORCE spacecraft. The checks use both the source OBJ catalogue and the archived GLB installation, preserving the fixed spacecraft attitude in either case.
 
 An `Observations` item names a local sensor and the target it is centered on. Positive `obsRate` gives individual footprints at that interval in seconds. Zero gives a continuous swath with configurable `alongTrackDivisions`. A footprint is kept when every boundary ray reaches the surface within range. Each observer sees the footprints collected by its own epoch. `showResWithColor` colours them by their mean range to the surface.
+
+## Local SPICE tracks
+
+Catalogues in one sampled mission directory can declare an ordered `spiceKernels` list. A companion catalogue may contain only kernels. The reader accepts J2000 SPK states, CK pointing with local clocks and fixed frame chains, and rectangular instrument fields attached to the parent attitude. The original Cassini mesh and both ISS cameras were tested through this ordinary mission entry point.

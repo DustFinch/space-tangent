@@ -1,4 +1,5 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
+using System.Text.Json;
 using Godot;
 using SpaceTangent.Application;
 using SpaceTangent.Contracts;
@@ -21,7 +22,18 @@ public partial class EarthOrbitProbe
         if (!snapshot.TryState(craft, out var spacecraft) || !snapshot.TryState(PlanetCatalogue.SaturnId, out var saturn) ||
             !snapshot.TryOrientation(craft, out _))
             throw new InvalidOperationException("The ordinary sampled mission must resolve the original Cassini track and pointing.");
-        Vector3d radial = (spacecraft - saturn).PositionKilometers;
+        var relative = spacecraft - saturn;
+        if (System.Environment.GetEnvironmentVariable("SPACETANGENT_CASSINI_STATE_ORACLE") is { } reference)
+        {
+            var state = JsonSerializer.Deserialize<double[]>(File.ReadAllText(reference))
+                ?? throw new InvalidDataException("Missing native Cassini state.");
+            if (state.Length != 6 ||
+                (relative.PositionKilometers - new Vector3d(state[0], state[1], state[2])).Length > 1e-4 ||
+                (relative.VelocityKilometersPerSecond - new Vector3d(state[3], state[4], state[5])).Length > 1e-8)
+                throw new InvalidOperationException($"Cassini must follow the native Saturn-relative state: {relative}.");
+            GD.Print("Sampled SPICE: Cassini state matches the native Saturn-relative kernel chain.");
+        }
+        Vector3d radial = relative.PositionKilometers;
         Vector3d side = Vector3d.Cross(radial, new(0, 0, 1));
         string path = Path.Combine(directory, "sampled-spice-cassini.stscene");
         ScenarioFile.Save(path, new([Observer(.03, side), Observer(95000, side)], false, 0, 0, session.DeltaT));

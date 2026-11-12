@@ -133,6 +133,7 @@ public partial class WorkspaceInputSmoke : Node
             await ExerciseReferenceMarks(scratch.FullName);
             await ExerciseClockTools(scratch.FullName);
             await ExerciseObservationEvents(scratch.FullName);
+            await ExerciseEarthPlaces(scratch.FullName);
             GD.Print($"SpaceTangent workspace input smoke passed ({DisplayServer.GetName()})");
             exitCode = 0;
         }

@@ -44,7 +44,7 @@ public sealed class SimulationWorld
     public SimulationWorld(ISolarSystemEphemeris ephemeris, IEnumerable<ScienceSatellite> satellites,
         SpiceSpacecraft? mission = null, SscSampledSpacecraft? timeline = null, HuygensMission? probe = null,
         SpicePolynomialBodyFrame? moonFrame = null, BrightStarCatalogue? brightStars = null, PlanetEphemerides? planets = null, bool hasMarsTerrain = false, StellarCatalogue? stellar = null, IEnumerable<SscBodyDefinition>? bodyCatalog = null,
-        IEnumerable<SscSurfaceLocation>? locations = null, DeepSkyIndex? deepSky = null, ExoplanetCatalogue? exoplanets = null, IEnumerable<SampledMission>? sampledMissions = null, IEnumerable<LocalTleSatellite>? localSatellites = null)
+        IEnumerable<SscSurfaceLocation>? locations = null, DeepSkyIndex? deepSky = null, ExoplanetCatalogue? exoplanets = null, IEnumerable<SampledMission>? sampledMissions = null, IEnumerable<LocalTleSatellite>? localSatellites = null, EarthPlaceCatalogue? earthPlaces = null)
     {
         Ephemeris = ephemeris;
         Satellites = Array.AsReadOnly(satellites.ToArray());
@@ -99,7 +99,8 @@ public sealed class SimulationWorld
         _sampledMissions = (sampledMissions ?? []).ToDictionary(mission => mission.Id);
         foreach (var imported in _sampledMissions.Values)
             graph.AddSampledMission(imported);
-        Catalogue = new(Satellites, BrightStars, Stellar, DeepSky, Exoplanets, SscBodies, locations ?? [], _sampledMissions.Values, _localSatellites);
+        EarthPlaces = earthPlaces ?? EarthPlaceCatalogue.Empty;
+        Catalogue = new(Satellites,  BrightStars, Stellar, DeepSky, Exoplanets, SscBodies, locations ?? [], _sampledMissions.Values, _localSatellites, EarthPlaces);
         _sitesById = Catalogue.SurfaceSites.ToDictionary(site => site.Id);
         _sitesByBody = Catalogue.SurfaceSites.GroupBy(site => site.Body)
             .ToDictionary(group => group.Key, group => group.OrderByDescending(site => site.Definition.Importance ?? site.Definition.SizeKilometers).ToArray());
@@ -118,6 +119,7 @@ public sealed class SimulationWorld
     public BrightStarCatalogue BrightStars { get; }
     public StellarCatalogue Stellar { get; }
     public DeepSkyIndex DeepSky { get; }
+    public EarthPlaceCatalogue EarthPlaces { get; }
     public ExoplanetCatalogue Exoplanets { get; }
     public Vector3d StellarOrigin { get; }
 

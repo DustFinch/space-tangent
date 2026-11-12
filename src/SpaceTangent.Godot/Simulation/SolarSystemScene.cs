@@ -342,6 +342,14 @@ public partial class SolarSystemScene : Control
     private void GoToActiveObject()
     {
         ObserverView observer = Session![_active];
+        if (observer.Selection is { } location && Session.World.EarthPlaces.Find(location) is { } place)
+        {
+            var camera = observer.EarthObserver ?? EarthObserverCamera.Moscow;
+            Session.SetEarthObserver(_active, camera with { Site = place.ObserverSite });
+            SetMode(_active, CameraMode.Surface);
+            _status.Text = place.EnglishName;
+            return;
+        }
         if (observer.Selection is { } selected && UseEarthPointing(selected, observer) &&
             Session.World.BrightStars.Find(selected) is { } star)
         {
@@ -1378,6 +1386,14 @@ public partial class SolarSystemScene : Control
             return "";
         SimulationWorld world = Session!.World;
         var details = $"Catalogue ID: {target.Id.Value}";
+        if (world.EarthPlaces.Find(target.Id) is { } place)
+        {
+            string region = place.Region.Length == 0 ? "" : "\n" + place.Region;
+            string darkness = place.Bortle is { } bortle ? FormattableString.Invariant($"\nBortle {bortle}") : "";
+            string zone = place.TimeZone.Length == 0 ? "" : "\n" + place.TimeZone;
+            return details + region + FormattableString.Invariant(
+                $"\nLatitude {place.LatitudeDegrees:F4}° · Longitude {place.LongitudeDegrees:F4}°\nAltitude {place.AltitudeMeters:G} m") + darkness + zone;
+        }
         if (world.FindSurfaceSite(target.Id) is { } site)
         {
             var parent = world.Catalogue.Find(site.Body)?.Name ?? site.Body.Value;

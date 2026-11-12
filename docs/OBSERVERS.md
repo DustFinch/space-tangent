@@ -55,3 +55,9 @@ With a body selected, press ? for its light travel time or − to move the clock
 Use Ctrl+E in a view to search from its current epoch. Select a spacecraft with TLE data for passes above 10° during the next two days, or a planet for close conjunctions over the next 45 days. With the Sun selected the search uses the observer's site for solar eclipses. The default search also includes lunar eclipses.
 
 The status line gives the next result and its peak time. Press Ctrl+Shift+E to open it in the view that ran the search. Independent views keep their epochs and cameras. A changed target, site, clock model or add-on generation requires a fresh search.
+
+## Observing places
+
+Place the archived `sites.txt` in `data` or set `SPACETANGENT_EARTH_PLACES` to its path. Keep its accompanying credits when redistributing it. Search for a city or observatory by its original or English name. **Go to** uses that place in the active Earth observer and leaves its epoch and the other views in place.
+
+The optional `data/saved-sites.tsv` or `SPACETANGENT_SAVED_EARTH_PLACES` uses the archived tab-separated format. Each row contains a name, latitude, longitude, altitude in meters, UTC offset in hours, and an optional IANA time zone. Reload add-ons after editing it. A scenario saves the chosen observer coordinates. Selecting the named place again applies its latest coordinates.

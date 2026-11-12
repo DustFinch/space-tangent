@@ -17,7 +17,7 @@ public sealed class ObjectCatalogue
 {
     internal ObjectCatalogue(IReadOnlyList<ScienceSatellite> satellites, BrightStarCatalogue stars,
         StellarCatalogue spatialStars, DeepSkyIndex deepSky, ExoplanetCatalogue exoplanets, IReadOnlyList<InstalledSscBody> sscBodies, IEnumerable<SscSurfaceLocation> locations, IEnumerable<SampledMission> missions,
-        IReadOnlyDictionary<ObjectId, LocalTleSatellite> localSatellites)
+        IReadOnlyDictionary<ObjectId, LocalTleSatellite> localSatellites, EarthPlaceCatalogue earthPlaces)
     {
         var objects = new List<CatalogueObject> { new(SolarSystemSample.SunId, "Sun", CatalogueKind.Star) };
         objects.AddRange(PlanetCatalogue.Planets.Select(planet =>
@@ -57,6 +57,12 @@ public sealed class ObjectCatalogue
                 DeepSkyKind.Nebula => CatalogueKind.Nebula,
                 _ => CatalogueKind.Cluster
             }) { Aliases = body.Aliases }));
+        objects.AddRange(earthPlaces.Places.Select(place =>
+            new CatalogueObject(place.Id, place.EnglishName, CatalogueKind.SurfaceLocation, SolarSystemSample.EarthId)
+            {
+                Aliases = new[] { place.Name, place.Name.Replace('ё', 'е').Replace('Ё', 'Е') }
+                    .Where(alias => alias != place.EnglishName).Distinct(StringComparer.OrdinalIgnoreCase).ToArray()
+            }));
         Objects = objects.AsReadOnly();
         _byId = objects.ToDictionary(body => body.Id);
         SurfaceSites = SurfaceSite.Bind(this, locations);

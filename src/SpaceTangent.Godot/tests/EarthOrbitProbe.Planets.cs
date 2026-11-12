@@ -32,6 +32,7 @@ public partial class EarthOrbitProbe
             {
                 var nearPlane = (sun - pole * sun.Dot(pole) + pole * .04f + east * .35f).Normalized();
                 await CapturePlanet("saturn-edge", nearPlane, 7);
+                await CapturePlanet("saturn-ring-shadows", (east + pole * .78f + sun * .35f).Normalized(), 6.3);
             }
 
             async Task CapturePlanet(string name, Vector3 direction, double range)

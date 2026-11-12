@@ -3,6 +3,7 @@ using Godot;
 using SpaceTangent.Application;
 using SpaceTangent.Contracts;
 using SpaceTangent.Core.Ephemerides;
+using SpaceTangent.Core.Observing;
 using SpaceTangent.Core.World;
 
 namespace SpaceTangent.Godot.Simulation;
@@ -10,11 +11,14 @@ namespace SpaceTangent.Godot.Simulation;
 internal partial class SimulationViewport
 {
     private const double OuterOverviewKilometersPerUnit = 25_000_000;
+    private const float SaturnRingInner = 74500f / 60268f, SaturnRingOuter = 140220f / 60268f;
     private readonly Dictionary<ObjectId, Node3D> _planetMarkers = new();
     private readonly Dictionary<ObjectId, MeshInstance3D> _planetGlobes = new();
     private readonly ImmediateMesh _planetPaths = new();
     private MeshInstance3D _planetPathNode = null!;
     private Node3D _saturnRings = null!;
+    private ShaderMaterial? _saturnRingMaterial, _saturnGlobeMaterial;
+    private bool _saturnSurfaceTextured;
     private JulianInstant? _pathEpoch;
     private bool _pathOuter;
 
@@ -22,7 +26,8 @@ internal partial class SimulationViewport
     internal int PlanetOrbitCount => _planetPaths.GetSurfaceCount();
     internal bool SaturnRingsVisible => _saturnRings.Visible;
     internal bool PlanetGlobeTextured(ObjectId id) => _planetGlobes.TryGetValue(id, out var mesh) && mesh.Visible &&
-        mesh.MaterialOverride is StandardMaterial3D { AlbedoTexture: not null };
+        (mesh.MaterialOverride is StandardMaterial3D { AlbedoTexture: not null } ||
+            (id == PlanetCatalogue.SaturnId && _saturnSurfaceTextured));
 
     private void InitializePlanets()
     {
@@ -53,24 +58,27 @@ internal partial class SimulationViewport
         if (textures.Rings is not { } rings)
             return;
         var mesh = new ImmediateMesh();
-        var materialRings = new StandardMaterial3D
-        {
-            AlbedoTexture = rings,
-            CullMode = BaseMaterial3D.CullModeEnum.Disabled,
-            Transparency = BaseMaterial3D.TransparencyEnum.Alpha,
-            ShadingMode = BaseMaterial3D.ShadingModeEnum.Unshaded,
-            TextureRepeat = false
-        };
+        _saturnRingMaterial = new() { Shader = GD.Load<Shader>("res://Shaders/saturn_rings.gdshader") };
+        _saturnRingMaterial.SetShaderParameter("rings_map", rings);
+        _saturnGlobeMaterial = new() { Shader = GD.Load<Shader>("res://Shaders/saturn_globe.gdshader") };
+        _saturnGlobeMaterial.SetShaderParameter("rings_map", rings);
+        _saturnGlobeMaterial.SetShaderParameter("ring_inner", SaturnRingInner);
+        _saturnGlobeMaterial.SetShaderParameter("ring_outer", SaturnRingOuter);
+        _saturnSurfaceTextured = textures.Surfaces.TryGetValue(PlanetCatalogue.SaturnId, out Texture2D? surface);
+        _saturnGlobeMaterial.SetShaderParameter("has_surface_map", _saturnSurfaceTextured);
+        if (surface is not null)
+            _saturnGlobeMaterial.SetShaderParameter("surface_map", surface);
+        _planetGlobes[PlanetCatalogue.SaturnId].MaterialOverride = _saturnGlobeMaterial;
         const int segments = 192;
-        mesh.SurfaceBegin(Mesh.PrimitiveType.TriangleStrip, materialRings);
+        mesh.SurfaceBegin(Mesh.PrimitiveType.TriangleStrip, _saturnRingMaterial);
         for (int i = 0; i <= segments; i++)
         {
             float angle = Mathf.Tau * i / segments;
             Vector3 radial = new(Mathf.Cos(angle), 0, Mathf.Sin(angle));
             mesh.SurfaceSetUV(new(0, .5f));
-            mesh.SurfaceAddVertex(radial * (74500f / 60268f));
+            mesh.SurfaceAddVertex(radial * SaturnRingInner);
             mesh.SurfaceSetUV(new(1, .5f));
-            mesh.SurfaceAddVertex(radial * (140220f / 60268f));
+            mesh.SurfaceAddVertex(radial * SaturnRingOuter);
         }
         mesh.SurfaceEnd();
         _saturnRings.AddChild(new MeshInstance3D { Mesh = mesh, CastShadow = GeometryInstance3D.ShadowCastingSetting.Off });
@@ -149,12 +157,22 @@ internal partial class SimulationViewport
                 continue;
             float pole = (float)(planet.PolarRadiusKilometers / planet.RadiusKilometers);
             bool oriented = PlaceWorldGlobe(globe, snapshot, planet.Id, position, new(radius, radius * pole, radius));
+            if (planet.NaifId != 699 || _saturnRingMaterial is null || _saturnGlobeMaterial is null)
+                continue;
             Basis basis = globe.Transform.Basis.Orthonormalized();
-            if (planet.NaifId == 699 && oriented && radius > .12f && _saturnRings.GetChildCount() != 0)
-            {
-                _saturnRings.Transform = new(basis * Basis.FromScale(Vector3.One * radius), position);
-                _saturnRings.Show();
-            }
+            Vector3d toSun = snapshot.SolarSystem!.Value.Sun.PositionKilometers - state.PositionKilometers;
+            Vector3 light = basis.Inverse() * ToGodot(toSun / toSun.Length, 1);
+            bool ringsVisible = oriented && radius > .12f;
+            _saturnGlobeMaterial.SetShaderParameter("sun_in_body", light);
+            _saturnGlobeMaterial.SetShaderParameter("polar_ratio", pole);
+            _saturnGlobeMaterial.SetShaderParameter("cast_ring_shadows", ringsVisible);
+            if (!ringsVisible)
+                continue;
+            _saturnRingMaterial.SetShaderParameter("sun_in_body", light);
+            _saturnRingMaterial.SetShaderParameter("polar_ratio", pole);
+            _saturnRingMaterial.SetShaderParameter("solar_radius_radians", (float)Math.Asin(SolarOccultation.SunRadiusKilometers / toSun.Length));
+            _saturnRings.Transform = new(basis * Basis.FromScale(Vector3.One * radius), position);
+            _saturnRings.Show();
         }
         DrawSmallBodies(snapshot, pose, units, project);
     }

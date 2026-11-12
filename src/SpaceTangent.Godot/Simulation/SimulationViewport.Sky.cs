@@ -22,6 +22,7 @@ internal partial class SimulationViewport
 
     internal void SetSkyData(BrightSkyData data)
     {
+        _compactSky = data;
         var layer = new CanvasLayer { Layer = -1 };
         AddChild(layer);
         InstallGalacticSky(layer);
@@ -52,10 +53,10 @@ internal partial class SimulationViewport
                 tangent *= _spaceSky.Size.Y / _spaceSky.Size.X;
             DrawGalacticSky(orbital, camera, tangent);
             Basis orientation = camera?.GlobalBasis ?? Basis.Identity;
-            bool survey = SpaceSurveyCanvas!.ShowFrame(orbital ? observer.Sky.SurveyId : null,
+            bool survey = SpaceSurveyCanvas!.ShowFrame(orbital && !CompactLensVisible ? observer.Sky.SurveyId : null,
                 Icrs(-orientation.Z), Icrs(orientation.X), Icrs(orientation.Y), tangent,
                 (float)observer.Sky.EffectiveSurveyBrightness, !GalacticSkyVisible,
-                photographs: orbital && observer.Sky.DeepSky && observer.Sky.SurveyId is null,
+                photographs: orbital && !CompactLensVisible && observer.Sky.DeepSky && observer.Sky.SurveyId is null,
                 julianDate: observer.Epoch.ToJulianDate());
             bool culture = observer.Sky.ConstellationArt ||
                 (observer.Sky.Constellations && observer.Sky.CultureId is not null);

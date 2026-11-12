@@ -107,6 +107,7 @@ internal partial class SimulationViewport
         DrawPlanetGlobes(snapshot, pose, units, ProjectWithScale);
         DrawWorldAtmospheres(snapshot, solar.Sun.PositionKilometers);
         DrawStellarObjects(pose, snapshot, sky, units, ProjectWithScale);
+        DrawCompactObjects(snapshot, sky, units, ProjectWithScale);
         DrawImportedBodies(snapshot, pose, units, ProjectWithScale);
         DrawLocalSatellite(snapshot, pose, units, ProjectWithScale);
         HideComets();
@@ -189,7 +190,9 @@ internal partial class SimulationViewport
             Consider(id, planet);
         foreach (var (id, deepSky) in _deepSkyObjects)
             Consider(id, deepSky);
-        return result ?? PickDistantStar(point);
+        if (_compactCompanion is { } companion)
+            Consider(SimulationWorld.CygnusCompanionId, companion);
+        return result ?? PickCompactObject(point) ?? PickDistantStar(point);
 
         void Consider(ObjectId id, MeshInstance3D node)
         {
@@ -227,6 +230,7 @@ internal partial class SimulationViewport
         _navigationMoon.Hide();
         HidePlanetGlobes();
         HideStellarObjects();
+        HideCompactObjects();
         HideImportedBodies();
         _localSatelliteMarker?.Hide();
         HideComets();

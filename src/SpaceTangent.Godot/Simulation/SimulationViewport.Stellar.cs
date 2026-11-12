@@ -53,7 +53,7 @@ internal partial class SimulationViewport
     private void InitializeStellarRendering()
     {
         _stellarShader = GD.Load<Shader>("res://Shaders/stellar_disk.gdshader");
-        _stellarField = new MeshInstance3D { Visible = false, CastShadow = GeometryInstance3D.ShadowCastingSetting.Off };
+        _stellarField = new MeshInstance3D { Visible = false, Layers = 3, CastShadow = GeometryInstance3D.ShadowCastingSetting.Off };
         AddChild(_stellarField);
     }
 

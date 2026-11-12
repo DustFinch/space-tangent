@@ -7,7 +7,7 @@ using SpaceTangent.Core.World;
 
 namespace SpaceTangent.Application;
 
-public enum CatalogueKind { Star, Planet, Moon, Spacecraft, DwarfPlanet, Asteroid, Comet, Galaxy, Nebula, Cluster, SurfaceLocation }
+public enum CatalogueKind { Star, Planet, Moon, Spacecraft, DwarfPlanet, Asteroid, Comet, Galaxy, Nebula, Cluster, SurfaceLocation, BlackHole }
 
 public sealed record CatalogueObject(ObjectId Id, string Name, CatalogueKind Kind, ObjectId? Parent = null)
 {
@@ -32,6 +32,10 @@ public sealed class ObjectCatalogue
         }, body.Parent) { Aliases = [body.NativeName] }));
         objects.AddRange(NaturalBodyCatalogue.Bodies.Select(body =>
             new CatalogueObject(body.Id, body.Name, body.Kind, body.Parent)));
+        objects.AddRange(BlackHoleCatalogue.Default.Entries.Select(hole =>
+            new CatalogueObject(hole.Id, hole.Name, CatalogueKind.BlackHole) { Aliases = hole.Aliases }));
+        objects.Add(new(SimulationWorld.CygnusCompanionId, "HDE 226868", CatalogueKind.Star, SimulationWorld.CygnusLensId)
+            { Aliases = ["HDE-226868"] });
         objects.AddRange(satellites.Select(satellite =>
             new CatalogueObject(satellite.Id, satellite.Name, CatalogueKind.Spacecraft, SolarSystemSample.EarthId)
             { Aliases = localSatellites.TryGetValue(satellite.Id, out var local) ? [local.Name, .. local.Aliases] : [] }));

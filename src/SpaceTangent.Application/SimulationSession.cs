@@ -42,7 +42,7 @@ public readonly record struct ObserverView(JulianInstant Epoch, CameraMode Mode,
 
 public sealed record HuygensMission(SscHuygensTrack Track, SpkKernel SaturnSystem, SpicePolynomialBodyFrame TitanFrame);
 
-public sealed class SimulationWorld
+public sealed partial class SimulationWorld
 {
     public SimulationWorld(ISolarSystemEphemeris ephemeris, IEnumerable<ScienceSatellite> satellites,
         SpiceSpacecraft? mission = null, SscSampledSpacecraft? timeline = null, HuygensMission? probe = null,
@@ -60,6 +60,7 @@ public sealed class SimulationWorld
         var graph = new WorldGraphBuilder();
         graph.AddSolarSystem(ephemeris);
         DemoWorlds.AddTo(graph);
+        AddCompactObjects(graph);
         foreach (PlanetDefinition planet in PlanetCatalogue.Planets)
             PlanetEphemerides.AddPlanet(graph, planet, planets);
         foreach (NaturalBodyDefinition body in NaturalBodyCatalogue.Bodies)
@@ -193,7 +194,8 @@ public sealed class SimulationWorld
         FindSurfaceSite(id)?.ScaleKilometers ?? StarRadius(FindStellarTarget(id)) ?? DeepSky.Find(id)?.RadiusKilometers ??
         Exoplanets.Find(id)?.RadiusKilometers ?? DemoWorlds.Find(id)?.RadiusKilometers ??
         _sscById.GetValueOrDefault(id)?.Definition.RadiusKilometers ??
-        _sampledMissions.GetValueOrDefault(id)?.RadiusKilometers ?? NavigationCamera.BodyRadiusKilometers(id);
+        _sampledMissions.GetValueOrDefault(id)?.RadiusKilometers ?? BlackHoles.Find(id)?.SchwarzschildRadiusKilometers ??
+        (id == CygnusCompanionId ? CygnusCompanionRadiusKilometers : NavigationCamera.BodyRadiusKilometers(id));
     private static double? StarRadius(StellarEntry? star) => star is null ? null :
         star.IsBarycenter ? Math.Max(1000, star.SystemRadiusKilometers) : Math.Max(.007, star.RadiusKilometers);
 

@@ -219,7 +219,8 @@ public sealed partial class SimulationSession
         return target == SolarSystemSample.EarthId ? radius + 20 : Math.Max(NavigationCamera.MinRange, 1.15 * radius);
     }
     private double FramingRange(ObjectId target) =>
-        (target == PlanetCatalogue.SaturnId ? 6.4 : 4.2) * World.TargetRadiusKilometers(target);
+        (target == PlanetCatalogue.SaturnId ? 6.4 : World.BlackHoles.Find(target) is not null ? 60 : 4.2) *
+        World.TargetRadiusKilometers(target);
 
     private bool TrySelectedState(int view, out ObjectId target, out WorldSnapshot snapshot, out CartesianState state,
         WorldSnapshot? evaluated = null)

@@ -1315,7 +1315,11 @@ public partial class SolarSystemScene : Control
         panel.AddChild(container);
         var viewport = new SubViewport { OwnWorld3D = true, RenderTargetUpdateMode = SubViewport.UpdateMode.Always };
         container.AddChild(viewport);
-        var renderer = new SimulationViewport { GalacticCache = _galacticSky, DemoSurfaces = _demoSurfaces };
+        var renderer = new SimulationViewport
+        {
+            GalacticCache = _galacticSky, DemoSurfaces = _demoSurfaces, CompactTables = _compactLensTables,
+            CinematicCompactLens = _startupArguments.Contains("--startup-cinematic-lens", StringComparer.Ordinal)
+        };
         viewport.AddChild(renderer);
         if (_surfaceTextures is { } textures)
             renderer.SetSurfaceTextures(textures);
@@ -1375,6 +1379,7 @@ public partial class SolarSystemScene : Control
 
     private readonly GalacticTextureCache _galacticSky = new();
     private readonly DemoSurfaceCache _demoSurfaces = new();
+    private readonly CompactLensTables _compactLensTables = new();
 
     private void ReplaceAssets(ViewControls view)
     {

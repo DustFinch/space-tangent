@@ -67,3 +67,9 @@ Use `--startup-sky-survey dss --startup-sky-survey-brightness 0.8` for a local s
 Place the archived `textures.json` and its PNG files in `data/sky/nebula-images`, or set `SPACETANGENT_SKY_PHOTOGRAPHS` to that directory. The Deep sky layer shows the images at their recorded positions. Their visibility depends on field of view, sky brightness, and the recorded event epoch. The selected HiPS survey takes precedence in its own view.
 
 The archive contains 674 photographs. Keep the supplied metadata with the files so the original credits and information links remain available. Check the rights of each image before redistributing it.
+
+## Compact objects
+
+Search for Cygnus X-1, Sagittarius A*, M87*, or another measured object and use the existing **Go to** action. At close range the perspective camera bends the sky and visible background bodies around the black hole. Accreting binaries show the modeled disk. The Cygnus X-1 scene includes its supergiant companion at the catalogue's fixed quadrature position.
+
+The physical display uses the modeled temperature and redshift. The optional `--startup-cinematic-lens` flag uses a visible-light illustration of the gas, corona and jets.

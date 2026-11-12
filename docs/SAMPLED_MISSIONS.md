@@ -25,3 +25,9 @@ An `Observations` item names a local sensor and the target it is centered on. Po
 ## Local SPICE tracks
 
 Catalogues in one sampled mission directory can declare an ordered `spiceKernels` list. A companion catalogue may contain only kernels. The reader accepts J2000 SPK states, CK pointing with local clocks and fixed frame chains, and rectangular instrument fields attached to the parent attitude. The original Cassini mesh and both ISS cameras were tested through this ordinary mission entry point.
+
+### Particle systems
+
+The mission reader accepts Point, Box, Strip, Disc and ArcStrip emitters in a local source catalogue. It evaluates particle ages, positions and colours from each view's time. PNG and JPEG textures use the declared local resource. A missing texture falls back to a generated spot with an import diagnostic.
+
+For the archived native particle format, place the original `pack.json` and its `textures` directory together under the sampled mission root. The reader accepts stationary packed emitters with the original source axes, including moving body-fixed placements and two-vector orientation. The renderer uses additive blending with depth testing and a budget of 200,000 particles per view.

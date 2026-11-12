@@ -12,10 +12,14 @@ internal sealed record PreparedImportedBody(ObjectId Id, CatalogueKind Kind, Vec
     IReadOnlyList<PreparedMissionGeometry>? Geometry = null, PreparedMissionObservation? Observation = null);
 
 internal sealed record PreparedMissionGeometry(JulianInstant Start, JulianInstant End, double RadiusKilometers,
-    Basis3d MeshRotation, Vector3d MeshOffset, ArrayMesh? Model, double ModelDiameter, MissionSensor? Sensor);
+    Basis3d MeshRotation, Vector3d MeshOffset, ArrayMesh? Model, double ModelDiameter, MissionSensor? Sensor,
+    IReadOnlyList<PreparedParticleEmitter>? Particles);
 
 internal partial class SimulationViewport
 {
+    private MissionParticleRendering? _missionParticleRendering;
+    internal MissionParticleRenderResult? MissionParticleResult(ObjectId id) => _missionParticleRendering?.Result(id);
+
     private MissionSensorRendering? _missionSensorRendering;
     internal MissionSensorRenderResult? MissionSensorResult(ObjectId id) => _missionSensorRendering?.Result(id);
 
@@ -38,6 +42,7 @@ internal partial class SimulationViewport
         if (ReferenceEquals(_importedAssets, assets))
             return;
         _importedAssets = assets;
+        _missionParticleRendering?.Clear();
         _missionSensorRendering?.Clear();
         foreach (var (_, node) in _importedNodes.Values)
         {
@@ -73,6 +78,7 @@ internal partial class SimulationViewport
     private void DrawImportedBodies(WorldSnapshot snapshot, NavigationCamera pose, double units,
         Func<Vector3d, (Vector3 Position, double Scale)> project)
     {
+        _missionParticleRendering?.Hide();
         _missionSensorRendering?.Clear();
         foreach (var (asset, node) in _importedNodes.Values)
         {
@@ -110,6 +116,12 @@ internal partial class SimulationViewport
                 {
                     _missionSensorRendering ??= new(this);
                     _missionSensorRendering.Draw(asset.Id, sensor, state.PositionKilometers, frame.ToWorld, snapshot, units, project);
+                    continue;
+                }
+                if (active.Particles is { } particles)
+                {
+                    _missionParticleRendering ??= new(this, _navigationCamera);
+                    _missionParticleRendering.Draw(body.Id, particles, snapshot.Epoch, position, frame.ToWorld, projection / units);
                     continue;
                 }
                 Mesh mesh = active.Model is { } model ? model : _missionMarkerMesh;
@@ -164,6 +176,7 @@ internal partial class SimulationViewport
 
     private void HideImportedBodies()
     {
+        _missionParticleRendering?.Hide();
         _missionSensorRendering?.Clear();
         foreach (var (_, node) in _importedNodes.Values)
             node.Hide();

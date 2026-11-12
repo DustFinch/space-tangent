@@ -106,6 +106,8 @@ internal partial class SimulationViewport
         DrawWorldAtmospheres(snapshot, solar.Sun.PositionKilometers);
         DrawStellarObjects(pose, snapshot, sky, units, ProjectWithScale);
         DrawSscBodies(snapshot, pose, units, ProjectWithScale);
+        HideComets();
+        DrawComets(snapshot, solar.Sun, units, ProjectWithScale);
 
         (Vector3 Position, double Scale) ProjectWithScale(Vector3d position)
         {
@@ -212,5 +214,6 @@ internal partial class SimulationViewport
         HidePlanetGlobes();
         HideStellarObjects();
         HideSscBodies();
+        HideComets();
     }
 }

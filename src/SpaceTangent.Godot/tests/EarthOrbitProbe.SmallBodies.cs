@@ -55,22 +55,50 @@ public partial class EarthOrbitProbe
         }
 
         var comet = NaturalBodyCatalogue.CometId;
-        snapshot.TryState(comet, out CartesianState nucleus);
-        Vector3d tail = (nucleus - solar.Sun).PositionKilometers;
-        tail /= tail.Length;
-        Vector3 axis = Axis(tail);
-        Vector3 observer = (axis.Cross(Vector3.Up).Normalized() - axis * .22f).Normalized();
-        await Capture("comet-67p", comet, observer, 60, tail * 11);
-        if (!scene.Renderer(0).CometTailVisible || scene.Renderer(0).CometTailDirection.Dot(axis) < .9999)
-            throw new InvalidOperationException("The comet tail must point away from the Sun.");
+        var activityEpoch = JulianInstant.FromJulianDate(2459526.5, TimeScale.Tdb);
+        await CheckActivity("comet-67p", comet, activityEpoch);
+        await CheckActivity("comet-atlas", new("ssc/sol/3i/atlas"),
+            JulianInstant.FromJulianDate(2460977.9825, TimeScale.Tdb), required: false);
+        await Capture("comet-67p-inactive", comet, new Vector3(.3f, .2f, .93f).Normalized(), 60);
+        if (scene.Renderer(0).RenderedComet(comet) is not null)
+            throw new InvalidOperationException("A distant comet must have no visible activity.");
 
-        async Task Capture(string name, ObjectId id, Vector3 direction, double range, Vector3d offset = default)
+        async Task CheckActivity(string name, ObjectId id, JulianInstant at, bool required = true)
         {
-            if (!snapshot.TryState(id, out CartesianState state))
+            var active = world.Graph.Evaluate(at);
+            if (!active.TryState(id, out var nucleus))
+            {
+                if (required)
+                    throw new InvalidOperationException($"The original state for {name} is missing.");
+                return;
+            }
+            var relative = nucleus - active.SolarSystem!.Value.Sun;
+            Vector3d away = relative.PositionKilometers / relative.PositionKilometers.Length;
+            Vector3d motion = relative.VelocityKilometersPerSecond;
+            Vector3d retrograde = away * Vector3d.Dot(motion, away) - motion;
+            retrograde /= retrograde.Length;
+            Vector3 eye = Axis(Vector3d.Cross(away, retrograde)).Normalized();
+            double length = 1e15 / relative.PositionKilometers.Length * (id == comet ? .4 : .2);
+            await Capture(name, id, eye, length * 1.35, away * (length * .55), at);
+            if (scene.Renderer(0).RenderedComet(id) is not { } state ||
+                Vector3d.Dot(state.Away, away) < .999999999 || Vector3d.Dot(state.Trail, retrograde) < .999999999 ||
+                Math.Abs(state.Length - length) > .001 || state.ComaFade < .999)
+                throw new InvalidOperationException($"The ion and dust directions or coma visibility disagree for {name}.");
+            await Capture(name + "-nucleus", id, eye, 60, at: at);
+            if (scene.Renderer(0).RenderedComet(id) is not { ComaFade: 0 })
+                throw new InvalidOperationException("The coma must fade when the camera is inside it.");
+            GD.Print($"Comet activity: {name} anti-solar ions, trailing dust, coma and inner-camera fade.");
+        }
+
+        async Task Capture(string name, ObjectId id, Vector3 direction, double range, Vector3d offset = default,
+            JulianInstant? at = null)
+        {
+            var frame = at is { } date ? world.Graph.Evaluate(date) : snapshot;
+            if (!frame.TryState(id, out CartesianState state))
                 throw new InvalidOperationException($"Missing state for {name}.");
             var pose = new NavigationCamera(state.PositionKilometers + offset, range, Math.Atan2(direction.X, direction.Z),
                 Math.Clamp(Math.Asin(direction.Y), -1.55, 1.55), id, offset == default);
-            var view = new ObserverView(epoch, CameraMode.Solar, id, false) { Navigation = pose };
+            var view = new ObserverView(at ?? epoch, CameraMode.Solar, id, false) { Navigation = pose };
             string path = Path.Combine(directory, name + ".stscene");
             ScenarioFile.Save(path, new([view], false, 0, 0, DeltaTModel.MorrisonStephenson2004));
             if (!scene.LoadScenario(path))

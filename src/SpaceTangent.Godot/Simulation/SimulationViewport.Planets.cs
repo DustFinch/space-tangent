@@ -185,7 +185,6 @@ internal partial class SimulationViewport
             globe.Hide();
         foreach (PlanetRingRendering rings in _planetRings.Values)
             rings.Hide();
-        _cometTail.Hide();
         foreach (Label3D label in _moonLabels.Values)
             label.Hide();
     }

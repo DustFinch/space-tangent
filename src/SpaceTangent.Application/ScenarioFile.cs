@@ -28,6 +28,7 @@ public static class ScenarioFile
         {
             new JsonStringEnumConverter<CameraMode>(JsonNamingPolicy.CamelCase, allowIntegerValues: false),
             new JsonStringEnumConverter<ViewSplit>(JsonNamingPolicy.CamelCase, allowIntegerValues: false),
+            new JsonStringEnumConverter<NavigationFrame>(JsonNamingPolicy.CamelCase, allowIntegerValues: false),
             new JsonStringEnumConverter<DeltaTModel>(JsonNamingPolicy.CamelCase, allowIntegerValues: false)
         }
     };
@@ -47,7 +48,7 @@ public static class ScenarioFile
             throw new InvalidDataException("The scenario has an invalid layout or field of view.");
         var document = new Document
         {
-            Version = scenario.Layout is null ? 7 : Version,
+            Version = scenario.Layout is not null || scenario.Views.Any(view => view.Navigation?.Placement?.Reference is not null) ? Version : 7,
             Synchronized = scenario.Synchronized,
             ClockOwner = scenario.ClockOwner,
             ActiveView = scenario.ActiveView,
@@ -147,6 +148,8 @@ public static class ScenarioFile
             if ((data.FieldOfViewDegrees is { } field && !ObserverView.ValidFieldOfView(field)) ||
                 (document.Version < 6 && (data.FieldOfViewDegrees.HasValue || navigation?.Placement is not null)))
                 throw new InvalidDataException("The scene field or observer frame is unsupported.");
+            if (document.Version < 8 && navigation?.Placement?.Reference is not null)
+                throw new InvalidDataException("Moving observer frames require a version 8 scenario.");
             if (data.PlaybackRate is { } rate && (document.Version < 7 || !ObserverView.ValidPlaybackRate(rate)))
                 throw new InvalidDataException("The scene playback rate is unsupported.");
             views[i] = new(epoch, data.Camera, selection, data.Playing)
@@ -220,10 +223,17 @@ public static class ScenarioFile
 
     private sealed record Placement(Components Offset, Components Forward, Components Up, bool BodyFixed)
     {
-        internal static Placement From(NavigationPlacement pose) =>
-            new(Components.From(pose.OffsetKilometers), Components.From(pose.Forward), Components.From(pose.Up), pose.BodyFixed);
+        [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingDefault)]
+        public NavigationFrame Frame { get; init; }
+        [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+        public string? Reference { get; init; }
 
-        internal NavigationPlacement ToPlacement() => new(Offset.ToVector(), Forward.ToVector(), Up.ToVector(), BodyFixed);
+        internal static Placement From(NavigationPlacement pose) =>
+            new(Components.From(pose.OffsetKilometers), Components.From(pose.Forward), Components.From(pose.Up), pose.BodyFixed)
+            { Frame = pose.Frame, Reference = pose.Reference?.Value };
+
+        internal NavigationPlacement ToPlacement() => new(Offset.ToVector(), Forward.ToVector(), Up.ToVector(), BodyFixed)
+            { Frame = Frame, Reference = Reference is { } id ? new ObjectId(id) : null };
     }
 
     private readonly record struct Components(double X, double Y, double Z)

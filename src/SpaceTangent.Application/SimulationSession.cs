@@ -204,9 +204,9 @@ public sealed partial class SimulationSession
             if (view.Navigation is { } camera &&
                 (!camera.IsValid() || (camera.Target is { } target && World.Catalogue.Find(target) is null)))
                 throw new InvalidDataException("The scenario has an invalid camera pose or unavailable camera target.");
-            if (view.Navigation is { Placement.BodyFixed: true, Target: { } body } &&
-                !World.Graph.Evaluate(view.Epoch).TryOrientation(body, out _))
-                throw new InvalidDataException("The scene needs an unavailable rotating-body frame.");
+            if (view.Navigation is { Placement.UsesFrame: true } framed &&
+                !framed.TryFrameBasis(World.Graph.Evaluate(view.Epoch), scenario.DeltaT, out _))
+                throw new InvalidDataException("The scene needs an unavailable observer frame.");
         }
         ObserverView owner = views[scenario.ClockOwner];
         if (scenario.Synchronized && views.Any(view => view.Epoch != owner.Epoch || view.Playing != owner.Playing))
@@ -468,11 +468,19 @@ public sealed partial class SimulationSession
                 ? CameraMode.Solar
                 : previous.Mode;
             NavigationCamera? navigation = previous.Navigation;
-            if (navigation is { Target: { } target } camera && next.Catalogue.Find(target) is null)
+            if (navigation is { Target: { } target } camera)
             {
-                navigation = camera with { Target = null, Tracking = false,
-                    Placement = camera.Placement is { BodyFixed: true } ? null : camera.Placement };
-                CancelFlight(index);
+                bool lostTarget = next.Catalogue.Find(target) is null;
+                bool lostFrame = camera.Placement is { UsesFrame: true } &&
+                    !camera.TryFrameBasis(next.Graph.Evaluate(previous.Epoch), DeltaT, out _);
+                if (lostTarget || lostFrame)
+                {
+                    NavigationPlacement? placement = camera.Placement is { UsesFrame: true }
+                        ? camera.ResolvePlacement(World.Graph.Evaluate(previous.Epoch), DeltaT) : camera.Placement;
+                    navigation = camera with { Target = lostTarget ? null : target, Tracking = !lostTarget && camera.Tracking,
+                        Placement = placement };
+                    CancelFlight(index);
+                }
             }
             _views[index] = previous with { Selection = selected, Mode = mode, Navigation = navigation };
         }

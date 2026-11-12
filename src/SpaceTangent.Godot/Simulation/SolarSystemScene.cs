@@ -435,6 +435,12 @@ public partial class SolarSystemScene : Control
         }
         if (key.Echo)
             return;
+        if (!key.CtrlPressed && !key.AltPressed && !key.MetaPressed &&
+            GetViewport().GuiGetFocusOwner() is not LineEdit && TryObserverFrameKey(key))
+        {
+            GetViewport().SetInputAsHandled();
+            return;
+        }
         switch (key.Keycode)
         {
             case Key.U when key.CtrlPressed && key.ShiftPressed:
@@ -645,6 +651,28 @@ public partial class SolarSystemScene : Control
         _status.Text = Session!.FollowBodyRotation(_active) ? "Following the selected body's rotation."
             : "Select a body with a rotation model at this epoch.";
         Refresh();
+    }
+
+    private bool TryObserverFrameKey(InputEventKey key)
+    {
+        if (key.Keycode == Key.Y)
+        {
+            FollowBodyRotation();
+            return true;
+        }
+        NavigationFrame frame = key.Unicode switch
+        {
+            '"' => NavigationFrame.Chase,
+            ':' => NavigationFrame.PhaseLock,
+            _ => NavigationFrame.Inertial
+        };
+        if (frame == NavigationFrame.Inertial)
+            return false;
+        _status.Text = Session!.FollowRelativeFrame(_active, frame) ?
+            frame == NavigationFrame.Chase ? "Following the selected body's orbital motion." : "Phase-locked to the selected body and its parent."
+            : "Select a body with a usable orbital frame at this epoch.";
+        Refresh();
+        return true;
     }
 
     private bool TryFreeFlightKey(InputEventKey key)

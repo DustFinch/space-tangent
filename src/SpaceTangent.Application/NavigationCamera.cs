@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
 using SpaceTangent.Contracts;
 using SpaceTangent.Core.Ephemerides;
+using SpaceTangent.Core.Observing;
+using SpaceTangent.Core.Time;
 using SpaceTangent.Core.World;
 
 namespace SpaceTangent.Application;
@@ -20,15 +22,18 @@ public readonly record struct NavigationCamera(Vector3d AnchorKilometers, double
         AzimuthRadians is >= -Math.PI and <= Math.PI &&
         ElevationRadians is >= -MaxElevation and <= MaxElevation &&
         (!Tracking || Target.HasValue) &&
-        (Placement is not { } placement || (placement.IsValid(RangeKilometers) && (!placement.BodyFixed || Tracking)));
+        (Placement is not { } placement || (placement.IsValid(RangeKilometers) &&
+            (!placement.UsesFrame || Tracking) && (placement.Reference is null || placement.Reference != Target)));
 
-    public NavigationPlacement ResolvePlacement(WorldSnapshot snapshot)
+    public NavigationPlacement ResolvePlacement(WorldSnapshot snapshot, DeltaTModel deltaT = DeltaTModel.MorrisonStephenson2004)
     {
-        if (Placement is { BodyFixed: false } inertial)
-            return inertial;
-        if (Placement is { BodyFixed: true } local && Target is { } target &&
-            snapshot.TryOrientation(target, out FrameKinematics rotation))
-            return local.Transform(rotation.ToWorld, false);
+        if (Placement is { } local)
+        {
+            if (!local.UsesFrame)
+                return local;
+            if (TryFrameBasis(snapshot, deltaT, out Basis3d basis))
+                return local.Transform(basis, false);
+        }
         var (sinA, cosA) = Math.SinCos(AzimuthRadians);
         var (sinE, cosE) = Math.SinCos(ElevationRadians);
         Vector3d outward = new(cosE * sinA, -cosE * cosA, sinE);
@@ -36,6 +41,64 @@ public readonly record struct NavigationCamera(Vector3d AnchorKilometers, double
         Vector3d right = Vector3d.Cross(forward, new(0, 0, 1));
         Vector3d up = Vector3d.Cross(right / right.Length, forward);
         return new(outward * RangeKilometers, forward, up);
+    }
+
+    internal bool TryFrameBasis(WorldSnapshot snapshot, DeltaTModel deltaT, out Basis3d basis)
+    {
+        basis = default;
+        if (Target is not { } target || Placement is not { } placement)
+            return false;
+        return placement.BodyFixed
+            ? TryBodyBasis(snapshot, target, deltaT, out basis)
+            : placement.Reference is { } reference && TryRelativeBasis(snapshot, placement.Frame, target, reference, out basis);
+    }
+
+    internal static bool TryBodyBasis(WorldSnapshot snapshot, ObjectId target, DeltaTModel deltaT, out Basis3d basis)
+    {
+        if (target == SolarSystemSample.EarthId && snapshot.SolarSystem is { } solar)
+        {
+            try
+            {
+                Basis3d local = EarthSurfaceLighting.Sample(solar, default, deltaT).EastNorthUp;
+                basis = new(local.Z, local.X, local.Y);
+                return true;
+            }
+            catch (ArgumentOutOfRangeException)
+            {
+                basis = default;
+                return false;
+            }
+        }
+        bool available = snapshot.TryOrientation(target, out FrameKinematics rotation);
+        basis = rotation.ToWorld;
+        return available;
+    }
+
+    internal static bool TryRelativeBasis(WorldSnapshot snapshot, NavigationFrame frame, ObjectId target, ObjectId reference, out Basis3d basis)
+    {
+        basis = default;
+        if (frame is not (NavigationFrame.Chase or NavigationFrame.PhaseLock) ||
+            !snapshot.TryState(target, out CartesianState body) || !snapshot.TryState(reference, out CartesianState other))
+            return false;
+        CartesianState relative = other - body;
+        (Vector3d primary, Vector3d guide) = frame == NavigationFrame.Chase
+            ? (relative.VelocityKilometersPerSecond, relative.PositionKilometers)
+            : (relative.PositionKilometers, relative.VelocityKilometersPerSecond);
+        double primaryLength = primary.Length;
+        if (!(primaryLength > 0) || !double.IsFinite(primaryLength))
+            return false;
+        Vector3d x = primary / primaryLength;
+        Vector3d y = guide - x * Vector3d.Dot(x, guide);
+        if (y.Length < 1e-9 * Math.Max(guide.Length, 1e-300))
+        {
+            var (sin, cos) = Math.SinCos(23.4392911 * Math.PI / 180);
+            Vector3d north = new(0, -sin, cos);
+            Vector3d fallback = Math.Abs(Vector3d.Dot(x, north)) < .9 ? north : new(1, 0, 0);
+            y = fallback - x * Vector3d.Dot(x, fallback);
+        }
+        y /= y.Length;
+        basis = new(x, y, Vector3d.Cross(x, y));
+        return true;
     }
 
     internal NavigationCamera Adjust(double azimuth, double elevation, double zoom, double minimumRange) =>

@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
 using SpaceTangent.Contracts;
+using SpaceTangent.Core.World;
 
 namespace SpaceTangent.Application;
 
@@ -10,7 +11,7 @@ public sealed partial class SimulationSession
         ObserverView observer = _views[view];
         var snapshot = World.Graph.Evaluate(observer.Epoch);
         NavigationCamera camera = observer.Navigation ?? PresetCamera(observer, snapshot);
-        NavigationPlacement placement = camera.ResolvePlacement(snapshot);
+        NavigationPlacement placement = camera.ResolvePlacement(snapshot, DeltaT);
         CancelFlight(view);
         _views[view] = observer with
         {
@@ -41,20 +42,40 @@ public sealed partial class SimulationSession
         return true;
     }
 
+    public bool FollowRelativeFrame(int view, NavigationFrame frame, ObjectId? reference = null)
+    {
+        ObserverView observer = _views[view];
+        var snapshot = World.Graph.Evaluate(observer.Epoch);
+        if (observer.Selection is not { } target ||
+            (reference ?? World.Catalogue.Find(target)?.Parent) is not { } other || other == target ||
+            !NavigationCamera.TryRelativeBasis(snapshot, frame, target, other, out Basis3d basis) ||
+            !World.TryNavigationState(target, snapshot, out var state))
+            return false;
+        return FollowFrame(view, snapshot, target, state.PositionKilometers, basis, false, frame, other);
+    }
+
     public bool FollowBodyRotation(int view)
     {
         ObserverView observer = _views[view];
         var snapshot = World.Graph.Evaluate(observer.Epoch);
-        if (observer.Selection is not { } target || !snapshot.TryOrientation(target, out var frame) ||
+        if (observer.Selection is not { } target || !NavigationCamera.TryBodyBasis(snapshot, target, DeltaT, out Basis3d basis) ||
             !World.TryNavigationState(target, snapshot, out CartesianState state))
             return false;
+        return FollowFrame(view, snapshot, target, state.PositionKilometers, basis, true, NavigationFrame.Inertial, null);
+    }
+
+    private bool FollowFrame(int view, WorldSnapshot snapshot, ObjectId target, Vector3d origin, Basis3d basis,
+        bool bodyFixed, NavigationFrame frame, ObjectId? reference)
+    {
+        ObserverView observer = _views[view];
         NavigationCamera camera = observer.Navigation ?? PresetCamera(observer, snapshot);
-        NavigationPlacement current = camera.ResolvePlacement(snapshot);
-        Vector3d offset = camera.AnchorKilometers + current.OffsetKilometers - state.PositionKilometers;
-        NavigationPlacement local = (current with { OffsetKilometers = offset }).Transform(frame.ToWorld.Transpose(), true);
+        NavigationPlacement current = camera.ResolvePlacement(snapshot, DeltaT);
+        Vector3d offset = camera.AnchorKilometers + current.OffsetKilometers - origin;
+        NavigationPlacement local = (current with { OffsetKilometers = offset }).Transform(basis.Transpose(), bodyFixed) with
+            { Frame = frame, Reference = reference };
         NavigationCamera next = camera with
         {
-            AnchorKilometers = state.PositionKilometers,
+            AnchorKilometers = origin,
             RangeKilometers = Math.Max(NavigationCamera.MinRange, offset.Length),
             Target = target,
             Tracking = true,

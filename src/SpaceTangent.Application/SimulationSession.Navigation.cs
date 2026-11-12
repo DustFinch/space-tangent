@@ -52,7 +52,7 @@ public sealed partial class SimulationSession
         ObserverView observer = _views[view];
         NavigationCamera start = observer.Navigation ?? PresetCamera(observer, snapshot);
         if (start.Placement is not null)
-            start = start with { Placement = start.ResolvePlacement(snapshot) };
+            start = start with { Placement = start.ResolvePlacement(snapshot, DeltaT) };
         double targetRange = Math.Clamp(range ?? FramingRange(target), MinimumRange(target), NavigationCamera.MaxRange);
         _flights[view] = new(start, 0, Math.Max(duration, .001), targetRange);
         _views[view] = observer with { Navigation = start with { Target = target, Tracking = false } };
@@ -64,8 +64,8 @@ public sealed partial class SimulationSession
         ObserverView observer = _views[view];
         if (observer.Navigation is { Tracking: true } tracked && tracked.Target == observer.Selection)
         {
-            NavigationPlacement? placement = tracked.Placement is { BodyFixed: true }
-                ? tracked.ResolvePlacement(World.Graph.Evaluate(observer.Epoch)) : tracked.Placement;
+            NavigationPlacement? placement = tracked.Placement is { UsesFrame: true }
+                ? tracked.ResolvePlacement(World.Graph.Evaluate(observer.Epoch), DeltaT) : tracked.Placement;
             _views[view] = observer with { Navigation = tracked with { Tracking = false, Placement = placement } };
             return true;
         }
@@ -129,6 +129,9 @@ public sealed partial class SimulationSession
             return;
         }
         Vector3d position = state.PositionKilometers;
+        if (pose.Placement is { UsesFrame: true } && !pose.TryFrameBasis(snapshot, DeltaT, out _) &&
+            _trackingEpochs[view] is { } previous)
+            pose = pose with { Placement = pose.ResolvePlacement(World.Graph.Evaluate(previous.Epoch), DeltaT) };
         if (_flights[view] is { } flight)
         {
             double elapsed = Math.Min(flight.Duration, flight.Elapsed + elapsedSeconds);
@@ -157,7 +160,7 @@ public sealed partial class SimulationSession
             };
             if (t < 1 && flight.Start.Placement is { } start)
             {
-                var end = pose.ResolvePlacement(snapshot);
+                var end = pose.ResolvePlacement(snapshot, DeltaT);
                 double blend = Smooth(t);
                 var scaledStart = start with { OffsetKilometers = start.OffsetKilometers * (range / flight.Start.RangeKilometers) };
                 pose = pose with { Placement = scaledStart.Interpolate(end, blend) };

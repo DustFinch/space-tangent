@@ -38,10 +38,16 @@ public static class SceneLink
         if (separator <= 0)
             throw new FormatException("The link has no observer parameters.");
         string[] path = text[..separator].TrimEnd('/').Split('/');
-        bool follow = path[0].Equals("Follow", StringComparison.OrdinalIgnoreCase);
-        if (!follow && !path[0].Equals("Freeflight", StringComparison.OrdinalIgnoreCase))
-            throw new FormatException($"The link uses the unsupported {path[0]} frame.");
-        if (path.Length != (follow ? 3 : 2))
+        string mode = path[0].ToUpperInvariant();
+        int bodies = mode switch
+        {
+            "FREEFLIGHT" => 0,
+            "FOLLOW" or "SYNCORBIT" or "CHASE" => 1,
+            "PHASELOCK" => 2,
+            _ => throw new FormatException($"The link uses the unsupported {path[0]} frame.")
+        };
+        bool follow = bodies != 0;
+        if (path.Length != bodies + 2)
             throw new FormatException("The link has an invalid observer path.");
 
         var parameters = new Dictionary<string, string>(StringComparer.Ordinal);
@@ -60,17 +66,29 @@ public static class SceneLink
                 DateTimeStyles.None, out DateTime date))
             throw new FormatException("The link has an invalid TDB calendar date.");
         DateTime j2000 = new(2000, 1, 1, 12, 0, 0);
-        var epoch = JulianInstant.FromJulianDate(2451545, TimeScale.Tdb).AddSeconds((date - j2000).TotalSeconds);
+        var epoch = new JulianInstant(JulianInstant.J2000Day, 0, TimeScale.Tdb).AddNanoseconds((Int128)(date.Ticks - j2000.Ticks) * 100);
         if (epoch.CompareTo(world.Ephemeris.Start) < 0 || epoch.CompareTo(world.Ephemeris.End) > 0)
             throw new InvalidDataException("The linked epoch lies outside the ephemeris.");
         var snapshot = world.Graph.Evaluate(epoch);
         ObjectId? parent = follow ? ResolveObject(Uri.UnescapeDataString(path[1]), world.Catalogue) : null;
+        ObjectId? partner = mode switch
+        {
+            "CHASE" => world.Catalogue.Find(parent!.Value)?.Parent ?? throw new InvalidDataException("The chase target has no parent."),
+            "PHASELOCK" => ResolveObject(Uri.UnescapeDataString(path[2]), world.Catalogue),
+            _ => null
+        };
+        NavigationFrame frame = mode switch
+        {
+            "CHASE" => NavigationFrame.Chase,
+            "PHASELOCK" => NavigationFrame.PhaseLock,
+            _ => NavigationFrame.Inertial
+        };
         ObjectId? selected = parameters.TryGetValue("select", out string? selection) && selection.Length != 0
             ? ResolveObject(selection, world.Catalogue) : parent;
         if (!world.TryNavigationState(parent ?? SolarSystemSample.SunId, snapshot, out CartesianState center))
             throw new InvalidDataException("The linked reference has no state at this epoch.");
 
-        Vector3d offset = FromEcliptic(new(ReadCoordinate(Value("x")), ReadCoordinate(Value("y")), ReadCoordinate(Value("z"))));
+        Vector3d offset = FrameCoordinates(new(ReadCoordinate(Value("x")), ReadCoordinate(Value("y")), ReadCoordinate(Value("z"))));
         double w = Number("ow");
         Vector3d quaternion = new(-Number("ox"), -Number("oy"), -Number("oz"));
         double norm = Math.Sqrt(w * w + Vector3d.Dot(quaternion, quaternion));
@@ -78,8 +96,8 @@ public static class SceneLink
             throw new FormatException("The link has an invalid camera orientation.");
         quaternion /= norm;
         w /= norm;
-        Vector3d forward = FromEcliptic(Rotate(new(0, 0, -1)));
-        Vector3d up = FromEcliptic(Rotate(new(0, 1, 0)));
+        Vector3d forward = FrameCoordinates(Rotate(new(0, 0, -1)));
+        Vector3d up = FrameCoordinates(Rotate(new(0, 1, 0)));
         Vector3d anchor = center.PositionKilometers + (follow ? default : offset);
         double scale = offset.Length;
         if (!follow)
@@ -87,11 +105,13 @@ public static class SceneLink
                 ? (anchor - selectedState.PositionKilometers).Length : 100_000;
         var camera = new NavigationCamera(anchor, Math.Max(NavigationCamera.MinRange, scale), 0, 0, parent, follow)
         {
-            Placement = new(follow ? offset : default, forward, up)
+            Placement = new(follow ? offset : default, forward, up, BodyFixed: mode == "SYNCORBIT") { Frame = frame, Reference = partner }
         };
         double field = parameters.ContainsKey("fov") ? Number("fov") : 49;
         if (!camera.IsValid() || !ObserverView.ValidFieldOfView(field))
             throw new FormatException("The linked camera exceeds the supported scale or field of view.");
+        if (camera.Placement is { UsesFrame: true } && !camera.TryFrameBasis(snapshot, deltaT, out _))
+            throw new InvalidDataException("The linked observer frame is unavailable at this epoch.");
         string? paused = parameters.GetValueOrDefault("p");
         if (paused is not (null or "0" or "1"))
             throw new FormatException("The link has an invalid pause flag.");
@@ -111,6 +131,13 @@ public static class SceneLink
 
         double Number(string key) => double.TryParse(Value(key), NumberStyles.Float, CultureInfo.InvariantCulture, out var value) &&
             double.IsFinite(value) ? value : throw new FormatException($"The link has an invalid {key} parameter.");
+
+        Vector3d FrameCoordinates(Vector3d vector) => mode switch
+        {
+            "SYNCORBIT" => new(vector.X, -vector.Z, vector.Y),
+            "CHASE" or "PHASELOCK" => vector,
+            _ => FromEcliptic(vector)
+        };
 
         Vector3d Rotate(Vector3d vector)
         {

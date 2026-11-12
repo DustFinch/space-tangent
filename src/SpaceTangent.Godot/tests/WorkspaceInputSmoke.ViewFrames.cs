@@ -8,6 +8,40 @@ namespace SpaceTangent.Godot.Tests;
 
 public partial class WorkspaceInputSmoke
 {
+    private void ExerciseLegacyFrames(string follow)
+    {
+        var earth = SolarSystemSample.EarthId;
+        var sun = SolarSystemSample.SunId;
+        var moon = SolarSystemSample.MoonId;
+        var sync = SceneLink.Read(follow.Replace("Follow/", "SyncOrbit/", StringComparison.Ordinal), Session.World, Session.DeltaT).Scenario.Views[0];
+        Require(sync.Navigation is { Target: { } rotating, Placement.BodyFixed: true } && rotating == earth,
+            "The synchronously orbiting link must retain a local Earth frame.");
+        var chase = SceneLink.Read(follow.Replace("Follow/", "Chase/", StringComparison.Ordinal), Session.World, Session.DeltaT).Scenario.Views[0];
+        var phase = SceneLink.Read(follow.Replace("Follow/Sol:Earth/", "PhaseLock/Sol:Earth/Sol:Earth:Moon/", StringComparison.Ordinal),
+            Session.World, Session.DeltaT).Scenario.Views[0];
+        var world = Session.World.Graph.Evaluate(chase.Epoch);
+        Require(world.TryState(earth, out var e) && world.TryState(sun, out _) && world.TryState(moon, out _),
+            "The original frame test requires Earth, Sun and Moon ephemerides.");
+        world.TryState(sun, out var s);
+        world.TryState(moon, out var m);
+        Require(chase.Navigation is { Placement: { Frame: NavigationFrame.Chase, Reference: { } parent } } && parent == sun &&
+            phase.Navigation is { Placement: { Frame: NavigationFrame.PhaseLock, Reference: { } partner } } && partner == moon,
+            "Chase uses the parent, while phase lock uses the linked second body.");
+        var chaseDirection = chase.Navigation!.Value.ResolvePlacement(world).OffsetKilometers;
+        var phaseDirection = phase.Navigation!.Value.ResolvePlacement(world).OffsetKilometers;
+        var velocity = (s - e).VelocityKilometersPerSecond;
+        var position = (m - e).PositionKilometers;
+        Require(Vector3d.Dot(chaseDirection / chaseDirection.Length, velocity / velocity.Length) > .999999 &&
+            Vector3d.Dot(phaseDirection / phaseDirection.Length, position / position.Length) > .999999,
+            "The local X axes must follow parent-relative velocity and partner-relative position, respectively.");
+        var later = Session.World.Graph.Evaluate(chase.Epoch.AddSeconds(3600));
+        Require((phaseDirection - phase.Navigation.Value.ResolvePlacement(later).OffsetKilometers).Length > 100,
+            "Advancing the epoch must rotate the phase-lock camera in the same local coordinates.");
+        var original = new SimulationScenario([phase], true, 0, 0, Session.DeltaT);
+        var restored = SceneLink.Read(SceneLink.Write(original), Session.World, Session.DeltaT).Scenario;
+        RequireScenario(original, restored, "Round-tripping the frame and reference in a native link");
+    }
+
     private async Task ExerciseViewFrames(string directory, string bookmarks)
     {
         if (Session.ViewCount == 1)
@@ -94,6 +128,7 @@ public partial class WorkspaceInputSmoke
             Find<Label>("WorkspaceStatus").Text.Contains("Unapplied link parameters: rf", StringComparison.Ordinal),
             "The reference link must restore selection, time, field and orientation and report its unsupported flag.");
         var imported = Session.CaptureScenario(0);
+        ExerciseLegacyFrames(follow);
         var free = SceneLink.Read(follow.Replace("Follow/Sol:Earth", "Freeflight", StringComparison.Ordinal)
             .Replace("ver=3", "ver=4", StringComparison.Ordinal), Session.World, Session.DeltaT).Scenario.Views[0];
         Require(free.Navigation is { Tracking: false, Target: null, Placement: { } independent } &&

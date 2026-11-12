@@ -64,7 +64,7 @@ internal partial class SimulationViewport
         _navigationCamera.Fov = (float)fieldOfView;
         if (pose.Placement is not null)
         {
-            NavigationPlacement placement = pose.ResolvePlacement(snapshot);
+            NavigationPlacement placement = pose.ResolvePlacement(snapshot, deltaT);
             _navigationCamera.Position = ToGodot(placement.OffsetKilometers, units);
             _navigationCamera.LookAt(_navigationCamera.Position + ToGodot(placement.Forward, 1), ToGodot(placement.Up, 1));
         }

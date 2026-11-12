@@ -32,6 +32,7 @@ public partial class SolarSystemScene : Control
     private EarthOrbitTextures? _earthOrbitTextures;
     private PlanetTextures? _planetTextures;
     private CheckButton _showPlanetOrbits = null!;
+    private bool _refreshingViewField;
     private BrightSkyData? _brightSky;
     private CheckButton _deepSky = null!;
     private CheckButton _stars = null!, _starLabels = null!, _equatorialGrid = null!, _constellations = null!;
@@ -866,10 +867,13 @@ public partial class SolarSystemScene : Control
         mode.SetItemDisabled((int)CameraMode.Surface, _surfaceTextures is null);
         mode.ItemSelected += item => SetMode(index, (CameraMode)mode.GetItemId((int)item));
         tools.AddChild(mode);
-        var field = new SpinBox { Name = $"ViewField{index}", MinValue = 2, MaxValue = 120, Step = .5,
+        var field = new SpinBox { Name = $"ViewField{index}", MinValue = 2, MaxValue = 120, Step = .01,
+            Value = Session![index].EffectiveFieldOfView,
             Suffix = "° FOV", TooltipText = "Vertical field of view" };
         field.ValueChanged += value =>
         {
+            if (_refreshingViewField)
+                return;
             Session!.SetFieldOfView(index, value);
             Refresh();
         };
@@ -1129,7 +1133,15 @@ public partial class SolarSystemScene : Control
             bool preset = view.Navigation is null;
             controls.Mode.Select(preset ? (int)view.Mode : NavigationOption);
             controls.FieldOfView.Visible = !preset || view.Mode == CameraMode.Surface;
-            controls.FieldOfView.SetValueNoSignal(view.EffectiveFieldOfView);
+            _refreshingViewField = true;
+            try
+            {
+                controls.FieldOfView.Value = view.EffectiveFieldOfView;
+            }
+            finally
+            {
+                _refreshingViewField = false;
+            }
             controls.Selection.Visible = preset && view.Mode == CameraMode.Satellites;
             controls.TimelineEpoch.Visible = preset && view.Mode is CameraMode.Timeline or CameraMode.Probe;
             controls.TerrainTools.Visible = preset && view.Mode == CameraMode.LunarTerrain;

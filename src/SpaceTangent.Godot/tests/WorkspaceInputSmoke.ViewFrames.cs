@@ -89,6 +89,10 @@ public partial class WorkspaceInputSmoke
         RequireScenario(expected, Session.CaptureScenario(1), "Opening the native scene link");
         Require(Session.SplitLayout == ViewSplit.Stacked && Find<BoxContainer>("Views").Vertical,
             "Opening the link must also restore the split direction.");
+        await ToSignal(Tree, SceneTree.SignalName.ProcessFrame);
+        Require(Find<SpinBox>("ViewField0").GetLineEdit().Text.StartsWith("28", StringComparison.Ordinal) &&
+            Find<SpinBox>("ViewField1").GetLineEdit().Text.StartsWith("67", StringComparison.Ordinal),
+            "Both visible field controls must display their restored values.");
         Require(await _scene.ReloadAddOns(), "Reload must succeed with a linked two-view scene.");
         RequireScenario(expected, Session.CaptureScenario(1), "Reloading the linked two-view scene");
         const string filename = "saved-view-frames.stscene";

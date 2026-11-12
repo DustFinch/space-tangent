@@ -49,3 +49,9 @@ To measure distance, select the first object and press **Ctrl+M**, then select t
 Use J to start reverse playback, K and L to change the active clock's rate by a factor of ten, and Space to pause or resume. Changing the rate with K or L preserves pause. The existing UTC fields accept a published leap second, for example `2016-12-31 23:59:60`.
 
 With a body selected, press ? for its light travel time or − to move the clock back by that amount. Press − again to move forward by the light time measured at the current epoch. The existing view caption shows when light time is applied. Independent clocks shift only in their own view. Scenarios with this flag use version 10, and ordinary earlier scenes retain their format.
+
+## Observation events
+
+Use Ctrl+E in a view to search from its current epoch. Select a spacecraft with TLE data for passes above 10° during the next two days, or a planet for close conjunctions over the next 45 days. With the Sun selected the search uses the observer's site for solar eclipses. The default search also includes lunar eclipses.
+
+The status line gives the next result and its peak time. Press Ctrl+Shift+E to open it in the view that ran the search. Independent views keep their epochs and cameras. A changed target, site, clock model or add-on generation requires a fresh search.

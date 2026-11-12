@@ -226,7 +226,7 @@ public sealed partial class SimulationSession
     public int ViewCount => _views.Count;
     public ObserverView this[int view] => _views[view];
 
-    internal int ViewIdentity(int view) => _viewIds[view];
+    public int ViewIdentity(int view) => _viewIds[view];
     internal int IndexOfView(int identity) => _viewIds.IndexOf(identity);
 
     public SimulationScenario CaptureScenario(int activeView)

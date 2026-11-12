@@ -496,6 +496,12 @@ public partial class SolarSystemScene : Control
                 _status.Text = _showSurfaceSites ? "Surface locations visible at their map scale." : "Surface location labels hidden.";
                 Refresh();
                 break;
+            case Key.E when key.CtrlPressed && key.ShiftPressed:
+                GoToObserverEvent();
+                break;
+            case Key.E when key.CtrlPressed:
+                _ = FindNextObserverEvent();
+                break;
             case Key.R when key.CtrlPressed:
                 SplitActiveView(ViewSplit.Stacked);
                 break;
@@ -535,6 +541,7 @@ public partial class SolarSystemScene : Control
 
     public override void _ExitTree()
     {
+        _eventSearch?.Cancel();
         _script?.Stop();
         _loadGeneration++;
         _loadCancellation?.Cancel();

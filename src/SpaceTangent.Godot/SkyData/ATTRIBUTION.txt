@@ -14,3 +14,8 @@ Constellation figures
 Copyright (c) 2015, Olaf Frohn. d3-celestial, BSD 3-Clause.
 https://github.com/ofrohn/d3-celestial/blob/7e720a3de062059d4c5400a379146a601d9010e0/data/constellations.lines.json
 The source geometry is unchanged. See LINES-LICENSE.txt for the notice.
+
+meteor-showers.tsv preserves the archived table of 43 shower profiles, derived from the Stellarium v26.3 MeteorShowers catalogue under GPL-2.0-or-later.
+https://github.com/Stellarium/stellarium/tree/v26.3/plugins/MeteorShowers
+The International Meteor Organization working list is the independent reference for the Perseid peak and radiant.
+https://www.imo.net/files/meteor-shower/cal2026.pdf

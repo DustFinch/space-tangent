@@ -18,5 +18,15 @@
     "path": "src/SpaceTangent.Godot/tests/WorkspaceInputSmoke.ViewFrames.cs",
     "sha256": "478f3bb42d4b958117bb12debf199eb3cdb4bdd2787a9022080f6217cf17170e",
     "reason": "Exercises the exact archived bookmark URI emitted to users."
+  },
+  {
+    "path": "src/SpaceTangent.Godot/SkyData/ATTRIBUTION.txt",
+    "sha256": "c2430d428ac189109a03a3fde646dc16a4d9b8937682f0c4d3165d8fa1585b37",
+    "reason": "Upstream meteor catalogue provenance and attribution."
+  },
+  {
+    "path": "src/SpaceTangent.Godot/SkyData/ATTRIBUTION.txt",
+    "sha256": "5e4379500b7a3d22079fcf3f1c90e7e00271e717f8939f658fe02fefe8a9f10c",
+    "reason": "Upstream meteor catalogue provenance and attribution."
   }
 ]

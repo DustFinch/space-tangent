@@ -217,6 +217,8 @@ internal partial class SimulationViewport : Node3D
 
     internal void SetSurfaceControls(bool clouds, bool lunarLight) => _surface!.SetControls(clouds, lunarLight);
 
+    internal bool ShowsMeteorRadiant(string code) => _surface?.ShowsMeteorRadiant(code) == true;
+
     internal void SetSurfacePitch(double degrees) => _surface!.PitchDegrees = degrees;
 
     private bool DrawScene(ObserverView observer, WorldSnapshot snapshot, DeltaTModel deltaT)

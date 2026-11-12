@@ -77,3 +77,9 @@ An archived site with a Bortle class applies its ground sky profile when opened.
 Version 11 scenarios store the optional `conditions` object inside each `earthObserver`. It accepts `bortle`, `temperatureCelsius`, `pressureHectopascals`, `extinction`, `refraction` and `scintillation`. Leave pressure empty to estimate it from altitude. Extinction is in visual magnitudes per zenith airmass. The profile refracts star and Moon directions, dims and scintillates stars, and adds modeled night sky glow. The Sun and clouds retain the geometric lighting calculation.
 
 The sky quality and limiting magnitude table follows the archived sky profiles based on [John Bortle's scale](https://www.skyandtelescope.org/wp-content/uploads/BortleDarkSkyScale.pdf). Relative optical airmass uses [Kasten and Young's approximation](https://opg.optica.org/ao/abstract.cfm?URI=ao-28-22-4735).
+
+## Meteors
+
+Press **Ctrl+H** in an Earth surface view to toggle shower radiants and animated trails. The renderer applies the current site's sky limit to the trail rate and fades the layer in daylight. **Ctrl+Shift+H** finds the next major annual peak from the active epoch. **Ctrl+Alt+H** seeks to that peak in the view that requested it. Variable outburst maxima are displayed as active radiants in season without counting them as recurring peak forecasts.
+
+Version 12 scenarios preserve the meteor layer per view. Shower and sporadic trails are a simulation of expected activity. The dates are geometric solar-longitude crossings from the installed ephemeris.

@@ -376,7 +376,11 @@ public partial class SolarSystemScene : Control
         {
             Session!.SetSkyLayers(_active,
                 new SkyLayerSettings(_stars.ButtonPressed, _starLabels.ButtonPressed, _equatorialGrid.ButtonPressed,
-                    _constellations.ButtonPressed) { DeepSky = _deepSky.ButtonPressed });
+                    _constellations.ButtonPressed)
+                {
+                    DeepSky = _deepSky.ButtonPressed,
+                    Meteors = Session[_active].Sky.Meteors
+                });
             Refresh();
         };
         panel.AddChild(button);
@@ -514,6 +518,15 @@ public partial class SolarSystemScene : Control
                 break;
             case Key.E when key.CtrlPressed:
                 _ = FindNextObserverEvent();
+                break;
+            case Key.H when key.CtrlPressed && key.ShiftPressed && !key.AltPressed:
+                FindMeteorPeak();
+                break;
+            case Key.H when key.CtrlPressed && key.AltPressed && !key.ShiftPressed:
+                GoToMeteorPeak();
+                break;
+            case Key.H when key.CtrlPressed && !key.ShiftPressed && !key.AltPressed:
+                ToggleMeteors();
                 break;
             case Key.G when key.CtrlPressed && !key.ShiftPressed:
                 ChangeGroundSky(key.AltPressed);

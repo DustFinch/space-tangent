@@ -16,7 +16,7 @@ public sealed record SimulationScenario(IReadOnlyList<ObserverView> Views, bool 
 /// <summary>Persists observer settings with exact TDB epochs and stable catalog IDs.</summary>
 public static class ScenarioFile
 {
-    private const int Version = 11;
+    private const int Version = 12;
     internal const int MaximumBytes = 32 * 1024;
     private static readonly JsonSerializerOptions Json = new()
     {
@@ -51,7 +51,8 @@ public static class ScenarioFile
             throw new InvalidDataException("The scenario has unsupported reference marks.");
         var document = new Document
         {
-            Version = scenario.Views.Any(view => view.EarthObserver?.Conditions is not null) ? Version :
+            Version = scenario.Views.Any(view => view.Sky.Meteors) ? Version :
+                scenario.Views.Any(view => view.EarthObserver?.Conditions is not null) ? 11 :
                 scenario.Views.Any(view => view.LightTimeDelayed) ? 10 :
                 scenario.Views.Any(view => view.ReferenceMarks != BodyReferenceMarks.None) ? 9 :
                 scenario.Layout is not null || scenario.Views.Any(view => view.Navigation?.Placement?.Reference is not null) ? 8 : 7,
@@ -150,6 +151,8 @@ public static class ScenarioFile
             if (data.EarthObserver is { } earth &&
                 (document.Version < 3 || !earth.IsValid() || (document.Version < 11 && earth.Conditions is not null)))
                 throw new InvalidDataException("The scenario has an invalid Earth observer camera.");
+            if (data.Sky is { Meteors: true } && document.Version < 12)
+                throw new InvalidDataException("This scenario version does not support meteor layers.");
             if (data.Sky is not null && document.Version < 4)
                 throw new InvalidDataException("Sky layers require a version 4 scenario.");
             if (data.Sky is { DeepSky: true } && document.Version < 5)

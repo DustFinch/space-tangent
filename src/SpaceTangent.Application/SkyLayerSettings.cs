@@ -8,6 +8,9 @@ public readonly record struct SkyLayerSettings(bool Stars, bool Labels, bool Equ
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingDefault)]
     public bool DeepSky { get; init; }
 
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingDefault)]
+    public bool Meteors { get; init; }
+
     [JsonIgnore]
-    public bool Visible => Stars || Labels || EquatorialGrid || Constellations || DeepSky;
+    public bool Visible => Stars || Labels || EquatorialGrid || Constellations || DeepSky || Meteors;
 }

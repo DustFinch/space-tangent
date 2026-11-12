@@ -18,6 +18,9 @@ internal sealed class SurfaceProjection
     private readonly ShaderMaterial _material;
     private readonly Label[] _cardinals;
     private BrightSkyOverlay? _sky;
+    private MeteorOverlay? _meteors;
+
+    internal bool ShowsMeteorRadiant(string code) => _surface.Visible && _meteors?.ShowsRadiant(code) == true;
     private (Vector3 Forward, Vector3 Right, Vector3 Up, Vector3 North, Vector3 East)? _cardinalFrame;
     private float _tanHalfField = .087488664f;
     internal double? PitchDegrees { get; set; }
@@ -43,6 +46,11 @@ internal sealed class SurfaceProjection
         _surface.AddChild(_sky);
         _surface.MoveChild(_sky, 0);
         _sky.SetAnchorsAndOffsetsPreset(Control.LayoutPreset.FullRect);
+        _meteors = new();
+        _meteors.Configure(data.Meteors);
+        _surface.AddChild(_meteors);
+        _surface.MoveChild(_meteors, 1);
+        _meteors.SetAnchorsAndOffsetsPreset(Control.LayoutPreset.FullRect);
     }
 
     internal ObjectId? PickStar(Vector2 position) => _sky?.Pick(position);
@@ -52,7 +60,10 @@ internal sealed class SurfaceProjection
     {
         _surface.Visible = surface;
         if (!surface)
+        {
+            _meteors?.HideFrame();
             return true;
+        }
 
         EarthObserverCamera observer = camera ?? EarthObserverCamera.Moscow;
         SurfaceLighting lighting;
@@ -63,6 +74,7 @@ internal sealed class SurfaceProjection
         catch (ArgumentOutOfRangeException)
         {
             _surface.Hide();
+            _meteors?.HideFrame();
             return false;
         }
 
@@ -106,6 +118,11 @@ internal sealed class SurfaceProjection
         }
         else
             _sky?.Hide();
+        if (sky.Meteors)
+            _meteors?.ShowFrame(sample, lighting, observer.Site, observer.Conditions?.LimitingMagnitude() ?? 6.5,
+                forward, right, cameraUp, _tanHalfField);
+        else
+            _meteors?.HideFrame();
         _cardinalFrame = observer.CardinalPoints ? (forward, right, cameraUp, north, east) : null;
         PlaceCardinals();
         return true;

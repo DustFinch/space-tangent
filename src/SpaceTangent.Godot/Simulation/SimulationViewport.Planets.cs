@@ -11,24 +11,22 @@ namespace SpaceTangent.Godot.Simulation;
 internal partial class SimulationViewport
 {
     private const double OuterOverviewKilometersPerUnit = 25_000_000;
-    private const float SaturnRingInner = 74500f / 60268f, SaturnRingOuter = 140220f / 60268f;
+    private readonly Dictionary<ObjectId, PlanetRingRendering> _planetRings = new();
     private readonly Dictionary<ObjectId, Node3D> _planetMarkers = new();
     private readonly Dictionary<ObjectId, MeshInstance3D> _planetGlobes = new();
     private readonly Dictionary<ObjectId, WorldOrbitAtmosphere> _worldAtmospheres = new();
     private readonly ImmediateMesh _planetPaths = new();
     private MeshInstance3D _planetPathNode = null!;
-    private Node3D _saturnRings = null!;
-    private ShaderMaterial? _saturnRingMaterial, _saturnGlobeMaterial;
-    private bool _saturnSurfaceTextured;
+
     private JulianInstant? _pathEpoch;
     private bool _pathOuter;
 
     internal bool ShowPlanetOrbits { get; set; } = true;
     internal int PlanetOrbitCount => _planetPaths.GetSurfaceCount();
-    internal bool SaturnRingsVisible => _saturnRings.Visible;
+    internal bool PlanetRingsVisible(ObjectId id) => _planetRings.GetValueOrDefault(id)?.Visible == true;
     internal bool PlanetGlobeTextured(ObjectId id) => _planetGlobes.TryGetValue(id, out var mesh) && mesh.Visible &&
         (mesh.MaterialOverride is StandardMaterial3D { AlbedoTexture: not null } ||
-            (id == PlanetCatalogue.SaturnId && _saturnSurfaceTextured) ||
+            _planetRings.GetValueOrDefault(id)?.Textured == true ||
             _worldAtmospheres.GetValueOrDefault(id)?.Textured == true);
 
     private void InitializePlanets()
@@ -43,8 +41,7 @@ internal partial class SimulationViewport
         }
         _planetPathNode = new MeshInstance3D { Mesh = _planetPaths, Visible = false };
         AddChild(_planetPathNode);
-        _saturnRings = new Node3D { Visible = false };
-        AddChild(_saturnRings);
+
         InitializeSmallBodies();
     }
 
@@ -57,33 +54,9 @@ internal partial class SimulationViewport
             material.AlbedoTexture = texture;
             material.AlbedoColor = Colors.White;
         }
-        if (textures.Rings is not { } rings)
-            return;
-        var mesh = new ImmediateMesh();
-        _saturnRingMaterial = new() { Shader = GD.Load<Shader>("res://Shaders/saturn_rings.gdshader") };
-        _saturnRingMaterial.SetShaderParameter("rings_map", rings);
-        _saturnGlobeMaterial = new() { Shader = GD.Load<Shader>("res://Shaders/saturn_globe.gdshader") };
-        _saturnGlobeMaterial.SetShaderParameter("rings_map", rings);
-        _saturnGlobeMaterial.SetShaderParameter("ring_inner", SaturnRingInner);
-        _saturnGlobeMaterial.SetShaderParameter("ring_outer", SaturnRingOuter);
-        _saturnSurfaceTextured = textures.Surfaces.TryGetValue(PlanetCatalogue.SaturnId, out Texture2D? surface);
-        _saturnGlobeMaterial.SetShaderParameter("has_surface_map", _saturnSurfaceTextured);
-        if (surface is not null)
-            _saturnGlobeMaterial.SetShaderParameter("surface_map", surface);
-        _planetGlobes[PlanetCatalogue.SaturnId].MaterialOverride = _saturnGlobeMaterial;
-        const int segments = 192;
-        mesh.SurfaceBegin(Mesh.PrimitiveType.TriangleStrip, _saturnRingMaterial);
-        for (int i = 0; i <= segments; i++)
-        {
-            float angle = Mathf.Tau * i / segments;
-            Vector3 radial = new(Mathf.Cos(angle), 0, Mathf.Sin(angle));
-            mesh.SurfaceSetUV(new(0, .5f));
-            mesh.SurfaceAddVertex(radial * SaturnRingInner);
-            mesh.SurfaceSetUV(new(1, .5f));
-            mesh.SurfaceAddVertex(radial * SaturnRingOuter);
-        }
-        mesh.SurfaceEnd();
-        _saturnRings.AddChild(new MeshInstance3D { Mesh = mesh, CastShadow = GeometryInstance3D.ShadowCastingSetting.Off });
+        foreach (PlanetRingProfile profile in PlanetRingRendering.Profiles)
+            if (textures.Rings.TryGetValue(profile.Id, out var texture) && PlanetCatalogue.Find(profile.Id) is { } body)
+                _planetRings.Add(profile.Id, new(this, _planetGlobes[profile.Id], profile, texture, body.RadiusKilometers));
     }
 
     internal void SetWorldAtmospheres(IReadOnlyDictionary<ObjectId, OrbitAtmosphereTextures> lookups)
@@ -183,22 +156,12 @@ internal partial class SimulationViewport
                 continue;
             float pole = (float)(planet.PolarRadiusKilometers / planet.RadiusKilometers);
             bool oriented = PlaceWorldGlobe(globe, snapshot, planet.Id, position, new(radius, radius * pole, radius));
-            if (planet.NaifId != 699 || _saturnRingMaterial is null || _saturnGlobeMaterial is null)
-                continue;
-            Basis basis = globe.Transform.Basis.Orthonormalized();
-            Vector3d toSun = snapshot.SolarSystem!.Value.Sun.PositionKilometers - state.PositionKilometers;
-            Vector3 light = basis.Inverse() * ToGodot(toSun / toSun.Length, 1);
-            bool ringsVisible = oriented && radius > .12f;
-            _saturnGlobeMaterial.SetShaderParameter("sun_in_body", light);
-            _saturnGlobeMaterial.SetShaderParameter("polar_ratio", pole);
-            _saturnGlobeMaterial.SetShaderParameter("cast_ring_shadows", ringsVisible);
-            if (!ringsVisible)
-                continue;
-            _saturnRingMaterial.SetShaderParameter("sun_in_body", light);
-            _saturnRingMaterial.SetShaderParameter("polar_ratio", pole);
-            _saturnRingMaterial.SetShaderParameter("solar_radius_radians", (float)Math.Asin(SolarOccultation.SunRadiusKilometers / toSun.Length));
-            _saturnRings.Transform = new(basis * Basis.FromScale(Vector3.One * radius), position);
-            _saturnRings.Show();
+            if (_planetRings.TryGetValue(planet.Id, out PlanetRingRendering? rings))
+            {
+                Vector3d toSun = snapshot.SolarSystem!.Value.Sun.PositionKilometers - state.PositionKilometers;
+                double distance = toSun.Length;
+                rings.Update(ToGodot(toSun / distance, 1), distance, oriented);
+            }
         }
         DrawSmallBodies(snapshot, pose, units, project);
     }
@@ -219,7 +182,8 @@ internal partial class SimulationViewport
     {
         foreach (MeshInstance3D globe in _planetGlobes.Values)
             globe.Hide();
-        _saturnRings.Hide();
+        foreach (PlanetRingRendering rings in _planetRings.Values)
+            rings.Hide();
         _cometTail.Hide();
         foreach (Label3D label in _moonLabels.Values)
             label.Hide();

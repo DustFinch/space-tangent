@@ -15,6 +15,7 @@ public partial class EarthOrbitProbe
         CheckPlanetCenters(world);
         var snapshot = world.Graph.Evaluate(epoch);
         var solar = snapshot.SolarSystem!.Value;
+        bool testRingPack = !string.IsNullOrWhiteSpace(System.Environment.GetEnvironmentVariable("SPACETANGENT_RING_TEXTURES"));
         foreach (PlanetDefinition planet in PlanetCatalogue.Planets)
         {
             if (planet.NaifId == 399)
@@ -26,8 +27,11 @@ public partial class EarthOrbitProbe
             Vector3 pole = Axis(rotation.ToWorld.Z).Normalized();
             Vector3 east = sun.Cross(pole).Normalized();
             bool saturn = planet.NaifId == 699;
+            bool ringsExpected = saturn || (testRingPack && PlanetRingRendering.Profiles.Any(profile => profile.Id == planet.Id));
             Vector3 direction = (sun + pole * (saturn ? .78f : .22f) + east * .32f).Normalized();
             await CapturePlanet(planet.Name.ToLowerInvariant(), direction, saturn ? 7 : 4.2);
+            if (ringsExpected && !saturn)
+                await CapturePlanet(planet.Name.ToLowerInvariant() + "-rings", (east + pole * .85f + sun * .35f).Normalized(), 6.3);
             if (saturn)
             {
                 var nearPlane = (sun - pole * sun.Dot(pole) + pole * .04f + east * .35f).Normalized();
@@ -40,7 +44,7 @@ public partial class EarthOrbitProbe
                 var pose = new NavigationCamera(state.PositionKilometers, planet.RadiusKilometers * range,
                     Math.Atan2(direction.X, direction.Z), Math.Asin(direction.Y), planet.Id, true);
                 await AcceptView(name, new(epoch, CameraMode.Solar, planet.Id, false) { Navigation = pose });
-                if (!scene.Renderer(0).PlanetGlobeTextured(planet.Id) || (saturn && !scene.Renderer(0).SaturnRingsVisible))
+                if (!scene.Renderer(0).PlanetGlobeTextured(planet.Id) || (ringsExpected && !scene.Renderer(0).PlanetRingsVisible(planet.Id)))
                     throw new InvalidOperationException($"Planetary data are missing for {name}.");
             }
         }

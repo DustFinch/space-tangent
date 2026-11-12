@@ -19,7 +19,7 @@ Venus uses its cloud map and an approximate cloud-top haze. The atmosphere looku
 
 ## Other planets
 
-Place equirectangular images in the same directory with the filenames `mercury.jpg`, `venus-clouds.jpg`, `mars.jpg`, `jupiter.jpg`, `saturn.jpg`, `uranus.jpg` and `neptune.jpg`. Place the Saturn ring profile in `saturn-rings.png` as a horizontal strip with alpha, sampled from the inner edge at the left to the outer edge at the right. The renderer also supports solid-color planets when the optional image files are absent.
+Place equirectangular images in the same directory with the filenames `mercury.jpg`, `venus-clouds.jpg`, `mars.jpg`, `jupiter.jpg`, `saturn.jpg`, `uranus.jpg` and `neptune.jpg`. Optional ring profiles are `jupiter-rings.png`, `saturn-rings.png`, `uranus-rings.png`, and `neptune-rings.png`. Each is a horizontal strip with alpha, sampled from its inner edge at the left to its outer edge at the right. Use `SPACETANGENT_RING_TEXTURES` to supply the four profiles from a separate directory. The renderer also supports solid-color planets when the optional image files are absent.
 
 For body-fixed orientation, use the [NAIF text PCK](https://naif.jpl.nasa.gov/pub/naif/generic_kernels/pck/pck00011.tpc) as `pck00011.tpc`. The existing timeline pack's PCK can also supply these frames. Without a PCK, the globes use an inertial orientation and the ring plane is unavailable.
 

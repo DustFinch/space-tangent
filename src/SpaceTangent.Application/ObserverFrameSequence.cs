@@ -4,6 +4,13 @@ using System.Security.Cryptography;
 
 namespace SpaceTangent.Application;
 
+public interface IObserverReplay : IDisposable
+{
+    int FramesPerSecond { get; }
+    int FrameCount { get; }
+    SimulationScenario? ReadNext();
+}
+
 public static class ObserverFrameSequence
 {
     private const int HeaderLength = 20, DigestLength = 32, MaximumFrames = 180_000;
@@ -66,7 +73,7 @@ public static class ObserverFrameSequence
         public void Dispose() => _disposed = true;
     }
 
-    public sealed class Reader : IDisposable
+    public sealed class Reader : IObserverReplay
     {
         private readonly Stream _stream;
         private bool _disposed;

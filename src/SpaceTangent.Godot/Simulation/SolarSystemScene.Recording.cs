@@ -11,7 +11,7 @@ public partial class SolarSystemScene
     private int _moviePreviousFps;
     private int? _movieFrameLimit;
     private string? _screenshotPath;
-    private ObserverFrameSequence.Reader? _replay;
+    private IObserverReplay? _replay;
     private FileStream? _replayFile;
     private double _replayRemainder;
     private bool _captureConnected;
@@ -169,7 +169,14 @@ public partial class SolarSystemScene
         try
         {
             _replayFile = File.OpenRead(path);
-            _replay = new(_replayFile);
+            if (Path.GetExtension(path).Equals(".celframe", StringComparison.OrdinalIgnoreCase))
+            {
+                _replay = new LegacyCameraSequence(_replayFile, Session!.World, Session.DeltaT);
+                _replayFile.Dispose();
+                _replayFile = null;
+            }
+            else
+                _replay = new ObserverFrameSequence.Reader(_replayFile);
             _replayRemainder = 0;
             if (_replay.ReadNext() is not { } first)
                 throw new InvalidDataException("The replay is empty.");
@@ -205,6 +212,7 @@ public partial class SolarSystemScene
                     Session.SetPlaying(index, false);
                 Refresh();
                 _status.Text = $"Replay complete · {replay.FrameCount} frames";
+                GD.Print(_status.Text);
             }
         }
         catch (Exception error) when (IsLoadError(error))

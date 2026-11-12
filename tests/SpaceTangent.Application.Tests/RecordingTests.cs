@@ -1,5 +1,8 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
 using System.Buffers.Binary;
+using System.Text;
+using System.Text.Json;
+using SpaceTangent.Core.Ephemerides;
 using SpaceTangent.Contracts;
 using SpaceTangent.Core.Time;
 using Xunit;
@@ -72,6 +75,55 @@ public sealed class RecordingTests
         Assert.Equal(900, report.LastSequence);
         Assert.Equal(2460600.5008, report.FirstTdb);
         Assert.Equal(report.FirstTdb, report.LastTdb);
+    }
+
+    [ArchiveFact]
+    [Trait("Category", "ExternalData")]
+    public void RebuildsTheArchivedFullMoonCameraFromTheRecordedProjection()
+    {
+        string archive = Environment.GetEnvironmentVariable("SPACETANGENT_LEGACY_RECORDING")!;
+        var world = new SimulationWorld(De440Ephemeris.Load(Environment.GetEnvironmentVariable("SPACETANGENT_DE440")!), []);
+        const DeltaTModel deltaT = DeltaTModel.MorrisonStephenson2004;
+        string report = Path.Combine(Path.GetDirectoryName(archive)!, "record.json");
+        using var document = JsonDocument.Parse(File.ReadAllText(report));
+        string observer = document.RootElement.GetProperty("scientific").GetProperty("observerState").GetString()!;
+        using var original = new MemoryStream(Encoding.UTF8.GetBytes(observer));
+        var expected = SceneLink.ReadArchivedObserver(original, world, deltaT).Views.Single();
+
+        byte[] data = File.ReadAllBytes(archive);
+        using var stream = new MemoryStream(data);
+        using var replay = new LegacyCameraSequence(stream, world, deltaT);
+        Assert.Equal(900, replay.FrameCount);
+        Assert.Equal(30, replay.FramesPerSecond);
+        var first = replay.ReadNext()!;
+        var view = Assert.Single(first.Views);
+        Assert.Equal(deltaT, first.DeltaT);
+        Assert.Equal(SolarSystemSample.EarthId, view.Selection);
+        Assert.Equal(expected.Epoch, view.Epoch);
+        Assert.Equal(10, view.FieldOfViewDegrees);
+        var expectedCamera = expected.Navigation!.Value;
+        var actualCamera = view.Navigation!.Value;
+        var actualPose = actualCamera.Placement!.Value;
+        var expectedPose = expectedCamera.Placement!.Value;
+        var displacement = actualCamera.AnchorKilometers - expectedCamera.AnchorKilometers +
+            actualPose.OffsetKilometers - expectedPose.OffsetKilometers;
+        Assert.InRange(displacement.Length, 0, 17);
+        Vector3d relative = actualPose.OffsetKilometers * -1;
+        var right = Vector3d.Cross(actualPose.Forward, actualPose.Up);
+        Vector3d cameraSpace = new(Vector3d.Dot(relative, right), Vector3d.Dot(relative, actualPose.Up),
+            -Vector3d.Dot(relative, actualPose.Forward));
+        // The archive measures the nearby Earth in units of its equatorial radius.
+        Vector3d recordedEarth = new Vector3d(.002617646474391222, -.8801857233047485, .4699283242225647) * 6378.1366;
+        Assert.InRange((cameraSpace - recordedEarth).Length, 0, .000001);
+        Assert.InRange((actualPose.Forward - expectedPose.Forward).Length, 0, 1e-6);
+        Assert.InRange((actualPose.Up - expectedPose.Up).Length, 0, 1e-6);
+        for (int index = 1; index < replay.FrameCount; index++)
+            Assert.Equal(view, Assert.Single(replay.ReadNext()!.Views));
+        Assert.Null(replay.ReadNext());
+
+        data[^1] ^= 1;
+        using var corrupt = new MemoryStream(data);
+        Assert.Throws<InvalidDataException>(() => new LegacyCameraSequence(corrupt, world, deltaT));
     }
 
     private sealed class ArchiveFactAttribute : FactAttribute

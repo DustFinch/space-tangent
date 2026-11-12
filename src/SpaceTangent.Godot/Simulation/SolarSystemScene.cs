@@ -1083,7 +1083,9 @@ public partial class SolarSystemScene : Control
 
     internal bool LoadScenario(string path)
     {
-        if (Path.GetExtension(path).Equals(".stframes", StringComparison.OrdinalIgnoreCase))
+        string extension = Path.GetExtension(path);
+        if (extension.Equals(".stframes", StringComparison.OrdinalIgnoreCase) ||
+            extension.Equals(".celframe", StringComparison.OrdinalIgnoreCase))
             return StartReplay(path);
         CloseReplay();
         try
@@ -1109,11 +1111,14 @@ public partial class SolarSystemScene : Control
     {
         if (_surfaceTextures is null && scenario.Views.Any(view => view.Mode == CameraMode.Surface && view.Navigation is null))
             throw new InvalidDataException("The scenario needs the Earth surface textures.");
-        Session!.RestoreScenario(scenario);
+        ObserverLayout previousLayout = Session!.Layout;
+        ViewSplit previousDirection = Session.SplitLayout;
+        Session.RestoreScenario(scenario);
         if (_script is not null)
             StopScript();
         _active = scenario.ActiveView;
-        UpdateViewLayout();
+        if (Session.Layout != previousLayout || Session.SplitLayout != previousDirection)
+            UpdateViewLayout();
         _sync.SetPressedNoSignal(Session.Synchronized);
         Refresh();
     }

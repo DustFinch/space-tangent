@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
 using System.Buffers.Binary;
+using System.Text;
 
 namespace SpaceTangent.Application;
 
@@ -11,7 +12,14 @@ public static class LegacyFrameInspection
 {
     private static readonly uint[] Crc = MakeTable();
 
-    public static LegacyFrameSummary Inspect(Stream stream, CancellationToken cancellation = default)
+    private static readonly UTF8Encoding Utf8 = new(false, true);
+
+    public static LegacyFrameSummary Inspect(Stream stream, CancellationToken cancellation = default) =>
+        Inspect(stream, null, cancellation);
+
+    internal delegate void FrameVisitor(ReadOnlySpan<byte> prefix, int minor, IReadOnlyList<string> strings);
+
+    internal static LegacyFrameSummary Inspect(Stream stream, FrameVisitor? visitor, CancellationToken cancellation)
     {
         ArgumentNullException.ThrowIfNull(stream);
         Span<byte> file = stackalloc byte[24];
@@ -27,6 +35,7 @@ public static class LegacyFrameInspection
         Span<byte> record = stackalloc byte[5];
         Span<byte> digest = stackalloc byte[4];
         byte[] buffer = new byte[64 * 1024];
+        List<string>? names = visitor is null ? null : [];
         int frames = 0, strings = 0, geometries = 0, starFields = 0;
         long? firstSequence = null, lastSequence = null;
         double? firstTdb = null, lastTdb = null;
@@ -67,6 +76,7 @@ public static class LegacyFrameInspection
                     lastTdb = day + nanos / 86_400_000_000_000d;
                     firstTdb ??= lastTdb;
                 }
+                visitor?.Invoke(buffer.AsSpan(0, read), minor, names!);
                 frames++;
             }
             else if (kind == 4 && (length != 12 || BinaryPrimitives.ReadInt32LittleEndian(buffer) != frames ||
@@ -74,7 +84,15 @@ public static class LegacyFrameInspection
                 BinaryPrimitives.ReadInt32LittleEndian(buffer.AsSpan(8)) != geometries))
                 throw new InvalidDataException("Archived frame footer counts differ.");
             else if (kind == 1)
+            {
+                if (names is not null)
+                {
+                    if (names.Count >= 65_536)
+                        throw new InvalidDataException("Archived camera replay exceeds the name table limit.");
+                    names.Add(Utf8.GetString(buffer.AsSpan(0, read)));
+                }
                 strings++;
+            }
             else if (kind == 2)
                 geometries++;
             else if (kind == 5)

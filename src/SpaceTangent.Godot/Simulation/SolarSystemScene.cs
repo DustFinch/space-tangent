@@ -519,6 +519,9 @@ public partial class SolarSystemScene : Control
             case Key.E when key.CtrlPressed:
                 _ = FindNextObserverEvent();
                 break;
+            case Key.P when key.CtrlPressed && !key.ShiftPressed:
+                CycleLandscape(clear: key.AltPressed);
+                break;
             case Key.H when key.CtrlPressed && key.ShiftPressed && !key.AltPressed:
                 FindMeteorPeak();
                 break;
@@ -580,6 +583,7 @@ public partial class SolarSystemScene : Control
     public override void _ExitTree()
     {
         _eventSearch?.Cancel();
+        _landscapeLifetime.Cancel();
         _script?.Stop();
         _loadGeneration++;
         _loadCancellation?.Cancel();
@@ -1462,6 +1466,7 @@ public partial class SolarSystemScene : Control
             ObserverView view = session[index];
             controls.Snapshot = snapshot;
             controls.Renderer.ShowSurfaceSiteLabels = _showSurfaceSites;
+            controls.Renderer.SetLandscape(ViewLandscape(view));
             bool available = controls.Renderer.Draw(view, snapshot, session.DeltaT);
             controls.Renderer.DrawShip(ship, view.Navigation);
             controls.Renderer.DrawReferenceMarks(view, session.ReferenceGeometry(index, snapshot));

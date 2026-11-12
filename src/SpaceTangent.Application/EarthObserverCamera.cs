@@ -14,6 +14,9 @@ public readonly record struct EarthObserverCamera(EarthSite Site, double Azimuth
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public GroundSkyConditions? Conditions { get; init; }
 
-    public bool IsValid() => Site.IsValid() && Site.HeightKilometers <= 100 && Conditions?.IsValid() != false &&
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public string? LandscapeId { get; init; }
+
+    public bool IsValid() => (LandscapeId is null || ObservingLandscape.ValidId(LandscapeId)) && Site.IsValid() && Site.HeightKilometers <= 100 && Conditions?.IsValid() != false &&
         AzimuthDegrees is >= 0 and < 360 && ElevationDegrees is >= -90 and <= 90;
 }

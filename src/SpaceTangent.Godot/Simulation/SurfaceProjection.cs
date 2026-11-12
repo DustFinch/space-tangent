@@ -10,7 +10,7 @@ namespace SpaceTangent.Godot.Simulation;
 
 internal sealed record SurfaceTextures(Texture2D Clouds, Texture2D Moon);
 
-internal sealed class SurfaceProjection
+internal sealed partial class SurfaceProjection
 {
     internal static readonly JulianInstant FullMoonEpoch = JulianInstant.FromJulianDate(2460600.5008, TimeScale.Tdb);
     private const double Degrees = Math.PI / 180;
@@ -123,6 +123,7 @@ internal sealed class SurfaceProjection
                 forward, right, cameraUp, _tanHalfField);
         else
             _meteors?.HideFrame();
+        DrawLandscape(lighting, forward, right, cameraUp, north, east, up);
         _cardinalFrame = observer.CardinalPoints ? (forward, right, cameraUp, north, east) : null;
         PlaceCardinals();
         return true;

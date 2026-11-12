@@ -18,3 +18,4 @@ The host limits input to 32 KiB, resumes up to 1,024 VM steps per frame and stop
 An explicitly trusted local SSC add-on can use `ScriptedOrbit` and `ScriptedRotation` factories. Start with `-- --allow-addon-lua` or set `SPACETANGENT_ALLOW_ADDON_LUA=1` for that process. Each add-on gets its own Lua environment. Modules stay inside its source folder and may use dotted local names during initialization. Factories receive typed SSC arguments and the actual `AddonPath`.
 
 Callbacks use separate instruction and allocation quotas and have no observer or operating-system API. An unaccepted factory uses an available declared fallback. An unavailable body and its descendants are omitted, and the status of the other add-ons is preserved.
+An installed pack can contain embedded SSC with a resource table. The source catalogue keeps its scope inside the installed pack, including remapped GLB meshes and available fallback files.

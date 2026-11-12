@@ -43,7 +43,7 @@ public sealed class SimulationWorld
     public SimulationWorld(ISolarSystemEphemeris ephemeris, IEnumerable<ScienceSatellite> satellites,
         SpiceSpacecraft? mission = null, SscSampledSpacecraft? timeline = null, HuygensMission? probe = null,
         SpicePolynomialBodyFrame? moonFrame = null, BrightStarCatalogue? brightStars = null, PlanetEphemerides? planets = null, bool hasMarsTerrain = false, StellarCatalogue? stellar = null, IEnumerable<SscBodyDefinition>? bodyCatalog = null,
-        IEnumerable<SscSurfaceLocation>? locations = null, DeepSkyIndex? deepSky = null, ExoplanetCatalogue? exoplanets = null, IEnumerable<SampledMission>? sampledMissions = null)
+        IEnumerable<SscSurfaceLocation>? locations = null, DeepSkyIndex? deepSky = null, ExoplanetCatalogue? exoplanets = null, IEnumerable<SampledMission>? sampledMissions = null, IEnumerable<LocalTleSatellite>? localSatellites = null)
     {
         Ephemeris = ephemeris;
         Satellites = Array.AsReadOnly(satellites.ToArray());
@@ -59,8 +59,13 @@ public sealed class SimulationWorld
             PlanetEphemerides.AddPlanet(graph, planet, planets);
         foreach (NaturalBodyDefinition body in NaturalBodyCatalogue.Bodies)
             PlanetEphemerides.AddNaturalBody(graph, body, planets);
+        _localSatellites = (localSatellites ?? []).ToDictionary(satellite => satellite.Id);
+        var scienceIds = Satellites.Select(satellite => satellite.Id).ToHashSet();
+        foreach (LocalTleSatellite local in _localSatellites.Values)
+            if (!scienceIds.Contains(local.Id))
+                graph.AddLocalTleSatellite(local);
         foreach (ScienceSatellite satellite in Satellites)
-            graph.AddScienceSatellite(satellite);
+            graph.AddScienceSatellite(satellite, _localSatellites.GetValueOrDefault(satellite.Id));
         if (mission is not null)
         {
             MissionId = graph.AddSpiceSpacecraft(mission);
@@ -93,7 +98,7 @@ public sealed class SimulationWorld
         _sampledMissions = (sampledMissions ?? []).ToDictionary(mission => mission.Id);
         foreach (var imported in _sampledMissions.Values)
             graph.AddSampledMission(imported);
-        Catalogue = new(Satellites, BrightStars, Stellar, DeepSky, Exoplanets, SscBodies, locations ?? [], _sampledMissions.Values);
+        Catalogue = new(Satellites, BrightStars, Stellar, DeepSky, Exoplanets, SscBodies, locations ?? [], _sampledMissions.Values, _localSatellites);
         _sitesById = Catalogue.SurfaceSites.ToDictionary(site => site.Id);
         _sitesByBody = Catalogue.SurfaceSites.GroupBy(site => site.Body)
             .ToDictionary(group => group.Key, group => group.OrderByDescending(site => site.Definition.Importance ?? site.Definition.SizeKilometers).ToArray());
@@ -104,6 +109,9 @@ public sealed class SimulationWorld
     public IReadOnlyList<ScienceSatellite> Satellites { get; }
     private readonly Dictionary<ObjectId, InstalledSscBody> _sscById;
     private readonly Dictionary<ObjectId, SampledMission> _sampledMissions;
+    private readonly Dictionary<ObjectId, LocalTleSatellite> _localSatellites;
+    public IReadOnlyCollection<LocalTleSatellite> LocalSatellites => _localSatellites.Values;
+    public LocalTleSatellite? FindLocalSatellite(ObjectId id) => _localSatellites.GetValueOrDefault(id);
     public IReadOnlyList<InstalledSscBody> SscBodies { get; }
     public ObjectCatalogue Catalogue { get; }
     public BrightStarCatalogue BrightStars { get; }

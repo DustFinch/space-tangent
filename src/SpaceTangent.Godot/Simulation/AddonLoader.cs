@@ -47,7 +47,7 @@ internal static class AddonLoader
         PlanetEphemerides Planets, Cached<DecodedBodyTerrain>? MarsTerrain, Cached<StellarCatalogue> Stellar,
         Cached<StellarCatalogue?> StellarArchive, Cached<StellarImport> StellarDefinitions,
         IReadOnlyList<Cached<IReadOnlyList<DecodedSscBody>>> BodyCatalogues, Cached<IReadOnlyList<SscSurfaceLocation>> Locations, Cached<DeepSkyIndex> DeepSky, Cached<ExoplanetCatalogue> Exoplanets,
-        Cached<IReadOnlyList<DecodedSampledMission>> SampledMissions)
+        Cached<IReadOnlyList<DecodedSampledMission>> SampledMissions, Cached<IReadOnlyList<LocalTleSatellite>> LocalSatellites)
     {
         internal bool HasSource(LocalAddonKind kind, LocalDataPath path) => kind switch
         {
@@ -91,6 +91,7 @@ internal static class AddonLoader
         var locationPath = LocalDataPaths.Candidates("SPACETANGENT_SURFACE_LOCATIONS", "surface-locations", directory: true);
         var deepSkyPath = LocalDataPaths.Candidates("SPACETANGENT_DSC_ROOT", "sky/dsc", directory: true);
         var missionsPath = LocalDataPaths.Candidates("SPACETANGENT_SAMPLED_MISSIONS_ROOT", "sampled-missions", directory: true);
+        var tlePath = LocalDataPaths.Candidates("SPACETANGENT_TLE_ROOT", "satellites", directory: true);
         return Task.Run(() =>
         {
             var satellites = science.Select(path => Cached<IReadOnlyList<DecodedSatellite>>.Load(
@@ -149,14 +150,18 @@ internal static class AddonLoader
                 }, cancellation);
             var missions = Cached<IReadOnlyList<DecodedSampledMission>>.Load(previous?.SampledMissions, missionsPath,
                 "Sampled mission catalogues", ReadSampledMissions, cancellation);
-            bool sameScience =  previous is not null && previous.Science.SequenceEqual(satellites);
+            var tle = Cached<IReadOnlyList<LocalTleSatellite>>.Load(previous?.LocalSatellites, tlePath,
+                "Local TLE groups", (path, token) => LocalTleCatalogue.Load(path.Resolve(),
+                    message => global::Godot.GD.Print("Local TLE: " + message), token), cancellation);
+            bool sameScience =   previous is not null && previous.Science.SequenceEqual(satellites);
             bool sameBodies = previous is not null && previous.BodyCatalogues.SequenceEqual(bodies);
             if (previous is not null && sameScience && sameBodies && ReferenceEquals(previous.Mission, spice) &&
                 ReferenceEquals(previous.Timeline, sampled) && ReferenceEquals(previous.Terrain, relief) &&
                 ReferenceEquals(previous.MarsTerrain, marsTerrain) && ReferenceEquals(previous.Locations, locations) &&
                 ReferenceEquals(previous.DeepSky, deepSky) && ReferenceEquals(previous.Stellar, stellar) &&
                 ReferenceEquals(previous.StellarArchive, archive) && ReferenceEquals(previous.StellarDefinitions, definitions) &&
-                ReferenceEquals(previous.Exoplanets, exoplanets) && ReferenceEquals(previous.SampledMissions, missions))
+                ReferenceEquals(previous.Exoplanets, exoplanets) && ReferenceEquals(previous.SampledMissions, missions) &&
+                ReferenceEquals(previous.LocalSatellites, tle))
                 return previous;
 
             var tracks = new List<ScienceSatellite>();
@@ -174,8 +179,8 @@ internal static class AddonLoader
             }
             var world = AddonDiagnostics.Read(AddonStage.World, null, () => new SimulationWorld(ephemeris, tracks,
                 spice?.Value?.Track, sampled?.Value?.Track, sampled?.Value?.Probe, relief?.Value?.Frame, brightStars, planets, marsTerrain is not null, definitions.Value.Catalogue,
-                bodies.SelectMany(source => source.Value).Select(body => body.Body), locations.Value, deepSky.Value, exoplanets.Value, missions.Value.Select(mission => mission.Track)));
-            return new(world, sameScience ? previous!.Science : satellites, spice, sampled, relief, planets, marsTerrain, stellar, archive, definitions, sameBodies ? previous!.BodyCatalogues : bodies, locations, deepSky, exoplanets, missions);
+                bodies.SelectMany(source => source.Value).Select(body => body.Body), locations.Value, deepSky.Value, exoplanets.Value, missions.Value.Select(mission => mission.Track), tle.Value));
+            return new(world, sameScience ? previous!.Science : satellites, spice, sampled, relief, planets, marsTerrain, stellar, archive, definitions, sameBodies ? previous!.BodyCatalogues : bodies, locations, deepSky, exoplanets, missions, tle);
         }, cancellation);
 
         Cached<T>? Read<T>(Cached<T>? cached, LocalDataPath? path, string category, Func<LocalDataPath, CancellationToken, T> reader) =>

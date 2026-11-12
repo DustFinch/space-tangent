@@ -16,7 +16,8 @@ public sealed record CatalogueObject(ObjectId Id, string Name, CatalogueKind Kin
 public sealed class ObjectCatalogue
 {
     internal ObjectCatalogue(IReadOnlyList<ScienceSatellite> satellites, BrightStarCatalogue stars,
-        StellarCatalogue spatialStars, DeepSkyIndex deepSky, ExoplanetCatalogue exoplanets, IReadOnlyList<InstalledSscBody> sscBodies, IEnumerable<SscSurfaceLocation> locations, IEnumerable<SampledMission> missions)
+        StellarCatalogue spatialStars, DeepSkyIndex deepSky, ExoplanetCatalogue exoplanets, IReadOnlyList<InstalledSscBody> sscBodies, IEnumerable<SscSurfaceLocation> locations, IEnumerable<SampledMission> missions,
+        IReadOnlyDictionary<ObjectId, LocalTleSatellite> localSatellites)
     {
         var objects = new List<CatalogueObject> { new(SolarSystemSample.SunId, "Sun", CatalogueKind.Star) };
         objects.AddRange(PlanetCatalogue.Planets.Select(planet =>
@@ -25,7 +26,12 @@ public sealed class ObjectCatalogue
         objects.AddRange(NaturalBodyCatalogue.Bodies.Select(body =>
             new CatalogueObject(body.Id, body.Name, body.Kind, body.Parent)));
         objects.AddRange(satellites.Select(satellite =>
-            new CatalogueObject(satellite.Id, satellite.Name, CatalogueKind.Spacecraft, SolarSystemSample.EarthId)));
+            new CatalogueObject(satellite.Id, satellite.Name, CatalogueKind.Spacecraft, SolarSystemSample.EarthId)
+            { Aliases = localSatellites.TryGetValue(satellite.Id, out var local) ? [local.Name, .. local.Aliases] : [] }));
+        var scienceIds = satellites.Select(satellite => satellite.Id).ToHashSet();
+        objects.AddRange(localSatellites.Values.Where(satellite => !scienceIds.Contains(satellite.Id))
+            .Select(satellite => new CatalogueObject(satellite.Id, satellite.Name, CatalogueKind.Spacecraft, SolarSystemSample.EarthId)
+                { Aliases = satellite.Aliases }));
         objects.AddRange(sscBodies.Select(body => new CatalogueObject(body.Id, body.Definition.Name, body.Kind, body.Parent)
             { Aliases = Array.AsReadOnly(body.Definition.Names.Split(':').Skip(1).ToArray()) }));
         objects.AddRange(missions.Select(mission =>

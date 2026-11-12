@@ -74,6 +74,26 @@ internal partial class SimulationViewport
         }
     }
 
+    private MeshInstance3D? _localSatelliteMarker;
+    private ObjectId? _localSatelliteId;
+    internal bool LocalSatelliteVisible(ObjectId id) => _localSatelliteId == id && _localSatelliteMarker is { Visible: true };
+
+    private void DrawLocalSatellite(WorldSnapshot snapshot, NavigationCamera pose, double units,
+        Func<Vector3d, (Vector3 Position, double Scale)> project)
+    {
+        _localSatelliteMarker?.Hide();
+        _localSatelliteId = null;
+        if (pose.Target is not { } id || _satellites.ContainsKey(id) ||
+            CatalogueWorld?.FindLocalSatellite(id) is null || !snapshot.TryState(id, out var state))
+            return;
+        var (position, projection) = project(state.PositionKilometers);
+        _localSatelliteMarker ??= CreateNavigationSphere(new(.8f, .8f, .8f));
+        _localSatelliteMarker.Position = position;
+        _localSatelliteMarker.Scale = Vector3.One * (float)(NavigationCamera.BodyRadiusKilometers(id) * projection / units);
+        _localSatelliteId = id;
+        _localSatelliteMarker.Show();
+    }
+
     private void HideImportedBodies()
     {
         foreach (var (_, node) in _importedNodes.Values)

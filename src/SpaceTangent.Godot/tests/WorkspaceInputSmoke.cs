@@ -121,6 +121,8 @@ public partial class WorkspaceInputSmoke : Node
                 await ExerciseSscBodies(scratch.FullName, bodyPack);
             if (System.Environment.GetEnvironmentVariable("SPACETANGENT_SAMPLED_MISSIONS_SMOKE") is { Length: > 0 } missions)
                 await ExerciseSampledMissions(scratch.FullName, missions);
+            if (System.Environment.GetEnvironmentVariable("SPACETANGENT_TLE_SMOKE") is { Length: > 0 } satellites)
+                await ExerciseLocalTle(scratch.FullName, satellites);
             if (System.Environment.GetEnvironmentVariable("SPACETANGENT_TOUR_SOURCES") is { Length: > 0 } tours)
                 await ExerciseOriginalTours(scratch.FullName, tours);
             if (!string.IsNullOrWhiteSpace(System.Environment.GetEnvironmentVariable("SPACETANGENT_PLANET_TEXTURES")))

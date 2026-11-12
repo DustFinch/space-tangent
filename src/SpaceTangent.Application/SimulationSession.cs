@@ -147,8 +147,11 @@ public sealed class SimulationWorld
     }
 
     public double TargetRadiusKilometers(ObjectId id) =>
-        FindSurfaceSite(id)?.ScaleKilometers ?? Stellar.Find(id)?.RadiusKilometers ?? DeepSky.Find(id)?.RadiusKilometers ??
+        FindSurfaceSite(id)?.ScaleKilometers ?? StarRadius(Stellar.Find(id)) ?? DeepSky.Find(id)?.RadiusKilometers ??
         _sscById.GetValueOrDefault(id)?.Definition.RadiusKilometers ?? NavigationCamera.BodyRadiusKilometers(id);
+    private static double? StarRadius(StellarEntry? star) => star is null ? null :
+        star.IsBarycenter ? Math.Max(1000, star.SystemRadiusKilometers) : Math.Max(.007, star.RadiusKilometers);
+
     public WorldGraph Graph { get; }
     public ObjectId? MissionId { get; }
     public string? MissionName { get; }

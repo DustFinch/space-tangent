@@ -175,6 +175,8 @@ internal partial class SimulationViewport
             Consider(id, satellite.Node);
         foreach (var (id, body) in _sscNodes)
             Consider(id, body.Node);
+        foreach (var (id, disk) in _visibleStars)
+            Consider(id, disk);
         foreach (var (id, deepSky) in _deepSkyObjects)
             Consider(id, deepSky);
         return result;

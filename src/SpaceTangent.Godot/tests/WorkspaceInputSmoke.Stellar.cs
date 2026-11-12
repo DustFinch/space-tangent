@@ -48,6 +48,24 @@ public partial class WorkspaceInputSmoke
             GD.Print("UI: installed all 17,609 original DSC records, searched by NGC 6205, flew to and picked M13, and reloaded the two views");
         }
 
+        if (System.Environment.GetEnvironmentVariable("SPACETANGENT_STELLAR_ARCHIVE") is { Length: > 0 })
+        {
+            Require(Session.World.Stellar.Stars.Count == 182_625, "The source archive must preserve its entire nearby-star catalogue.");
+            var sirius = new ObjectId("hip/32349");
+            await FlyTo(0, "Dog Star", sirius);
+            Require(_scene.Renderer(0).VisibleStellarDisks == 2 && !_scene.Renderer(0).StellarDiskResolved,
+                "The visible system must contain two components and no barycenter disk.");
+            var world = Session.World;
+            var a = world.Stellar.FindByName("Sirius A")!;
+            var b = world.Stellar.FindByName("Sirius B")!;
+            double distance = (a.StateAt(Session[0].Epoch) - b.StateAt(Session[0].Epoch)).PositionKilometers.Length;
+            _scene.Advance(0, 86400 * 180d);
+            double next = (a.StateAt(Session[0].Epoch) - b.StateAt(Session[0].Epoch)).PositionKilometers.Length;
+            Require(Math.Abs(distance - next) > 1e6 && Session[0].Navigation?.Target == sirius,
+                "The tracked binary must move around its own barycenter as time advances.");
+            GD.Print("UI: found the archived Sirius barycenter by an original alias, flew to the two components, and advanced their orbit");
+        }
+
         async Task FlyTo(int view, string query, ObjectId target)
         {
             await Click(Find<SubViewportContainer>($"ViewCanvas{view}"));

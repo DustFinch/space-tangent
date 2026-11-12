@@ -29,10 +29,15 @@ public sealed class ObjectCatalogue
         objects.AddRange(sscBodies.Select(body => new CatalogueObject(body.Id, body.Definition.Name, body.Kind, body.Parent)
             { Aliases = Array.AsReadOnly(body.Definition.Names.Split(':').Skip(1).ToArray()) }));
         objects.AddRange(stars.Stars.Select(star =>
-            new CatalogueObject(star.Id, star.Name.Length == 0 ? FormattableString.Invariant($"HIP {star.Hipparcos}") : star.Name,
-                CatalogueKind.Star)));
+        {
+            StellarEntry? spatial = spatialStars.Find(star.Id);
+            string name = star.Name.Length == 0 ? FormattableString.Invariant($"HIP {star.Hipparcos}") : star.Name;
+            return new CatalogueObject(star.Id, name, CatalogueKind.Star, spatial?.BarycenterId)
+                { Aliases = spatial?.Aliases ?? [] };
+        }));
         objects.AddRange(spatialStars.Stars.Where(star => stars.Find(star.Id) is null)
-            .Select(star => new CatalogueObject(star.Id, star.Name, CatalogueKind.Star)));
+            .Select(star => new CatalogueObject(star.Id, star.Name, CatalogueKind.Star, star.BarycenterId)
+                { Aliases = star.Aliases }));
         objects.AddRange(deepSky.Objects.Select(body => new CatalogueObject(body.Id,
             body.Name == body.Designation ? body.Name : $"{body.Name} ({body.Designation})", body.Kind switch
             {
@@ -62,19 +67,17 @@ public sealed class ObjectCatalogue
         if (query.Length == 0)
             return Objects;
 
-        return Objects.Select(body => (Body: body, Rank: RankBody(body)))
-            .Where(result => result.Rank < 3)
-            .OrderBy(result => result.Rank)
-            .Select(result => result.Body)
-            .ToArray();
-
-        int RankBody(CatalogueObject body)
+        var ranked = new List<CatalogueObject>[] { [], [], [] };
+        for (int index = 0; index < Objects.Count; index++)
         {
+            CatalogueObject body = Objects[index];
             int rank = Math.Min(Rank(body.Name), Rank(body.Id.Value));
-            foreach (string alias in body.Aliases)
-                rank = Math.Min(rank, Rank(alias));
-            return rank;
+            for (int alias = 0; rank != 0 && alias < body.Aliases.Count; alias++)
+                rank = Math.Min(rank, Rank(body.Aliases[alias]));
+            if (rank < ranked.Length)
+                ranked[rank].Add(body);
         }
+        return [.. ranked[0], .. ranked[1], .. ranked[2]];
 
         int Rank(string value)
         {

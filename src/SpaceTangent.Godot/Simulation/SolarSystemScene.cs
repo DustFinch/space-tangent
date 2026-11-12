@@ -1370,7 +1370,11 @@ public partial class SolarSystemScene : Control
             return details + FormattableString.Invariant($"\nOn {parent}\n{site.Definition.LatitudeDegrees:F2}° latitude, {site.Definition.LongitudeDegrees:F2}° longitude");
         }
         if (Session.World.Stellar.Find(target.Id) is { } spatial)
-            return details + FormattableString.Invariant($"\nDistance: {spatial.DistanceParsecs * StellarEntry.KilometersPerParsec / StellarEntry.KilometersPerLightYear:N2} ly\nVisual magnitude: {spatial.VisualMagnitude:F2}");
+        {
+            details += FormattableString.Invariant($"\nDistance: {spatial.DistanceParsecs * StellarEntry.KilometersPerParsec / StellarEntry.KilometersPerLightYear:N2} ly");
+            return spatial.IsBarycenter ? details + "\nSystem barycenter" :
+                details + FormattableString.Invariant($"\nVisual magnitude: {spatial.VisualMagnitude:F2}");
+        }
         if (Session.World.BrightStars.Find(target.Id) is { } bright)
             return details + FormattableString.Invariant($"\nVisual magnitude: {bright.VisualMagnitude:F2}");
         if (Session?.World.DeepSky.Find(target.Id) is { } deep)

@@ -43,7 +43,8 @@ internal static class AddonLoader
 
     internal sealed record DecodedAddOns(SimulationWorld World, IReadOnlyList<Cached<IReadOnlyList<DecodedSatellite>>> Science,
         Cached<DecodedMission?>? Mission, Cached<DecodedTimeline?>? Timeline, Cached<DecodedTerrain?>? Terrain,
-        PlanetEphemerides Planets, Cached<DecodedBodyTerrain>? MarsTerrain, StellarCatalogue Stellar,
+        PlanetEphemerides Planets, Cached<DecodedBodyTerrain>? MarsTerrain, Cached<StellarCatalogue> Stellar,
+        Cached<StellarCatalogue?> StellarArchive,
         IReadOnlyList<Cached<IReadOnlyList<DecodedSscBody>>> BodyCatalogues, Cached<IReadOnlyList<SscSurfaceLocation>> Locations, Cached<DeepSkyIndex> DeepSky)
     {
         internal bool HasSource(LocalAddonKind kind, LocalDataPath path) => kind switch
@@ -82,6 +83,7 @@ internal static class AddonLoader
         var planetPath = LocalDataPaths.Candidates("SPACETANGENT_PLANET_TEXTURES", "planets", directory: true);
         var pckPath = LocalDataPaths.Candidates("SPACETANGENT_PCK", "timeline/pck00011.tpc");
         var stellarPath = LocalDataPaths.Candidates("SPACETANGENT_SPATIAL_STARS", "sky/spatial-stars.tsv");
+        var archivePath = LocalDataPaths.Candidates("SPACETANGENT_STELLAR_ARCHIVE", "sky/stellar-archive", directory: true);
         var locationPath = LocalDataPaths.Candidates("SPACETANGENT_SURFACE_LOCATIONS", "surface-locations", directory: true);
         var deepSkyPath = LocalDataPaths.Candidates("SPACETANGENT_DSC_ROOT", "sky/dsc", directory: true);
         return Task.Run(() =>
@@ -108,12 +110,26 @@ internal static class AddonLoader
                 (path, token) => SscSurfaceLocations.Load(path.Resolve(), token), cancellation);
             var deepSky = Cached<DeepSkyIndex>.Load(previous?.DeepSky, deepSkyPath, "Deep-sky catalogues",
                 (path, token) => DeepSkyIndex.Load(path.Resolve(), token), cancellation);
+            var stellar = Cached<StellarCatalogue>.Load(previous?.Stellar, stellarPath, "Spatial star catalogue",
+                (path, _) =>
+                {
+                    string file = path.Resolve();
+                    return AddonDependencies.FileExists(file) ? StellarCatalogue.Load(file) : StellarCatalogue.Empty;
+                }, cancellation);
+            var archive = Cached<StellarCatalogue?>.Load(ReferenceEquals(previous?.Stellar, stellar) ? previous?.StellarArchive : null,
+                archivePath, "Archived star catalogue", (path, token) =>
+                {
+                    string root = path.Resolve();
+                    return AddonDependencies.FileExists(Path.Combine(root, "stars.bin")) ?
+                        StellarCatalogue.LoadArchive(root, stellar.Value, token) : null;
+                }, cancellation);
             bool sameScience = previous is not null && previous.Science.SequenceEqual(satellites);
             bool sameBodies = previous is not null && previous.BodyCatalogues.SequenceEqual(bodies);
             if (previous is not null && sameScience && sameBodies && ReferenceEquals(previous.Mission, spice) &&
                 ReferenceEquals(previous.Timeline, sampled) && ReferenceEquals(previous.Terrain, relief) &&
                 ReferenceEquals(previous.MarsTerrain, marsTerrain) && ReferenceEquals(previous.Locations, locations) &&
-                ReferenceEquals(previous.DeepSky, deepSky))
+                ReferenceEquals(previous.DeepSky, deepSky) && ReferenceEquals(previous.Stellar, stellar) &&
+                ReferenceEquals(previous.StellarArchive, archive))
                 return previous;
 
             var tracks = new List<ScienceSatellite>();
@@ -129,13 +145,10 @@ internal static class AddonLoader
                 }
                 tracks.Add(item.Track);
             }
-            string starsFile = stellarPath.Resolve();
-            StellarCatalogue stellar = previous?.Stellar ?? (File.Exists(starsFile)
-                ? StellarCatalogue.Load(starsFile) : StellarCatalogue.Empty);
             var world = AddonDiagnostics.Read(AddonStage.World, null, () => new SimulationWorld(ephemeris, tracks,
-                spice?.Value?.Track, sampled?.Value?.Track, sampled?.Value?.Probe, relief?.Value?.Frame, brightStars, planets, marsTerrain is not null, stellar,
+                spice?.Value?.Track, sampled?.Value?.Track, sampled?.Value?.Probe, relief?.Value?.Frame, brightStars, planets, marsTerrain is not null, archive.Value ?? stellar.Value,
                 bodies.SelectMany(source => source.Value).Select(body => body.Body), locations.Value, deepSky.Value));
-            return new(world, sameScience ? previous!.Science : satellites, spice, sampled, relief, planets, marsTerrain, stellar, sameBodies ? previous!.BodyCatalogues : bodies, locations, deepSky);
+            return new(world, sameScience ? previous!.Science : satellites, spice, sampled, relief, planets, marsTerrain, stellar, archive, sameBodies ? previous!.BodyCatalogues : bodies, locations, deepSky);
         }, cancellation);
 
         Cached<T>? Read<T>(Cached<T>? cached, LocalDataPath? path, string category, Func<LocalDataPath, CancellationToken, T> reader) =>

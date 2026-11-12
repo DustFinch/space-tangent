@@ -25,3 +25,9 @@ The script checks both original data hashes before writing. SHA-256 of the deriv
 Place `.dsc` files in `data/sky/dsc` or set `SPACETANGENT_DSC_ROOT` to their directory. Reload add-ons after editing the files. The existing **Deep sky** search filter includes galaxies, nebulae, globular clusters, and open clusters. Search by a name or catalogue alias, then use **Go to** or select the object in a perspective view. Use the **Deep-sky objects** layer to show untargeted objects.
 
 The verified original files contain 10,937 galaxies, 196 globular clusters, and 6,476 open clusters. Messier IDs stay stable when a source updates an object that has a built-in entry. This renderer uses illustrative profiles and the catalogue's positions and extents.
+
+## Archived stellar systems
+
+Place the archived `stars.bin` and optional `stars-names.txt` in `data/sky/stellar-archive` or set `SPACETANGENT_STELLAR_ARCHIVE` to their directory. This selects the archived nearby catalogue and uses the current HYG sidecar for proper-motion data on matching stars. The default HYG-only setup still works when the archived files are absent. Reload add-ons after replacing the files.
+
+Search for a system or a component by name or alias. Flying to a barycenter frames the component stars at the selected epoch. A barycenter provides the reference position and has no luminous disk.

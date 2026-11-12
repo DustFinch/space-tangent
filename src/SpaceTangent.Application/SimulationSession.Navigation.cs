@@ -7,7 +7,10 @@ namespace SpaceTangent.Application;
 
 public sealed partial class SimulationSession
 {
-    private sealed record CameraFlight(NavigationCamera Start, double Elapsed, double Duration, double TargetRange);
+    private sealed record CameraFlight(NavigationCamera Start, double Elapsed, double Duration, double TargetRange)
+    {
+        internal NavigationPlacement? CenteringEnd { get; init; }
+    }
 
     private const double FlightDuration = 1.65;
     private readonly List<CameraFlight?> _flights = [null];
@@ -140,6 +143,19 @@ public sealed partial class SimulationSession
         {
             double elapsed = Math.Min(flight.Duration, flight.Elapsed + elapsedSeconds);
             double t = elapsed / flight.Duration;
+            if (flight.CenteringEnd is { } targetAttitude)
+            {
+                NavigationPlacement start = flight.Start.Placement!.Value;
+                NavigationPlacement current = t == 1 ? targetAttitude : start.Interpolate(targetAttitude, Smooth(t));
+                var placement = start with { Forward = current.Forward, Up = current.Up };
+                // A temporarily missing local frame has already been frozen in inertial axes above.
+                bool lostFrame = start.UsesFrame && pose.Placement is not { UsesFrame: true };
+                pose = pose with { AnchorKilometers = position, Placement = lostFrame ? pose.Placement : placement };
+                _trackingEpochs[view] = (target, snapshot.Epoch);
+                _flights[view] = lostFrame || t == 1 ? null : flight with { Elapsed = elapsed };
+                _views[view] = observer with { Navigation = pose };
+                return;
+            }
             double pan = Smooth(Math.Min(1, t * 1.8));
             double destinationRange = flight.TargetRange;
             double range = InterpolateRange(flight.Start.RangeKilometers, destinationRange, Smooth(t));

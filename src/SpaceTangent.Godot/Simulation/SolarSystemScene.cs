@@ -736,7 +736,7 @@ public partial class SolarSystemScene : Control
                 PointAtStar(star);
             else
             {
-                _status.Text = Session.FocusSelection(_active) ? "Centered the selected object." : "The object cannot be centered from this position.";
+                _status.Text = Session.FocusSelection(_active) ? "Centering the selected object." : "The object cannot be centered from this position.";
                 Refresh();
             }
             return true;

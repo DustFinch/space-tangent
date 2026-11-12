@@ -43,7 +43,7 @@ public sealed partial class SimulationSession
         return true;
     }
 
-    /// <summary>Centers the selected object while leaving the camera at the same point.</summary>
+    /// <summary>Turns toward the selected object while leaving the camera at the same point.</summary>
     public bool FocusSelection(int view)
     {
         if (!TrySelectedState(view, out ObjectId selected, out WorldSnapshot snapshot, out var state))
@@ -62,21 +62,23 @@ public sealed partial class SimulationSession
             right = Vector3d.Cross(forward, Vector3d.Cross(current.Forward, current.Up));
         Vector3d up = Vector3d.Cross(right / right.Length, forward);
 
+        NavigationPlacement start, end;
         if (camera.Placement is { UsesFrame: true } frame && camera.TryFrameBasis(snapshot, DeltaT, out Basis3d basis))
         {
             Basis3d inverse = basis.Transpose();
-            camera = camera with { Placement = frame with { Forward = inverse.Transform(forward), Up = inverse.Transform(up) } };
+            start = frame;
+            end = frame with { Forward = inverse.Transform(forward), Up = inverse.Transform(up) };
         }
         else
         {
-            camera = new(state.PositionKilometers, distance, 0, 0, selected, true)
-            {
-                Placement = new(eye - state.PositionKilometers, forward, up)
-            };
+            start = new(eye - state.PositionKilometers, current.Forward, current.Up);
+            end = start with { Forward = forward, Up = up };
+            camera = new(state.PositionKilometers, distance, 0, 0, selected, true);
         }
-        if (!camera.IsValid())
+        camera = camera with { Placement = start };
+        if (!camera.IsValid() || !end.IsValid(camera.RangeKilometers))
             return false;
-        CancelFlight(view);
+        _flights[view] = new(camera, 0, .65, camera.RangeKilometers) { CenteringEnd = end };
         _trackingEpochs[view] = (camera.Target!.Value, snapshot.Epoch);
         _views[view] = observer with { Navigation = camera };
         return true;

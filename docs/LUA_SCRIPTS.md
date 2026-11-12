@@ -12,3 +12,9 @@ The compatibility adapter supports the clock and logging methods used by the ori
 The host limits input to 32 KiB, resumes up to 1,024 VM steps per frame and stops after 131,072 steps, 16 MiB of measured execution allocations, 128 log messages or 120 seconds of requested waits. Only the exposed commands and selected standard-library functions are available. The interpreter runs in the application process and these quotas cover the tested workloads.
 
 [MoonSharp coroutine behavior](https://www.moonsharp.org/coroutines.html) · [MoonSharp module selection](https://www.moonsharp.org/sandbox.html)
+
+## Scripted catalogue models
+
+An explicitly trusted local SSC add-on can use `ScriptedOrbit` and `ScriptedRotation` factories. Start with `-- --allow-addon-lua` or set `SPACETANGENT_ALLOW_ADDON_LUA=1` for that process. Each add-on gets its own Lua environment. Modules stay inside its source folder and may use dotted local names during initialization. Factories receive typed SSC arguments and the actual `AddonPath`.
+
+Callbacks use separate instruction and allocation quotas and have no observer or operating-system API. An unaccepted factory uses an available declared fallback. An unavailable body and its descendants are omitted, and the status of the other add-ons is preserved.

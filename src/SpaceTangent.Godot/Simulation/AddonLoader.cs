@@ -49,7 +49,7 @@ internal static class AddonLoader
         Cached<StellarCatalogue?> StellarArchive, Cached<StellarImport> StellarDefinitions,
         IReadOnlyList<Cached<IReadOnlyList<DecodedSscBody>>> BodyCatalogues, Cached<IReadOnlyList<SscSurfaceLocation>> Locations, Cached<DeepSkyIndex> DeepSky, Cached<ExoplanetCatalogue> Exoplanets,
         Cached<IReadOnlyList<DecodedSampledMission>> SampledMissions, Cached<IReadOnlyList<LocalTleSatellite>> LocalSatellites,
-        Cached<EarthPlaceCatalogue> EarthPlaces, LocalDataPath SavedEarthPlacesPath)
+        Cached<EarthPlaceCatalogue> EarthPlaces, LocalDataPath SavedEarthPlacesPath, bool AllowAddonLua)
     {
         internal bool HasSource(LocalAddonKind kind, LocalDataPath path) => kind switch
         {
@@ -81,6 +81,8 @@ internal static class AddonLoader
     {
         LocalDataPath[] science = Paths(LocalAddonKind.Science).ToArray();
         LocalDataPath[] bodySources = Paths(LocalAddonKind.BodyCatalog).ToArray();
+        bool allowAddonLua = global::Godot.OS.GetCmdlineUserArgs().Contains("--allow-addon-lua", StringComparer.Ordinal) ||
+            System.Environment.GetEnvironmentVariable("SPACETANGENT_ALLOW_ADDON_LUA") == "1";
         LocalDataPath? mission = First(LocalAddonKind.Mission);
         LocalDataPath? timeline = First(LocalAddonKind.Timeline);
         LocalDataPath? terrain = First(LocalAddonKind.Terrain);
@@ -102,8 +104,8 @@ internal static class AddonLoader
                 previous?.Science.FirstOrDefault(source => source.Path == path), path,
                 "Science satellites", ReadScience, cancellation)).ToArray();
             var bodies = bodySources.Select(path => Cached<IReadOnlyList<DecodedSscBody>>.Load(
-                previous?.BodyCatalogues.FirstOrDefault(source => source.Path == path), path,
-                "SSC body catalogue", ReadBodyCatalogue, cancellation)).ToArray();
+                previous?.AllowAddonLua == allowAddonLua ? previous.BodyCatalogues.FirstOrDefault(source => source.Path == path) : null,
+                path, "SSC body catalogue", (source, token) => ReadBodyCatalogue(source, token, allowAddonLua), cancellation)).ToArray();
             var spice = Read(previous?.Mission, mission, "SPICE mission", ReadMission);
             var sampled = Read(previous?.Timeline, timeline, "Sampled timeline", ReadTimeline);
             var relief = Read(previous?.Terrain, terrain, "Lunar terrain", ReadTerrain);
@@ -163,7 +165,7 @@ internal static class AddonLoader
                 previous?.SavedEarthPlacesPath == savedEarthPlacesPath ? previous?.EarthPlaces : null,
                 earthPlacesPath, "Earth observing places", (path, token) => EarthPlaceCatalogue.Load(path.Resolve(),
                     savedEarthPlacesPath.Resolve(), message => global::Godot.GD.Print("Earth places: " + message), token), cancellation);
-            bool sameBodies =  previous is not null && previous.BodyCatalogues.SequenceEqual(bodies);
+            bool sameBodies = previous is not null && previous.AllowAddonLua == allowAddonLua && previous.BodyCatalogues.SequenceEqual(bodies);
             if (previous is not null && sameScience && sameBodies && ReferenceEquals(previous.Mission, spice) &&
                 ReferenceEquals(previous.Timeline, sampled) && ReferenceEquals(previous.Terrain, relief) &&
                 ReferenceEquals(previous.MarsTerrain, marsTerrain) && ReferenceEquals(previous.Locations, locations) &&
@@ -189,7 +191,7 @@ internal static class AddonLoader
             var world = AddonDiagnostics.Read(AddonStage.World, null, () => new SimulationWorld(ephemeris, tracks,
                 spice?.Value?.Track, sampled?.Value?.Track, sampled?.Value?.Probe, relief?.Value?.Frame, brightStars, planets, marsTerrain is not null, definitions.Value.Catalogue,
                 bodies.SelectMany(source => source.Value).Select(body => body.Body), locations.Value, deepSky.Value, exoplanets.Value, missions.Value.Select(mission => mission.Track), tle.Value, earthPlaces.Value));
-            return new(world, sameScience ? previous!.Science : satellites, spice, sampled, relief, planets, marsTerrain, stellar, archive, definitions, sameBodies ? previous!.BodyCatalogues : bodies, locations, deepSky, exoplanets, missions, tle, earthPlaces, savedEarthPlacesPath);
+            return new(world, sameScience ? previous!.Science : satellites, spice, sampled, relief, planets, marsTerrain, stellar, archive, definitions, sameBodies ? previous!.BodyCatalogues : bodies, locations, deepSky, exoplanets, missions, tle, earthPlaces, savedEarthPlacesPath, allowAddonLua);
         }, cancellation);
 
         Cached<T>? Read<T>(Cached<T>? cached, LocalDataPath? path, string category, Func<LocalDataPath, CancellationToken, T> reader) =>
@@ -259,7 +261,7 @@ internal static class AddonLoader
         var sources = decoded.BodyCatalogues.SelectMany(source => source.Value).ToDictionary(body => body.Body);
         var priorDefinitions = previous?.Decoded.World.SscBodies.ToDictionary(body => body.Id, body => body.Definition);
         var priorAssets = previous?.ImportedBodies.ToDictionary(body => body.Id);
-        var bodies = decoded.World.SscBodies.Select(body =>
+        var bodies = decoded.World.SscBodies.Where(body => !body.Definition.Class.Equals("invisible", StringComparison.OrdinalIgnoreCase)).Select(body =>
         {
             SscBodyDefinition definition = body.Definition;
             if (priorDefinitions?.TryGetValue(body.Id, out var prior) == true && definition == prior &&
@@ -331,10 +333,12 @@ internal static class AddonLoader
         }
     }
 
-    private static IReadOnlyList<DecodedSscBody> ReadBodyCatalogue(LocalDataPath location, CancellationToken cancellation)
+    private static IReadOnlyList<DecodedSscBody> ReadBodyCatalogue(LocalDataPath location, CancellationToken cancellation, bool allowLua)
     {
         string root = location.Resolve();
-        return Array.AsReadOnly(SscBodyCatalogue.LoadWithMpc(root, message => global::Godot.GD.PushWarning(message), cancellation).Select(body =>
+        var scripts = allowLua ? new LuaCatalogueFactories() : null;
+        return Array.AsReadOnly(SscBodyCatalogue.LoadWithMpc(root, message => global::Godot.GD.Print("SSC bodies: " + message),
+            cancellation, scripts).Select(body =>
         {
             cancellation.ThrowIfCancellationRequested();
             DecodedScienceModel? mesh = body.Mesh is { } file ? Path.GetExtension(file).ToLowerInvariant() switch

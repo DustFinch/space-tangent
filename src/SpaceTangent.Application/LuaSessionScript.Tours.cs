@@ -58,8 +58,11 @@ public sealed partial class LuaSessionScript
             .ToLookup(body => body.Parent!.Value);
         var table = new Table(script);
         var seen = new HashSet<ObjectId>();
+        var secondary = new List<ObjectId>();
         int count = 0;
         Visit(SolarSystemSample.SunId);
+        for (int i = 0; i < secondary.Count && count < limit; i++)
+            Visit(secondary[i]);
         return DynValue.NewTable(table);
 
         void Visit(ObjectId id)
@@ -68,7 +71,12 @@ public sealed partial class LuaSessionScript
                 return;
             table.Set(++count, DynValue.NewString(id.Value));
             foreach (CatalogueObject body in children[id])
-                Visit(body.Id);
+            {
+                if (body.Kind is CatalogueKind.Planet or CatalogueKind.Moon or CatalogueKind.DwarfPlanet)
+                    Visit(body.Id);
+                else
+                    secondary.Add(body.Id);
+            }
         }
     }
 

@@ -55,7 +55,9 @@ public sealed record InstalledSscBody(ObjectId Id, ObjectId Parent, SscBodyDefin
         {
             ObjectId parent = Resolve(definition.Parent);
             graph.AddTrajectory(id, definition.Sample, Resolve(definition.Center));
-            if (definition.Orientation is { } orientation)
+            if (definition.SampleRotation is { } rotation)
+                graph.AddOrientation(id, rotation);
+            else if (definition.Orientation is { } orientation)
                 graph.AddTwoVectorOrientation(id, orientation.Primary.Axis, Direction(orientation.Primary),
                     orientation.Secondary.Axis, Direction(orientation.Secondary));
             else

@@ -869,6 +869,7 @@ public partial class SolarSystemScene : Control
         tools.AddChild(mode);
         var field = new SpinBox { Name = $"ViewField{index}", MinValue = 2, MaxValue = 120, Step = .01,
             Value = Session![index].EffectiveFieldOfView, LocalizeNumeralSystem = false,
+            CustomMinimumSize = new Vector2(112, 0),
             Suffix = "° FOV", TooltipText = "Vertical field of view" };
         field.ValueChanged += value =>
         {

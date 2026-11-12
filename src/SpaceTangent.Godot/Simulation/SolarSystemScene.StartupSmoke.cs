@@ -46,12 +46,17 @@ public partial class SolarSystemScene
                 {
                     SpinBox field = controls.FieldOfView;
                     string suffix = " " + field.Suffix;
-                    string displayed = field.GetLineEdit().Text;
+                    LineEdit readout = field.GetLineEdit();
+                    string displayed = readout.Text;
                     if (!displayed.EndsWith(suffix, StringComparison.Ordinal) ||
                         !double.TryParse(displayed.AsSpan(0, displayed.Length - suffix.Length),
                             NumberStyles.AllowDecimalPoint, CultureInfo.InvariantCulture, out double degrees) ||
                         Math.Abs(degrees - field.Value) > .000001)
                         throw new InvalidDataException($"The lens shows '{displayed}' instead of {field.Value} degrees.");
+                    float width = readout.GetThemeFont("font").GetStringSize(displayed,
+                        fontSize: readout.GetThemeFontSize("font_size")).X;
+                    if (width + readout.GetThemeStylebox("normal").GetMinimumSize().X > readout.Size.X)
+                        throw new InvalidDataException($"The lens readout '{displayed}' is clipped.");
                     GD.Print($"SpaceTangent startup verified lens readout {displayed}.");
                 }
                 using Image image = GetViewport().GetTexture().GetImage();

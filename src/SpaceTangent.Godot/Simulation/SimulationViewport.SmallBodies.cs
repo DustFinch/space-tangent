@@ -9,6 +9,20 @@ namespace SpaceTangent.Godot.Simulation;
 internal partial class SimulationViewport
 {
     private readonly Dictionary<ObjectId, Label3D> _moonLabels = new();
+    private IReadOnlyDictionary<ObjectId, ArrayMesh>? _moonModels;
+
+    internal MeshInstance3D? NaturalMoonModel(ObjectId id) =>
+        _moonModels?.ContainsKey(id) == true ? _planetGlobes[id] : null;
+
+    internal void SetPlanetMoonModels(IReadOnlyDictionary<ObjectId, ArrayMesh> models)
+    {
+        _moonModels = models;
+        foreach (var (id, mesh) in models)
+        {
+            _planetGlobes[id].Mesh = mesh;
+            _planetGlobes[id].MaterialOverride = null;
+        }
+    }
 
     private void InitializeSmallBodies()
     {
@@ -46,7 +60,17 @@ internal partial class SimulationViewport
                 2000004 => new(1, 229f / 289, 280f / 289),
                 _ => Vector3.One
             };
-            PlaceWorldGlobe(_planetGlobes[body.Id], snapshot, body.Id, position, radii * (parentView ? Math.Max(.055f, radius) : radius));
+            if (NaturalMoonModel(body.Id) is { } model)
+            {
+                // The raw model vertices are kilometres in the source Z-up body frame.
+                Basis3d rotation = snapshot.TryOrientation(body.Id, out FrameKinematics frame) ? frame.ToWorld : Basis3d.Identity;
+                double size = scale / units;
+                model.Transform = new(new Basis(ToGodot(rotation.X * size, 1),
+                    ToGodot(rotation.Y * size, 1), ToGodot(rotation.Z * size, 1)), position);
+                model.Show();
+            }
+            else
+                PlaceWorldGlobe(_planetGlobes[body.Id], snapshot, body.Id, position, radii * (parentView ? Math.Max(.055f, radius) : radius));
             if (parentView)
             {
                 Label3D moonLabel = _moonLabels[body.Id];

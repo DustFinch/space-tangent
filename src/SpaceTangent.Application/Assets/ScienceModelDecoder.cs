@@ -7,7 +7,10 @@ using SpaceTangent.Core.Addons;
 
 namespace SpaceTangent.Application.Assets;
 
-public sealed record DecodedMaterial(Vector3d Color, double Opacity, string? Texture);
+public sealed record DecodedMaterial(Vector3d Color, double Opacity, string? Texture)
+{
+    public string? NormalTexture { get; init; }
+}
 public sealed record DecodedSurface(ReadOnlyMemory<Vector3d> Positions, ReadOnlyMemory<Vector3d> Normals,
     ReadOnlyMemory<float> TextureCoordinates, DecodedMaterial Material);
 public sealed record DecodedScienceModel(IReadOnlyList<DecodedSurface> Surfaces,

@@ -31,6 +31,7 @@ public partial class SolarSystemScene : Control
     private SurfaceTextures? _surfaceTextures;
     private EarthOrbitTextures? _earthOrbitTextures;
     private PlanetTextures? _planetTextures;
+    private IReadOnlyDictionary<ObjectId, ArrayMesh>? _planetMoonModels;
     private readonly Dictionary<string, Texture2D> _exoplanetTextures = new(StringComparer.OrdinalIgnoreCase);
     private IReadOnlyDictionary<ObjectId, OrbitAtmosphereTextures> _orbitAtmospheres =
         new Dictionary<ObjectId, OrbitAtmosphereTextures>();
@@ -173,6 +174,15 @@ public partial class SolarSystemScene : Control
             foreach (string profile in world.Exoplanets.Bodies.Select(planet => planet.TextureClass).Distinct(StringComparer.OrdinalIgnoreCase))
                 if (PlanetTextures.Read(maps, profile + ".jpg") is { } texture)
                     _exoplanetTextures.Add(profile, texture);
+        }
+        catch (Exception error) when (IsLoadError(error))
+        {
+            GD.PushWarning(error.Message);
+        }
+
+        try
+        {
+            _planetMoonModels = PlanetMoonModels.Load();
         }
         catch (Exception error) when (IsLoadError(error))
         {
@@ -1295,6 +1305,8 @@ public partial class SolarSystemScene : Control
             renderer.SetEarthOrbitTextures(earthOrbit, _orbitAtmospheres.GetValueOrDefault(SolarSystemSample.EarthId));
         if (_planetTextures is { } planets)
             renderer.SetPlanetTextures(planets);
+        if (_planetMoonModels is { } models)
+            renderer.SetPlanetMoonModels(models);
         renderer.SetWorldAtmospheres(_orbitAtmospheres, _surfaceTiles);
         renderer.SetExoplanetTextures(_exoplanetTextures);
         renderer.PlanetEphemeris = Session!.World.Ephemeris;

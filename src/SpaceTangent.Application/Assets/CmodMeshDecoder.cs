@@ -1,23 +1,27 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
-using System.Buffers.Binary;
 using System.Text;
 using SpaceTangent.Contracts;
 using SpaceTangent.Core.Addons;
 
 namespace SpaceTangent.Application.Assets;
 
-/// <summary>Decodes binary CMOD triangle geometry and diffuse PNG materials for local body catalogues.</summary>
+/// <summary>Decodes binary CMOD triangle geometry and local model materials for local body catalogues.</summary>
 public static class CmodMeshDecoder
 {
     private const int MaximumVertices = 1_000_000, MaximumTriangles = 1_000_000, MaximumMaterials = 4096, MaximumSurfaces = 128;
     private static readonly DecodedMaterial Default = new(new(.8, .8, .8), 1, null);
 
     public static DecodedScienceModel Decode(string root, string path, CancellationToken cancellation = default) =>
-        AddonDiagnostics.Read(AddonStage.Mesh, path, () => Read(root, path, cancellation));
+        AddonDiagnostics.Read(AddonStage.Mesh, path, () => Read(root, path, nativeBody: false, cancellation));
 
-    private static DecodedScienceModel Read(string root, string path, CancellationToken cancellation)
+    public static DecodedScienceModel DecodeNativeBody(string root, string path, CancellationToken cancellation = default) =>
+        AddonDiagnostics.Read(AddonStage.Mesh, path, () => Read(root, path, nativeBody: true, cancellation));
+
+    private static DecodedScienceModel Read(string root, string path, bool nativeBody, CancellationToken cancellation)
     {
         using FileStream stream = AddonDependencies.OpenRead(path, 32L * 1024 * 1024);
+        if (stream.Length > 32L * 1024 * 1024)
+            throw new InvalidDataException("A CMOD mesh exceeds 32 MiB.");
         using var input = new BinaryReader(stream);
         if (!input.ReadBytes(16).AsSpan().SequenceEqual("#celmodel_binary"u8))
             throw new NotSupportedException("The model must be a binary CMOD file.");
@@ -53,19 +57,18 @@ public static class CmodMeshDecoder
         long textureBytes = 0;
         foreach (var (material, surface) in surfaces)
         {
-            if (material.Texture is { } name && !textures.ContainsKey(name))
+            foreach (string name in new[] { material.Texture, material.NormalTexture }.OfType<string>())
             {
+                if (textures.ContainsKey(name))
+                    continue;
                 string texture = SscBodyCatalogue.ResolveTexture(root, path, name);
                 using FileStream pixels = AddonDependencies.OpenRead(texture, 16 * 1024 * 1024);
                 textureBytes += pixels.Length;
-                if (pixels.Length < 24 || textureBytes > 64 * 1024 * 1024)
+                if (pixels.Length is < 24 or > 16 * 1024 * 1024 || textureBytes > 64 * 1024 * 1024)
                     throw new InvalidDataException("CMOD diffuse textures exceed the supported size.");
                 var bytes = new byte[(int)pixels.Length];
                 pixels.ReadExactly(bytes);
-                if (!bytes.AsSpan(0, 8).SequenceEqual(new byte[] { 137, 80, 78, 71, 13, 10, 26, 10 }) ||
-                    BinaryPrimitives.ReadUInt32BigEndian(bytes.AsSpan(16)) is 0 or > 8192 ||
-                    BinaryPrimitives.ReadUInt32BigEndian(bytes.AsSpan(20)) is 0 or > 8192)
-                    throw new InvalidDataException("CMOD diffuse maps require a supported PNG size.");
+                ModelTextureFormats.Validate(name, bytes);
                 textures.Add(name, bytes);
             }
             decoded.Add(new(surface.Positions.ToArray(), surface.Normals.ToArray(), surface.Uvs.ToArray(), material));
@@ -103,6 +106,8 @@ public static class CmodMeshDecoder
                         string texture = new UTF8Encoding(false, true).GetString(input.ReadBytes(length));
                         if (channel == 0)
                             value = value with { Texture = texture };
+                        else if (channel == 1 && nativeBody)
+                            value = value with { NormalTexture = texture };
                         break;
                     default:
                         throw new InvalidDataException("Unexpected CMOD material field.");
@@ -151,7 +156,7 @@ public static class CmodMeshDecoder
                     else if (semantic == 3)
                         vertices[vertex].Normal = new(components[0], components[1], components[2]);
                     else if (semantic == 5)
-                        (vertices[vertex].U, vertices[vertex].V) = (components[0], 1 - components[1]);
+                        (vertices[vertex].U, vertices[vertex].V) = (components[0], nativeBody ? components[1] : 1 - components[1]);
                 }
             }
             for (short type = input.ReadInt16(); type != 1010; type = input.ReadInt16())
@@ -218,8 +223,8 @@ public static class CmodMeshDecoder
                 return;
             Vector3d fallback = cross / length;
             Append(a);
-            Append(b);
-            Append(c);
+            Append(nativeBody ? c : b);
+            Append(nativeBody ? b : c);
 
             void Append(Vertex vertex)
             {

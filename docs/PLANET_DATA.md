@@ -66,3 +66,7 @@ The Mars globe and Olympus Mons relief use the same original color and normal pa
 ## Surface locations
 
 Supply local `*_locs.ssc` files in `data/surface-locations`, or set `SPACETANGENT_SURFACE_LOCATIONS` to their directory. Search for a location on a loaded body and use **Go to** or **G**. The camera approaches above the site and rotates with its parent. The selected label appears on the visible side. **Ctrl+L** toggles additional labels at the current map scale. Locations require a valid state and rotation for their parent at the selected epoch.
+
+### Mars moon models
+
+Place the original Phobos and Deimos CMOD files and their declared DDS textures in `data/planets/models`, or set `SPACETANGENT_PLANET_MODELS` to the model directory. The original pair uses raw kilometre coordinates. The corresponding archived GLB files also work, including the embedded DDS colour texture for Deimos. The archived Phobos GLB omits the normal map from its CMOD source. Restart after replacing these optional built-in moon assets.

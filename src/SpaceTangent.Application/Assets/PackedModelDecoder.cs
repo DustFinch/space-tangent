@@ -11,6 +11,7 @@ namespace SpaceTangent.Application.Assets;
 public static class PackedModelDecoder
 {
     private const uint Magic = 0x46546c67, JsonChunk = 0x4e4f534a, BinaryChunk = 0x004e4942;
+    private const string DdsExtension = "MSFT_texture_dds";
     private const int MaximumModelBytes = 64 * 1024 * 1024, MaximumCorners = 3_000_000, MaximumSurfaces = 128;
     private static readonly DecodedMaterial White = new(new(1, 1, 1), 1, null);
 
@@ -36,7 +37,8 @@ public static class PackedModelDecoder
         JsonElement nodes = root.GetProperty("nodes");
         JsonElement buffers = root.GetProperty("buffers");
         if (root.GetProperty("asset").GetProperty("version").GetString() != "2.0" ||
-            root.TryGetProperty("extensionsRequired", out var required) && required.GetArrayLength() != 0)
+            root.TryGetProperty("extensionsRequired", out var required) &&
+            required.EnumerateArray().Any(extension => extension.GetString() != DdsExtension))
             throw new NotSupportedException("This packed model requires a different GLB profile.");
         if (buffers.GetArrayLength() != 1 || buffers[0].TryGetProperty("uri", out _))
             throw new InvalidDataException("Packed models require a single embedded buffer.");
@@ -157,30 +159,30 @@ public static class PackedModelDecoder
             if (pbr.TryGetProperty("baseColorTexture", out var tex))
             {
                 int textureIndex = tex.GetProperty("index").GetInt32();
-                int imageIndex = root.GetProperty("textures")[textureIndex].GetProperty("source").GetInt32();
-                texture = FormattableString.Invariant($"embedded-{imageIndex}.png");
+                var textureSpec = root.GetProperty("textures")[textureIndex];
+                int imageIndex = textureSpec.TryGetProperty("extensions", out var extensions) &&
+                    extensions.TryGetProperty(DdsExtension, out var dds)
+                        ? dds.GetProperty("source").GetInt32() : textureSpec.GetProperty("source").GetInt32();
+                var image = root.GetProperty("images")[imageIndex];
+                string extension = image.GetProperty("mimeType").GetString() switch
+                {
+                    "image/png" => ".png",
+                    "image/vnd-ms.dds" => ".dds",
+                    _ => throw new NotSupportedException("Packed textures require embedded PNG or DDS data.")
+                };
+                if (image.TryGetProperty("uri", out _))
+                    throw new NotSupportedException("Packed textures must be embedded.");
+                texture = FormattableString.Invariant($"embedded-{imageIndex}{extension}");
                 if (!textures.ContainsKey(texture))
                 {
-                    var image = root.GetProperty("images")[imageIndex];
-                    if (image.GetProperty("mimeType").GetString() != "image/png" || image.TryGetProperty("uri", out _))
-                        throw new NotSupportedException("Packed textures must use embedded PNG data.");
                     var view = View(image.GetProperty("bufferView").GetInt32());
                     var data = binary.AsMemory(view.Offset, view.Length);
-                    ValidatePng(data.Span);
+                    ModelTextureFormats.Validate(texture, data.Span);
                     textures.Add(texture, data);
                 }
             }
             return new(new(Srgb(color[0]), Srgb(color[1]), Srgb(color[2])), color[3], texture);
         }
-    }
-
-    private static void ValidatePng(ReadOnlySpan<byte> bytes)
-    {
-        ReadOnlySpan<byte> signature = [137, 80, 78, 71, 13, 10, 26, 10];
-        if (bytes.Length is < 33 or > 16 * 1024 * 1024 || !bytes.StartsWith(signature) ||
-            BinaryPrimitives.ReadUInt32BigEndian(bytes[16..]) is 0 or > 8192 ||
-            BinaryPrimitives.ReadUInt32BigEndian(bytes[20..]) is 0 or > 8192)
-            throw new InvalidDataException("Invalid packed PNG texture.");
     }
 
     private static double Srgb(double linear) => linear <= .0031308 ? 12.92 * linear : 1.055 * Math.Pow(linear, 1 / 2.4) - .055;

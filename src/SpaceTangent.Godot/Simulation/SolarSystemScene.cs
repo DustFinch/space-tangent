@@ -455,6 +455,10 @@ public partial class SolarSystemScene : Control
             case Key.D when key.CtrlPressed:
                 KeepActiveView();
                 break;
+            case Key.C when key.CtrlPressed && key.ShiftPressed:
+                _workspace.Open("Bookmarks");
+                CreateSceneLink(legacy: true);
+                break;
             case Key.Delete when Session.ViewCount > 1:
                 CloseView(_active);
                 break;

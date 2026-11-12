@@ -8,7 +8,7 @@ using SpaceTangent.Core.Time;
 
 namespace SpaceTangent.Application;
 
-public static class SceneLink
+public static partial class SceneLink
 {
     public const string Scheme = "spacetangent://scene/";
     public const int MaximumLength = 44_000;

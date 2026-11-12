@@ -40,7 +40,7 @@ public readonly record struct NavigationPlacement(Vector3d OffsetKilometers, Vec
     {
         if (fraction == 0)
             return this;
-        var rotation = Quaternion.Slerp(Attitude(this), Attitude(end), (float)fraction);
+        var rotation = Quaternion.Slerp(ToQuaternion(), end.ToQuaternion(), (float)fraction);
         Vector3d forward = Direction(Vector3.Transform(-Vector3.UnitZ, rotation));
         Vector3d up = Direction(Vector3.Transform(Vector3.UnitY, rotation));
         forward /= forward.Length;
@@ -48,16 +48,16 @@ public readonly record struct NavigationPlacement(Vector3d OffsetKilometers, Vec
         return new(OffsetKilometers + (end.OffsetKilometers - OffsetKilometers) * fraction, forward, up / up.Length);
 
         static Vector3d Direction(Vector3 vector) => new(vector.X, vector.Y, vector.Z);
+    }
 
-        static Quaternion Attitude(NavigationPlacement pose)
-        {
-            Vector3d right = Vector3d.Cross(pose.Forward, pose.Up);
-            return Quaternion.CreateFromRotationMatrix(new Matrix4x4(
-                (float)right.X, (float)right.Y, (float)right.Z, 0,
-                (float)pose.Up.X, (float)pose.Up.Y, (float)pose.Up.Z, 0,
-                (float)-pose.Forward.X, (float)-pose.Forward.Y, (float)-pose.Forward.Z, 0,
-                0, 0, 0, 1));
-        }
+    internal Quaternion ToQuaternion()
+    {
+        Vector3d right = Vector3d.Cross(Forward, Up);
+        return Quaternion.Normalize(Quaternion.CreateFromRotationMatrix(new Matrix4x4(
+            (float)right.X, (float)right.Y, (float)right.Z, 0,
+            (float)Up.X, (float)Up.Y, (float)Up.Z, 0,
+            (float)-Forward.X, (float)-Forward.Y, (float)-Forward.Z, 0,
+            0, 0, 0, 1)));
     }
 
     private static Vector3d Rotate(Vector3d direction, Vector3d axis, double angle)

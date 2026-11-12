@@ -425,6 +425,13 @@ public sealed partial class SimulationSession
             SetClock(view, previous.Epoch.AddSeconds(seconds), previous.Playing);
     }
 
+    internal static double DefaultPlaybackRate(CameraMode mode) => mode switch
+    {
+        CameraMode.Probe => 1,
+        CameraMode.Satellites or CameraMode.Mission or CameraMode.Timeline => 180,
+        _ => JulianInstant.SecondsPerDay
+    };
+
     public bool Tick(double elapsed)
     {
         bool changed = false;
@@ -434,12 +441,7 @@ public sealed partial class SimulationSession
         {
             if (_views[view].Playing)
             {
-                double rate = _views[view].PlaybackRate ?? (_views[view].Mode switch
-                {
-                    CameraMode.Probe => 1,
-                    CameraMode.Satellites or CameraMode.Mission or CameraMode.Timeline => 180,
-                    _ => JulianInstant.SecondsPerDay
-                });
+                double rate = _views[view].PlaybackRate ?? DefaultPlaybackRate(_views[view].Mode);
                 Step(view, elapsed * rate);
                 changed = true;
             }

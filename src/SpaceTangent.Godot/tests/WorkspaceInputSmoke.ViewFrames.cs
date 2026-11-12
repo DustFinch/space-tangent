@@ -40,6 +40,18 @@ public partial class WorkspaceInputSmoke
         var original = new SimulationScenario([phase], true, 0, 0, Session.DeltaT);
         var restored = SceneLink.Read(SceneLink.Write(original), Session.World, Session.DeltaT).Scenario;
         RequireScenario(original, restored, "Round-tripping the frame and reference in a native link");
+        foreach (var (mode, referenceView) in new[] { ("SyncOrbit", sync), ("Chase", chase), ("PhaseLock", phase) })
+        {
+            string exported = SceneLink.WriteLegacy(referenceView, Session.World, Session.DeltaT);
+            Require(exported.StartsWith($"cel://{mode}/", StringComparison.Ordinal), "The legacy export must keep its frame name.");
+            var roundTrip = SceneLink.Read(exported, Session.World, Session.DeltaT).Scenario.Views[0];
+            NavigationPlacement expectedPose = referenceView.Navigation!.Value.ResolvePlacement(world, Session.DeltaT);
+            NavigationPlacement restoredPose = roundTrip.Navigation!.Value.ResolvePlacement(world, Session.DeltaT);
+            Require(roundTrip.Epoch == referenceView.Epoch && roundTrip.Selection == referenceView.Selection &&
+                (restoredPose.OffsetKilometers - expectedPose.OffsetKilometers).Length < .0001 &&
+                Vector3d.Dot(restoredPose.Forward, expectedPose.Forward) > .999999,
+                "The legacy export must preserve the epoch, selection, position and orientation within encoding precision.");
+        }
     }
 
     private async Task ExerciseViewFrames(string directory, string bookmarks)

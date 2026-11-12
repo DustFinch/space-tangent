@@ -45,7 +45,7 @@ public partial class SolarSystemScene
         panel.AddChild(_sceneLink);
         var links = new HBoxContainer();
         panel.AddChild(links);
-        AddButton(links, "Create link", CreateSceneLink).Name = "CreateSceneLink";
+        AddButton(links, "Create link", () => CreateSceneLink()).Name = "CreateSceneLink";
         AddButton(links, "Open link", () => OpenSceneLink(_sceneLink.Text)).Name = "OpenSceneLink";
     }
 
@@ -98,11 +98,14 @@ public partial class SolarSystemScene
         _bookmarkList.Disabled = _openBookmark.Disabled = _deleteBookmark.Disabled = empty;
     }
 
-    private void CreateSceneLink()
+    private void CreateSceneLink(bool legacy = false)
     {
         try
         {
-            _sceneLink.Text = SceneLink.Write(Session!.CaptureScenario(_active));
+            var session = Session!;
+            _sceneLink.Text = legacy
+                ? SceneLink.WriteLegacy(session[_active], session.World, session.DeltaT)
+                : SceneLink.Write(session.CaptureScenario(_active));
             _sceneLink.GrabFocus();
             _sceneLink.SelectAll();
             _status.Text = "Scene link ready to copy.";

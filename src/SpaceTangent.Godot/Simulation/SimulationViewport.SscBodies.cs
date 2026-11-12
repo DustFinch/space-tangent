@@ -2,6 +2,7 @@
 using Godot;
 using SpaceTangent.Application;
 using SpaceTangent.Contracts;
+using SpaceTangent.Core.Addons;
 using SpaceTangent.Core.World;
 
 namespace SpaceTangent.Godot.Simulation;
@@ -11,10 +12,13 @@ internal sealed record PreparedImportedBody(ObjectId Id, CatalogueKind Kind, Vec
     IReadOnlyList<PreparedMissionGeometry>? Geometry = null);
 
 internal sealed record PreparedMissionGeometry(JulianInstant Start, JulianInstant End, double RadiusKilometers,
-    Basis3d MeshRotation, Vector3d MeshOffset, ArrayMesh? Model, double ModelDiameter);
+    Basis3d MeshRotation, Vector3d MeshOffset, ArrayMesh? Model, double ModelDiameter, MissionSensor? Sensor);
 
 internal partial class SimulationViewport
 {
+    private MissionSensorRendering? _missionSensorRendering;
+    internal MissionSensorRenderResult? MissionSensorResult(ObjectId id) => _missionSensorRendering?.Result(id);
+
     private IReadOnlyList<PreparedImportedBody>? _importedAssets;
     private readonly SphereMesh _missionMarkerMesh = new() { Radius = 1, Height = 2, RadialSegments = 32, Rings = 16 };
     private readonly StandardMaterial3D _missionMarkerMaterial = new()
@@ -31,6 +35,7 @@ internal partial class SimulationViewport
         if (ReferenceEquals(_importedAssets, assets))
             return;
         _importedAssets = assets;
+        _missionSensorRendering?.Clear();
         foreach (var (_, node) in _importedNodes.Values)
         {
             RemoveChild(node);
@@ -62,6 +67,7 @@ internal partial class SimulationViewport
     private void DrawImportedBodies(WorldSnapshot snapshot, NavigationCamera pose, double units,
         Func<Vector3d, (Vector3 Position, double Scale)> project)
     {
+        _missionSensorRendering?.Clear();
         foreach (var (asset, node) in _importedNodes.Values)
         {
             node.Hide();
@@ -83,6 +89,12 @@ internal partial class SimulationViewport
                 }
                 if (active is null)
                     continue;
+                if (active.Sensor is { } sensor)
+                {
+                    _missionSensorRendering ??= new(this);
+                    _missionSensorRendering.Draw(asset.Id, sensor, state.PositionKilometers, frame.ToWorld, snapshot, units, project);
+                    continue;
+                }
                 Mesh mesh = active.Model is { } model ? model : _missionMarkerMesh;
                 if (node.Mesh != mesh)
                 {
@@ -110,6 +122,7 @@ internal partial class SimulationViewport
             }
             node.Show();
         }
+        _missionSensorRendering?.Finish();
     }
 
     private MeshInstance3D? _localSatelliteMarker;
@@ -134,6 +147,7 @@ internal partial class SimulationViewport
 
     private void HideImportedBodies()
     {
+        _missionSensorRendering?.Clear();
         foreach (var (_, node) in _importedNodes.Values)
             node.Hide();
     }

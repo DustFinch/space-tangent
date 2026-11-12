@@ -285,7 +285,7 @@ internal static class AddonLoader
                 var shape = span.Shape;
                 var model = shape.MeshPath is { } path ? models[path] : default;
                 return new PreparedMissionGeometry(span.Start, span.End, shape.RadiusKilometers,
-                    shape.MeshRotation, shape.MeshOffset, model.Mesh, model.Diameter);
+                    shape.MeshRotation, shape.MeshOffset, model.Mesh, model.Diameter, shape.Sensor);
             }).ToArray();
             return new PreparedImportedBody(track.Id, CatalogueKind.Spacecraft, new(.8, .8, .8), track.RadiusKilometers, Basis3d.Identity, default,
                 null, 2, geometry);

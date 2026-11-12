@@ -13,3 +13,9 @@ The same loader accepts fixed spherical positions, Keplerian ellipses, CHEBPOLY 
 Mesh phases can switch at explicit TDB epochs, include nested switches and leave a view with no geometry while the trajectory continues. Optional resources remain relative to the file that defines them. The timed geometry probe uses the original verification catalogue with the original Jason-1 and SORCE OBJ meshes.
 
 The loader visits local `require` entries first and opens each catalogue once. It rejects a dependency cycle. When an entry's file is absent, it reports the missing file and resolves its references against the installed world, as in the archived source loader. Removing a required object rejects the generation when a remaining definition still refers to it.
+
+## Local sensor geometry
+
+A `Sensor` uses a resolved target, a range in kilometres, rectangular or elliptical fields, full horizontal and vertical angles in degrees, and an optional local WXYZ quaternion. The field follows its item's declared body frame. Timed geometry may switch a sensor on and off. In the spatial view the visible grid clips each ray against the target ellipsoid and the instrument range.
+
+The archived sensor fixture attaches authored fields to the original Jason-1 and SORCE spacecraft. The checks use both the source OBJ catalogue and the archived GLB installation, preserving the fixed spacecraft attitude in either case.

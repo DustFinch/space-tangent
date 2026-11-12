@@ -313,7 +313,7 @@ internal partial class SimulationViewport : Node3D
 
             CartesianState earthRelative = vehicle - sample.Earth;
             Basis3d body = rotation.ToWorld;
-            Basis3d mesh = asset.Track.MeshToBody;
+            Basis3d mesh = asset.Track.MeshToOrientedBody;
             float marker = asset.MarkerScale * (observer.Selection == asset.Track.Id ? 1f : 0.75f);
             Vector3 Column(Vector3d value) => ToGodot(body.Transform(value), 1) * marker;
             node.Transform = new Transform3D(new Basis(Column(mesh.X), Column(mesh.Y), Column(mesh.Z)),

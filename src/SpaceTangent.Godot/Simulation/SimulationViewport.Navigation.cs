@@ -129,7 +129,7 @@ internal partial class SimulationViewport
             float modelScale = (float)(radius / units * scale) * asset.MarkerScale / 9;
             if (modelScale < 1e-7f)
                 continue;
-            Basis3d body = orientation.ToWorld, mesh = asset.Track.MeshToBody;
+            Basis3d body = orientation.ToWorld, mesh = asset.Track.MeshToOrientedBody;
             Vector3 Column(Vector3d axis) => ToGodot(body.Transform(axis), 1) * modelScale;
             node.Transform = new(new Basis(Column(mesh.X), Column(mesh.Y), Column(mesh.Z)), position);
             node.Show();

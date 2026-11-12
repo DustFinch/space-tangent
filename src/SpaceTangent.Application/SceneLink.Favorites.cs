@@ -46,9 +46,14 @@ public static partial class SceneLink
 
     private static bool TryRestoreAbsoluteCamera(SimulationWorld world, WorldSnapshot snapshot, DeltaTModel deltaT,
         Vector3d eye, NavigationPlacement attitude, ObjectId selected, ObjectId? target, bool bodyFixed,
-        NavigationFrame frame, ObjectId? reference, out NavigationCamera camera)
+        NavigationFrame frame, ObjectId? reference, out NavigationCamera camera, CatalogueCameraFrame? catalogue = null)
     {
         bool hasState = world.TryNavigationState(target ?? selected, snapshot, out CartesianState body, deltaT);
+        if (catalogue is { } catalogueFrame && target is { } owner)
+        {
+            hasState = NavigationCamera.TryCatalogueReference(snapshot, owner, catalogueFrame, out var origin, out _);
+            body = new(origin, default);
+        }
         if (target.HasValue && !hasState)
         {
             camera = default;
@@ -61,10 +66,10 @@ public static partial class SceneLink
             0, 0, target, target.HasValue);
         if (bodyFixed || frame != NavigationFrame.Inertial)
         {
-            camera = camera with { Placement = placement with { BodyFixed = bodyFixed, Frame = frame, Reference = reference } };
+            camera = camera with { Placement = placement with { BodyFixed = bodyFixed, Frame = frame, Reference = reference, CatalogueFrame = catalogue } };
             if (!camera.TryFrameBasis(snapshot, deltaT, out Basis3d basis))
                 return false;
-            placement = placement.Transform(basis.Transpose(), bodyFixed) with { Frame = frame, Reference = reference };
+            placement = placement.Transform(basis.Transpose(), bodyFixed) with { Frame = frame, Reference = reference, CatalogueFrame = catalogue };
         }
         camera = camera with { Placement = placement };
         return camera.IsValid();

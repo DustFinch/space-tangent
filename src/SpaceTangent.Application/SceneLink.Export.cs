@@ -23,7 +23,7 @@ public static partial class SceneLink
         List<ObjectId> references = [];
         Vector3d localPosition;
         Func<Vector3d, Vector3d> coordinates = ToEcliptic;
-        if (pose.Tracking && pose.Target is { } target && pose.Placement?.Frame != NavigationFrame.Equatorial)
+        if (pose.Tracking && pose.Target is { } target && pose.Placement?.Frame is not (NavigationFrame.Equatorial or NavigationFrame.Catalogue))
         {
             if (!world.TryNavigationState(target, snapshot, out var body, deltaT))
                 throw new InvalidDataException("The followed body has no state for a legacy link.");

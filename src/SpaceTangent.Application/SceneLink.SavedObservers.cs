@@ -75,17 +75,28 @@ public static partial class SceneLink
         int mode = bookmark is null ? 0 : bookmark["Frame"].GetInt32();
         if (bookmark?.TryGetValue("SchemaVersion", out var schema) == true && schema.GetInt32() is not (1 or 2 or 3))
             throw new InvalidDataException("The saved bookmark schema is unsupported.");
-        if (mode is not (0 or 1 or 2 or 3 or 4 or 5 or 7))
+        if (mode is not (0 or 1 or 2 or 3 or 4 or 5 or 6 or 7))
             throw new InvalidDataException("The saved bookmark uses an unsupported observer frame.");
         ObjectId? target = mode == 0 ? null : OptionalObject("FrameReference") ?? selected;
+        CatalogueCameraFrame? catalogueFrame = null;
+        if (mode == 6)
+        {
+            target = OptionalObject("CatalogFrameOwner") ?? throw new InvalidDataException("The saved frame needs a catalogue object.");
+            if (!bookmark!.TryGetValue("CatalogFrameSelectionJd", out var date) || date.ValueKind != JsonValueKind.Number ||
+                !date.TryGetDouble(out double jd) || !double.IsFinite(jd) || jd < 0 || jd >= JulianInstant.MaximumDay + 1d)
+                throw new InvalidDataException("The saved frame needs a valid selection epoch.");
+            bool orbit = bookmark.TryGetValue("CatalogFrameOrbit", out var kind) && kind.GetBoolean();
+            catalogueFrame = new(JulianInstant.FromJulianDate(jd, TimeScale.Tdb), orbit);
+        }
         var frame = mode switch
         {
             2 => NavigationFrame.Chase,
             3 => NavigationFrame.PhaseLock,
             5 => NavigationFrame.Equatorial,
+            6 => NavigationFrame.Catalogue,
             _ => NavigationFrame.Inertial
         };
-        ObjectId? reference = frame is NavigationFrame.Inertial or NavigationFrame.Equatorial ? null :
+        ObjectId? reference = frame is NavigationFrame.Inertial or NavigationFrame.Equatorial or NavigationFrame.Catalogue ? null :
             OptionalObject("FrameOther") ?? (target is { } body ? world.Catalogue.Find(body)?.Parent : null);
         double rate = bookmark is null ? 1 : bookmark["Rate"].GetDouble();
         double? field = bookmark?.TryGetValue("FieldOfViewDegrees", out var lens) == true && lens.ValueKind != JsonValueKind.Null
@@ -93,7 +104,7 @@ public static partial class SceneLink
         if (!ObserverView.ValidPlaybackRate(rate) || field is { } fov && !ObserverView.ValidFieldOfView(fov))
             throw new InvalidDataException("The saved observer has an unsupported playback rate or field of view.");
         if (!TryRestoreAbsoluteCamera(world, world.Graph.Evaluate(epoch), deltaT, eye, attitude, selected,
-                target, mode == 1, frame, reference, out NavigationCamera camera))
+                target, mode == 1, frame, reference, out NavigationCamera camera, catalogueFrame))
             throw new InvalidDataException("The saved observer camera or reference frame is unavailable.");
         var observer = new ObserverView(epoch, CameraMode.Solar, selected, rate != 0)
             { Navigation = camera, PlaybackRate = rate, FieldOfViewDegrees = field };

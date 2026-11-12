@@ -138,12 +138,31 @@ public sealed partial class SimulationSession
         // Reevaluate the anchor when the clock advances, not on a render refresh or a reload.
         if (_flights[view] is null && (!pose.Tracking || _trackingEpochs[view] == (target, snapshot.Epoch)))
             return;
-        if (!World.TryNavigationState(target, snapshot, out var state, DeltaT))
+        Vector3d position;
+        if (pose.Placement?.CatalogueFrame is { } catalogue)
+        {
+            if (!NavigationCamera.TryCatalogueReference(snapshot, target, catalogue, out position, out _))
+            {
+                CancelFlight(view);
+                if (_trackingEpochs[view] is { } last)
+                    _views[view] = observer with { Navigation = pose with
+                    {
+                        Target = null, Tracking = false,
+                        Placement = pose.ResolvePlacement(World.Graph.Evaluate(last.Epoch), DeltaT)
+                    } };
+                _trackingEpochs[view] = null;
+                return;
+            }
+        }
+        else if (World.TryNavigationState(target, snapshot, out var state, DeltaT))
+        {
+            position = state.PositionKilometers;
+        }
+        else
         {
             CancelFlight(view);
             return;
         }
-        Vector3d position = state.PositionKilometers;
         if (pose.Placement is { UsesFrame: true } && !pose.TryFrameBasis(snapshot, DeltaT, out _) &&
             _trackingEpochs[view] is { } previous)
             pose = pose with { Placement = pose.ResolvePlacement(World.Graph.Evaluate(previous.Epoch), DeltaT) };

@@ -17,7 +17,7 @@ public sealed record SimulationScenario(IReadOnlyList<ObserverView> Views, bool 
 /// <summary>Persists observer settings with exact TDB epochs and stable catalog IDs.</summary>
 public static class ScenarioFile
 {
-    private const int Version = 18;
+    private const int Version = 19;
     internal const int MaximumBytes = 32 * 1024;
     private static readonly JsonSerializerOptions Json = new()
     {
@@ -58,7 +58,8 @@ public static class ScenarioFile
             throw new InvalidDataException("The scenario has invalid sky layer settings.");
         var document = new Document
         {
-            Version = scenario.Views.Any(view => view.Optics?.Finders is not null) ? 18 :
+            Version = scenario.Views.Any(view => view.Navigation?.Placement?.CatalogueFrame is not null) ? 19 :
+                scenario.Views.Any(view => view.Optics?.Finders is not null) ? 18 :
                 scenario.Views.Any(view => view.Navigation?.Placement?.Frame == NavigationFrame.Equatorial) ? 17 :
                 scenario.Views.Any(view => view.Sky.HasSurveySettings) ? 16 :
                 scenario.Views.Any(view => view.Sky.HasCultureSettings) ? 15 :
@@ -177,6 +178,8 @@ public static class ScenarioFile
             if ((data.FieldOfViewDegrees is { } field && !ObserverView.ValidFieldOfView(field)) ||
                 (document.Version < 6 && (data.FieldOfViewDegrees.HasValue || navigation?.Placement is not null)))
                 throw new InvalidDataException("The scene field or observer frame is unsupported.");
+            if (document.Version < 19 && navigation?.Placement?.CatalogueFrame is not null)
+                throw new InvalidDataException("Catalogue frames require scenario version 19.");
             if (document.Version < 17 && navigation?.Placement?.Frame == NavigationFrame.Equatorial)
                 throw new InvalidDataException("Mean-equator observer frames require a version 17 scenario.");
             if (document.Version < 8 && navigation?.Placement?.Reference is not null)
@@ -276,13 +279,26 @@ public static class ScenarioFile
         [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
         public string? Reference { get; init; }
 
+        [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+        public CatalogueFrameData? CatalogueFrame { get; init; }
+
         internal static Placement From(NavigationPlacement pose) =>
             new(Components.From(pose.OffsetKilometers), Components.From(pose.Forward), Components.From(pose.Up), pose.BodyFixed)
-            { Frame = pose.Frame, Reference = pose.Reference?.Value };
+            {
+                Frame = pose.Frame, Reference = pose.Reference?.Value,
+                CatalogueFrame = pose.CatalogueFrame is { } frame
+                    ? new(frame.SelectionEpoch.Day, frame.SelectionEpoch.NanosecondsOfDay, frame.Orbit) : null
+            };
 
         internal NavigationPlacement ToPlacement() => new(Offset.ToVector(), Forward.ToVector(), Up.ToVector(), BodyFixed)
-            { Frame = Frame, Reference = Reference is { } id ? new ObjectId(id) : null };
+            {
+                Frame = Frame, Reference = Reference is { } id ? new ObjectId(id) : null,
+                CatalogueFrame = CatalogueFrame is { } frame
+                    ? new(new(frame.Day, frame.NanosecondsOfDay, TimeScale.Tdb), frame.Orbit) : null
+            };
     }
+
+    private sealed record CatalogueFrameData(long Day, long NanosecondsOfDay, bool Orbit);
 
     private readonly record struct Components(double X, double Y, double Z)
     {

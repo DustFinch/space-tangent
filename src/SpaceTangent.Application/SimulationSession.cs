@@ -574,7 +574,8 @@ public sealed partial class SimulationSession
                 {
                     NavigationPlacement? placement = camera.Placement is { UsesFrame: true }
                         ? camera.ResolvePlacement(World.Graph.Evaluate(previous.Epoch), DeltaT) : camera.Placement;
-                    navigation = camera with { Target = lostTarget ? null : target, Tracking = !lostTarget && camera.Tracking,
+                    bool release = lostTarget || camera.Placement?.CatalogueFrame is not null;
+                    navigation = camera with { Target = release ? null : target, Tracking = !release && camera.Tracking,
                         Placement = placement };
                     CancelFlight(index);
                 }

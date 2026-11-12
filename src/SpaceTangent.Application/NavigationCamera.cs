@@ -52,9 +52,31 @@ public readonly record struct NavigationCamera(Vector3d AnchorKilometers, double
             return TryBodyBasis(snapshot, body, deltaT, out basis);
         if (placement.Frame == NavigationFrame.Equatorial)
             return TryMeanEquator(snapshot, target, out basis);
+        if (placement.CatalogueFrame is { } catalogue)
+            return TryCatalogueReference(snapshot, target, catalogue, out _, out basis);
         return placement.BodyFixed
             ? TryBodyBasis(snapshot, target, deltaT, out basis)
             : placement.Reference is { } reference && TryRelativeBasis(snapshot, placement.Frame, target, reference, out basis);
+    }
+
+    internal static bool TryCatalogueReference(WorldSnapshot snapshot, ObjectId target, CatalogueCameraFrame frame,
+        out Vector3d origin, out Basis3d basis)
+    {
+        origin = default;
+        basis = default;
+        if (!snapshot.TryMissionReferenceFrame(target, frame.Orbit, frame.SelectionEpoch, out var state, out var reference))
+            return false;
+        Vector3d z = reference.ToWorld.Z;
+        if (!(z.Length > 1e-12) || !z.IsFinite)
+            return false;
+        z /= z.Length;
+        Vector3d x = reference.ToWorld.X - z * Vector3d.Dot(reference.ToWorld.X, z);
+        if (!(x.Length > 1e-12) || !x.IsFinite)
+            return false;
+        x /= x.Length;
+        origin = state.PositionKilometers;
+        basis = new(x, Vector3d.Cross(z, x), z);
+        return true;
     }
 
     private static bool TryMeanEquator(WorldSnapshot snapshot, ObjectId target, out Basis3d basis)

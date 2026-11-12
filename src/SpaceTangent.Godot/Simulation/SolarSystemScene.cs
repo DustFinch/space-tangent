@@ -17,7 +17,7 @@ public partial class SolarSystemScene : Control
     private static readonly int NavigationOption = Enum.GetValues<CameraMode>().Length;
     private sealed record ViewControls(PanelContainer Panel, SimulationViewport Renderer, Label Epoch,
         Button Play, OptionButton Mode, OptionButton Selection, LineEdit TimelineEpoch, HBoxContainer TerrainTools,
-        LineEdit TerrainCoordinates, SpinBox FieldOfView, Button AdvanceHour, SubViewportContainer Canvas)
+        LineEdit TerrainCoordinates, SpinBox FieldOfView, Button AdvanceHour, SubViewportContainer Canvas, MeasurementOverlay Measurements)
     {
         internal WorldSnapshot? Snapshot { get; set; }
     }
@@ -471,6 +471,13 @@ public partial class SolarSystemScene : Control
             case Key.U when key.CtrlPressed:
                 ToggleSplit();
                 break;
+            case Key.A when key.CtrlPressed && GetViewport().GuiGetFocusOwner() is not LineEdit:
+                _status.Text = _views[_active].Measurements.ToggleAngle()
+                    ? "Angle measurement · drag across the view. Ctrl+A closes the tool." : "Angle measurement closed.";
+                break;
+            case Key.M when key.CtrlPressed:
+                MeasureSelectedDistance(key.ShiftPressed);
+                break;
             case Key.L when key.CtrlPressed:
                 _showSurfaceSites = !_showSurfaceSites;
                 _status.Text = _showSurfaceSites ? "Surface locations visible at their map scale." : "Surface location labels hidden.";
@@ -547,6 +554,27 @@ public partial class SolarSystemScene : Control
     }
 
     internal SimulationViewport Renderer(int view) => _views[view].Renderer;
+    internal MeasurementOverlay Measurements(int view) => _views[view].Measurements;
+
+    private void MeasureSelectedDistance(bool clear)
+    {
+        var overlay = _views[_active].Measurements;
+        if (clear)
+        {
+            overlay.ClearDistance();
+            _status.Text = "Distance measurement cleared.";
+            return;
+        }
+        if (Session![_active].Selection is not { } selected)
+        {
+            _status.Text = "Select an object to measure from or to.";
+            return;
+        }
+        overlay.SelectDistancePoint(selected);
+        Refresh();
+        _status.Text = overlay.WaitingForSecondPoint ? "Select the second object and press Ctrl+M." :
+            overlay.DistanceKilometers.HasValue ? overlay.DistanceText : "The two positions are unavailable at this epoch.";
+    }
 
     internal void SetMode(int view, CameraMode mode)
     {
@@ -1149,8 +1177,10 @@ public partial class SolarSystemScene : Control
         renderer.ShowPlanetOrbits = _showPlanetOrbits.ButtonPressed;
         if (_brightSky is { } sky)
             renderer.SetSkyData(sky);
+        var measurements = new MeasurementOverlay { Name = "Measurements" };
+        viewport.AddChild(measurements);
         var controls = new ViewControls(frame, renderer, epoch, play, mode, selection, timelineEpoch,
-            terrainTools, terrainCoordinates, field, advanceHour, container);
+            terrainTools, terrainCoordinates, field, advanceHour, container, measurements);
         _views.Add(controls);
         ReplaceAssets(controls);
     }
@@ -1159,6 +1189,14 @@ public partial class SolarSystemScene : Control
     {
         if (input is InputEventMouseButton { Pressed: true })
             ActivateView(view);
+        var measurements = _views[view].Measurements;
+        if (measurements.HandleAngleInput(input))
+        {
+            if (measurements.AngleDegrees is { } angle)
+                _status.Text = "Angle " + MeasurementOverlay.FormatAngle(angle);
+            GetViewport().SetInputAsHandled();
+            return;
+        }
         if (input is InputEventMouseButton { Pressed: true, ButtonIndex: MouseButton.Left } pick &&
             _views[view].Renderer.PickObject(pick.Position) is { } target)
         {
@@ -1350,6 +1388,7 @@ public partial class SolarSystemScene : Control
             controls.Renderer.ShowSurfaceSiteLabels = _showSurfaceSites;
             bool available = controls.Renderer.Draw(view, snapshot, session.DeltaT);
             controls.Renderer.DrawShip(ship, view.Navigation);
+            controls.Measurements.Update(controls.Renderer, view, snapshot, session.World, session.DeltaT);
             controls.Epoch.Text = FormattableString.Invariant($"View {index + 1}   JD {view.Epoch.ToJulianDate():F6} TDB");
             if (ship is not null)
             {

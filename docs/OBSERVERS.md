@@ -37,3 +37,9 @@ godot --headless --path src/SpaceTangent.Godot res://tests/WorkspaceInputSmoke.t
 ```
 
 The test sends mouse and keyboard events to the Godot viewport. It searches for Jason-1, flies to it and tracks it while the second view shows the full Moon. It verifies independent and synchronized clocks, both cameras and ΔT after reloading add-ons, and a scenario save and reopen through the file dialogs. The test uses a temporary directory for the scenario and ΔT settings.
+
+## Measurements
+
+Press **Ctrl+A** and drag across a perspective view to measure the angle between the two sight lines. The endpoints keep their world directions as the camera turns. Press **Ctrl+A** again to close the tool.
+
+To measure distance, select the first object and press **Ctrl+M**, then select the second object and press **Ctrl+M** again. The active view reports geometric distance and one-way light time for its epoch. **Ctrl+Shift+M** clears the pair.

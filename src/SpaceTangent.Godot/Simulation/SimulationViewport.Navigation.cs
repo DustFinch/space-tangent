@@ -25,6 +25,7 @@ internal partial class SimulationViewport
 
     internal bool EarthOrbitAtmosphereActive => _earthOrbit?.Active == true;
     internal bool NavigationCameraCurrent => _navigationCamera.Current;
+    internal Camera3D NavigationCameraNode => _navigationCamera;
 
     private void InitializeNavigation()
     {
@@ -137,14 +138,21 @@ internal partial class SimulationViewport
             node.Show();
         }
 
-        Vector3 Project(Vector3d position, out double scale)
-        {
-            Vector3d relative = position - pose.AnchorKilometers;
-            double distance = relative.Length / units;
-            // Fit distant bodies in the camera range while retaining their angular size.
-            scale = distance > NavigationFar * .8 ? NavigationFar * .8 / distance : 1;
-            return ToGodot(relative * scale, units);
-        }
+        Vector3 Project(Vector3d position, out double scale) => ProjectNavigation(position - pose.AnchorKilometers, units, out scale);
+    }
+
+    private static Vector3 ProjectNavigation(Vector3d relative, double units, out double scale)
+    {
+        double distance = relative.Length / units;
+        // Fit distant bodies in the camera range while retaining their angular size.
+        scale = distance > NavigationFar * .8 ? NavigationFar * .8 / distance : 1;
+        return ToGodot(relative * scale, units);
+    }
+
+    internal Vector2? ProjectNavigationPoint(NavigationCamera pose, Vector3d position)
+    {
+        Vector3 point = ProjectNavigation(position - pose.AnchorKilometers, pose.RangeKilometers / NavigationCameraUnits, out _);
+        return _navigationCamera.IsPositionBehind(point) ? null : _navigationCamera.UnprojectPosition(point);
     }
 
     private ObjectId? PickNavigationBody(Vector2 point)

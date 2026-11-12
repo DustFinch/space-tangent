@@ -19,7 +19,18 @@ public partial class WorkspaceInputSmoke
         RequireScenario(expected, ScenarioFile.Load(Path.Combine(directory, filename)), "Saving interstellar targets");
         await UseScenarioDialog("OpenScenario", 0, directory, filename);
         RequireScenario(expected, Session.CaptureScenario(1), "Reopening interstellar targets");
-        GD.Print("UI: flew to Proxima Centauri and Andromeda, then saved and restored the two interstellar cameras");
+        NavigationCamera distant = expected.Views[1].Navigation!.Value;
+        Vector3d anchor = distant.AnchorKilometers;
+        var shifted = distant with { AnchorKilometers = new(Math.BitIncrement(anchor.X), anchor.Y, anchor.Z) };
+        var fixture = expected with { Views = [expected.Views[0], expected.Views[1] with { Navigation = shifted }] };
+        string shiftedScene = Path.Combine(directory, "exact-distant-anchor.stscene");
+        ScenarioFile.Save(shiftedScene, fixture);
+        Require(_scene.LoadScenario(shiftedScene), "The distant tracking fixture must open.");
+        RequireScenario(fixture, Session.CaptureScenario(1), "Restoring the exact distant anchor");
+        await Click(Find<Button>("AdvanceHour1"));
+        Require(Session[1].Navigation?.AnchorKilometers == anchor,
+            "Advancing time must resume tracking the catalogue position.");
+        GD.Print("UI: flew to Proxima Centauri and Andromeda, then saved and restored the two interstellar cameras exactly");
 
         async Task FlyTo(int view, string query, ObjectId target)
         {

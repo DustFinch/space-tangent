@@ -11,6 +11,7 @@ public sealed partial class SimulationSession
 
     private const double FlightDuration = 1.65;
     private readonly CameraFlight?[] _flights = new CameraFlight?[2];
+    private readonly (ObjectId Target, JulianInstant Epoch)?[] _trackingEpochs = new (ObjectId, JulianInstant)?[2];
 
     public bool IsFlying(int view) => _flights[view] is not null;
 
@@ -47,6 +48,7 @@ public sealed partial class SimulationSession
         double minimum = MinimumRange(target);
         double range = pose.Target == target ? Math.Max(pose.RangeKilometers, minimum) : FramingRange(target);
         _flights[view] = null;
+        _trackingEpochs[view] = (target, snapshot.Epoch);
         _views[view] = observer with
         {
             Navigation = pose with { AnchorKilometers = state.PositionKilometers, RangeKilometers = range,
@@ -86,6 +88,10 @@ public sealed partial class SimulationSession
         ObserverView observer = _views[view];
         if (observer.Navigation is not { Target: { } target } pose)
             return;
+        // Restoring a saved tracked view keeps its inertial anchor at the saved epoch.
+        // Reevaluate the anchor when the clock advances, not on a render refresh or a reload.
+        if (_flights[view] is null && (!pose.Tracking || _trackingEpochs[view] == (target, snapshot.Epoch)))
+            return;
         if (!World.TryNavigationState(target, snapshot, out var state))
         {
             CancelFlight(view);
@@ -116,7 +122,10 @@ public sealed partial class SimulationSession
             _flights[view] = elapsed >= flight.Duration ? null : flight with { Elapsed = elapsed };
         }
         else if (pose.Tracking)
+        {
             pose = pose with { AnchorKilometers = position };
+            _trackingEpochs[view] = (target, snapshot.Epoch);
+        }
         _views[view] = observer with { Navigation = pose };
     }
 

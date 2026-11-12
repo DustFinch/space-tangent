@@ -29,7 +29,7 @@ public partial class SolarSystemScene
                 SimulationScenario actual = Session!.CaptureScenario(_active);
                 if (!actual.Views.SequenceEqual(expected.Views) || actual.DeltaT != expected.DeltaT ||
                     actual.ActiveView != expected.ActiveView || actual.ClockOwner != expected.ClockOwner ||
-                    actual.Synchronized != expected.Synchronized)
+                    actual.Synchronized != expected.Synchronized || actual.SplitLayout != expected.SplitLayout)
                     throw new InvalidDataException("The restarted simulator did not restore the exact scenario.");
                 GD.Print($"SpaceTangent startup restored {actual.Views.Count} views with ΔT {actual.DeltaT}.");
             }

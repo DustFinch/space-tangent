@@ -207,6 +207,10 @@ public sealed partial class SimulationSession
         _views.Clear();
         _views.AddRange(views);
         Array.Clear(_flights);
+        Array.Clear(_trackingEpochs);
+        for (int index = 0; index < views.Length; index++)
+            if (views[index].Navigation is { Tracking: true, Target: { } target })
+                _trackingEpochs[index] = (target, views[index].Epoch);
         Synchronized = scenario.Synchronized;
         _clockOwner = scenario.ClockOwner;
         SplitLayout = scenario.SplitLayout;
@@ -239,13 +243,19 @@ public sealed partial class SimulationSession
     public void Split()
     {
         if (_views.Count == 1)
+        {
             _views.Add(_views[0]);
+            _trackingEpochs[1] = _trackingEpochs[0];
+        }
     }
 
     public void CloseSecondView()
     {
         if (_views.Count == 2)
+        {
             _views.RemoveAt(1);
+            _trackingEpochs[1] = null;
+        }
         _flights[1] = null;
         _clockOwner = 0;
     }

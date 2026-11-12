@@ -63,6 +63,7 @@ public sealed partial class SimulationSession
         if (!next.IsValid())
             return false;
         CancelFlight(view);
+        _trackingEpochs[view] = (target, snapshot.Epoch);
         _views[view] = observer with { Navigation = next };
         return true;
     }

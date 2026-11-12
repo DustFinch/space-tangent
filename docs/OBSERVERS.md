@@ -95,3 +95,11 @@ Press **Ctrl+P** to cycle the available Earth panoramas and **Ctrl+Alt+P** to cl
 In a perspective flight or Earth surface view, use **Ctrl+0** to look through the current eyepiece or return to the normal view. **Ctrl+Shift+0** cycles telescopes, **Ctrl+Alt+0** cycles eyepieces, **Shift+0** cycles Barlow factors and **Alt+0** flips the image. The view reports its magnification and true field. The Earth observer can hold the selected target, and the lens applies diffraction and ground seeing.
 
 An archived `optics-v1.json` is loaded from the local user profile or the path set in `SPACETANGENT_OPTICS_FILE`. It uses a `Telescopes` array with `Name`, `ApertureMillimeters` and `FocalMillimeters`, and an `Eyepieces` array with `Name`, `FocalMillimeters` and `ApparentFieldDegrees`. Version 14 scenarios preserve each view's profile and whether the eyepiece is active. Closing the eyepiece returns to the observer's original field and camera.
+
+## Screenshots, video and observer replay
+
+**F10** saves a PNG of the rendered workspace. **Shift+F10** starts and stops a 30 fps Motion JPEG AVI with a matching `.stframes` recording. Files go to the local captures directory or the directory set in `SPACETANGENT_CAPTURE_OUTPUT`. Simulation time and flights step by 1/30 second of playback per rendered frame while recording. The movie finishes before the AVI size limit, with a replay frame for each video frame.
+
+Open a `.stframes` recording with the existing scenario dialog. It restores each observer, camera, epoch and ΔT from the sequence and pauses at the final state. Keep the corresponding add-ons available. Use Escape to leave the replay early.
+
+Pass application arguments after `--`. Use `--startup-scenario <path>` to open a scene, `--startup-movie <seconds>` to record a timed clip, or `--startup-replay <path>` to replay a recording. `--startup-screenshot <path>` saves the opened scene or the final replay frame, and `--startup-exit` exits after the requested work. `--inspect-legacy-recording <path>` reports the frame count, schema and epochs from the archived binary format after checking its record checksums. Original frame geometry is inspected at the recording envelope level. The new player opens observer-state recordings.

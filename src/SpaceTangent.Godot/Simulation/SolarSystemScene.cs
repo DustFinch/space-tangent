@@ -68,6 +68,9 @@ public partial class SolarSystemScene : Control
         _workspace = new(this, GoToActiveObject, TrackActiveObject);
         _panels = _workspace.Views;
         _status = _workspace.Status;
+        if (InspectStartupArchive())
+            return;
+        ConnectCapture();
         _activeFrame = SimulatorTheme.Box(SimulatorTheme.Ground, SimulatorTheme.Highlight, 5, 5);
         _inactiveFrame = SimulatorTheme.Box(SimulatorTheme.Ground, SimulatorTheme.Border, 5, 5);
         _status.Text = "Loading ephemeris…";
@@ -180,7 +183,9 @@ public partial class SolarSystemScene : Control
         Refresh();
         InitializationFinished = true;
         ReportLoadedWorld(world);
-        if (OS.GetCmdlineUserArgs().Contains("--smoke-startup"))
+        if (_startupArguments.Any(argument => argument.StartsWith("--startup-", StringComparison.Ordinal)))
+            await RunStartupRecording();
+        else if (_startupArguments.Contains("--smoke-startup"))
             await RunStartupSmoke();
     }
 
@@ -562,6 +567,12 @@ public partial class SolarSystemScene : Control
                 _workspace.Open("Bookmarks");
                 CreateSceneLink(legacy: true);
                 break;
+            case Key.F10 when key.ShiftPressed && !key.CtrlPressed && !key.AltPressed:
+                ToggleRecording();
+                break;
+            case Key.F10 when !key.ShiftPressed && !key.CtrlPressed && !key.AltPressed:
+                QueueScreenshot();
+                break;
             case Key.Delete when Session.ViewCount > 1:
                 CloseView(_active);
                 break;
@@ -573,7 +584,9 @@ public partial class SolarSystemScene : Control
                 TogglePlaying(_active);
                 break;
             case Key.Escape:
-                if (_script is { Finished: false })
+                if (Replaying)
+                    CloseReplay();
+                else if (_script is { Finished: false })
                     StopScript();
                 else if (Session.CancelFlight(_active))
                 {
@@ -593,6 +606,7 @@ public partial class SolarSystemScene : Control
     {
         _eventSearch?.Cancel();
         _landscapeLifetime.Cancel();
+        DisconnectCapture();
         DisablePlugins(updateMenu: false);
         _script?.Stop();
         _loadGeneration++;
@@ -609,6 +623,10 @@ public partial class SolarSystemScene : Control
 
     public override void _Process(double delta)
     {
+        if (AdvanceReplay(delta))
+            return;
+        if (MovieActive)
+            delta = 1.0 / WindowRecording.FramesPerSecond;
         FlyShip(delta);
         bool changed = Session?.Tick(delta) == true;
         changed |= StepPlugins(delta);
@@ -944,6 +962,7 @@ public partial class SolarSystemScene : Control
         AddChild(open);
         AddChild(save);
         open.AddFilter("*.stscene,*.cel,*.json", "Scenarios and observer saves");
+        open.AddFilter("*.stframes", "Observer frame recordings");
         save.AddFilter("*.stscene", "SpaceTangent scenarios");
         open.FileSelected += path =>
         {
@@ -1043,6 +1062,9 @@ public partial class SolarSystemScene : Control
 
     internal bool LoadScenario(string path)
     {
+        if (Path.GetExtension(path).Equals(".stframes", StringComparison.OrdinalIgnoreCase))
+            return StartReplay(path);
+        CloseReplay();
         try
         {
             if (Path.GetExtension(path).Equals(".json", StringComparison.OrdinalIgnoreCase))

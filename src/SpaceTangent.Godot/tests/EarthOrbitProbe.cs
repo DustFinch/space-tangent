@@ -93,6 +93,7 @@ public partial class EarthOrbitProbe : Node
             await ExerciseMissionGeometry(scene, directory);
             await ExerciseSourceFactories(scene, directory);
             await ExercisePackedFactories(scene, directory);
+            await ExerciseRecording(scene, directory);
             result = 0;
         }
         catch (Exception error)

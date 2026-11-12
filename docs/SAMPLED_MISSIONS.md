@@ -5,3 +5,11 @@ Place local version 1.0 JSON catalogues in `data/sampled-missions` or set `SPACE
 The reader supports XYZ and XYZV curves, fixed points, changing centers, Ecliptic J2000 and equatorial inertial frames, body-fixed frames and two-vector frames built from relative position and velocity. Arc end times are exclusive. A mission remains available in covered arcs when data for a different arc are unavailable. MSL's landed arc requires a Mars orientation source, and Dawn's Vesta arc requires the local Vesta ephemeris.
 
 A missing optional mesh leaves a marker available and is reported in the log. An unreadable required trajectory rejects the replacement generation and preserves the last loaded world and cameras. The original MSL and Dawn trajectories have been checked against the archived simulator. The tested archive lacks their spacecraft meshes. Dawn's separate particle system is reported as unsupported by this reader.
+
+## Compound tracks and timed models
+
+The same loader accepts fixed spherical positions, Keplerian ellipses, CHEBPOLY files, weighted combinations, and composite trajectories with explicit boundaries. The available analytic moon theories provide the equatorial built-in fallback for supported satellites. Fixed and uniform rotations can be composed with each arc's declared body frame.
+
+Mesh phases can switch at explicit TDB epochs, include nested switches and leave a view with no geometry while the trajectory continues. Optional resources remain relative to the file that defines them. The timed geometry probe uses the original verification catalogue with the original Jason-1 and SORCE OBJ meshes.
+
+The loader visits local `require` entries first and opens each catalogue once. It rejects a dependency cycle. When an entry's file is absent, it reports the missing file and resolves its references against the installed world, as in the archived source loader. Removing a required object rejects the generation when a remaining definition still refers to it.

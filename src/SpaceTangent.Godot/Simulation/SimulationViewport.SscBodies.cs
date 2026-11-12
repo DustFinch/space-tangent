@@ -7,11 +7,23 @@ using SpaceTangent.Core.World;
 namespace SpaceTangent.Godot.Simulation;
 
 internal sealed record PreparedImportedBody(ObjectId Id, CatalogueKind Kind, Vector3d Color, double RadiusKilometers,
-    Basis3d MeshRotation, Vector3d MeshCenter, ArrayMesh? Model, double ModelDiameter);
+    Basis3d MeshRotation, Vector3d MeshCenter, ArrayMesh? Model, double ModelDiameter,
+    IReadOnlyList<PreparedMissionGeometry>? Geometry = null);
+
+internal sealed record PreparedMissionGeometry(JulianInstant Start, JulianInstant End, double RadiusKilometers,
+    Basis3d MeshRotation, Vector3d MeshOffset, ArrayMesh? Model, double ModelDiameter);
 
 internal partial class SimulationViewport
 {
     private IReadOnlyList<PreparedImportedBody>? _importedAssets;
+    private readonly SphereMesh _missionMarkerMesh = new() { Radius = 1, Height = 2, RadialSegments = 32, Rings = 16 };
+    private readonly StandardMaterial3D _missionMarkerMaterial = new()
+    {
+        AlbedoColor = new(.8f, .8f, .8f),
+        EmissionEnabled = true,
+        Emission = new(.8f, .8f, .8f),
+        EmissionEnergyMultiplier = .14f
+    };
     private readonly Dictionary<ObjectId, (PreparedImportedBody Asset, MeshInstance3D Node)> _importedNodes = new();
 
     internal void ReplaceImportedBodies(IReadOnlyList<PreparedImportedBody> assets)
@@ -29,7 +41,12 @@ internal partial class SimulationViewport
         {
             var color = asset.Color;
             MeshInstance3D node;
-            if (asset.Model is { } mesh)
+            if (asset.Geometry is not null)
+            {
+                node = new() { Visible = false };
+                AddChild(node);
+            }
+            else if (asset.Model is { } mesh)
             {
                 node = new() { Mesh = mesh, Visible = false };
                 AddChild(node);
@@ -53,22 +70,43 @@ internal partial class SimulationViewport
                 !snapshot.TryOrientation(body.Id, out FrameKinematics frame))
                 continue;
             var (position, projection) = project(state.PositionKilometers);
-            double radius = body.RadiusKilometers * projection / units;
+            PreparedMissionGeometry? active = null;
+            if (asset.Geometry is { } intervals)
+            {
+                foreach (var span in intervals)
+                {
+                    if (snapshot.Epoch.CompareTo(span.Start) >= 0 && snapshot.Epoch.CompareTo(span.End) < 0)
+                    {
+                        active = span;
+                        break;
+                    }
+                }
+                if (active is null)
+                    continue;
+                Mesh mesh = active.Model is { } model ? model : _missionMarkerMesh;
+                if (node.Mesh != mesh)
+                {
+                    node.Mesh = mesh;
+                    node.MaterialOverride = active.Model is null ? _missionMarkerMaterial : null;
+                }
+            }
+            double radius = (active?.RadiusKilometers ?? body.RadiusKilometers) * projection / units;
             if (radius < .035 && pose.Target != body.Id)
                 continue;
-            if (asset.Model is null)
+            if ((active?.Model ?? asset.Model) is null)
             {
                 node.Position = position;
                 node.Scale = Vector3.One * (float)radius;
             }
             else
             {
-                double scale = radius * 2 / asset.ModelDiameter;
-                Basis3d axes = frame.ToWorld, rotation = body.MeshRotation;
+                double scale = radius * 2 / (active?.ModelDiameter ?? asset.ModelDiameter);
+                Basis3d axes = frame.ToWorld, rotation = active?.MeshRotation ?? body.MeshRotation;
                 Vector3 Column(Vector3d value) => ToGodot(axes.Transform(rotation.Transform(value)) * scale, 1);
                 Basis basis = new(Column(new(1, 0, 0)), Column(new(0, 1, 0)), Column(new(0, 0, 1)));
-                Vector3 offset = Column(body.MeshCenter);
-                node.Transform = new(basis, position - offset);
+                Vector3 offset = active is null ? -Column(body.MeshCenter) :
+                    ToGodot(axes.Transform(active.MeshOffset) * scale, 1);
+                node.Transform = new(basis, position + offset);
             }
             node.Show();
         }

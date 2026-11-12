@@ -20,7 +20,8 @@ internal static class AddonLoader
     internal sealed record DecodedTimeline(SscSampledSpacecraft Track, DecodedScienceModel Model, HuygensMission? Probe,
         DecodedScienceModel? ProbeModel);
     internal sealed record DecodedSscBody(SscBodyDefinition Body, DecodedScienceModel? Geometry);
-    internal sealed record DecodedSampledMission(SampledMission Track, DecodedScienceModel? Model);
+    internal sealed record DecodedSampledMission(SampledMission Track,
+        IReadOnlyDictionary<string, DecodedScienceModel> Meshes);
     internal sealed record DecodedTerrain(SpicePolynomialBodyFrame Frame, DecodedBodyTerrain Model);
 
     internal sealed record Cached<T>(LocalDataPath Path, AddonDependencies Dependencies, T Value)
@@ -148,12 +149,13 @@ internal static class AddonLoader
                     string file = path.Resolve();
                     return AddonDependencies.FileExists(file) ? ExoplanetCatalogue.Load(file, token) : ExoplanetCatalogue.Empty;
                 }, cancellation);
-            var missions = Cached<IReadOnlyList<DecodedSampledMission>>.Load(previous?.SampledMissions, missionsPath,
-                "Sampled mission catalogues", ReadSampledMissions, cancellation);
+            bool sameScience = previous is not null && previous.Science.SequenceEqual(satellites);
+            var missions = Cached<IReadOnlyList<DecodedSampledMission>>.Load(sameScience ? previous?.SampledMissions : null, missionsPath,
+                "Sampled mission catalogues", (path, token) => ReadSampledMissions(path, token,
+                    satellites.SelectMany(source => source.Value).Select(item => item.Track).ToArray()), cancellation);
             var tle = Cached<IReadOnlyList<LocalTleSatellite>>.Load(previous?.LocalSatellites, tlePath,
                 "Local TLE groups", (path, token) => LocalTleCatalogue.Load(path.Resolve(),
                     message => global::Godot.GD.Print("Local TLE: " + message), token), cancellation);
-            bool sameScience =   previous is not null && previous.Science.SequenceEqual(satellites);
             bool sameBodies = previous is not null && previous.BodyCatalogues.SequenceEqual(bodies);
             if (previous is not null && sameScience && sameBodies && ReferenceEquals(previous.Mission, spice) &&
                 ReferenceEquals(previous.Timeline, sampled) && ReferenceEquals(previous.Terrain, relief) &&
@@ -267,13 +269,23 @@ internal static class AddonLoader
             if (ReferenceEquals(decoded.SampledMissions, previous?.Decoded.SampledMissions) &&
                 priorAssets?.TryGetValue(track.Id, out var ready) == true)
                 return ready;
+            var models = item.Meshes.ToDictionary(pair => pair.Key,
+                pair => (Mesh: ScienceMeshLoader.Publish(pair.Value, pair.Key), pair.Value.Diameter));
+            IReadOnlyList<PreparedMissionGeometry>? geometry = track.Geometry?.Select(span =>
+            {
+                var shape = span.Shape;
+                var model = shape.MeshPath is { } path ? models[path] : default;
+                return new PreparedMissionGeometry(span.Start, span.End, shape.RadiusKilometers,
+                    shape.MeshRotation, shape.MeshOffset, model.Mesh, model.Diameter);
+            }).ToArray();
             return new PreparedImportedBody(track.Id, CatalogueKind.Spacecraft, new(.8, .8, .8), track.RadiusKilometers, Basis3d.Identity, default,
-                item.Model is { } model ? ScienceMeshLoader.Publish(model, track.MeshPath!) : null, item.Model?.Diameter ?? 2);
+                null, 2, geometry);
         });
         return Array.AsReadOnly(bodies.Concat(missions).ToArray());
     }
 
-    private static IReadOnlyList<DecodedSampledMission> ReadSampledMissions(LocalDataPath location, CancellationToken cancellation)
+    private static IReadOnlyList<DecodedSampledMission> ReadSampledMissions(LocalDataPath location, CancellationToken cancellation,
+        IReadOnlyList<ScienceSatellite> science)
     {
         string root = location.Resolve();
         if (!AddonDependencies.DirectoryExists(root))
@@ -282,34 +294,33 @@ internal static class AddonLoader
         if (catalogues.Length > 64)
             throw new InvalidDataException("The sampled mission directory may contain at most 64 catalogues.");
         var tracks = new List<DecodedSampledMission>();
-        foreach (string path in catalogues.Order(StringComparer.Ordinal))
+        foreach (SampledMission mission in SampledMissionCatalog.Load(catalogues.Order(StringComparer.Ordinal), root, Resolve,
+                     message => global::Godot.GD.Print("Sampled mission: " + message), cancellation))
         {
-            foreach (SampledMission mission in SampledMissionCatalog.Load(path, root, Resolve,
-                         message => global::Godot.GD.Print("Sampled mission: " + message), cancellation))
-            {
-                if (tracks.Count == 512)
-                    throw new InvalidDataException("The enabled catalogues may provide at most 512 sampled missions.");
-                cancellation.ThrowIfCancellationRequested();
-                DecodedScienceModel? mesh = mission.MeshPath is { } file ? Path.GetExtension(file).ToLowerInvariant() switch
+            cancellation.ThrowIfCancellationRequested();
+            var meshes = new Dictionary<string, DecodedScienceModel>(StringComparer.Ordinal);
+            foreach (string file in (mission.Geometry ?? []).Select(span => span.Shape.MeshPath).OfType<string>().Distinct())
+                meshes.Add(file, Path.GetExtension(file).ToLowerInvariant() switch
                 {
+                    ".obj" => ScienceModelDecoder.Decode(file, cancellation),
                     ".cmod" => CmodMeshDecoder.Decode(root, file, cancellation),
                     ".3ds" => StudioMeshDecoder.Decode(file, cancellation),
                     ".glb" => PackedModelDecoder.Decode(file, cancellation),
-                    _ => throw new NotSupportedException("This sampled mission needs a CMOD, 3DS or packed GLB mesh.")
-                } : null;
-                tracks.Add(new(mission, mesh));
-            }
+                    _ => throw new NotSupportedException("This sampled mission needs an OBJ, CMOD, 3DS or packed GLB mesh.")
+                });
+            tracks.Add(new(mission, meshes));
         }
         return tracks.AsReadOnly();
 
-        static ObjectId? Resolve(string name)
+        ObjectId? Resolve(string name)
         {
             if (name.Equals("Sun", StringComparison.OrdinalIgnoreCase) || name.Equals("Sol", StringComparison.OrdinalIgnoreCase))
                 return SolarSystemSample.SunId;
             if (name.Equals("Moon", StringComparison.OrdinalIgnoreCase))
                 return SolarSystemSample.MoonId;
             return PlanetCatalogue.Planets.FirstOrDefault(planet => planet.Name.Equals(name, StringComparison.OrdinalIgnoreCase))?.Id ??
-                NaturalBodyCatalogue.Bodies.FirstOrDefault(body => body.Name.Equals(name, StringComparison.OrdinalIgnoreCase))?.Id;
+                NaturalBodyCatalogue.Bodies.FirstOrDefault(body => body.Name.Equals(name, StringComparison.OrdinalIgnoreCase))?.Id ??
+                science.FirstOrDefault(track => track.Name.Equals(name, StringComparison.OrdinalIgnoreCase))?.Id;
         }
     }
 

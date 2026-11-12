@@ -64,7 +64,10 @@ public sealed class PlanetEphemerides
             KernelBackedTrajectory? center = source?._planetCenters.GetValueOrDefault(planet.NaifId);
             graph.AddTrajectory(planet.Id, epoch => center?.Sample(epoch) ?? default(CartesianState), planet.SystemId);
         }
-        AddFrame(graph, planet.Id, planet.NaifId, source);
+        if (planet.Id == SolarSystemSample.EarthId)
+            graph.AddMeanEarthRotation();
+        else
+            AddFrame(graph, planet.Id, planet.NaifId, source);
     }
 
     internal static void AddNaturalBody(WorldGraphBuilder graph, NaturalBodyDefinition body, PlanetEphemerides? source)

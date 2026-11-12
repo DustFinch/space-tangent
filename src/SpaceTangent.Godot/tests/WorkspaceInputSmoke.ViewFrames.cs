@@ -256,5 +256,28 @@ public partial class WorkspaceInputSmoke
         Require((pose.AnchorKilometers + placement.OffsetKilometers - expectedEye).Length < 1e-6,
             "Changing the reference frame must keep the original archived eye.");
         GD.Print("UI: restored the archived Earth observer and its fixed-frame bookmark through existing entry points");
+        var moon = SolarSystemSample.MoonId;
+        Session.SelectObject(0, moon);
+        await KeyPress(Key.C);
+        var fixedView = Session[0].Navigation!.Value;
+        var snapshot = Session.World.Graph.Evaluate(expectedEpoch);
+        Require(snapshot.TryState(moon, out var lunarState), "Centering the Moon needs its ephemeris.");
+        var fixedPose = fixedView.ResolvePlacement(snapshot, Session.DeltaT);
+        var sight = lunarState.PositionKilometers - expectedEye;
+        Require(fixedView.Target == earth && fixedView.Placement is { BodyFixed: true } &&
+            (fixedView.AnchorKilometers + fixedPose.OffsetKilometers - expectedEye).Length < 1e-6 &&
+            Vector3d.Dot(fixedPose.Forward, sight / sight.Length) > .999999999,
+            "Centering the Moon from the Earth frame must preserve that frame and the camera eye.");
+        Session.StartFreeFlight(0);
+        await KeyPress(Key.C);
+        Require(Session[0].Navigation is { Tracking: true, Target: { } target } && target == moon,
+            "Centering from free flight must keep the Moon centered as time advances.");
+        _scene.Advance(0, 3600);
+        var tracked = Session[0].Navigation!.Value;
+        var later = Session.World.Graph.Evaluate(Session[0].Epoch);
+        Require(later.TryState(moon, out var moved) && tracked.AnchorKilometers == moved.PositionKilometers &&
+            Vector3d.Dot(tracked.Placement!.Value.Forward, sight / sight.Length) > .999999999,
+            "Stepping time must keep the focused Moon centered.");
+        GD.Print("UI: centered the Moon without moving the eye and retained both kinds of tracking across time");
     }
 }

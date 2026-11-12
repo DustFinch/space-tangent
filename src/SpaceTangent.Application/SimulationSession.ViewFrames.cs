@@ -42,6 +42,45 @@ public sealed partial class SimulationSession
         return true;
     }
 
+    /// <summary>Centers the selected object while leaving the camera at the same point.</summary>
+    public bool FocusSelection(int view)
+    {
+        if (!TrySelectedState(view, out ObjectId selected, out WorldSnapshot snapshot, out var state))
+            return false;
+        ObserverView observer = _views[view];
+        NavigationCamera camera = observer.Navigation ?? PresetCamera(observer, snapshot);
+        NavigationPlacement current = camera.ResolvePlacement(snapshot, DeltaT);
+        Vector3d eye = camera.AnchorKilometers + current.OffsetKilometers;
+        Vector3d sight = state.PositionKilometers - eye;
+        double distance = sight.Length;
+        if (!(distance >= NavigationCamera.MinRange))
+            return false;
+        Vector3d forward = sight / distance;
+        Vector3d right = Vector3d.Cross(forward, current.Up);
+        if (right.Length < 1e-8)
+            right = Vector3d.Cross(forward, Vector3d.Cross(current.Forward, current.Up));
+        Vector3d up = Vector3d.Cross(right / right.Length, forward);
+
+        if (camera.Placement is { UsesFrame: true } frame && camera.TryFrameBasis(snapshot, DeltaT, out Basis3d basis))
+        {
+            Basis3d inverse = basis.Transpose();
+            camera = camera with { Placement = frame with { Forward = inverse.Transform(forward), Up = inverse.Transform(up) } };
+        }
+        else
+        {
+            camera = new(state.PositionKilometers, distance, 0, 0, selected, true)
+            {
+                Placement = new(eye - state.PositionKilometers, forward, up)
+            };
+        }
+        if (!camera.IsValid())
+            return false;
+        CancelFlight(view);
+        _trackingEpochs[view] = (camera.Target!.Value, snapshot.Epoch);
+        _views[view] = observer with { Navigation = camera };
+        return true;
+    }
+
     public bool FollowRelativeFrame(int view, NavigationFrame frame, ObjectId? reference = null)
     {
         ObserverView observer = _views[view];

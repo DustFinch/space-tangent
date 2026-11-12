@@ -659,6 +659,19 @@ public partial class SolarSystemScene : Control
 
     private bool TryObserverFrameKey(InputEventKey key)
     {
+        if (key.Keycode == Key.C)
+        {
+            var observer = Session![_active];
+            if (observer.Selection is { } id && UseEarthPointing(id, observer) &&
+                Session.World.BrightStars.Find(id) is { } star)
+                PointAtStar(star);
+            else
+            {
+                _status.Text = Session.FocusSelection(_active) ? "Centered the selected object." : "The object cannot be centered from this position.";
+                Refresh();
+            }
+            return true;
+        }
         if (key.Keycode == Key.Y)
         {
             FollowBodyRotation();

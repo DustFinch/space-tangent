@@ -94,6 +94,7 @@ public partial class EarthOrbitProbe : Node
             await ExerciseMeteorRadiants(scene, directory);
             await ExercisePanoramas(scene, directory);
             await ExerciseOptics(scene, directory);
+            await ExerciseFinders(scene, directory);
             await ExerciseHistoricalStars(scene, directory);
             await CaptureSurfaceSite(scene, epoch, directory);
             await CapturePackedScience(scene, directory);

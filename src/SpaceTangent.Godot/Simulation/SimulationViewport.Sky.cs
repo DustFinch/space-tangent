@@ -75,6 +75,7 @@ internal partial class SimulationViewport
             }
         }
         DrawEyepiece(observer);
+        DrawFinders(observer);
         _lastOpticalFrame = observer.ActiveOptics is null ? null : (observer, snapshot, deltaT);
         return available;
 

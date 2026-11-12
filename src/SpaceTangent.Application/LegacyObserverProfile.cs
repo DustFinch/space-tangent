@@ -94,7 +94,17 @@ public static class LegacyObserverProfiles
                 HoldSelection = Flag(root, "HoldInEyepiece") ?? defaults.HoldSelection
             };
             if (profile.IsValid())
-                optics = new(profile, false);
+                optics = new(profile, false) { Finders = optics?.Finders };
+        }
+        bool? telrad = Flag(root, "Telrad"), circle = Flag(root, "FinderCircle");
+        int? sensor = Integer(root, "Camera");
+        if (telrad.HasValue || circle.HasValue || sensor.HasValue)
+        {
+            var previous = optics?.Finders ?? default;
+            var preset = sensor is >= 0 and <= 4 ? (CameraSensorPreset)sensor.Value : previous.Sensor;
+            var finders = new OpticalFinders(telrad ?? previous.Telrad, preset, circle ?? previous.EyepieceCircle);
+            if (optics is not null || finders.Visible)
+                optics = (optics ?? new(ObserverOpticsLibrary.Default, false)) with { Finders = finders.Visible ? finders : null };
         }
         var observer = current with { EarthObserver = camera.IsValid() ? camera : current.EarthObserver,
             Sky = sky, ReferenceMarks = marks, FieldOfViewDegrees = field, Optics = optics };

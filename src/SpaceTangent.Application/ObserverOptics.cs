@@ -1,12 +1,15 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
 using System.Text.Json;
+using System.Text.Json.Serialization;
 using SpaceTangent.Core.Observing;
 
 namespace SpaceTangent.Application;
 
 public sealed record ObserverOptics(VisualOptics Profile, bool Active)
 {
-    public bool IsValid() => Profile?.IsValid() == true;
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public OpticalFinders? Finders { get; init; }
+    public bool IsValid() => Profile?.IsValid() == true && (Finders is not { } finders || finders.IsValid());
 }
 
 public sealed class ObserverOpticsLibrary

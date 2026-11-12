@@ -24,6 +24,7 @@ uniform float sky_glow = 0.0;
 uniform float earth_angle;
 uniform float earth_radius;
 uniform float moon_radius;
+uniform float moon_disk_scale = 4.0;
 uniform float lunar_strength;
 uniform vec3 site_north;
 uniform vec3 site_east;
@@ -63,8 +64,7 @@ float cloud_cover(vec3 cloud, float regional_cover) {
 }
 
 vec3 lunar_disc(vec3 ray, vec3 moon_dir, float moon_distance, vec3 background) {
-    // The established observer preset displays the Moon at four times its physical angular size.
-    float radius = min(4.0 * moon_radius / moon_distance, 0.1);
+    float radius = min(moon_disk_scale * moon_radius / moon_distance, 0.1);
     if (dot(ray, moon_seen) <= 0.0 || length(cross(ray, moon_seen)) >= radius) {
         return background;
     }

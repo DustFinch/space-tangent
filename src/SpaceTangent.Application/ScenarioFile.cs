@@ -17,7 +17,7 @@ public sealed record SimulationScenario(IReadOnlyList<ObserverView> Views, bool 
 /// <summary>Persists observer settings with exact TDB epochs and stable catalog IDs.</summary>
 public static class ScenarioFile
 {
-    private const int Version = 17;
+    private const int Version = 18;
     internal const int MaximumBytes = 32 * 1024;
     private static readonly JsonSerializerOptions Json = new()
     {
@@ -32,6 +32,7 @@ public static class ScenarioFile
             new JsonStringEnumConverter<NavigationFrame>(JsonNamingPolicy.CamelCase, allowIntegerValues: false),
             new JsonStringEnumConverter<BodyReferenceMarks>(JsonNamingPolicy.CamelCase, allowIntegerValues: false),
             new JsonStringEnumConverter<SkyCultureNames>(JsonNamingPolicy.CamelCase, allowIntegerValues: false),
+            new JsonStringEnumConverter<CameraSensorPreset>(JsonNamingPolicy.CamelCase, allowIntegerValues: false),
             new JsonStringEnumConverter<DeltaTModel>(JsonNamingPolicy.CamelCase, allowIntegerValues: false)
         }
     };
@@ -57,7 +58,8 @@ public static class ScenarioFile
             throw new InvalidDataException("The scenario has invalid sky layer settings.");
         var document = new Document
         {
-            Version = scenario.Views.Any(view => view.Navigation?.Placement?.Frame == NavigationFrame.Equatorial) ? Version :
+            Version = scenario.Views.Any(view => view.Optics?.Finders is not null) ? 18 :
+                scenario.Views.Any(view => view.Navigation?.Placement?.Frame == NavigationFrame.Equatorial) ? 17 :
                 scenario.Views.Any(view => view.Sky.HasSurveySettings) ? 16 :
                 scenario.Views.Any(view => view.Sky.HasCultureSettings) ? 15 :
                 scenario.Views.Any(view => view.Optics is not null) ? 14 :
@@ -184,7 +186,8 @@ public static class ScenarioFile
             if ((data.ReferenceMarks & ~BodyReferenceMarks.All) != 0 ||
                 (document.Version < 9 && data.ReferenceMarks != BodyReferenceMarks.None))
                 throw new InvalidDataException("The scene reference marks are unsupported.");
-            if (data.Optics is { } optical && (document.Version < 14 || !optical.IsValid()))
+            if (data.Optics is { } optical && (document.Version < 14 || !optical.IsValid() ||
+                document.Version < 18 && optical.Finders is not null))
                 throw new InvalidDataException("The scenario has an invalid optics profile.");
             if (document.Version < 10 && data.LightTimeDelayed)
                 throw new InvalidDataException("Light-time correction requires a version 10 scenario.");

@@ -41,6 +41,7 @@ public partial class SolarSystemScene
             if (_startupArguments.Contains("--startup-legacy-settings", StringComparer.Ordinal))
                 await ImportStartupSettings(RequiredArgument("--startup-legacy-settings"));
             ApplyStartupSkyLayers();
+            ApplyStartupFinders();
             if (_startupArguments.Contains("--startup-save-scenario", StringComparer.Ordinal) &&
                 !SaveScenario(RequiredArgument("--startup-save-scenario")))
                 throw new InvalidDataException(_status.Text);
@@ -93,6 +94,28 @@ public partial class SolarSystemScene
         if (sites > 0 && !await ReloadAddOns())
             throw new InvalidDataException("The archived sites were saved, but the add-ons could not be reloaded.");
         GD.Print($"Legacy observer profile applied to the active view. Added {sites} observing sites.");
+    }
+
+    private void ApplyStartupFinders()
+    {
+        bool telrad = _startupArguments.Contains("--startup-telrad", StringComparer.Ordinal);
+        bool camera = _startupArguments.Contains("--startup-camera", StringComparer.Ordinal);
+        if (!telrad && !camera)
+            return;
+        var session = Session!;
+        var optics = session[_active].Optics ?? new(ObserverOpticsLibrary.Default, false);
+        var finders = optics.Finders.GetValueOrDefault();
+        if (camera)
+        {
+            if (!int.TryParse(RequiredArgument("--startup-camera"), NumberStyles.None, CultureInfo.InvariantCulture, out int index) ||
+                !Enum.IsDefined((CameraSensorPreset)index))
+                throw new InvalidDataException("Camera sensor index must be from 0 to 4.");
+            finders = finders with { Sensor = (CameraSensorPreset)index };
+        }
+        if (telrad)
+            finders = finders with { Telrad = true };
+        session.SetOptics(_active, optics with { Finders = finders.Visible ? finders : null });
+        Refresh();
     }
 
     private void ApplyStartupSkyLayers()

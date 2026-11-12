@@ -113,3 +113,9 @@ The import applies ΔT, observer conditions, Earth site coordinates, landscape s
 ### Saved sites in archived profiles
 
 The startup option `--startup-legacy-settings <path>` can also read archived saved observing sites. It adds valid new sites to the user list and leaves existing entries with the same ID in place. The names are searchable through the existing Earth-place search. When `SPACETANGENT_SAVED_EARTH_PLACES` is set, it identifies the list to update.
+
+## Finder overlays
+
+Use `--startup-telrad` for the 0.5°, 2°, and 4° rings, and `--startup-camera 1` through `4` for APS-C, full frame, ASI533, and ASI2600. Use sensor index `0` to clear the camera frame. These options apply to the active view. The sensor footprint uses the selected telescope focal length and Barlow. An active eyepiece hides its own finder overlays. The observatory uses the physical lunar diameter when either a finder or eyepiece is active.
+
+Scenario version 18 stores each view's settings. Importing an archived observer profile also restores its Telrad, camera frame and eyepiece-circle settings.

@@ -256,7 +256,8 @@ internal partial class SimulationViewport : Node3D
         {
             bool isSurface = observer.Mode == CameraMode.Surface;
             bool available = surface.Draw(isSurface, sample, deltaT, observer.EarthObserver, observer.Sky, observer.Selection,
-                OpticalField(observer), observer.ActiveOptics, CatalogueWorld, snapshot);
+                OpticalField(observer), observer.ActiveOptics, CatalogueWorld, snapshot,
+                trueAngularScale: observer.Optics?.Finders is { Visible: true });
             if (isSurface && available)
                 return true;
         }

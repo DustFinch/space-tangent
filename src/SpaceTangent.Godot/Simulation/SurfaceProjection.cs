@@ -74,7 +74,7 @@ internal sealed partial class SurfaceProjection
 
     internal bool Draw(bool surface, SolarSystemSample sample, DeltaTModel model, EarthObserverCamera? camera = null,
         SkyLayerSettings sky = default, ObjectId? selection = null, double fieldOfView = 10,
-        VisualOptics? optics = null, SimulationWorld? world = null, WorldSnapshot? snapshot = null)
+        VisualOptics? optics = null, SimulationWorld? world = null, WorldSnapshot? snapshot = null, bool trueAngularScale = false)
     {
         _surface.Visible = surface;
         if (!surface)
@@ -144,6 +144,8 @@ internal sealed partial class SurfaceProjection
         _material.SetShaderParameter("earth_angle", (float)lighting.EarthRotationRadians);
         _material.SetShaderParameter("earth_radius", (float)EarthSurfaceLighting.EarthRadiusKilometers);
         _material.SetShaderParameter("moon_radius", (float)EarthSurfaceLighting.MoonRadiusKilometers);
+        float moonDiskScale = trueAngularScale || optics is not null ? 1 : 4;
+        _material.SetShaderParameter("moon_disk_scale", moonDiskScale);
         _material.SetShaderParameter("lunar_strength", (float)Math.Clamp(.12 * lighting.RelativeLunarFlux, 0, 1));
         _material.SetShaderParameter("site_north", north);
         _material.SetShaderParameter("site_east", east);
@@ -151,7 +153,7 @@ internal sealed partial class SurfaceProjection
         if (_sky is not null && sky.Visible)
         {
             float solarAltitude = (float)(lighting.SolarAltitudeRadians / Degrees);
-            float moonRadius = MathF.Asin(MathF.Min(4 * (float)(EarthSurfaceLighting.MoonRadiusKilometers / moonOffset.Length), .1f));
+            float moonRadius = MathF.Asin(MathF.Min(moonDiskScale * (float)(EarthSurfaceLighting.MoonRadiusKilometers / moonOffset.Length), .1f));
             _sky.ShowFrame(new(sample.Epoch, sky, selection, forward, right, cameraUp, _tanHalfField,
                 1 - Mathf.SmoothStep(-12, -4, solarAltitude), up, Convert(moonSeen), moonRadius,
                 Conditions: observer.Conditions, Site: observer.Site, OpticalLimit: optics?.LimitingMagnitude()));

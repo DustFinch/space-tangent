@@ -31,3 +31,9 @@ Catalogues in one sampled mission directory can declare an ordered `spiceKernels
 The mission reader accepts Point, Box, Strip, Disc and ArcStrip emitters in a local source catalogue. It evaluates particle ages, positions and colours from each view's time. PNG and JPEG textures use the declared local resource. A missing texture falls back to a generated spot with an import diagnostic.
 
 For the archived native particle format, place the original `pack.json` and its `textures` directory together under the sampled mission root. The reader accepts stationary packed emitters with the original source axes, including moving body-fixed placements and two-vector orientation. The renderer uses additive blending with depth testing and a budget of 200,000 particles per view.
+
+## Archived mission packs
+
+A local mission root can also hold an existing `pack.json` alongside its `models`, `trajectories`, and optional `textures` directories. Preserve the archive paths. The checked version 11 pack supplies fixed and Keplerian states, sampled XYZ and XYZV, moving frames, Q attitudes, oblate globes and embedded GLB textures. A damaged Q table and its dependent objects are reported and omitted. A missing optional globe map leaves the shape available. The axis visualizer frames are available for calculation. Their lines require separate display support.
+
+The archive probe uses the packed version of the original Jason-1 model at the same two attitude epochs as the source probe.

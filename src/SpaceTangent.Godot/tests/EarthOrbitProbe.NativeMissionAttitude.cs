@@ -13,6 +13,12 @@ public partial class EarthOrbitProbe
         if (System.Environment.GetEnvironmentVariable("SPACETANGENT_NATIVE_ATTITUDE_GPU") != "1")
             return;
         var session = scene.Session!;
+        string? installation = System.Environment.GetEnvironmentVariable("SPACETANGENT_SAMPLED_MISSIONS_ROOT");
+        bool packed = installation is not null && File.Exists(Path.Combine(installation, "pack.json"));
+        if (packed && (session.World.Catalogue.Find(new("mission/compatiblerig")) is null ||
+            session.World.Catalogue.Find(new("mission/invalidrig")) is not null ||
+            session.World.Catalogue.Find(new("mission/invalidchild")) is not null))
+            throw new InvalidOperationException("The original pack must retain the valid compatibility rig and omit the damaged attitude and its child.");
         var target = new ObjectId("mission/cubesat");
         var center = new ObjectId("mission/ceres");
         var first = JulianInstant.FromJulianDate(2455755, TimeScale.Tdb);
@@ -22,7 +28,7 @@ public partial class EarthOrbitProbe
         const double range = 4.5;
         var left = Observer(first);
         var right = Observer(middle);
-        string path = Path.Combine(directory, "sampled-q-orientation.stscene");
+        string path = Path.Combine(directory, packed ? "packed-q-orientation.stscene" : "sampled-q-orientation.stscene");
         ScenarioFile.Save(path, new([left, right], false, 0, 0, session.DeltaT));
         if (!scene.LoadScenario(path))
             throw new InvalidOperationException("Could not open the original mission model in the two Q sample epochs.");
@@ -37,7 +43,7 @@ public partial class EarthOrbitProbe
         using var picture = GetViewport().GetTexture().GetImage();
         if (picture.SavePng(Path.ChangeExtension(path, ".png")) != Error.Ok)
             throw new IOException("Could not capture the original mission model and native attitude.");
-        GD.Print("Sampled Q GPU: original Jason mesh under the archived CubeSat axes, checked exact and antipodal interpolation epochs before and after reload.");
+        GD.Print($"Sampled Q GPU: original Jason {(packed ? "packed GLB" : "source OBJ")}, checked textured surfaces and both CubeSat attitudes before and after reload.");
 
         ObserverView Observer(JulianInstant epoch)
         {
@@ -66,8 +72,9 @@ public partial class EarthOrbitProbe
                 (frame.ToWorld.Z - expected.Z).Length > 2e-10)
                 throw new InvalidOperationException($"Source attitude at {epoch} does not compose with its original two-vector frame.");
             if (scene.Renderer(index).ImportedBodyNode(target) is not { Visible: true, Mesh: ArrayMesh mesh } model ||
-                mesh.GetSurfaceCount() < 2)
-                throw new InvalidOperationException("Expected the original textured Jason OBJ on the archived mission object.");
+                mesh.GetSurfaceCount() < 2 || !Enumerable.Range(0, mesh.GetSurfaceCount()).Any(surface =>
+                    mesh.SurfaceGetMaterial(surface) is StandardMaterial3D { AlbedoTexture: not null }))
+                throw new InvalidOperationException("Expected the original textured Jason model on the archived mission object.");
             var basis = model.Transform.Basis;
             if (!Matches(basis.X, expected.X) || !Matches(basis.Y, expected.Y) || !Matches(basis.Z, expected.Z))
                 throw new InvalidOperationException("The rendered mesh columns do not match the source orientation.");

@@ -53,8 +53,8 @@ public partial class EarthOrbitProbe
         {
             if (body.Theory is not { } theory)
             {
-                if (uncovered.TryState(body.Id, out _))
-                    throw new InvalidOperationException($"{body.Name} has a state outside its sampled coverage.");
+                if (uncovered.TryState(body.Id, out _) != (CatalogueMoonOrbit.Find(body.NaifId) is not null))
+                    throw new InvalidOperationException($"{body.Name} does not match its documented catalogue fallback outside sampled coverage.");
                 continue;
             }
             if (!uncovered.TryState(body.Id, out var state) || !uncovered.TryState(body.Parent, out var parent))

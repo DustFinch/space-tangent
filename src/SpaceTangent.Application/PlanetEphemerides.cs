@@ -45,7 +45,9 @@ public sealed class PlanetEphemerides
             _centers.Add(9, new(pluto));
         foreach (NaturalBodyDefinition body in NaturalBodyCatalogue.Bodies)
         {
-            if (hasFrames && body.Kind != CatalogueKind.Comet && body.NaifId != NaturalBodyCatalogue.HyperionNaifId)
+            if (hasFrames && body.Kind != CatalogueKind.Comet &&
+                body.NaifId is not (NaturalBodyCatalogue.HyperionNaifId or NaturalBodyCatalogue.PhoebeNaifId or
+                    NaturalBodyCatalogue.ProteusNaifId or NaturalBodyCatalogue.NereidNaifId))
                 _frames.Add(body.NaifId, new(pck, body.NaifId));
             if (body.SampledOrbit is not { } file)
                 continue;
@@ -94,6 +96,28 @@ public sealed class PlanetEphemerides
                     new KernelBackedTrajectory(kernel, body.NaifId, system, Fallback, 86400).Sample;
                 graph.AddTrajectory(body.Id, epoch => trajectory(epoch), planet.SystemId);
             }
+            else if (CatalogueMoonOrbit.Find(body.NaifId) is { } orbit)
+            {
+                var parent = PlanetCatalogue.Find(body.Parent)!;
+                KernelBackedTrajectory? center = source?._planetCenters.GetValueOrDefault(parent.NaifId);
+                SpicePolynomialBodyFrame? mars = source?._frames.GetValueOrDefault(parent.NaifId);
+                CartesianState Fallback(JulianInstant epoch)
+                {
+                    CartesianState local = orbit.SampleLocal(epoch);
+                    FrameKinematics axes = orbit.UsesMarsMeanEquator
+                        ? mars?.SampleMeanEquator(epoch) ?? new(SpinAxes(37.1135, 407.68143, 0), default(Vector3d))
+                        : new(EclipticToEquatorial, default(Vector3d));
+                    Vector3d position = axes.ToWorld.Transform(local.PositionKilometers);
+                    Vector3d velocity = axes.ToWorld.Transform(local.VelocityKilometersPerSecond) +
+                        Vector3d.Cross(axes.AngularVelocityRadiansPerSecond ?? default, position);
+                    return new CartesianState(position, velocity) + (center?.Sample(epoch) ?? default);
+                }
+
+                Func<JulianInstant, CartesianState> trajectory = kernel is null ? Fallback :
+                    new KernelBackedTrajectory(kernel, body.NaifId, system, Fallback,
+                        body.NaifId is 401 or 402 ? 3600 : 86400).Sample;
+                graph.AddTrajectory(body.Id, epoch => trajectory(epoch), parent.SystemId);
+            }
             else
             {
                 ObjectId barycenter = system == 9 ? SolarSystemSample.PlutoBarycenterId
@@ -102,7 +126,40 @@ public sealed class PlanetEphemerides
                     ? state : body.Id == NaturalBodyCatalogue.PlutoId ? default(CartesianState) : null, barycenter);
             }
         }
-        AddFrame(graph, body.Id, body.NaifId, source);
+        if (body.NaifId == NaturalBodyCatalogue.PhoebeNaifId)
+            graph.AddOrientation(body.Id, epoch => CatalogueSpin(epoch, .3864022083333333, 12.2, 86.9, 125.56));
+        else if (body.NaifId == NaturalBodyCatalogue.ProteusNaifId)
+            graph.AddOrientation(body.Id, epoch => CatalogueSpin(epoch, 1.12231477, 47.57, 29.21, 93.42));
+        else if (body.NaifId == NaturalBodyCatalogue.NereidNaifId)
+            graph.AddOrientation(body.Id, epoch => CatalogueSpin(epoch, .4830833333333333, 58, 50, 0, ecliptic: true));
+        else
+            AddFrame(graph, body.Id, body.NaifId, source);
+    }
+
+    private const double Degrees = Math.PI / 180;
+    private static readonly Basis3d EclipticToEquatorial = SpinAxes(23.4392911, 0, 0);
+
+    private static FrameKinematics CatalogueSpin(JulianInstant epoch, double periodDays,
+        double tilt, double node, double longitude, bool ecliptic = false)
+    {
+        double period = periodDays * JulianInstant.SecondsPerDay;
+        double days = (epoch.Day - JulianInstant.J2000Day) + epoch.NanosecondsOfDay / (double)JulianInstant.NanosecondsPerDay;
+        double turns = Math.IEEERemainder(days, periodDays) / periodDays;
+        Basis3d frame = SpinAxes(tilt, node, longitude + 360 * turns);
+        if (ecliptic)
+            frame = new(EclipticToEquatorial.Transform(frame.X), EclipticToEquatorial.Transform(frame.Y),
+                EclipticToEquatorial.Transform(frame.Z));
+        return new(frame, frame.Z * (Math.Tau / period));
+    }
+
+    private static Basis3d SpinAxes(double tilt, double node, double longitude)
+    {
+        var (st, ct) = Math.SinCos(tilt * Degrees);
+        var (sn, cn) = Math.SinCos(node * Degrees);
+        var (sl, cl) = Math.SinCos(longitude * Degrees);
+        return new(new(cn * cl - sn * ct * sl, sn * cl + cn * ct * sl, st * sl),
+            new(-cn * sl - sn * ct * cl, -sn * sl + cn * ct * cl, st * cl),
+            new(sn * st, -cn * st, ct));
     }
 
     internal static void AddMoonFrame(WorldGraphBuilder graph, PlanetEphemerides? source) =>

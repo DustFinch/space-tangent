@@ -57,6 +57,7 @@ internal partial class SimulationViewport
             {
                 401 => new(1, 9.1f / 13, 11.4f / 13),
                 402 => new(1, 5.1f / 7.8f, 6f / 7.8f),
+                802 => new(1, 150.42f / 196.65f, 1),
                 2000004 => new(1, 229f / 289, 280f / 289),
                 _ => Vector3.One
             };

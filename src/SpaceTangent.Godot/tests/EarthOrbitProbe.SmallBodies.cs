@@ -28,8 +28,9 @@ public partial class EarthOrbitProbe
                 throw new InvalidOperationException($"The object search, hierarchy or state is missing for {body.Name}.");
             double distance = (state - parent).PositionKilometers.Length;
             double moved = ((next - nextParent) - (state - parent)).PositionKilometers.Length;
+            double maximumMoonDistance = body.NaifId switch { 609 => 15_100_000, 802 => 9_700_000, _ => 4_000_000 };
             if (!(distance > body.RadiusKilometers && moved > 0.05) ||
-                (body.Kind == CatalogueKind.Moon && distance > 4_000_000))
+                (body.Kind == CatalogueKind.Moon && distance > maximumMoonDistance))
                 throw new InvalidOperationException($"Invalid parent-relative distance or motion for {body.Name}.");
         }
 

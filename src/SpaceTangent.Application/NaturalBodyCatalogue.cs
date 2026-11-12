@@ -11,6 +11,7 @@ public static class NaturalBodyCatalogue
 {
     public static ObjectId CometId { get; } = new("sol/67p");
     internal const int HyperionNaifId = 607;
+    internal const int PhoebeNaifId = 609, NereidNaifId = 802, ProteusNaifId = 808;
     public static ObjectId PlutoId { get; } = new("sol/pluto");
 
     public static IReadOnlyList<NaturalBodyDefinition> Bodies { get; } = Array.AsReadOnly(new NaturalBodyDefinition[]
@@ -29,12 +30,15 @@ public static class NaturalBodyCatalogue
         new(new("sol/rhea"), "Rhea", CatalogueKind.Moon, PlanetCatalogue.SaturnId, 605, 765.68, "bfbcb8", "rhea.jpg", Theory: SatelliteTheory.Rhea),
         new(new("sol/hyperion"), "Hyperion", CatalogueKind.Moon, PlanetCatalogue.SaturnId, HyperionNaifId, 180.9, "b8a592", "hyperion.jpg", Theory: SatelliteTheory.Hyperion),
         new(new("sol/iapetus"), "Iapetus", CatalogueKind.Moon, PlanetCatalogue.SaturnId, 608, 745.7, "a89b8d", "iapetus.jpg", Theory: SatelliteTheory.Iapetus),
+        new(new("sol/phoebe"), "Phoebe", CatalogueKind.Moon, PlanetCatalogue.SaturnId, PhoebeNaifId, 109.4, "aea49f", "phoebe.jpg"),
         new(new("sol/miranda"), "Miranda", CatalogueKind.Moon, new("sol/uranus"), 705, 240.4, "a9aaad", "miranda.jpg", Theory: SatelliteTheory.Miranda),
         new(new("sol/ariel"), "Ariel", CatalogueKind.Moon, new("sol/uranus"), 701, 581.1, "b3b1ae", "ariel.jpg", Theory: SatelliteTheory.Ariel),
         new(new("sol/umbriel"), "Umbriel", CatalogueKind.Moon, new("sol/uranus"), 702, 582.4, "a8a7a4", "umbriel.jpg", Theory: SatelliteTheory.Umbriel),
         new(new("sol/titania"), "Titania", CatalogueKind.Moon, new("sol/uranus"), 703, 788.4, "b8b3b0", "titania.jpg", Theory: SatelliteTheory.Titania),
         new(new("sol/oberon"), "Oberon", CatalogueKind.Moon, new("sol/uranus"), 704, 761.4, "b6b3ae", "oberon.jpg", Theory: SatelliteTheory.Oberon),
         new(new("sol/triton"), "Triton", CatalogueKind.Moon, new("sol/neptune"), 801, 1354.6, "eadfcb", "triton.jpg", Theory: SatelliteTheory.Triton),
+        new(new("sol/proteus"), "Proteus", CatalogueKind.Moon, new("sol/neptune"), ProteusNaifId, 212, "b2aca8", "proteus.jpg"),
+        new(new("sol/nereid"), "Nereid", CatalogueKind.Moon, new("sol/neptune"), NereidNaifId, 196.65, "9d908c", null),
         new(PlutoId, "Pluto", CatalogueKind.DwarfPlanet, SolarSystemSample.SunId, 999, 1188.3, "d9b6a0", "pluto.jpg"),
         new(new("sol/ceres"), "Ceres", CatalogueKind.DwarfPlanet, SolarSystemSample.SunId, 2000001, 469.7, "b5b0a6", "ceres.jpg", "ceres.xyzv"),
         new(new("sol/vesta"), "Vesta", CatalogueKind.Asteroid, SolarSystemSample.SunId, 2000004, 262.7, "b9ac99", "vesta.jpg", "vesta.xyzv"),

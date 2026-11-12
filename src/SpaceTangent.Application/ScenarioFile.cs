@@ -10,18 +10,19 @@ public sealed record SimulationScenario(IReadOnlyList<ObserverView> Views, bool 
     int ActiveView, DeltaTModel DeltaT)
 {
     public ViewSplit SplitLayout { get; init; }
+    public ObserverLayout? Layout { get; init; }
 }
 
 /// <summary>Persists observer settings with exact TDB epochs and stable catalog IDs.</summary>
 public static class ScenarioFile
 {
-    private const int Version = 7;
+    private const int Version = 8;
     internal const int MaximumBytes = 32 * 1024;
     private static readonly JsonSerializerOptions Json = new()
     {
         PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
         UnmappedMemberHandling = JsonUnmappedMemberHandling.Disallow,
-        MaxDepth = 8,
+        MaxDepth = ObserverLayout.MaximumViews + 8,
         WriteIndented = true,
         Converters =
         {
@@ -33,8 +34,9 @@ public static class ScenarioFile
 
     internal static byte[] Encode(SimulationScenario scenario)
     {
-        if (scenario.Views.Count is < 1 or > 2 || scenario.Views.Any(view => view.Epoch.Scale != TimeScale.Tdb))
-            throw new InvalidDataException("A scenario needs one or two TDB views.");
+        ObserverLayout.Restore(scenario.Layout, scenario.Views.Count, scenario.SplitLayout);
+        if (scenario.Views.Any(view => view.Epoch.Scale != TimeScale.Tdb))
+            throw new InvalidDataException("A scenario needs TDB views.");
         if (scenario.Views.Any(view => view.Navigation is { } pose && !pose.IsValid()))
             throw new InvalidDataException("The scenario has an invalid camera pose.");
         if (scenario.Views.Any(view => view.EarthObserver is { } earth && !earth.IsValid()))
@@ -45,11 +47,12 @@ public static class ScenarioFile
             throw new InvalidDataException("The scenario has an invalid layout or field of view.");
         var document = new Document
         {
-            Version = Version,
+            Version = scenario.Layout is null ? 7 : Version,
             Synchronized = scenario.Synchronized,
             ClockOwner = scenario.ClockOwner,
             ActiveView = scenario.ActiveView,
             SplitLayout = scenario.SplitLayout,
+            Layout = scenario.Layout,
             DeltaT = scenario.DeltaT,
             Views = scenario.Views.Select(view => new View
             {
@@ -118,8 +121,11 @@ public static class ScenarioFile
             throw new InvalidDataException($"Unsupported scenario version {document.Version}.");
         if (!Enum.IsDefined(document.SplitLayout) || (document.Version < 6 && document.SplitLayout != ViewSplit.SideBySide))
             throw new InvalidDataException("The scenario has an invalid layout.");
-        if (document.Views is not { Length: 1 or 2 } || document.Views.Any(view => view is null))
-            throw new InvalidDataException("A scenario must have one or two views.");
+        if (document.Layout is not null && document.Version < 8)
+            throw new InvalidDataException("A nested layout requires a version 8 scenario.");
+        if (document.Views is null || document.Views.Any(view => view is null))
+            throw new InvalidDataException("The scenario has missing views.");
+        ObserverLayout layout = ObserverLayout.Restore(document.Layout, document.Views.Length, document.SplitLayout);
 
         var views = new ObserverView[document.Views.Length];
         for (int i = 0; i < views.Length; i++)
@@ -154,7 +160,7 @@ public static class ScenarioFile
             };
         }
         return new(Array.AsReadOnly(views), document.Synchronized, document.ClockOwner, document.ActiveView, document.DeltaT)
-            { SplitLayout = document.SplitLayout };
+            { SplitLayout = document.SplitLayout, Layout = layout.IsDefault ? null : layout };
     }
 
     private sealed class Document
@@ -165,6 +171,8 @@ public static class ScenarioFile
         public required int ActiveView { get; init; }
         [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingDefault)]
         public ViewSplit SplitLayout { get; init; }
+        [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+        public ObserverLayout? Layout { get; init; }
         public required DeltaTModel DeltaT { get; init; }
         public required View[] Views { get; init; }
     }

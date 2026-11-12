@@ -17,7 +17,7 @@ public partial class SolarSystemScene : Control
     private static readonly int NavigationOption = Enum.GetValues<CameraMode>().Length;
     private sealed record ViewControls(PanelContainer Panel, SimulationViewport Renderer, Label Epoch,
         Button Play, OptionButton Mode, OptionButton Selection, LineEdit TimelineEpoch, HBoxContainer TerrainTools,
-        LineEdit TerrainCoordinates, SpinBox FieldOfView)
+        LineEdit TerrainCoordinates, SpinBox FieldOfView, Button AdvanceHour, SubViewportContainer Canvas)
     {
         internal WorldSnapshot? Snapshot { get; set; }
     }
@@ -416,11 +416,11 @@ public partial class SolarSystemScene : Control
 
     public override void _Input(InputEvent input)
     {
-        if (_views.Count != 2 || input is not InputEventKey { Keycode: Key.Tab, Pressed: true, Echo: false,
+        if (_views.Count < 2 || input is not InputEventKey { Keycode: Key.Tab, Pressed: true, Echo: false,
                 CtrlPressed: false, AltPressed: false, MetaPressed: false } ||
             GetViewport().GuiGetFocusOwner() is LineEdit)
             return;
-        ActivateView(1 - _active);
+        ActivateView((_active + 1) % _views.Count);
         GetViewport().SetInputAsHandled();
     }
 
@@ -437,8 +437,20 @@ public partial class SolarSystemScene : Control
             return;
         switch (key.Keycode)
         {
+            case Key.U when key.CtrlPressed && key.ShiftPressed:
+                SplitActiveView(ViewSplit.SideBySide);
+                break;
             case Key.U when key.CtrlPressed:
                 ToggleSplit();
+                break;
+            case Key.R when key.CtrlPressed:
+                SplitActiveView(ViewSplit.Stacked);
+                break;
+            case Key.D when key.CtrlPressed:
+                KeepActiveView();
+                break;
+            case Key.Delete when Session.ViewCount > 1:
+                CloseView(_active);
                 break;
             case Key.Enter:
                 _workspace.Open("Search");
@@ -486,7 +498,7 @@ public partial class SolarSystemScene : Control
                 _status.Text = script.Error ?? "Lua script finished.";
             }
         }
-        if (changed || (Session is { } session && (session.IsFlying(0) || (_views.Count == 2 && session.IsFlying(1)))))
+        if (changed || Session?.AnyFlight == true)
             Refresh(delta);
     }
 
@@ -559,16 +571,59 @@ public partial class SolarSystemScene : Control
     internal void ToggleSplit()
     {
         if (Session!.ViewCount == 1)
-            Session.Split();
+            SplitActiveView(Session.SplitLayout);
         else
+            CloseView(Session.ViewCount == 2 ? 1 : _active);
+    }
+
+    private void SplitActiveView(ViewSplit direction)
+    {
+        if (!Session!.SplitView(_active, direction))
         {
-            Session.CloseSecondView();
-            if (_script?.View == 1)
-                StopScript();
-            _active = 0;
+            _status.Text = "The workspace has reached its view limit.";
+            return;
         }
         UpdateViewLayout();
         Refresh();
+    }
+
+    private void CloseView(int index)
+    {
+        Session!.RemoveView(index);
+        RemoveViewPanel(index);
+        if (_active > index)
+            _active--;
+        _active = Math.Min(_active, Session.ViewCount - 1);
+        FinishViewRemoval();
+    }
+
+    private void KeepActiveView()
+    {
+        for (int index = _views.Count - 1; index >= 0; index--)
+        {
+            if (index == _active)
+                continue;
+            Session!.RemoveView(index);
+            RemoveViewPanel(index);
+        }
+        _active = 0;
+        FinishViewRemoval();
+    }
+
+    private void FinishViewRemoval()
+    {
+        if (_script is { View: < 0 })
+            StopScript();
+        UpdateViewLayout();
+        Refresh();
+    }
+
+    private void RemoveViewPanel(int index)
+    {
+        PanelContainer panel = _views[index].Panel;
+        _views.RemoveAt(index);
+        panel.GetParent().RemoveChild(panel);
+        panel.QueueFree();
     }
 
     private void SetSplitLayout(ViewSplit layout)
@@ -615,16 +670,82 @@ public partial class SolarSystemScene : Control
     private void UpdateViewLayout()
     {
         _panels.Vertical = Session!.SplitLayout == ViewSplit.Stacked;
-        if (_views.Count < Session!.ViewCount)
+        while (_views.Count < Session.ViewCount)
             AddView();
-        else if (_views.Count > Session.ViewCount)
+        while (_views.Count > Session.ViewCount)
+            RemoveViewPanel(_views.Count - 1);
+
+        for (int index = 0; index < _views.Count; index++)
         {
-            var panel = _views[1].Panel;
-            _views.RemoveAt(1);
-            _panels.RemoveChild(panel);
-            panel.QueueFree();
+            ViewControls view = _views[index];
+            view.Panel.GetParent().RemoveChild(view.Panel);
+            view.AdvanceHour.Name = $"AdvanceHour{index}";
+            view.FieldOfView.Name = $"ViewField{index}";
+            view.Canvas.Name = $"ViewCanvas{index}";
         }
-        _split.Text = Session.ViewCount == 1 ? "Split view" : "Close second view";
+        foreach (Node child in _panels.GetChildren())
+        {
+            _panels.RemoveChild(child);
+            child.QueueFree();
+        }
+        AttachView(Session.Layout, _panels, "");
+        _split.Text = Session.ViewCount switch { 1 => "Split view", 2 => "Close second view", _ => "Close active view" };
+    }
+
+    private Control AttachView(ObserverLayout layout, Container parent, string path)
+    {
+        if (layout.View is { } index)
+        {
+            PanelContainer panel = _views[index].Panel;
+            panel.SizeFlagsStretchRatio = 1;
+            parent.AddChild(panel);
+            return panel;
+        }
+        bool vertical = layout.Direction == ViewSplit.Stacked;
+        var split = new SplitContainer
+        {
+            Name = "ViewDivider" + path,
+            Vertical = vertical,
+            DraggerVisibility = SplitContainer.DraggerVisibilityEnum.Hidden,
+            SizeFlagsHorizontal = SizeFlags.ExpandFill,
+            SizeFlagsVertical = SizeFlags.ExpandFill
+        };
+        parent.AddChild(split);
+        Control first = AttachView(layout.First!, split, path + "0");
+        Control second = AttachView(layout.Second!, split, path + "1");
+        double share = layout.FirstShare;
+        split.Resized += () => Callable.From(ApplyShare).CallDeferred();
+        split.DragEnded += () => Callable.From(StoreShare).CallDeferred();
+        Callable.From(ApplyShare).CallDeferred();
+        return split;
+
+        float Extent(Control control) => vertical ? control.Size.Y : control.Size.X;
+
+        void ApplyShare()
+        {
+            if (!IsInstanceValid(split) || !split.IsInsideTree())
+                return;
+            float total = Extent(first) + Extent(second);
+            if (total <= 0)
+                return;
+            int offset = Mathf.RoundToInt((float)(total * share) - Extent(first));
+            if (offset != 0)
+            {
+                split.SplitOffsets = [split.SplitOffsets.FirstOrDefault() + offset];
+                split.ClampSplitOffset();
+            }
+        }
+
+        void StoreShare()
+        {
+            if (!IsInstanceValid(split) || !split.IsInsideTree())
+                return;
+            float total = Extent(first) + Extent(second);
+            if (total <= 0)
+                return;
+            share = Extent(first) / total;
+            Session!.ResizeViewDivider(path, share);
+        }
     }
 
     private void AddScenarioMenu(Container toolbar)
@@ -697,7 +818,8 @@ public partial class SolarSystemScene : Control
         if (_script is { } running)
         {
             running.Stop();
-            Session?.CancelFlight(running.View);
+            if (running.View >= 0)
+                Session!.CancelFlight(running.View);
         }
         _script = null;
         _scriptMenu.SetItemDisabled(1, true);
@@ -847,6 +969,7 @@ public partial class SolarSystemScene : Control
     {
         int index = _views.Count;
         var frame = new PanelContainer { SizeFlagsHorizontal = SizeFlags.ExpandFill, SizeFlagsVertical = SizeFlags.ExpandFill };
+        int CurrentIndex() => _views.FindIndex(view => ReferenceEquals(view.Panel, frame));
         _panels.AddChild(frame);
         var panel = new VBoxContainer();
         frame.AddChild(panel);
@@ -854,9 +977,10 @@ public partial class SolarSystemScene : Control
         panel.AddChild(tools);
         var epoch = new Label();
         panel.AddChild(epoch);
-        AddButton(tools, "−1 h", () => Advance(index, -3600));
-        Button play = AddButton(tools, "Play", () => TogglePlaying(index));
-        AddButton(tools, "+1 h", () => Advance(index, 3600)).Name = $"AdvanceHour{index}";
+        AddButton(tools, "−1 h", () => Advance(CurrentIndex(), -3600));
+        Button play = AddButton(tools, "Play", () => TogglePlaying(CurrentIndex()));
+        Button advanceHour = AddButton(tools, "+1 h", () => Advance(CurrentIndex(), 3600));
+        advanceHour.Name = $"AdvanceHour{index}";
         var mode = new OptionButton();
         mode.AddItem("Inner planets", (int)CameraMode.Solar);
         mode.AddItem("Earth–Moon view", (int)CameraMode.Lunar);
@@ -871,7 +995,7 @@ public partial class SolarSystemScene : Control
         mode.AddItem("Object camera", NavigationOption);
         mode.SetItemDisabled(NavigationOption, true);
         mode.SetItemDisabled((int)CameraMode.Surface, _surfaceTextures is null);
-        mode.ItemSelected += item => SetMode(index, (CameraMode)mode.GetItemId((int)item));
+        mode.ItemSelected += item => SetMode(CurrentIndex(), (CameraMode)mode.GetItemId((int)item));
         tools.AddChild(mode);
         var field = new SpinBox { Name = $"ViewField{index}", MinValue = 2, MaxValue = 120, Step = .01,
             Value = Session![index].EffectiveFieldOfView, LocalizeNumeralSystem = false,
@@ -881,28 +1005,28 @@ public partial class SolarSystemScene : Control
         {
             if (_refreshingViewField)
                 return;
-            Session!.SetFieldOfView(index, value);
+            Session!.SetFieldOfView(CurrentIndex(), value);
             Refresh();
         };
         tools.AddChild(field);
         var selection = new OptionButton();
-        selection.ItemSelected += item => SelectSatellite(index, Assets[(int)item].Track.Id);
+        selection.ItemSelected += item => SelectSatellite(CurrentIndex(), Assets[(int)item].Track.Id);
         tools.AddChild(selection);
         var timelineEpoch = new LineEdit { Name = "TimelineEpoch", PlaceholderText = "JD TDB ↵", Visible = false,
             TooltipText = "Enter a TDB Julian date, such as 2453167.5, and press Enter." };
-        timelineEpoch.TextSubmitted += text => SeekTimeline(index, text);
+        timelineEpoch.TextSubmitted += text => SeekTimeline(CurrentIndex(), text);
         panel.AddChild(timelineEpoch);
 
         var terrainTools = new HBoxContainer { Visible = false };
-        AddButton(terrainTools, "Globe", () => SetLunarTerrainCamera(index, LunarTerrainCamera.Globe));
-        AddButton(terrainTools, "Copernicus", () => SetLunarTerrainCamera(index, LunarTerrainCamera.Copernicus));
+        AddButton(terrainTools, "Globe", () => SetLunarTerrainCamera(CurrentIndex(), LunarTerrainCamera.Globe));
+        AddButton(terrainTools, "Copernicus", () => SetLunarTerrainCamera(CurrentIndex(), LunarTerrainCamera.Copernicus));
         var terrainCoordinates = new LineEdit
         {
             SizeFlagsHorizontal = SizeFlags.ExpandFill,
             PlaceholderText = "Lon°, lat°, width km ↵",
             TooltipText = "East longitude, north latitude and view width in km. Separate values with commas."
         };
-        terrainCoordinates.TextSubmitted += text => SeekTerrain(index, terrainCoordinates, text);
+        terrainCoordinates.TextSubmitted += text => SeekTerrain(CurrentIndex(), terrainCoordinates, text);
         terrainTools.AddChild(terrainCoordinates);
         panel.AddChild(terrainTools);
 
@@ -912,7 +1036,7 @@ public partial class SolarSystemScene : Control
             Stretch = true,
             SizeFlagsVertical = SizeFlags.ExpandFill
         };
-        container.GuiInput += input => HandleViewInput(index, input);
+        container.GuiInput += input => HandleViewInput(CurrentIndex(), input);
         panel.AddChild(container);
         var viewport = new SubViewport { OwnWorld3D = true, RenderTargetUpdateMode = SubViewport.UpdateMode.Always };
         container.AddChild(viewport);
@@ -929,7 +1053,7 @@ public partial class SolarSystemScene : Control
         if (_brightSky is { } sky)
             renderer.SetSkyData(sky);
         var controls = new ViewControls(frame, renderer, epoch, play, mode, selection, timelineEpoch,
-            terrainTools, terrainCoordinates, field);
+            terrainTools, terrainCoordinates, field, advanceHour, container);
         _views.Add(controls);
         ReplaceAssets(controls);
     }

@@ -10,8 +10,10 @@ public sealed partial class SimulationSession
     private sealed record CameraFlight(NavigationCamera Start, double Elapsed, double Duration, double TargetRange);
 
     private const double FlightDuration = 1.65;
-    private readonly CameraFlight?[] _flights = new CameraFlight?[2];
-    private readonly (ObjectId Target, JulianInstant Epoch)?[] _trackingEpochs = new (ObjectId, JulianInstant)?[2];
+    private readonly List<CameraFlight?> _flights = [null];
+    private readonly List<(ObjectId Target, JulianInstant Epoch)?> _trackingEpochs = [null];
+
+    public bool AnyFlight => _flights.Any(flight => flight is not null);
 
     public bool IsFlying(int view) => _flights[view] is not null;
 

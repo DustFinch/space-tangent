@@ -50,6 +50,7 @@ public partial class WorkspaceInputSmoke : Node
             Tree.Root.NotifyMouseEntered();
 
             await ExerciseStartupFlight(scratch.FullName);
+            await ExerciseNestedViews(scratch.FullName);
             await ExerciseViews();
             var expected = Session.CaptureScenario(1);
             Require(expected.ActiveView == 1 && !expected.Synchronized &&
@@ -269,11 +270,84 @@ public partial class WorkspaceInputSmoke : Node
         GD.Print("UI: launched at Earth, selected both globes in the viewport, and flew to Saturn in one perspective view");
     }
 
+    private async Task ExerciseNestedViews(string directory)
+    {
+        string original = Path.Combine(directory, "before-nested.stscene");
+        Require(_scene.SaveScenario(original), "Save the original workspace before testing nested views.");
+        await KeyPress(Key.U, ctrl: true);
+        await Click(Find<SubViewportContainer>("ViewCanvas1"));
+        await KeyPress(Key.R, ctrl: true);
+        Require(Session.ViewCount == 3 && Session.Layout.Second is { Direction: ViewSplit.Stacked, Second.View: 2 },
+            $"Ctrl+R must split the active right-hand observer into two stacked views. Layout: {Session.Layout}.");
+        var divider = Find<SplitContainer>("ViewDivider1");
+        await ToSignal(Tree, SceneTree.SignalName.ProcessFrame);
+        var dragger = divider.GetDragAreaControls().Single();
+        Window root = Tree.Root;
+        Vector2 point = root.GetScreenTransform().AffineInverse() * (dragger.GetScreenTransform() * (dragger.Size / 2));
+        Vector2 movement = new(0, 32);
+        using var enter = new InputEventMouseMotion { Position = point, GlobalPosition = point };
+        root.PushInput(enter, inLocalCoords: true);
+        using var down = MouseButtonAt(point, true);
+        root.PushInput(down, inLocalCoords: true);
+        using var drag = new InputEventMouseMotion
+        {
+            Position = point + movement, GlobalPosition = point + movement, Relative = movement, ButtonMask = MouseButtonMask.Left
+        };
+        root.PushInput(drag, inLocalCoords: true);
+        using var up = MouseButtonAt(point + movement, false);
+        root.PushInput(up, inLocalCoords: true);
+        await ToSignal(Tree, SceneTree.SignalName.ProcessFrame);
+        await ToSignal(Tree, SceneTree.SignalName.ProcessFrame);
+        Require(Session.Layout.Second!.FirstShare > .5, "Moving the nested divider must update the saved split ratio.");
+
+        await Click(Find<Button>("TimeTab"));
+        await Click(Find<CheckButton>("SyncViewTime"));
+        var clock = Session[0].Epoch;
+        await Click(Find<Button>("AdvanceHour2"));
+        Require(!Session.Synchronized && Session[0].Epoch == clock && Session[1].Epoch == clock &&
+            Session[2].Epoch == clock.AddSeconds(3600), "The nested clock must step without moving either sibling.");
+        var expected = Session.CaptureScenario(2);
+        string path = Path.Combine(directory, "nested-views.stscene");
+        Require(_scene.SaveScenario(path), "A three-view workspace must save its layout.");
+        RequireScenario(expected, ScenarioFile.Load(path), "Reading the saved nested layout");
+
+        var scriptFile = Path.Combine(directory, "nested-clock.lua");
+        File.WriteAllText(scriptFile, "wait(30)");
+        var survivingScript = LuaSessionScript.Load(scriptFile, Session, 1, hasSurface: true, _ => { });
+        var removedScript = LuaSessionScript.Load(scriptFile, Session, 2, hasSurface: true, _ => { });
+        await KeyPress(Key.Delete);
+        Require(Session.ViewCount == 2 && Session[0] == expected.Views[0] && Session[1] == expected.Views[1] &&
+            removedScript.View == -1 && survivingScript.View == 1,
+            "Closing a view must preserve siblings and invalidate the closed Lua observer identity.");
+        Require(_scene.LoadScenario(path), "The nested workspace must reopen from disk.");
+        RequireScenario(expected, Session.CaptureScenario(2), "Restoring the nested workspace");
+        var invalid = JsonNode.Parse(File.ReadAllText(path))!.AsObject();
+        invalid["layout"]!["second"]!["second"]!["view"] = 0;
+        string bad = Path.Combine(directory, "duplicate-view.stscene");
+        File.WriteAllText(bad, invalid.ToJsonString());
+        Require(!_scene.LoadScenario(bad), "A layout that duplicates a view and omits another must be rejected.");
+        RequireScenario(expected, Session.CaptureScenario(2), "Rejecting a duplicate leaf");
+        if (System.Environment.GetEnvironmentVariable("SPACETANGENT_NESTED_SCENE") is { Length: > 0 } capture)
+            File.Copy(path, capture, overwrite: true);
+        var third = Find<SubViewportContainer>("ViewCanvas2");
+        var second = Find<SubViewportContainer>("ViewCanvas1");
+        await ToSignal(Tree, SceneTree.SignalName.ProcessFrame);
+        Require(third.GlobalPosition.Y > second.GlobalPosition.Y && second.Size.Y > third.Size.Y,
+            "The two restored right-hand observers must be stacked with the saved size order.");
+        await KeyPress(Key.D, ctrl: true);
+        Require(Session.ViewCount == 1 && Session[0] == expected.Views[2],
+            "Collapsing the layout must keep the active observer and its clock.");
+        Require(_scene.LoadScenario(original), "Restore the original workspace after the layout checks.");
+        GD.Print("UI: restored a nested three-view layout, divider, independent clock and Lua observer identities");
+    }
+
     private async Task ExerciseViews()
     {
         await KeyPress(Key.U, ctrl: true);
         Require(Session.ViewCount == 2, "Ctrl+U must create two views.");
-        await Click(Find<Button>("TimeTab"));
+        var time = Find<Button>("TimeTab");
+        if (!time.ButtonPressed)
+            await Click(time);
         await Click(Find<CheckButton>("SyncViewTime"));
         Require(!Session.Synchronized, "The time controls must allow independent clocks.");
 
@@ -431,7 +505,7 @@ public partial class WorkspaceInputSmoke : Node
     private static void RequireScenario(SimulationScenario expected, SimulationScenario actual, string action) =>
         Require(expected.Views.SequenceEqual(actual.Views) && expected.DeltaT == actual.DeltaT &&
                 expected.Synchronized == actual.Synchronized && expected.ClockOwner == actual.ClockOwner &&
-                expected.ActiveView == actual.ActiveView && expected.SplitLayout == actual.SplitLayout,
+                expected.ActiveView == actual.ActiveView && expected.SplitLayout == actual.SplitLayout && expected.Layout == actual.Layout,
             $"{action} must preserve both cameras, epochs, selections, sync settings and ΔT.");
 
     private static void Require(bool condition, string message)

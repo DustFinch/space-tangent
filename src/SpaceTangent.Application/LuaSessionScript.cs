@@ -14,6 +14,7 @@ public sealed partial class LuaSessionScript
     private const double MaximumWaitSeconds = 120;
     private static readonly UTF8Encoding StrictUtf8 = new(false, true);
     private readonly SimulationSession _session;
+    private readonly int _viewIdentity;
     private readonly Action<string> _log;
     private readonly bool _hasSurface;
     private Coroutine? _coroutine;
@@ -25,7 +26,7 @@ public sealed partial class LuaSessionScript
     private LuaSessionScript(string source, string name, SimulationSession session, int view, bool hasSurface, Action<string> log)
     {
         _session = session;
-        View = view;
+        _viewIdentity = session.ViewIdentity(view);
         _hasSurface = hasSurface;
         _log = log;
         if (StrictUtf8.GetByteCount(source) > MaximumSourceBytes)
@@ -62,7 +63,7 @@ public sealed partial class LuaSessionScript
         _coroutine.AutoYieldCounter = 1;
     }
 
-    public int View { get; }
+    public int View => _session.IndexOfView(_viewIdentity);
     public bool Finished => _coroutine is null;
     public string? Error { get; private set; }
 
@@ -95,7 +96,7 @@ public sealed partial class LuaSessionScript
         _changed = false;
         if (_coroutine is not { } coroutine)
             return false;
-        if (View >= _session.ViewCount)
+        if (View < 0)
         {
             Fail("The script's view has been closed.");
             return false;

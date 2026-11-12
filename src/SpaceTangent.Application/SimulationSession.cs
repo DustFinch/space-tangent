@@ -135,6 +135,8 @@ public sealed partial class SimulationSession
     public static JulianInstant MissionPreview { get; } = JulianInstant.FromTdbSeconds(141917558.4203589);
     private readonly List<ObserverView> _views;
     private int _clockOwner;
+    private readonly List<int> _viewIds = [0];
+    private int _nextViewId = 1;
 
     public SimulationSession(SimulationWorld world, JulianInstant initialEpoch, DeltaTModel deltaT)
     {
@@ -149,22 +151,28 @@ public sealed partial class SimulationSession
     public DeltaTModel DeltaT { get; private set; }
     public bool Synchronized { get; private set; } = true;
     public ViewSplit SplitLayout { get; private set; }
+    public ObserverLayout Layout { get; private set; } = ObserverLayout.Leaf(0);
     public int ViewCount => _views.Count;
     public ObserverView this[int view] => _views[view];
 
-    public SimulationScenario CaptureScenario(int activeView) =>
-        new(Array.AsReadOnly(_views.ToArray()), Synchronized, _clockOwner, activeView, DeltaT) { SplitLayout = SplitLayout };
+    internal int ViewIdentity(int view) => _viewIds[view];
+    internal int IndexOfView(int identity) => _viewIds.IndexOf(identity);
+
+    public SimulationScenario CaptureScenario(int activeView)
+    {
+        return new(Array.AsReadOnly(_views.ToArray()), Synchronized, _clockOwner, activeView, DeltaT)
+            { SplitLayout = SplitLayout, Layout = Layout.IsDefault ? null : Layout };
+    }
 
     public void RestoreScenario(SimulationScenario scenario)
     {
         ObserverView[] views = scenario.Views.ToArray();
-        if (views.Length is < 1 or > 2 || scenario.ClockOwner < 0 || scenario.ClockOwner >= views.Length ||
+        if (views.Length is < 1 or > ObserverLayout.MaximumViews || scenario.ClockOwner < 0 || scenario.ClockOwner >= views.Length ||
             scenario.ActiveView < 0 || scenario.ActiveView >= views.Length)
             throw new InvalidDataException("The scenario refers to an unavailable view.");
         if (!Enum.IsDefined(scenario.DeltaT))
             throw new InvalidDataException("The scenario has an unknown ΔT model.");
-        if (!Enum.IsDefined(scenario.SplitLayout))
-            throw new InvalidDataException("The scenario has an unknown view layout.");
+        ObserverLayout layout = ObserverLayout.Restore(scenario.Layout, views.Length, scenario.SplitLayout);
         foreach (ObserverView view in views)
         {
             if (!Covers(World, view.Epoch))
@@ -206,11 +214,16 @@ public sealed partial class SimulationSession
 
         _views.Clear();
         _views.AddRange(views);
-        Array.Clear(_flights);
-        Array.Clear(_trackingEpochs);
-        for (int index = 0; index < views.Length; index++)
-            if (views[index].Navigation is { Tracking: true, Target: { } target })
-                _trackingEpochs[index] = (target, views[index].Epoch);
+        _flights.Clear();
+        _trackingEpochs.Clear();
+        _viewIds.Clear();
+        foreach (ObserverView view in views)
+        {
+            _flights.Add(null);
+            _trackingEpochs.Add(view.Navigation is { Tracking: true, Target: { } target } ? (target, view.Epoch) : null);
+            _viewIds.Add(_nextViewId++);
+        }
+        Layout = layout;
         Synchronized = scenario.Synchronized;
         _clockOwner = scenario.ClockOwner;
         SplitLayout = scenario.SplitLayout;
@@ -231,6 +244,8 @@ public sealed partial class SimulationSession
         if (!Enum.IsDefined(layout))
             throw new ArgumentOutOfRangeException(nameof(layout));
         SplitLayout = layout;
+        if (Layout.View is null)
+            Layout = Layout with { Direction = layout };
     }
 
     public void SetFieldOfView(int view, double? field)
@@ -243,21 +258,53 @@ public sealed partial class SimulationSession
     public void Split()
     {
         if (_views.Count == 1)
-        {
-            _views.Add(_views[0]);
-            _trackingEpochs[1] = _trackingEpochs[0];
-        }
+            SplitView(0, SplitLayout);
+    }
+
+    public bool SplitView(int view, ViewSplit direction)
+    {
+        if (!Enum.IsDefined(direction))
+            throw new ArgumentOutOfRangeException(nameof(direction));
+        if (_views.Count == ObserverLayout.MaximumViews)
+            return false;
+        ObserverView source = _views[view];
+        Layout = Layout.Insert(view, _views.Count, direction);
+        SplitLayout = Layout.Direction;
+        _views.Add(source);
+        _flights.Add(null);
+        _trackingEpochs.Add(_trackingEpochs[view]);
+        _viewIds.Add(_nextViewId++);
+        return true;
+    }
+
+    public void ResizeViewDivider(string path, double share)
+    {
+        if (!double.IsFinite(share) || share is <= 0 or >= 1)
+            return;
+        Layout = Layout.Resize(path, share);
     }
 
     public void CloseSecondView()
     {
         if (_views.Count == 2)
-        {
-            _views.RemoveAt(1);
-            _trackingEpochs[1] = null;
-        }
-        _flights[1] = null;
-        _clockOwner = 0;
+            RemoveView(1);
+    }
+
+    public void RemoveView(int view)
+    {
+        if (_views.Count == 1)
+            return;
+        _views.RemoveAt(view);
+        _flights.RemoveAt(view);
+        _trackingEpochs.RemoveAt(view);
+        _viewIds.RemoveAt(view);
+        Layout = Layout.Remove(view)!;
+        if (Layout.View is null)
+            SplitLayout = Layout.Direction;
+        if (_clockOwner == view)
+            _clockOwner = 0;
+        else if (_clockOwner > view)
+            _clockOwner--;
     }
 
     public void Synchronize(bool enabled, int source)

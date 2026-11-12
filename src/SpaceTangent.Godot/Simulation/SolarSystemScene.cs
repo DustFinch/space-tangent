@@ -20,6 +20,7 @@ public partial class SolarSystemScene : Control
         LineEdit TerrainCoordinates, SpinBox FieldOfView, Button AdvanceHour, SubViewportContainer Canvas, MeasurementOverlay Measurements)
     {
         internal WorldSnapshot? Snapshot { get; set; }
+        internal ProjectionScale? Perspective { get; set; }
     }
 
     private readonly List<ViewControls> _views = [];
@@ -651,6 +652,7 @@ public partial class SolarSystemScene : Control
         FlyShip(delta);
         bool changed = Session?.Tick(delta) == true;
         changed |= _demoSurfaces.PublishReady();
+        changed |= UpdatePerspectiveScale();
         changed |= StepPlugins(delta);
         if (_script is { } script)
         {
@@ -894,6 +896,7 @@ public partial class SolarSystemScene : Control
 
     private void UpdateViewLayout()
     {
+        ResetPerspectiveScale();
         _panels.Vertical = Session!.SplitLayout == ViewSplit.Stacked;
         while (_views.Count < Session.ViewCount)
             AddView();
@@ -1121,6 +1124,7 @@ public partial class SolarSystemScene : Control
         ObserverLayout previousLayout = Session!.Layout;
         ViewSplit previousDirection = Session.SplitLayout;
         Session.RestoreScenario(scenario);
+        ResetPerspectiveScale();
         if (_script is not null)
             StopScript();
         _active = scenario.ActiveView;

@@ -309,7 +309,16 @@ public partial class WorkspaceInputSmoke : Node
         Require(Session.ViewCount == 3 && Session.Layout.Second is { Direction: ViewSplit.Stacked, Second.View: 2 },
             $"Ctrl+R must split the active right-hand observer into two stacked views. Layout: {Session.Layout}.");
         var divider = Find<SplitContainer>("ViewDivider1");
-        await ToSignal(Tree, SceneTree.SignalName.ProcessFrame);
+        for (int frame = 0; frame < 4; frame++)
+            await ToSignal(Tree, SceneTree.SignalName.ProcessFrame);
+        var upper = Find<SubViewportContainer>("ViewCanvas1");
+        var lower = Find<SubViewportContainer>("ViewCanvas2");
+        Session.SetFieldOfView(1, 37);
+        Session.SetFieldOfView(2, 18);
+        for (int frame = 0; frame < 2; frame++)
+            await ToSignal(Tree, SceneTree.SignalName.ProcessFrame);
+        float upperBefore = upper.Size.Y, lowerBefore = lower.Size.Y;
+        double siblingField = Session[0].EffectiveFieldOfView;
         var dragger = divider.GetDragAreaControls().Single();
         Window root = Tree.Root;
         Vector2 point = root.GetScreenTransform().AffineInverse() * (dragger.GetScreenTransform() * (dragger.Size / 2));
@@ -328,6 +337,15 @@ public partial class WorkspaceInputSmoke : Node
         await ToSignal(Tree, SceneTree.SignalName.ProcessFrame);
         await ToSignal(Tree, SceneTree.SignalName.ProcessFrame);
         Require(Session.Layout.Second!.FirstShare > .5, "Moving the nested divider must update the saved split ratio.");
+        int dpi = root.CurrentScreen >= 0 ? DisplayServer.ScreenGetDpi(root.CurrentScreen) : 0;
+        double Expected(double initial, float oldHeight, float newHeight) => initial *
+            PerspectiveViewScale.ScreenAngleDegrees(newHeight, dpi) / PerspectiveViewScale.ScreenAngleDegrees(oldHeight, dpi);
+        await Until(() => upper.Size.Y > upperBefore && lower.Size.Y < lowerBefore &&
+            Math.Abs(Session[1].EffectiveFieldOfView - Expected(37, upperBefore, upper.Size.Y)) < 1e-9 &&
+            Math.Abs(Session[2].EffectiveFieldOfView - Expected(18, lowerBefore, lower.Size.Y)) < 1e-9,
+            "Preserving each observer's physical magnification through divider drag");
+        Require(Session[0].EffectiveFieldOfView == siblingField, "A separate branch must keep its own field.");
+        GD.Print("UI: changed the real divider and preserved both physical zoom factors and the third field");
 
         await Click(Find<Button>("TimeTab"));
         await Click(Find<CheckButton>("SyncViewTime"));

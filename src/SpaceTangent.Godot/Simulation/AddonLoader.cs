@@ -71,7 +71,7 @@ internal static class AddonLoader
         new(file.Resolve(source), "", "", "", source.Kind != LocalAddonKind.Mission);
 
     // Godot path resolution runs on the main thread. File probes, hashing and decoding run on the worker.
-    internal static Task<DecodedAddOns> Load(De440Ephemeris ephemeris, DecodedAddOns? previous,
+    internal static Task<DecodedAddOns> Load(ISolarSystemEphemeris ephemeris, DecodedAddOns? previous,
         LocalAddonSettings settings, LocalAddonSettingsFile file, BrightStarCatalogue? brightStars, CancellationToken cancellation)
     {
         LocalDataPath[] science = Paths(LocalAddonKind.Science).ToArray();

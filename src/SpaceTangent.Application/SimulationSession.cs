@@ -39,7 +39,7 @@ public sealed record HuygensMission(SscHuygensTrack Track, SpkKernel SaturnSyste
 
 public sealed class SimulationWorld
 {
-    public SimulationWorld(De440Ephemeris ephemeris, IEnumerable<ScienceSatellite> satellites,
+    public SimulationWorld(ISolarSystemEphemeris ephemeris, IEnumerable<ScienceSatellite> satellites,
         SpiceSpacecraft? mission = null, SscSampledSpacecraft? timeline = null, HuygensMission? probe = null,
         SpicePolynomialBodyFrame? moonFrame = null, BrightStarCatalogue? brightStars = null, PlanetEphemerides? planets = null, bool hasMarsTerrain = false, StellarCatalogue? stellar = null, IEnumerable<SscBodyDefinition>? bodyCatalog = null)
     {
@@ -88,7 +88,7 @@ public sealed class SimulationWorld
         Graph = graph.Build();
     }
 
-    public De440Ephemeris Ephemeris { get; }
+    public ISolarSystemEphemeris Ephemeris { get; }
     public IReadOnlyList<ScienceSatellite> Satellites { get; }
     private readonly Dictionary<ObjectId, InstalledSscBody> _sscById;
     public IReadOnlyList<InstalledSscBody> SscBodies { get; }

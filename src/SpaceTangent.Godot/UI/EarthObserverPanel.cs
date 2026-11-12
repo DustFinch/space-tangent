@@ -72,7 +72,7 @@ internal sealed class EarthObserverPanel
         ephemerides.AddChild(_twilight);
     }
 
-    internal void Update(int view, ObserverView observer, WorldSnapshot? snapshot, De440Ephemeris ephemeris,
+    internal void Update(int view, ObserverView observer, WorldSnapshot? snapshot, ISolarSystemEphemeris ephemeris,
         DeltaTModel model, BrightStarCatalogue brightStars)
     {
         EarthObserverCamera camera = observer.EarthObserver ?? EarthObserverCamera.Moscow;

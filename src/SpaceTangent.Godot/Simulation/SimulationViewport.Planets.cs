@@ -83,7 +83,7 @@ internal partial class SimulationViewport
         }
     }
 
-    private void DrawPlanetOverview(WorldSnapshot snapshot, De440Ephemeris ephemeris, Vector3d sun, bool outer)
+    private void DrawPlanetOverview(WorldSnapshot snapshot, ISolarSystemEphemeris ephemeris, Vector3d sun, bool outer)
     {
         double scale = outer ? OuterOverviewKilometersPerUnit : OverviewKilometersPerUnit;
         foreach (PlanetDefinition planet in PlanetCatalogue.Planets)

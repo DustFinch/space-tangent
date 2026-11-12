@@ -70,13 +70,14 @@ public partial class SolarSystemScene : Control
         _inactiveFrame = SimulatorTheme.Box(SimulatorTheme.Ground, SimulatorTheme.Border, 5, 5);
         _status.Text = "Loading ephemeris…";
 
-        De440Ephemeris ephemeris;
+        ISolarSystemEphemeris ephemeris;
         string ephemerisPath = LocalDataPaths.Find("SPACETANGENT_DE440", "de440.440");
+        LocalDataPath historicalPath = LocalDataPaths.Candidates("SPACETANGENT_VSOP87", "vsop87-legacy.bin");
         CancellationToken token = BeginLoad();
         int generation = _loadGeneration;
         try
         {
-            ephemeris = await Task.Run(() => De440Ephemeris.Load(ephemerisPath), token);
+            ephemeris = await Task.Run(() => LoadSolarEphemeris(ephemerisPath, historicalPath), token);
             if (!CanPublish(generation, token))
                 return;
         }
@@ -402,9 +403,20 @@ public partial class SolarSystemScene : Control
         Refresh();
     }
 
+    private static ISolarSystemEphemeris LoadSolarEphemeris(string de440Path, LocalDataPath historicalPath)
+    {
+        var precise = De440Ephemeris.Load(de440Path);
+        string historical = historicalPath.Resolve();
+        if (historicalPath.Explicit is not null && !File.Exists(historical))
+            throw new InvalidDataException("The configured historical planetary series file is missing.");
+        return File.Exists(historical) ? HistoricalSolarEphemeris.Load(precise, historical) : precise;
+    }
+
     private void ReportLoadedWorld(SimulationWorld world)
     {
         GD.Print($"SpaceTangent world ready: DE440, {Assets.Count} science satellites, surface view {_surfaceTextures is not null}.");
+        if (world.Ephemeris is HistoricalSolarEphemeris)
+            GD.Print("SpaceTangent historical ephemeris ready: years 1–4000.");
         if (world.MissionName is { } mission)
             GD.Print($"SpaceTangent mission ready: {mission}.");
         if (world.TimelineId is not null)

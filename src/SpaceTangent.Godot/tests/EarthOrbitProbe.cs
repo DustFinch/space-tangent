@@ -73,6 +73,7 @@ public partial class EarthOrbitProbe : Node
             if (System.Environment.GetEnvironmentVariable("SPACETANGENT_SPATIAL_SKY_SMOKE") == "1")
                 await ExerciseStellarSpace(scene, epoch, directory);
             await CaptureShip(scene, directory);
+            await ExerciseHistoricalEpoch(scene, directory);
             result = 0;
         }
         catch (Exception error)

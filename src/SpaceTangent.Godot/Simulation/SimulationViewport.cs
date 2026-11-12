@@ -41,7 +41,7 @@ internal partial class SimulationViewport : Node3D
     private IReadOnlyList<PreparedSatellite>? _satelliteAssets;
     private readonly Dictionary<ObjectId, (PreparedSatellite Asset, MeshInstance3D Node)> _satellites = new();
 
-    internal De440Ephemeris? PlanetEphemeris { get; set; }
+    internal ISolarSystemEphemeris? PlanetEphemeris { get; set; }
     internal Vector3 EarthPosition => _earth.Position;
     internal Vector3 MoonPosition => _moon.Position;
     internal bool MoonVisible => _moon.Visible;

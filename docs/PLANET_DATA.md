@@ -11,6 +11,10 @@ Blue Marble imagery credit goes to NASA Earth Observatory, Reto Stöckli and Rob
 
 The orbital renderer and the surface observer share the single-scattering profiles. The texture orientation uses the Earth observer's selected ΔT model and is available inside its 1900–2099 range. At more distant epochs, the orbital renderer uses the generic Earth material. The global maps show broad features from orbit. Regional detail requires a separate surface dataset.
 
+## Historical solar system
+
+Place the pinned `vsop87-legacy.bin` beside `de440.440` in `data`, or set `SPACETANGENT_VSOP87` to its absolute path. The analytic planetary and lunar models extend the orbit view to years 1–4000. The kernel remains authoritative throughout its original coverage, with a 32-day transition at either end. The analytic positions have lower accuracy than DE440. A craft or terrain resource with its own date range remains limited to that range. [Details and hashes](https://github.com/dustfinch/space-tangent-core/blob/main/docs/DE440.md)
+
 ## Original atmosphere tables
 
 The optional `data/atmospheres` directory, or `SPACETANGENT_ATMOSPHERE_ROOT`, accepts `builtin-original-earth.atmscat`, `builtin-original-mars.atmscat`, and `builtin-original-titan.atmscat`. Each file supplies both the transmission table and the inscatter volume. The renderer uses them from above and inside the atmosphere. Earth keeps its own surface maps, cloud lighting, and eclipse geometry with either atmosphere path.

@@ -5,8 +5,8 @@ using SpaceTangent.Core.Addons;
 
 namespace SpaceTangent.Application.Assets;
 
-/// <summary>Decodes binary CMOD triangle geometry and local model materials for local body catalogues.</summary>
-public static class CmodMeshDecoder
+/// <summary>Decodes CMOD triangle geometry and local model materials for local body catalogues.</summary>
+public static partial class CmodMeshDecoder
 {
     private const int MaximumVertices = 1_000_000, MaximumTriangles = 1_000_000, MaximumMaterials = 4096, MaximumSurfaces = 128;
     private static readonly DecodedMaterial Default = new(new(.8, .8, .8), 1, null);
@@ -19,12 +19,17 @@ public static class CmodMeshDecoder
 
     private static DecodedScienceModel Read(string root, string path, bool nativeBody, CancellationToken cancellation)
     {
-        using FileStream stream = AddonDependencies.OpenRead(path, 32L * 1024 * 1024);
-        if (stream.Length > 32L * 1024 * 1024)
+        using FileStream source = AddonDependencies.OpenRead(path, 32L * 1024 * 1024);
+        if (source.Length > 32L * 1024 * 1024)
             throw new InvalidDataException("A CMOD mesh exceeds 32 MiB.");
+        Span<byte> header = stackalloc byte[16];
+        source.ReadExactly(header);
+        bool binary = header.SequenceEqual("#celmodel_binary"u8);
+        if (!binary && !header.SequenceEqual("#celmodel__ascii"u8))
+            throw new NotSupportedException("The file has no supported CMOD header.");
+        using MemoryStream? ascii = binary ? null : ConvertAscii(source, cancellation);
+        Stream stream = ascii is null ? source : ascii;
         using var input = new BinaryReader(stream);
-        if (!input.ReadBytes(16).AsSpan().SequenceEqual("#celmodel_binary"u8))
-            throw new NotSupportedException("The model must be a binary CMOD file.");
         var materials = new List<DecodedMaterial>();
         var surfaces = new Dictionary<DecodedMaterial, Surface>();
         int triangles = 0;

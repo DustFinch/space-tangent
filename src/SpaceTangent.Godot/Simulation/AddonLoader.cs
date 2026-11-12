@@ -379,14 +379,7 @@ internal static partial class AddonLoader
             cancellation.ThrowIfCancellationRequested();
             var meshes = new Dictionary<string, DecodedScienceModel>(StringComparer.Ordinal);
             foreach (string file in (mission.Geometry ?? []).Select(span => span.Shape.MeshPath).OfType<string>().Distinct())
-                meshes.Add(file, Path.GetExtension(file).ToLowerInvariant() switch
-                {
-                    ".obj" => ScienceModelDecoder.Decode(file, cancellation),
-                    ".cmod" => CmodMeshDecoder.Decode(root, file, cancellation),
-                    ".3ds" => StudioMeshDecoder.Decode(file, cancellation),
-                    ".glb" => PackedModelDecoder.Decode(file, cancellation),
-                    _ => throw new NotSupportedException("This sampled mission needs an OBJ, CMOD, 3DS or packed GLB mesh.")
-                });
+                meshes.Add(file, ReadAddonMesh(root, file, cancellation));
             tracks.Add(new(mission, meshes, ReadMissionTextures(mission, textureCache, ref textureBytes, cancellation)));
         }
         return tracks.AsReadOnly();
@@ -411,16 +404,21 @@ internal static partial class AddonLoader
             cancellation, scripts).Select(body =>
         {
             cancellation.ThrowIfCancellationRequested();
-            DecodedScienceModel? mesh = body.Mesh is { } file ? Path.GetExtension(file).ToLowerInvariant() switch
-            {
-                ".cmod" => CmodMeshDecoder.Decode(root, file, cancellation),
-                ".3ds" => StudioMeshDecoder.Decode(file, cancellation),
-                ".glb" => PackedModelDecoder.Decode(file, cancellation),
-                _ => throw new NotSupportedException("This SSC body needs a binary CMOD, 3DS or packed GLB mesh.")
-            } : null;
+            DecodedScienceModel? mesh = body.Mesh is { } file ? ReadAddonMesh(root, file, cancellation) : null;
             return new DecodedSscBody(body, mesh);
         }).ToArray());
     }
+
+    private static DecodedScienceModel ReadAddonMesh(string root, string file, CancellationToken cancellation) =>
+        Path.GetExtension(file).ToLowerInvariant() switch
+        {
+            ".obj" => ScienceModelDecoder.Decode(file, cancellation),
+            ".cmod" => CmodMeshDecoder.Decode(root, file, cancellation),
+            ".cms" => DisplacedSphereDecoder.Decode(file, cancellation),
+            ".3ds" => StudioMeshDecoder.Decode(file, cancellation),
+            ".glb" => PackedModelDecoder.Decode(file, cancellation),
+            _ => throw new NotSupportedException("The add-on mesh needs OBJ, CMOD, CMS, 3DS or packed GLB.")
+        };
 
     private static IReadOnlyList<DecodedSatellite> ReadScience(LocalDataPath location, CancellationToken cancellation)
     {

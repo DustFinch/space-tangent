@@ -21,7 +21,7 @@ internal static partial class AddonLoader
         DecodedScienceModel? ProbeModel);
     internal sealed record DecodedSscBody(SscBodyDefinition Body, DecodedScienceModel? Geometry);
     internal sealed record DecodedSampledMission(SampledMission Track,
-        IReadOnlyDictionary<string, DecodedScienceModel> Meshes, IReadOnlyDictionary<string, byte[]> ParticleTextures);
+        IReadOnlyDictionary<string, DecodedScienceModel> Meshes, IReadOnlyDictionary<string, byte[]> Textures);
     internal sealed record DecodedTerrain(SpicePolynomialBodyFrame Frame, DecodedBodyTerrain Model);
 
     internal sealed record Cached<T>(LocalDataPath Path, AddonDependencies Dependencies, T Value)
@@ -325,7 +325,7 @@ internal static partial class AddonLoader
                 definition.MeshRotation, definition.MeshCenter,
                 model is null ? null : ScienceMeshLoader.Publish(model, definition.Mesh!), model?.Diameter ?? 2);
         });
-        var particleTextures = new Dictionary<string, global::Godot.Texture2D>(StringComparer.Ordinal);
+        var textures = new Dictionary<string, global::Godot.Texture2D>(StringComparer.Ordinal);
         var missions = decoded.SampledMissions.Value.Select(item =>
         {
             var track = item.Track;
@@ -334,7 +334,7 @@ internal static partial class AddonLoader
                 return ready;
             var models = item.Meshes.ToDictionary(pair => pair.Key,
                 pair => (Mesh: ScienceMeshLoader.Publish(pair.Value, pair.Key), pair.Value.Diameter));
-            PublishParticleTextures(item.ParticleTextures, particleTextures);
+            PublishMissionTextures(item.Textures, textures);
             IReadOnlyList<PreparedMissionGeometry>? geometry = track.Geometry?.Select(span =>
             {
                 var shape = span.Shape;
@@ -342,7 +342,14 @@ internal static partial class AddonLoader
                 return new PreparedMissionGeometry(span.Start, span.End, shape.RadiusKilometers,
                     shape.MeshRotation, shape.MeshOffset, model.Mesh, model.Diameter, shape.Sensor,
                     shape.ParticleEmitters?.Select(emitter => new PreparedParticleEmitter(emitter,
-                        emitter.TexturePath is { } image ? particleTextures[image] : null)).ToArray());
+                        emitter.TexturePath is { } image ? textures[image] : null)).ToArray())
+                {
+                    EllipsoidRadiiKilometers = shape.EllipsoidRadiiKilometers,
+                    GlobeMaterial = shape.GlobeTexturePath is { } map ? new global::Godot.StandardMaterial3D
+                    {
+                        AlbedoTexture = textures[map], Roughness = .85f
+                    } : null
+                };
             }).ToArray();
             return new PreparedImportedBody(track.Id, CatalogueKind.Spacecraft, new(.8, .8, .8), track.RadiusKilometers, Basis3d.Identity, default,
                 null, 2, geometry, decoded.Observations.GetValueOrDefault(track.Id));
@@ -357,6 +364,9 @@ internal static partial class AddonLoader
         if (!AddonDependencies.DirectoryExists(root))
             return [];
         var catalogues = AddonDependencies.ListFiles(root, "*.json");
+        string directory = Path.Combine(root, "catalog");
+        if (AddonDependencies.DirectoryExists(directory))
+            catalogues = [.. catalogues, .. AddonDependencies.ListFiles(directory, "*.json")];
         if (catalogues.Length > 64)
             throw new InvalidDataException("The sampled mission directory may contain at most 64 catalogues.");
         var tracks = new List<DecodedSampledMission>();
@@ -376,7 +386,7 @@ internal static partial class AddonLoader
                     ".glb" => PackedModelDecoder.Decode(file, cancellation),
                     _ => throw new NotSupportedException("This sampled mission needs an OBJ, CMOD, 3DS or packed GLB mesh.")
                 });
-            tracks.Add(new(mission, meshes, ReadParticleTextures(mission, textureCache, ref textureBytes, cancellation)));
+            tracks.Add(new(mission, meshes, ReadMissionTextures(mission, textureCache, ref textureBytes, cancellation)));
         }
         return tracks.AsReadOnly();
 

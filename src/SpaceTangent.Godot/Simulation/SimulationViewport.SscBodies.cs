@@ -13,7 +13,11 @@ internal sealed record PreparedImportedBody(ObjectId Id, CatalogueKind Kind, Vec
 
 internal sealed record PreparedMissionGeometry(JulianInstant Start, JulianInstant End, double RadiusKilometers,
     Basis3d MeshRotation, Vector3d MeshOffset, ArrayMesh? Model, double ModelDiameter, MissionSensor? Sensor,
-    IReadOnlyList<PreparedParticleEmitter>? Particles);
+    IReadOnlyList<PreparedParticleEmitter>? Particles)
+{
+    internal Vector3d? EllipsoidRadiiKilometers { get; init; }
+    internal StandardMaterial3D? GlobeMaterial { get; init; }
+}
 
 internal partial class SimulationViewport
 {
@@ -125,16 +129,23 @@ internal partial class SimulationViewport
                     continue;
                 }
                 Mesh mesh = active.Model is { } model ? model : _missionMarkerMesh;
-                if (node.Mesh != mesh)
+                Material? material = active.Model is null ? active.GlobeMaterial ?? _missionMarkerMaterial : null;
+                if (node.Mesh != mesh || node.MaterialOverride != material)
                 {
                     node.Mesh = mesh;
-                    node.MaterialOverride = active.Model is null ? _missionMarkerMaterial : null;
+                    node.MaterialOverride = material;
                 }
             }
             double radius = (active?.RadiusKilometers ?? body.RadiusKilometers) * projection / units;
             if (radius < .035 && pose.Target != body.Id)
                 continue;
-            if ((active?.Model ?? asset.Model) is null)
+            if (active?.EllipsoidRadiiKilometers is { } radii)
+            {
+                double factor = projection / units;
+                var scale = new Vector3((float)(radii.X * factor), (float)(radii.Z * factor), (float)(radii.Y * factor));
+                node.Transform = new(PlanetBasis(frame.ToWorld) * Basis.FromScale(scale), position);
+            }
+            else if ((active?.Model ?? asset.Model) is null)
             {
                 node.Position = position;
                 node.Scale = Vector3.One * (float)radius;

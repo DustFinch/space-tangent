@@ -103,6 +103,7 @@ public partial class EarthOrbitProbe : Node
             await ExerciseMissionObservations(scene, directory);
             await ExerciseSampledSpice(scene, directory);
             await ExerciseNativeMissionAttitude(scene, directory);
+            await ExerciseMissionGlobes(scene, directory);
             await ExerciseMissionParticles(scene, directory);
             await ExerciseSourceFactories(scene, directory);
             await ExercisePackedFactories(scene, directory);

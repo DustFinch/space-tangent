@@ -81,6 +81,7 @@ public partial class EarthOrbitProbe : Node
             await ExerciseOuterMoonShapes(scene, epoch, directory);
             await ExerciseCatalogueMoons(scene, epoch, directory);
             await ExerciseDemoWorlds(scene, directory);
+            await ExerciseProceduralTerrain(scene, directory);
             await ExerciseSmallBodies(scene, epoch, directory);
             if (System.Environment.GetEnvironmentVariable("SPACETANGENT_SPATIAL_SKY_SMOKE") == "1")
                 await ExerciseStellarSpace(scene, epoch, directory);

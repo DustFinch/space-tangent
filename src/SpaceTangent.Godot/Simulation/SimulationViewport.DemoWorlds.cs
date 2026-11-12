@@ -12,11 +12,23 @@ internal partial class SimulationViewport
     {
         internal DemoSurfaceCache.Maps? Maps { get; set; }
         internal MeshInstance3D? Atmosphere { get; init; }
+        internal DemoTerrainRendering? Terrain { get; set; }
     }
 
     internal DemoSurfaceCache? DemoSurfaces { get; init; }
     private readonly Dictionary<ObjectId, DemoGlobe> _demoGlobes = new();
-    internal bool DemoWorldVisible(ObjectId id) => _demoGlobes.GetValueOrDefault(id)?.Globe.Visible == true;
+    internal bool DemoWorldVisible(ObjectId id) => _demoGlobes.TryGetValue(id, out var visual) &&
+        (visual.Globe.Visible || visual.Terrain?.Visible == true);
+
+    internal int DemoTerrainLevel(ObjectId id) => _demoGlobes.GetValueOrDefault(id)?.Terrain?.Level ?? -1;
+
+    internal bool PublishDemoTerrain()
+    {
+        bool changed = false;
+        foreach (var visual in _demoGlobes.Values)
+            changed |= visual.Terrain?.Publish() == true;
+        return changed;
+    }
     internal bool DemoWorldTextured(ObjectId id) => _demoGlobes.GetValueOrDefault(id)?.Maps is not null;
     internal bool DemoAirVisible(ObjectId id) => _demoGlobes.GetValueOrDefault(id)?.Atmosphere?.Visible == true;
     internal bool DemoRingsVisible(ObjectId id) => _demoGlobes.GetValueOrDefault(id)?.Rings?.Visible == true;
@@ -36,7 +48,8 @@ internal partial class SimulationViewport
             float radius = (float)(body.RadiusKilometers * projection / units);
             float distance = center.DistanceTo(_navigationCamera.Position);
             bool star = body.LuminositySolar > 0;
-            if (_navigationCamera.IsPositionBehind(center) ||
+            bool nearTarget = body.Id == target && distance < radius * 1.12f;
+            if ((!nearTarget && _navigationCamera.IsPositionBehind(center)) ||
                 (body.Id != target && !star && radius < Math.Max(.001f, distance * .00014f)))
                 continue;
             if (!_demoGlobes.TryGetValue(body.Id, out DemoGlobe? visual))
@@ -80,7 +93,22 @@ internal partial class SimulationViewport
             }
             SetLight("first", 0);
             SetLight("second", 1);
-            visual.Globe.Show();
+            bool terrainVisible = false;
+            if (nearTarget &&
+                DemoWorlds.CreateSurface(body) is { HasSurface: true } surface)
+            {
+                var placement = pose.ResolvePlacement(snapshot);
+                Vector3d nativeEye = Native(inertialToFixed.Transform(
+                    (pose.AnchorKilometers - state.PositionKilometers) + placement.OffsetKilometers));
+                Vector3d nativeLook = Native(inertialToFixed.Transform(placement.Forward));
+                visual.Terrain ??= new DemoTerrainRendering(this, new(surface, body.PolarRadiusKilometers), body.RadiusKilometers, visual.Material);
+                terrainVisible = nativeEye.Length > 0 &&
+                    visual.Terrain.Draw(nativeEye, nativeLook, _navigationCamera.Position, rotation, units,
+                        _navigationCamera.Fov, GetViewport().GetVisibleRect().Size);
+            }
+            visual.Globe.Visible = !terrainVisible;
+
+            static Vector3d Native(Vector3d local) => new(local.X, local.Z, -local.Y);
             if (visual.Rings is { } ring && visual.RingMaterial is { } ringMaterial && visual.Maps?.Rings is not null && lights.Count != 0)
             {
                 ring.Transform = new(rotation * Basis.FromScale(Vector3.One * radius), center);
@@ -154,6 +182,7 @@ internal partial class SimulationViewport
             visual.Globe.Hide();
             visual.Rings?.Hide();
             visual.Atmosphere?.Hide();
+            visual.Terrain?.Hide();
         }
     }
 

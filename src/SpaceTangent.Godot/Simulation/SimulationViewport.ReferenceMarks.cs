@@ -25,8 +25,8 @@ internal partial class SimulationViewport
             flags &= ~BodyReferenceMarks.Velocity;
         if (flags == BodyReferenceMarks.None)
             return;
-        double units = pose.RangeKilometers / NavigationCameraUnits;
-        Vector3 center = ProjectNavigation(geometry.Center - pose.AnchorKilometers, units, out double projection);
+        double units = _navigationUnits;
+        Vector3 center = ProjectNavigation((geometry.Center - pose.AnchorKilometers) - _navigationEyeOffset, units, out double projection);
         double scale = projection / units;
         if (geometry.EquatorialRadius * scale < .03)
             return;

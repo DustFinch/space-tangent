@@ -17,6 +17,9 @@ uniform bool has_rings;
 uniform float cloud_height;
 uniform float ring_inner;
 uniform float ring_outer;
+uniform bool use_terrain;
+uniform vec3 terrain_eye;
+varying vec3 terrain_normal;
 
 
 vec2 surface_uv(vec3 n) {
@@ -38,8 +41,10 @@ vec3 reflected(vec3 n, vec3 point, vec3 eye, vec3 light, vec3 irradiance, vec3 a
 }
 
 void vertex() {
-    air_surface = VERTEX;
-    air_eye = (inverse(MODEL_MATRIX) * vec4(CAMERA_POSITION_WORLD, 1.0)).xyz;
+    mat4 world_to_mesh = inverse(MODEL_MATRIX);
+    air_surface = use_terrain ? VERTEX + vec3(UV, UV2.x) : VERTEX;
+    air_eye = use_terrain ? terrain_eye : (world_to_mesh * vec4(CAMERA_POSITION_WORLD, 1.0)).xyz;
+    terrain_normal = NORMAL;
 }
 
 void fragment() {
@@ -52,7 +57,11 @@ void fragment() {
     vec4 material = has_maps ? textureGrad(albedo_map, uv, dx, dy) : vec4(fallback_color, 0.0);
     vec3 albedo = has_maps && OUTPUT_IS_SRGB ? air_srgb_linear(material.rgb) : material.rgb;
     vec3 detail = n;
-    if (has_maps) {
+    if (use_terrain) {
+        material = COLOR;
+        albedo = material.rgb;
+        detail = normalize(terrain_normal);
+    } else if (has_maps) {
         vec3 east = normalize(vec3(n.z, 0.0, -n.x) + vec3(0.0, 0.0, 1e-7));
         vec3 south = cross(east, n);
         vec3 tangent = textureGrad(normal_map, uv, dx, dy).xyz * 2.0 - 1.0;
@@ -73,7 +82,9 @@ void fragment() {
         color = mix(color, 0.82 * light + vec3(0.008), cover * 0.9);
     }
     vec3 transmission, radiance;
-    demo_air(air_eye * demo_radius, normalize(air_surface - air_eye), transmission, radiance);
+    vec3 segment = air_surface - air_eye;
+    demo_air(air_eye * demo_radius, normalize(segment), use_terrain ? length(segment) * demo_radius : 0.0,
+        transmission, radiance);
     color = color * transmission + radiance;
     ALBEDO = OUTPUT_IS_SRGB ? air_linear_srgb(color) : color;
 }

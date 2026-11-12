@@ -60,8 +60,19 @@ public sealed partial class SimulationSession
         var start = flight.Start;
         Vector3d endpoint = destination.AnchorKilometers + end.OffsetKilometers;
         Vector3d eye = start.AnchorKilometers + (endpoint - start.AnchorKilometers) * t;
+        if (flight.SurfaceStartOffset is { } approach)
+        {
+            Vector3d relative = SurfaceFlightOffset(approach, end.OffsetKilometers, t);
+            // Keep the small eye offset separate from the interstellar position.
+            start = start with { AnchorKilometers = destination.AnchorKilometers };
+            eye = start.AnchorKilometers;
+            end = end with { OffsetKilometers = relative };
+        }
         var attitude = start.Placement!.Value.Interpolate(end with { OffsetKilometers = default }, t);
-        double range = InterpolateRange(start.RangeKilometers, destination.RangeKilometers, t);
+        if (flight.SurfaceStartOffset.HasValue)
+            attitude = attitude with { OffsetKilometers = end.OffsetKilometers };
+        double range = flight.SurfaceStartOffset.HasValue ? end.OffsetKilometers.Length :
+            InterpolateRange(start.RangeKilometers, destination.RangeKilometers, t);
         _views[view] = _views[view] with { Navigation = start with { AnchorKilometers = eye, RangeKilometers = range, Placement = attitude } };
         _flights[view] = flight with { Elapsed = elapsed };
     }

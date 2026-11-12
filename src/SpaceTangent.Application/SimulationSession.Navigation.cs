@@ -11,6 +11,7 @@ public sealed partial class SimulationSession
     {
         internal NavigationPlacement? CenteringEnd { get; init; }
         internal NavigationCamera? ScriptDestination { get; init; }
+        internal Vector3d? SurfaceStartOffset { get; init; }
     }
 
     private const double FlightDuration = 1.65;
@@ -110,7 +111,10 @@ public sealed partial class SimulationSession
         ObserverView observer = _views[view];
         if (observer.Navigation is not { } camera)
             return false;
-        double minimum = camera.Target is { } target ? MinimumRange(target) : NavigationCamera.MinRange;
+        bool localSurface = camera is { Placement.BodyFixed: true, Target: { } local } &&
+            DemoWorlds.Find(local)?.Surface is DemoWorldSurface.Temperate or DemoWorldSurface.Barren or
+                DemoWorldSurface.Volcanic or DemoWorldSurface.Desert or DemoWorldSurface.Ice;
+        double minimum = camera.Target is { } target && !localSurface ? MinimumRange(target) : NavigationCamera.MinRange;
         CancelFlight(view);
         NavigationCamera next = camera.Adjust(azimuth, elevation, zoom, minimum);
         if (camera.Placement is { } placement)
@@ -119,6 +123,7 @@ public sealed partial class SimulationSession
             next = next with { Placement = turned with
                 { OffsetKilometers = turned.OffsetKilometers * (next.RangeKilometers / camera.RangeKilometers) } };
         }
+        next = ClampProceduralClearance(next);
         _views[view] = observer with { Navigation = next };
         return true;
     }

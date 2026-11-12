@@ -14,7 +14,7 @@ void fragment() {
     vec3 ray = normalize(air_surface - air_eye);
     if (air_span(eye, ray, demo_radius).x >= 0.0) discard;
     vec3 transmittance, radiance;
-    demo_air(eye, ray, transmittance, radiance);
+    demo_air(eye, ray, 0.0, transmittance, radiance);
     ALBEDO = OUTPUT_IS_SRGB ? air_linear_srgb(radiance) : radiance;
     ALPHA = 1.0;
 }

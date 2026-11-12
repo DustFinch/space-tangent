@@ -66,7 +66,8 @@ internal partial class SimulationViewport
         if (pose.Target is { } starId && world.FindStellarTarget(world.Exoplanets.Find(starId)?.Host ?? starId) is { } star)
             DrawStellarSystem(star, world, snapshot, units, project);
         Vector3 localEye = _navigationCamera.Position;
-        Vector3d eye = pose.AnchorKilometers + new Vector3d(localEye.X, -localEye.Z, localEye.Y) * units;
+        Vector3d eye = pose.AnchorKilometers + (_navigationEyeOffset +
+            new Vector3d(localEye.X, -localEye.Z, localEye.Y) * units);
         DrawDeepSky(world, pose, sky, eye, units, project);
         DrawExoplanets(world, pose, snapshot, units, project);
         DrawDemoWorlds(pose, snapshot, units, project);

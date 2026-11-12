@@ -40,14 +40,14 @@ vec3 demo_scattering(vec3 point, vec3 ray, vec3 light, vec3 flux, vec2 density) 
         (rayleigh_phase * density.x * demo_rayleigh + mie_phase * density.y * demo_mie * demo_mie_albedo);
 }
 
-void demo_air(vec3 eye, vec3 ray, out vec3 transmission, out vec3 radiance) {
+void demo_air(vec3 eye, vec3 ray, float surface_distance, out vec3 transmission, out vec3 radiance) {
     transmission = vec3(1.0);
     radiance = vec3(0.0);
     if (demo_air_top <= 0.0) return;
     vec2 outer = air_span(eye, ray, demo_radius + demo_air_top);
     vec2 ground = air_span(eye, ray, demo_radius);
     float start = max(0.0, outer.x);
-    float end = ground.x >= start ? min(outer.y, ground.x) : outer.y;
+    float end = surface_distance > 0.0 ? min(outer.y, surface_distance) : (ground.x >= start ? min(outer.y, ground.x) : outer.y);
     float step_km = max(0.0, end - start) / 16.0;
     vec2 column = vec2(0.0);
     for (int step = 0; step < 16; step++) {

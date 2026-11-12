@@ -53,21 +53,11 @@ internal sealed class DemoSurfaceCache
 
     private static Baked Bake(DemoWorldBody body)
     {
-        (int seed, ProceduralWorldKind kind) = body.Surface switch
-        {
-            DemoWorldSurface.Temperate => (1, ProceduralWorldKind.Terran),
-            DemoWorldSurface.Volcanic => (7, ProceduralWorldKind.Volcanic),
-            DemoWorldSurface.Desert => (3, ProceduralWorldKind.Desert),
-            DemoWorldSurface.Ice => (5, ProceduralWorldKind.Ice),
-            DemoWorldSurface.GasGiant => (10, ProceduralWorldKind.GasGiant),
-            DemoWorldSurface.Barren => (11, ProceduralWorldKind.Cratered),
-            _ => throw new ArgumentOutOfRangeException(nameof(body))
-        };
-        var surface = new ProceduralSurface(seed, body.RadiusKilometers, kind);
+        var surface = DemoWorlds.CreateSurface(body)!;
         var (albedo, normal) = surface.BakeSurface(Width, Height, maximumThreads: 2);
         return new(albedo, normal,
             body.CloudTopKilometers > 0 ? surface.BakeClouds(Width, Height, maximumThreads: 2) : null,
-            kind == ProceduralWorldKind.Volcanic ? surface.BakeEmission(Width, Height, maximumThreads: 2) : null,
+            surface.Kind == ProceduralWorldKind.Volcanic ? surface.BakeEmission(Width, Height, maximumThreads: 2) : null,
             body.RingOuterKilometers > 0 ? surface.BakeRings(RingWidth) : null);
     }
 

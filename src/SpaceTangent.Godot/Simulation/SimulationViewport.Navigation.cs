@@ -15,6 +15,8 @@ internal partial class SimulationViewport
     private const float NavigationFar = 12000;
     private Camera3D _navigationCamera = null!;
     private DirectionalLight3D _navigationLight = null!;
+    private double _navigationUnits;
+    private Vector3d _navigationEyeOffset;
     private MeshInstance3D _navigationSun = null!, _navigationEarth = null!, _navigationMoon = null!;
 
     private EarthOrbitRenderer? _earthOrbit;
@@ -64,22 +66,40 @@ internal partial class SimulationViewport
         SkyLayerSettings sky, double fieldOfView, bool inverted)
     {
         double units = pose.RangeKilometers / NavigationCameraUnits;
+        var placement = pose.ResolvePlacement(snapshot, deltaT);
+        _navigationEyeOffset = default;
+        if (pose.Target is { } id && DemoWorlds.Find(id) is { } demo &&
+            DemoWorlds.CreateSurface(demo) is { HasSurface: true } surface &&
+            snapshot.TryState(id, out var demoState) && snapshot.TryOrientation(id, out var demoRotation))
+        {
+            Vector3d local = demoRotation.ToWorld.Transpose().Transform(
+                (pose.AnchorKilometers - demoState.PositionKilometers) + placement.OffsetKilometers);
+            if (local.Length > 0 && local.Length < demo.RadiusKilometers * 1.12)
+            {
+                var terrain = new ProceduralTerrain(surface, demo.PolarRadiusKilometers);
+                var native = new Vector3d(local.X, local.Z, -local.Y) / local.Length;
+                double clearance = local.Length - terrain.GroundRadiusKilometers(native);
+                units = Math.Min(units, Math.Max(.05, clearance) / NavigationCameraUnits);
+                _navigationEyeOffset = placement.OffsetKilometers;
+            }
+        }
+        _navigationUnits = units;
         double azimuth = pose.AzimuthRadians, elevation = pose.ElevationRadians;
         var offset = new Vector3(
             (float)(Math.Cos(elevation) * Math.Sin(azimuth)),
             (float)Math.Sin(elevation),
             (float)(Math.Cos(elevation) * Math.Cos(azimuth)));
         _navigationCamera.Fov = (float)fieldOfView;
+        _navigationCamera.Near = .02f;
         if (pose.Placement is not null)
         {
-            NavigationPlacement placement = pose.ResolvePlacement(snapshot, deltaT);
-            _navigationCamera.Position = ToGodot(placement.OffsetKilometers, units);
+            _navigationCamera.Position = ToGodot(placement.OffsetKilometers - _navigationEyeOffset, units);
             _navigationCamera.LookAt(_navigationCamera.Position + ToGodot(placement.Forward, 1), ToGodot(placement.Up, 1));
         }
         else
         {
-            _navigationCamera.Position = offset * NavigationCameraUnits;
-            _navigationCamera.LookAt(Vector3.Zero);
+            _navigationCamera.Position = _navigationEyeOffset == default ? offset * NavigationCameraUnits : Vector3.Zero;
+            _navigationCamera.LookAt(_navigationCamera.Position + ToGodot(placement.Forward, 1), ToGodot(placement.Up, 1));
         }
         if (inverted)
             _navigationCamera.RotateObjectLocal(Vector3.Back, Mathf.Pi);
@@ -144,7 +164,7 @@ internal partial class SimulationViewport
             node.Show();
         }
 
-        Vector3 Project(Vector3d position, out double scale) => ProjectNavigation(position - pose.AnchorKilometers, units, out scale);
+        Vector3 Project(Vector3d position, out double scale) => ProjectNavigation((position - pose.AnchorKilometers) - _navigationEyeOffset, units, out scale);
     }
 
     private static Vector3 ProjectNavigation(Vector3d relative, double units, out double scale)
@@ -157,7 +177,7 @@ internal partial class SimulationViewport
 
     internal Vector2? ProjectNavigationPoint(NavigationCamera pose, Vector3d position)
     {
-        Vector3 point = ProjectNavigation(position - pose.AnchorKilometers, pose.RangeKilometers / NavigationCameraUnits, out _);
+        Vector3 point = ProjectNavigation((position - pose.AnchorKilometers) - _navigationEyeOffset, _navigationUnits, out _);
         return _navigationCamera.IsPositionBehind(point) ? null : _navigationCamera.UnprojectPosition(point);
     }
 

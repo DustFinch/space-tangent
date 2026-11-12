@@ -652,6 +652,8 @@ public partial class SolarSystemScene : Control
         FlyShip(delta);
         bool changed = Session?.Tick(delta) == true;
         changed |= _demoSurfaces.PublishReady();
+        foreach (var view in _views)
+            changed |= view.Renderer.PublishDemoTerrain();
         changed |= UpdatePerspectiveScale();
         changed |= StepPlugins(delta);
         if (_script is { } script)
@@ -838,7 +840,13 @@ public partial class SolarSystemScene : Control
     {
         if (key.Keycode == Key.G)
         {
-            GoToActiveObject();
+            if (key.ShiftPressed && Session!.ApproachProceduralSurface(_active))
+            {
+                _status.Text = "Approaching the selected surface.";
+                Refresh();
+            }
+            else
+                GoToActiveObject();
             return true;
         }
         if (key.Keycode == Key.C)

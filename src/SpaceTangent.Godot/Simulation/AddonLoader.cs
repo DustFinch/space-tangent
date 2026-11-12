@@ -50,7 +50,7 @@ internal static partial class AddonLoader
         IReadOnlyList<Cached<IReadOnlyList<DecodedSscBody>>> BodyCatalogues, Cached<IReadOnlyList<SscSurfaceLocation>> Locations, Cached<DeepSkyIndex> DeepSky, Cached<ExoplanetCatalogue> Exoplanets,
         Cached<IReadOnlyList<DecodedSampledMission>> SampledMissions, Cached<IReadOnlyList<LocalTleSatellite>> LocalSatellites,
         Cached<EarthPlaceCatalogue> EarthPlaces, LocalDataPath SavedEarthPlacesPath, bool AllowAddonLua,
-        IReadOnlyDictionary<ObjectId, PreparedMissionObservation> Observations, Cached<GalacticDustGrid?> GalacticDust)
+        IReadOnlyDictionary<ObjectId, PreparedMissionObservation> Observations, Cached<GalacticDustGrid?> GalacticDust, Cached<DistantStarIndex?> DistantStars)
     {
         internal bool HasSource(LocalAddonKind kind, LocalDataPath path) => kind switch
         {
@@ -169,34 +169,53 @@ internal static partial class AddonLoader
                 previous?.SavedEarthPlacesPath == savedEarthPlacesPath ? previous?.EarthPlaces : null,
                 earthPlacesPath, "Earth observing places", (path, token) => EarthPlaceCatalogue.Load(path.Resolve(),
                     savedEarthPlacesPath.Resolve(), message => global::Godot.GD.Print("Earth places: " + message), token), cancellation);
-            bool sameBodies = previous is not null && previous.AllowAddonLua == allowAddonLua && previous.BodyCatalogues.SequenceEqual(bodies);
-            if (previous is not null && sameScience && sameBodies && ReferenceEquals(previous.Mission, spice) &&
-                ReferenceEquals(previous.Timeline, sampled) && ReferenceEquals(previous.Terrain, relief) &&
-                ReferenceEquals(previous.MarsTerrain, marsTerrain) && ReferenceEquals(previous.Locations, locations) &&
-                ReferenceEquals(previous.DeepSky, deepSky) && ReferenceEquals(previous.GalacticDust, galacticDust) && ReferenceEquals(previous.Stellar, stellar) &&
-                ReferenceEquals(previous.StellarArchive, archive) && ReferenceEquals(previous.StellarDefinitions, definitions) &&
-                ReferenceEquals(previous.Exoplanets, exoplanets) && ReferenceEquals(previous.SampledMissions, missions) &&
-                ReferenceEquals(previous.LocalSatellites, tle) && ReferenceEquals(previous.EarthPlaces, earthPlaces))
-                return previous;
-
-            var tracks = new List<ScienceSatellite>();
-            var ids = new HashSet<ObjectId>();
-            foreach (var source in satellites)
-            foreach (DecodedSatellite item in source.Value)
+            DistantStarIndex? openedDistantStars = null;
+            try
             {
-                if (!ids.Add(item.Track.Id))
+                var distantStars = Cached<DistantStarIndex?>.Load(previous?.DistantStars, archivePath, "Distant star catalogue",
+                    (path, _) =>
+                    {
+                        string root = path.Resolve();
+                        string file = Path.Combine(root, "stars-far.bin");
+                        if (AddonDependencies.FileExists(file))
+                            openedDistantStars = DistantStarIndex.Load(file, Path.Combine(root, "stars-far-names.txt"));
+                        return openedDistantStars;
+                    }, cancellation);
+                bool sameBodies = previous is not null && previous.AllowAddonLua == allowAddonLua && previous.BodyCatalogues.SequenceEqual(bodies);
+                if (previous is not null && sameScience && sameBodies && ReferenceEquals(previous.Mission, spice) &&
+                    ReferenceEquals(previous.Timeline, sampled) && ReferenceEquals(previous.Terrain, relief) &&
+                    ReferenceEquals(previous.MarsTerrain, marsTerrain) && ReferenceEquals(previous.Locations, locations) &&
+                    ReferenceEquals(previous.DeepSky, deepSky) && ReferenceEquals(previous.GalacticDust, galacticDust) && ReferenceEquals(previous.Stellar, stellar) &&
+                    ReferenceEquals(previous.StellarArchive, archive) && ReferenceEquals(previous.DistantStars, distantStars) && ReferenceEquals(previous.StellarDefinitions, definitions) &&
+                    ReferenceEquals(previous.Exoplanets, exoplanets) && ReferenceEquals(previous.SampledMissions, missions) &&
+                    ReferenceEquals(previous.LocalSatellites, tle) && ReferenceEquals(previous.EarthPlaces, earthPlaces))
+                    return previous;
+
+                var tracks = new List<ScienceSatellite>();
+                var ids = new HashSet<ObjectId>();
+                foreach (var source in satellites)
+                foreach (DecodedSatellite item in source.Value)
                 {
-                    var error = new InvalidDataException($"Two enabled science sources provide {item.Track.Id.Value}.");
-                    AddonDiagnostics.Annotate(error, AddonStage.Catalog, item.Track.MeshPath, source: "Science satellites");
-                    throw error;
+                    if (!ids.Add(item.Track.Id))
+                    {
+                        var error = new InvalidDataException($"Two enabled science sources provide {item.Track.Id.Value}.");
+                        AddonDiagnostics.Annotate(error, AddonStage.Catalog, item.Track.MeshPath, source: "Science satellites");
+                        throw error;
+                    }
+                    tracks.Add(item.Track);
                 }
-                tracks.Add(item.Track);
+                var world = AddonDiagnostics.Read(AddonStage.World, null, () => new SimulationWorld(ephemeris, tracks,
+                    spice?.Value?.Track, sampled?.Value?.Track, sampled?.Value?.Probe, relief?.Value?.Frame, brightStars, planets, marsTerrain is not null, definitions.Value.Catalogue,
+                    bodies.SelectMany(source => source.Value).Select(body => body.Body), locations.Value, deepSky.Value, exoplanets.Value, missions.Value.Select(mission => mission.Track), tle.Value, earthPlaces.Value, distantStars.Value));
+                var observations = PrepareObservations(world, missions.Value, cancellation);
+                var decoded = new DecodedAddOns(world, sameScience ? previous!.Science : satellites, spice, sampled, relief, planets, marsTerrain, stellar, archive, definitions, sameBodies ? previous!.BodyCatalogues : bodies, locations, deepSky, exoplanets, missions, tle, earthPlaces, savedEarthPlacesPath, allowAddonLua, observations, galacticDust, distantStars);
+                openedDistantStars = null;
+                return decoded;
             }
-            var world = AddonDiagnostics.Read(AddonStage.World, null, () => new SimulationWorld(ephemeris, tracks,
-                spice?.Value?.Track, sampled?.Value?.Track, sampled?.Value?.Probe, relief?.Value?.Frame, brightStars, planets, marsTerrain is not null, definitions.Value.Catalogue,
-                bodies.SelectMany(source => source.Value).Select(body => body.Body), locations.Value, deepSky.Value, exoplanets.Value, missions.Value.Select(mission => mission.Track), tle.Value, earthPlaces.Value));
-            var observations = PrepareObservations(world, missions.Value, cancellation);
-            return new(world, sameScience ? previous!.Science : satellites, spice, sampled, relief, planets, marsTerrain, stellar, archive, definitions, sameBodies ? previous!.BodyCatalogues : bodies, locations, deepSky, exoplanets, missions, tle, earthPlaces, savedEarthPlacesPath, allowAddonLua, observations, galacticDust);
+            finally
+            {
+                openedDistantStars?.Dispose();
+            }
         }, cancellation);
 
         Cached<T>? Read<T>(Cached<T>? cached, LocalDataPath? path, string category, Func<LocalDataPath, CancellationToken, T> reader) =>

@@ -128,10 +128,11 @@ public partial class SolarSystemScene : Control
             GD.PushWarning($"Could not load the bright sky catalogue. {error.Message}");
         }
         SimulationWorld world = new(ephemeris, [], brightStars: _brightSky?.Catalogue);
+        AddonLoader.DecodedAddOns? candidate = null;
         try
         {
             _status.Text = "Loading add-ons…";
-            var decoded = await AddonLoader.Load(ephemeris, null, _localAddons, _localAddonFile, _brightSky?.Catalogue, token);
+            var decoded = candidate = await AddonLoader.Load(ephemeris, null, _localAddons, _localAddonFile, _brightSky?.Catalogue, token);
             if (!CanPublish(generation, token))
                 return;
             _addOns = AddonDiagnostics.Read(AddonStage.RenderResources, null, () => AddonLoader.Publish(decoded, null));
@@ -148,6 +149,10 @@ public partial class SolarSystemScene : Control
             if (!CanPublish(generation, token))
                 return;
             ShowAddonFailure("Could not load add-ons.", error);
+        }
+        finally
+        {
+            DisposeSupersededStars(candidate);
         }
         try
         {
@@ -607,6 +612,7 @@ public partial class SolarSystemScene : Control
     public override void _ExitTree()
     {
         _galacticSky.Dispose();
+        _addOns?.Decoded.DistantStars.Value?.Dispose();
         _eventSearch?.Cancel();
         _landscapeLifetime.Cancel();
         DisconnectCapture();
@@ -1119,13 +1125,14 @@ public partial class SolarSystemScene : Control
     {
         CancellationToken token = BeginLoad();
         int generation = _loadGeneration;
+        AddonLoader.DecodedAddOns? candidate = null;
         try
         {
             _status.Text = "Reloading add-ons…";
             _localAddonPanel.SetBusy(true);
             LocalAddonSettings settings = requested ?? _localAddons;
             AddonGeneration? previous = _addOns;
-            var decoded = await AddonLoader.Load(Session!.World.Ephemeris, previous?.Decoded, settings, _localAddonFile, _brightSky?.Catalogue, token);
+            var decoded = candidate = await AddonLoader.Load(Session!.World.Ephemeris, previous?.Decoded, settings, _localAddonFile, _brightSky?.Catalogue, token);
             if (!CanPublish(generation, token))
                 return false;
             AddonGeneration next = AddonDiagnostics.Read(AddonStage.RenderResources, null, () => AddonLoader.Publish(decoded, previous));
@@ -1136,6 +1143,7 @@ public partial class SolarSystemScene : Control
                 if (!Session.TryReplaceWorld(decoded.World))
                     throw new InvalidOperationException("The new world does not cover the current epochs.");
                 _addOns = next;
+                DisposeSupersededStars(previous?.Decoded);
                 _galacticSky.SetDust(decoded.GalacticDust.Value);
                 _objectSearch.Replace(Session.World.Catalogue);
                 UpdateLoadedInputs();
@@ -1162,12 +1170,19 @@ public partial class SolarSystemScene : Control
         }
         finally
         {
+            DisposeSupersededStars(candidate);
             if (CanPublish(generation, token))
             {
                 _localAddonPanel.SetBusy(false);
                 _localAddonPanel.ShowSources(_localAddons, _localAddonFile, _addOns?.Decoded);
             }
         }
+    }
+
+    private void DisposeSupersededStars(AddonLoader.DecodedAddOns? decoded)
+    {
+        if (decoded?.DistantStars.Value is { } index && !ReferenceEquals(index, _addOns?.Decoded.DistantStars.Value))
+            index.Dispose();
     }
 
     private void ShowAddonFailure(string prefix, Exception error)

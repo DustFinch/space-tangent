@@ -9,6 +9,12 @@ namespace SpaceTangent.Godot.Simulation;
 
 internal partial class SimulationViewport
 {
+    private const double SpatialFieldRadius = 6500;
+    private const double SpatialMagnitudeLimit = 8;
+    private readonly List<DistantStar> _distantStars = [];
+    private readonly List<(ObjectId Id, Vector3 Direction)> _distantStarPoints = [];
+    internal int VisibleDistantStars { get; private set; }
+
     private const int MaximumSystemDisks = 64;
     private MeshInstance3D _stellarField = null!;
     private Shader _stellarShader = null!;
@@ -35,6 +41,8 @@ internal partial class SimulationViewport
             _starSystems = world.Stellar.Stars.Where(star => star.BarycenterId.HasValue).ToLookup(star => star.BarycenterId!.Value);
             _lastStellarPosition = null;
         }
+        if (!ReferenceEquals(CatalogueWorld?.DistantStars, world.DistantStars) || CatalogueWorld?.StellarOrigin != world.StellarOrigin)
+            _lastStellarPosition = null;
         if (!ReferenceEquals(CatalogueWorld?.DeepSky, world.DeepSky) || CatalogueWorld?.StellarOrigin != world.StellarOrigin)
             CacheDeepSky(world);
         CatalogueWorld = world;
@@ -59,13 +67,13 @@ internal partial class SimulationViewport
         Vector3d eye = pose.AnchorKilometers + new Vector3d(localEye.X, -localEye.Z, localEye.Y) * units;
         DrawDeepSky(world, pose, sky, eye, units, project);
         DrawExoplanets(world, pose, snapshot, units, project);
-        if (sky.Stars && _fieldStars.Count != 0 && (eye - world.StellarOrigin).Length > StellarEntry.KilometersPerLightYear * .025)
-            DrawSpatialField(eye, snapshot.Epoch, world.StellarOrigin, pose.Target);
+        if (sky.Stars && (_fieldStars.Count != 0 || world.DistantStars is not null) && (eye - world.StellarOrigin).Length > StellarEntry.KilometersPerLightYear * .025)
+            DrawSpatialField(eye, snapshot.Epoch, world, pose.Target);
     }
 
-    private void DrawSpatialField(Vector3d eye, JulianInstant epoch, Vector3d origin, ObjectId? excluded)
+    private void DrawSpatialField(Vector3d eye, JulianInstant epoch, SimulationWorld world, ObjectId? excluded)
     {
-        const double fieldRadius = 6500;
+        Vector3d origin = world.StellarOrigin;
         ulong now = Time.GetTicksMsec();
         bool stale = _lastStellarTarget != excluded || _lastStellarPosition is not { } previous ||
             (eye - previous).Length > StellarEntry.KilometersPerLightYear * .075 ||
@@ -88,12 +96,38 @@ internal partial class SimulationViewport
                     continue;
                 double magnitude = star.VisualMagnitude +
                     5 * Math.Log10(distance / (star.DistanceParsecs * StellarEntry.KilometersPerParsec));
-                if (magnitude > 8)
+                if (magnitude > SpatialMagnitudeLimit)
                     continue;
-                vertices.Add(ToGodot(relative, distance / fieldRadius));
+                vertices.Add(ToGodot(relative, distance / SpatialFieldRadius));
                 Color color = StarColor(star);
-                color.A = (float)Math.Clamp((8 - magnitude) / 10, .07, 1);
+                color.A = (float)Math.Clamp((SpatialMagnitudeLimit - magnitude) / 10, .07, 1);
                 colors.Add(color);
+            }
+            _distantStarPoints.Clear();
+            VisibleDistantStars = 0;
+            if (world.DistantStars is { } distant)
+            {
+                Vector3d eyeLightYears = (eye - origin) / StellarEntry.KilometersPerLightYear;
+                _distantStars.Clear();
+                distant.Query(eyeLightYears, SpatialMagnitudeLimit, _distantStars);
+                foreach (DistantStar star in _distantStars)
+                {
+                    ObjectId? id = star.Id;
+                    if (id is { } named && (_visibleStars.ContainsKey(named) || world.Stellar.Find(named) is not null))
+                        continue;
+                    Vector3d relative = star.PositionLightYears - eyeLightYears;
+                    double distance = relative.Length;
+                    if (distance < 1000 / StellarEntry.KilometersPerLightYear)
+                        continue;
+                    Vector3 direction = ToGodot(relative, distance);
+                    double magnitude = star.MagnitudeAt(distance);
+                    vertices.Add(direction * (float)SpatialFieldRadius);
+                    colors.Add(new((float)star.Color.X, (float)star.Color.Y, (float)star.Color.Z,
+                        (float)Math.Clamp((SpatialMagnitudeLimit - magnitude) / 10, .07, 1)));
+                    if (id is { } target)
+                        _distantStarPoints.Add((target, direction));
+                    VisibleDistantStars++;
+                }
             }
             _stellarField.Mesh = null;
             if (vertices.Count > 0)
@@ -109,7 +143,29 @@ internal partial class SimulationViewport
             }
         }
         _stellarField.Position = _navigationCamera.Position;
-        _stellarField.Show();
+        _stellarField.Visible = _stellarField.Mesh is not null;
+    }
+
+    private ObjectId? PickDistantStar(Vector2 point)
+    {
+        if (!_stellarField.Visible)
+            return null;
+        const float radiusPixels = 5;
+        float best = radiusPixels * radiusPixels;
+        ObjectId? result = null;
+        foreach (var (id, direction) in _distantStarPoints)
+        {
+            Vector3 position = _navigationCamera.Position + direction * (float)SpatialFieldRadius;
+            if (_navigationCamera.IsPositionBehind(position))
+                continue;
+            float distance = _navigationCamera.UnprojectPosition(position).DistanceSquaredTo(point);
+            if (distance < best)
+            {
+                best = distance;
+                result = id;
+            }
+        }
+        return result;
     }
 
     private void DrawStellarSystem(StellarEntry target, SimulationWorld world, WorldSnapshot snapshot,

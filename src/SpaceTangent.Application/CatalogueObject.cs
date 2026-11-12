@@ -17,7 +17,7 @@ public sealed class ObjectCatalogue
 {
     internal ObjectCatalogue(IReadOnlyList<ScienceSatellite> satellites, BrightStarCatalogue stars,
         StellarCatalogue spatialStars, DeepSkyIndex deepSky, ExoplanetCatalogue exoplanets, IReadOnlyList<InstalledSscBody> sscBodies, IEnumerable<SscSurfaceLocation> locations, IEnumerable<SampledMission> missions,
-        IReadOnlyDictionary<ObjectId, LocalTleSatellite> localSatellites, EarthPlaceCatalogue earthPlaces)
+        IReadOnlyDictionary<ObjectId, LocalTleSatellite> localSatellites, EarthPlaceCatalogue earthPlaces, DistantStarIndex? distantStars)
     {
         var objects = new List<CatalogueObject> { new(SolarSystemSample.SunId, "Sun", CatalogueKind.Star) };
         objects.AddRange(PlanetCatalogue.Planets.Select(planet =>
@@ -63,6 +63,14 @@ public sealed class ObjectCatalogue
                 Aliases = new[] { place.Name, place.Name.Replace('ё', 'е').Replace('Ё', 'Е') }
                     .Where(alias => alias != place.EnglishName).Distinct(StringComparer.OrdinalIgnoreCase).ToArray()
             }));
+        _distantStars = distantStars;
+        if (distantStars is not null)
+        {
+            var existing = objects.Select(body => body.Id).ToHashSet();
+            foreach (var (id, name, aliases) in distantStars.NamedStars)
+                if (existing.Add(id))
+                    objects.Add(new(id, name, CatalogueKind.Star) { Aliases = aliases });
+        }
         Objects = objects.AsReadOnly();
         _byId = objects.ToDictionary(body => body.Id);
         SurfaceSites = SurfaceSite.Bind(this, locations);
@@ -77,7 +85,24 @@ public sealed class ObjectCatalogue
     private readonly Dictionary<ObjectId, CatalogueObject> _byId;
     public IReadOnlyList<CatalogueObject> Objects { get; }
     internal IReadOnlyList<SurfaceSite> SurfaceSites { get; }
-    public CatalogueObject? Find(ObjectId id) => _byId.GetValueOrDefault(id);
+    private readonly DistantStarIndex? _distantStars;
+
+    public CatalogueObject? Find(ObjectId id) => _byId.GetValueOrDefault(id) ??
+        (_distantStars?.Find(id) is { } star ? new(star.Id, star.Name, CatalogueKind.Star) { Aliases = star.Aliases } : null);
+
+    private static ObjectId? DistantDesignation(string query)
+    {
+        string value = query.ToLowerInvariant();
+        if (value.StartsWith('#'))
+            value = "stc/" + value[1..];
+        if (value.Length <= 4 || value[3] is not (' ' or '/') ||
+            value[..3] is not ("hip" or "tyc" or "stc"))
+            return null;
+        string number = value[4..].Trim();
+        if (number.Length is 0 or > 16 || !number.All(character => char.IsAsciiDigit(character) || character == '-'))
+            return null;
+        return new(value[..3] + "/" + number);
+    }
 
     public IReadOnlyList<CatalogueObject> Search(string query)
     {
@@ -94,6 +119,13 @@ public sealed class ObjectCatalogue
                 rank = Math.Min(rank, Rank(body.Aliases[alias]));
             if (rank < ranked.Length)
                 ranked[rank].Add(body);
+        }
+        if (_distantStars is not null && ranked[0].Count == 0 &&
+            DistantDesignation(query) is { } id && Find(id) is { } identified)
+        {
+            ranked[1].Remove(identified);
+            ranked[2].Remove(identified);
+            ranked[0].Add(identified);
         }
         return [.. ranked[0], .. ranked[1], .. ranked[2]];
 

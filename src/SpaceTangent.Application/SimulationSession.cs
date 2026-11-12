@@ -47,7 +47,7 @@ public sealed class SimulationWorld
     public SimulationWorld(ISolarSystemEphemeris ephemeris, IEnumerable<ScienceSatellite> satellites,
         SpiceSpacecraft? mission = null, SscSampledSpacecraft? timeline = null, HuygensMission? probe = null,
         SpicePolynomialBodyFrame? moonFrame = null, BrightStarCatalogue? brightStars = null, PlanetEphemerides? planets = null, bool hasMarsTerrain = false, StellarCatalogue? stellar = null, IEnumerable<SscBodyDefinition>? bodyCatalog = null,
-        IEnumerable<SscSurfaceLocation>? locations = null, DeepSkyIndex? deepSky = null, ExoplanetCatalogue? exoplanets = null, IEnumerable<SampledMission>? sampledMissions = null, IEnumerable<LocalTleSatellite>? localSatellites = null, EarthPlaceCatalogue? earthPlaces = null)
+        IEnumerable<SscSurfaceLocation>? locations = null, DeepSkyIndex? deepSky = null, ExoplanetCatalogue? exoplanets = null, IEnumerable<SampledMission>? sampledMissions = null, IEnumerable<LocalTleSatellite>? localSatellites = null, EarthPlaceCatalogue? earthPlaces = null, DistantStarIndex? distantStars = null)
     {
         Ephemeris = ephemeris;
         Satellites = Array.AsReadOnly(satellites.ToArray());
@@ -103,7 +103,8 @@ public sealed class SimulationWorld
         foreach (var imported in _sampledMissions.Values)
             graph.AddSampledMission(imported);
         EarthPlaces = earthPlaces ?? EarthPlaceCatalogue.Empty;
-        Catalogue = new(Satellites,  BrightStars, Stellar, DeepSky, Exoplanets, SscBodies, locations ?? [], _sampledMissions.Values, _localSatellites, EarthPlaces);
+        DistantStars = distantStars;
+        Catalogue = new(Satellites,  BrightStars, Stellar, DeepSky, Exoplanets, SscBodies, locations ?? [], _sampledMissions.Values, _localSatellites, EarthPlaces, distantStars);
         _sitesById = Catalogue.SurfaceSites.ToDictionary(site => site.Id);
         _sitesByBody = Catalogue.SurfaceSites.GroupBy(site => site.Body)
             .ToDictionary(group => group.Key, group => group.OrderByDescending(site => site.Definition.Importance ?? site.Definition.SizeKilometers).ToArray());
@@ -121,6 +122,7 @@ public sealed class SimulationWorld
     public ObjectCatalogue Catalogue { get; }
     public BrightStarCatalogue BrightStars { get; }
     public StellarCatalogue Stellar { get; }
+    public DistantStarIndex? DistantStars { get; }
     public DeepSkyIndex DeepSky { get; }
     public EarthPlaceCatalogue EarthPlaces { get; }
     public ExoplanetCatalogue Exoplanets { get; }
@@ -178,7 +180,7 @@ public sealed class SimulationWorld
         return false;
     }
 
-    public StellarEntry? FindStellarTarget(ObjectId id) => Stellar.Find(id) ?? Exoplanets.FindHost(id);
+    public StellarEntry? FindStellarTarget(ObjectId id) => Stellar.Find(id) ?? Exoplanets.FindHost(id) ?? DistantStars?.Find(id);
 
     private CartesianState PlaceStar(StellarEntry star, JulianInstant epoch)
     {

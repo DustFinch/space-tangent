@@ -47,3 +47,5 @@ The verified catalogue contains 6,462 planets from the published data by Thomas 
 Place the original `novae.json` and `supernovae.json` in `data/sky/transients` or set `SPACETANGENT_TRANSIENT_ROOT` to their directory before launching the simulator. The Stars layer renders these events using each view's epoch, so split views can show the same patch of sky before and during an outburst. The local files are optional.
 
 The reference checks use the 119 archived records, a view at the peak of SN 1054, and a view at the peak of V1500 Cygni. Both compare the rendered view against an earlier epoch and check that reloading add-ons preserves the comparison.
+
+The same archive directory can contain the optional `stars-far.bin` and `stars-far-names.txt` pair. The distant field reads spatial leaves on demand, uses the observer's apparent magnitude cutoff, and keeps the active file open until replacement succeeds. Named stars are searchable in the object list. Exact HIP and TYC designations and clicks on identifiable points can resolve additional entries. The built-in near catalogue takes precedence for duplicate designations.

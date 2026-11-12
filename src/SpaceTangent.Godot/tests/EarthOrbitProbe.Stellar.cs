@@ -27,6 +27,34 @@ public partial class EarthOrbitProbe
         await Capture("proxima-near", star, proxima.PositionKilometers, 450_000, sky);
         if (!scene.Renderer(0).StellarDiskResolved || !scene.Renderer(0).SpatialStarFieldVisible)
             throw new InvalidOperationException("The nearby star must resolve to a disk, with the field behind it.");
+        if (world.DistantStars is { } distant)
+        {
+            ObjectId target = new("hip/40");
+            if (distant.StarCount != 2_299_878 ||
+                world.Catalogue.Search("V463 Cep").FirstOrDefault()?.Id != target ||
+                world.Catalogue.Search("HIP 40").FirstOrDefault()?.Id != target ||
+                world.FindStellarTarget(target) is not { } resolved ||
+                world.Stellar.Find(target) is not null ||
+                !world.TryNavigationState(target, snapshot, out var state))
+                throw new InvalidOperationException("The original distant catalogue or its aliases were not published.");
+            await Capture("distant-star-solar-neighborhood", null, world.StellarOrigin, StellarEntry.KilometersPerLightYear, sky);
+            if (scene.Renderer(0).VisibleDistantStars != 0)
+                throw new InvalidOperationException("The distant catalogue should contribute no points near the Sun at magnitude 8.");
+
+            var betelgeuse = world.Stellar.Find(new("hip/27989"))!;
+            await Capture("distant-star-field", null, world.StellarOrigin + betelgeuse.StateAt(epoch).PositionKilometers * .99,
+                StellarEntry.KilometersPerLightYear * .002, sky);
+            int count = scene.Renderer(0).VisibleDistantStars;
+            if (count < 1000 || !scene.Renderer(0).SpatialStarFieldVisible)
+                throw new InvalidOperationException("The original catalogue should contribute at least 1000 points near Betelgeuse.");
+            await Capture("distant-star-disk", target, state.PositionKilometers, resolved.RadiusKilometers * 12, sky);
+            if (!scene.Renderer(0).StellarDiskResolved || scene.Renderer(0).VisibleStellarDisks != 1)
+                throw new InvalidOperationException("The resolved distant star should become one selectable disk.");
+            if (!await scene.ReloadAddOns() || !ReferenceEquals(scene.Session.World.DistantStars, distant) ||
+                scene.Session[0].Selection != target)
+                throw new InvalidOperationException("Reloading unchanged add-ons must preserve the index and selected distant star.");
+            GD.Print($"Distant archive rendered {count:N0} points near Betelgeuse, resolved V463 Cep, and reused the live index on reload.");
+        }
         if (archive)
         {
             var center = world.Stellar.FindByName("Dog Star")!;

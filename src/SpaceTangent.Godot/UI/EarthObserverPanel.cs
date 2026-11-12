@@ -113,6 +113,9 @@ internal sealed class EarthObserverPanel
                             ? FormattableString.Invariant($"{az:F2}°") : "undefined";
                         _coordinates.Text = FormattableString.Invariant(
                             $"Altitude {horizontal.AltitudeDegrees:F2}°\nAzimuth {azimuth}");
+                        if (camera.Conditions is { Refraction: true } air)
+                            _coordinates.Text += FormattableString.Invariant(
+                                $"\nApparent altitude {air.ApparentAltitude(horizontal.AltitudeDegrees, camera.Site):F2}°");
                     }
                 }
                 catch (ArgumentOutOfRangeException)
@@ -121,6 +124,8 @@ internal sealed class EarthObserverPanel
                 }
             }
         }
+        if (camera.Conditions is { } conditions)
+            _coordinates.Text += FormattableString.Invariant($"\nBortle {conditions.Bortle} · {conditions.PressureAt(camera.Site):F0} hPa");
         if (night is not null)
         {
             _coordinates.Text += FormattableString.Invariant($"\nNight of {night.EveningDate:yyyy-MM-dd}");

@@ -10,12 +10,28 @@ internal partial class BrightSkyOverlay : Control
 {
     internal readonly record struct SkyFrame(JulianInstant Epoch, SkyLayerSettings Layers, ObjectId? Selection,
         Vector3 Forward, Vector3 Right, Vector3 Up, float TangentHalfField, float StarVisibility = 1,
-        Vector3? Horizon = null, Vector3? Moon = null, float MoonRadius = 0, bool ShowCatalogue = true);
+        Vector3? Horizon = null, Vector3? Moon = null, float MoonRadius = 0, bool ShowCatalogue = true,
+        GroundSkyConditions? Conditions = null, EarthSite Site = default);
 
     private static readonly (Vector3 From, Vector3 To)[] Grid = MakeGrid().ToArray();
     private BrightSkyData _data = null!;
     private SkyFrame _frame;
     private bool _fillBackground;
+    private double _scintillationTime;
+    private ulong _nextTwinkle;
+
+    public override void _Process(double delta)
+    {
+        if (!IsVisibleInTree() || !_frame.Layers.Stars || _frame.StarVisibility <= 0 ||
+            _frame.Conditions is not { Scintillation: true })
+            return;
+        ulong now = Time.GetTicksMsec();
+        if (now < _nextTwinkle)
+            return;
+        _nextTwinkle = now + 40;
+        _scintillationTime = now / 1000.0;
+        QueueRedraw();
+    }
 
     internal bool HasTransientStars => _data.Transients.Stars.Count != 0;
 
@@ -50,7 +66,7 @@ internal partial class BrightSkyOverlay : Control
         ObjectId? selected = null;
         foreach (var star in _data.Catalogue.Stars)
         {
-            if (!TryPoint(star.Id, out Vector2 candidate))
+            if (!TryStarPoint(star, out Vector2 candidate, out _, out _))
                 continue;
             float distance = point.DistanceSquaredTo(candidate);
             if (distance < best)
@@ -65,12 +81,34 @@ internal partial class BrightSkyOverlay : Control
     internal bool TryPoint(ObjectId id, out Vector2 point)
     {
         point = default;
-        if (_data.Catalogue.Find(id) is not { } star)
+        return _data.Catalogue.Find(id) is { } star && TryStarPoint(star, out point, out _, out _);
+    }
+
+    private bool TryStarPoint(BrightStar star, out Vector2 point, out float magnitude, out float scintillation) =>
+        TrySkyObject(star.DirectionAt(_frame.Epoch), star.VisualMagnitude, star.Hipparcos * .61803398875, 2,
+            out point, out magnitude, out scintillation);
+
+    private bool TrySkyObject(Vector3d direction, double visualMagnitude, double phase, float margin,
+        out Vector2 point, out float magnitude, out float scintillation)
+    {
+        magnitude = (float)visualMagnitude;
+        scintillation = 1;
+        point = default;
+        if (_frame.Conditions is { } air && _frame.Horizon is { } zenith)
+            direction = air.RefractDirection(direction, new(zenith.X, zenith.Y, zenith.Z), _frame.Site);
+        Vector3 seen = Convert(direction);
+        if ((_frame.Moon is { } moon && seen.Dot(moon) >= MathF.Cos(_frame.MoonRadius)) ||
+            !Project(seen, out point) || !new Rect2(Vector2.Zero, Size).Grow(margin).HasPoint(point))
             return false;
-        Vector3 direction = Convert(star.DirectionAt(_frame.Epoch));
-        if (_frame.Moon is { } moon && direction.Dot(moon) >= MathF.Cos(_frame.MoonRadius))
-            return false;
-        return Project(direction, out point) && new Rect2(Vector2.Zero, Size).Grow(2).HasPoint(point);
+        if (_frame.Conditions is { } conditions && _frame.Horizon is { } horizon)
+        {
+            double altitude = Math.Asin(Math.Clamp(seen.Dot(horizon), -1, 1)) * 180 / Math.PI;
+            magnitude += (float)conditions.AttenuationMagnitude(altitude);
+            if (magnitude > conditions.LimitingMagnitude())
+                return false;
+            scintillation = (float)conditions.ScintillationFactor(altitude, _scintillationTime, phase);
+        }
+        return true;
     }
 
     public override void _Draw()
@@ -96,13 +134,14 @@ internal partial class BrightSkyOverlay : Control
 
         foreach (var star in _data.Catalogue.Stars)
         {
-            if (!TryPoint(star.Id, out Vector2 point))
+            if (!TryStarPoint(star, out Vector2 point, out float magnitude, out float scintillation))
                 continue;
             bool selected = star.Id == _frame.Selection;
             if (_frame.Layers.Stars)
             {
-                float size = Math.Clamp(3.2f - (float)star.VisualMagnitude * .44f, .7f, 4);
-                float alpha = _frame.StarVisibility * Math.Clamp(1 - (float)star.VisualMagnitude * .11f, .30f, 1);
+                float size = Math.Clamp(3.2f - magnitude * .44f, .7f, 4);
+                float minimum = _frame.Conditions.HasValue ? .05f : .30f;
+                float alpha = _frame.StarVisibility * Math.Clamp(scintillation * (1 - magnitude * .11f), minimum, 1);
                 DrawCircle(point, size, new(.84f, .91f, 1, alpha), antialiased: true);
                 if (selected)
                     DrawArc(point, 8, 0, Mathf.Tau, 20, new Color(.55f, .82f, 1), 1, true);
@@ -150,10 +189,7 @@ internal partial class BrightSkyOverlay : Control
         magnitude = (float)star.MagnitudeAt(_frame.Epoch.ToJulianDate());
         if (!_frame.Layers.Stars || _frame.StarVisibility <= 0 || magnitude > 14)
             return false;
-        Vector3 direction = Convert(star.Direction);
-        if (_frame.Moon is { } moon && direction.Dot(moon) >= MathF.Cos(_frame.MoonRadius))
-            return false;
-        return Project(direction, out point) && new Rect2(Vector2.Zero, Size).Grow(8).HasPoint(point);
+        return TrySkyObject(star.Direction, magnitude, star.Direction.X * 18.1, 8, out point, out magnitude, out _);
     }
 
     private void DrawSegments(IReadOnlyList<(Vector3 From, Vector3 To)> lines, Color color)

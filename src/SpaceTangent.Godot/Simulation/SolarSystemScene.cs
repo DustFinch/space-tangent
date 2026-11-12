@@ -345,7 +345,11 @@ public partial class SolarSystemScene : Control
         if (observer.Selection is { } location && Session.World.EarthPlaces.Find(location) is { } place)
         {
             var camera = observer.EarthObserver ?? EarthObserverCamera.Moscow;
-            Session.SetEarthObserver(_active, camera with { Site = place.ObserverSite });
+            Session.SetEarthObserver(_active, camera with
+            {
+                Site = place.ObserverSite,
+                Conditions = place.Bortle is { } bortle ? new GroundSkyConditions(bortle) : camera.Conditions
+            });
             SetMode(_active, CameraMode.Surface);
             _status.Text = place.EnglishName;
             return;
@@ -393,7 +397,8 @@ public partial class SolarSystemScene : Control
             Session.SetEarthObserver(_active, camera with
             {
                 AzimuthDegrees = position.AzimuthDegrees ?? camera.AzimuthDegrees,
-                ElevationDegrees = position.AltitudeDegrees
+                ElevationDegrees = camera.Conditions?.ApparentAltitude(position.AltitudeDegrees, camera.Site) ??
+                    position.AltitudeDegrees
             });
             Session.SetSkyLayers(_active, observer.Sky with { Stars = true });
             _status.Text = position.AltitudeDegrees >= 0 ? "" : "The star is below this observer's horizon.";
@@ -509,6 +514,9 @@ public partial class SolarSystemScene : Control
                 break;
             case Key.E when key.CtrlPressed:
                 _ = FindNextObserverEvent();
+                break;
+            case Key.G when key.CtrlPressed && !key.ShiftPressed:
+                ChangeGroundSky(key.AltPressed);
                 break;
             case Key.N when key.CtrlPressed && key.AltPressed && !key.ShiftPressed:
                 ExportObserverNight();

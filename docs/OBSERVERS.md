@@ -69,3 +69,11 @@ The optional `data/saved-sites.tsv` or `SPACETANGENT_SAVED_EARTH_PLACES` uses th
 Select a target and press **Ctrl+N**. The existing Ephemerides page shows the refined upper culmination and the best half-hour sample with the target at least 10° high and the Sun below −12°. Samples start at 18:00 local mean solar time on the active view's date. Use **Ctrl+Shift+N** to seek to the best dark sample and **Ctrl+Alt+N** to export all 29 rows to the local observations directory.
 
 The CSV records TDB Julian dates and geometric Sun and target altitude and azimuth in degrees. Unavailable quantities are empty. Independent views keep their epochs and cameras. A different target, site, observer, ΔT model or add-on generation requires recalculation.
+
+## Ground sky conditions
+
+An archived site with a Bortle class applies its ground sky profile when opened. In an Earth surface view, **Ctrl+G** enables the profile or cycles through the nine classes. **Ctrl+Alt+G** switches the profile on or off. The Ephemerides page shows pressure and apparent altitude alongside the geometric values. Night tables and event calculations keep their geometric definitions.
+
+Version 11 scenarios store the optional `conditions` object inside each `earthObserver`. It accepts `bortle`, `temperatureCelsius`, `pressureHectopascals`, `extinction`, `refraction` and `scintillation`. Leave pressure empty to estimate it from altitude. Extinction is in visual magnitudes per zenith airmass. The profile refracts star and Moon directions, dims and scintillates stars, and adds modeled night sky glow. The Sun and clouds retain the geometric lighting calculation.
+
+The sky quality and limiting magnitude table follows the archived sky profiles based on [John Bortle's scale](https://www.skyandtelescope.org/wp-content/uploads/BortleDarkSkyScale.pdf). Relative optical airmass uses [Kasten and Young's approximation](https://opg.optica.org/ao/abstract.cfm?URI=ao-28-22-4735).

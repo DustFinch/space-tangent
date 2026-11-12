@@ -83,6 +83,11 @@ internal sealed class SurfaceProjection
         _material.SetShaderParameter("camera_up", cameraUp);
         _material.SetShaderParameter("earth_to_sun", Convert(lighting.EarthToSun));
         _material.SetShaderParameter("earth_to_moon", Convert(lighting.EarthToMoon));
+        var moonOffset = lighting.EarthToMoon - lighting.PositionKilometers;
+        Vector3d moon = moonOffset / moonOffset.Length;
+        var moonSeen = observer.Conditions?.RefractDirection(moon, lighting.EastNorthUp.Z, observer.Site) ?? moon;
+        _material.SetShaderParameter("moon_seen", Convert(moonSeen));
+        _material.SetShaderParameter("sky_glow", (float)(observer.Conditions?.ZenithGlow() ?? 0));
         EclipseRendering.SetEarthShadow(_material, lighting, godotAxes: false);
         _material.SetShaderParameter("earth_angle", (float)lighting.EarthRotationRadians);
         _material.SetShaderParameter("earth_radius", (float)EarthSurfaceLighting.EarthRadiusKilometers);
@@ -94,10 +99,10 @@ internal sealed class SurfaceProjection
         if (_sky is not null && sky.Visible)
         {
             float solarAltitude = (float)(lighting.SolarAltitudeRadians / Degrees);
-            Vector3 moon = Convert(lighting.EarthToMoon - lighting.PositionKilometers);
-            float moonRadius = MathF.Asin(MathF.Min(4 * (float)EarthSurfaceLighting.MoonRadiusKilometers / moon.Length(), .1f));
+            float moonRadius = MathF.Asin(MathF.Min(4 * (float)(EarthSurfaceLighting.MoonRadiusKilometers / moonOffset.Length), .1f));
             _sky.ShowFrame(new(sample.Epoch, sky, selection, forward, right, cameraUp, _tanHalfField,
-                1 - Mathf.SmoothStep(-12, -4, solarAltitude), up, moon.Normalized(), moonRadius));
+                1 - Mathf.SmoothStep(-12, -4, solarAltitude), up, Convert(moonSeen), moonRadius,
+                Conditions: observer.Conditions, Site: observer.Site));
         }
         else
             _sky?.Hide();

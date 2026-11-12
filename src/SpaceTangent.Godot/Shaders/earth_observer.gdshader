@@ -13,6 +13,8 @@ uniform vec3 right;
 uniform vec3 camera_up;
 uniform vec3 earth_to_sun;
 uniform vec3 earth_to_moon;
+uniform vec3 moon_seen;
+uniform float sky_glow = 0.0;
 uniform float earth_angle;
 uniform float earth_radius;
 uniform float moon_radius;
@@ -57,14 +59,16 @@ float cloud_cover(vec3 cloud, float regional_cover) {
 vec3 lunar_disc(vec3 ray, vec3 moon_dir, float moon_distance, vec3 background) {
     // The established observer preset displays the Moon at four times its physical angular size.
     float radius = min(4.0 * moon_radius / moon_distance, 0.1);
-    if (dot(ray, moon_dir) <= 0.0 || length(cross(ray, moon_dir)) >= radius) {
+    if (dot(ray, moon_seen) <= 0.0 || length(cross(ray, moon_seen)) >= radius) {
         return background;
     }
 
     vec3 east = normalize(cross(vec3(0.0, 0.0, 1.0), moon_dir));
     vec3 north = normalize(cross(moon_dir, east));
-    float x = dot(ray, east) / radius;
-    float y = dot(ray, north) / radius;
+    vec3 seen_east = normalize(cross(vec3(0.0, 0.0, 1.0), moon_seen));
+    vec3 seen_north = normalize(cross(moon_seen, seen_east));
+    float x = dot(ray, seen_east) / radius;
+    float y = dot(ray, seen_north) / radius;
     float depth = sqrt(max(0.0, 1.0 - x * x - y * y));
     vec3 normal = x * east + y * north - depth * moon_dir;
     vec3 lunar_point = earth_to_moon + normal * moon_radius;
@@ -95,7 +99,7 @@ void fragment() {
     bool ground = eye_projection < 0.0 && ground_discriminant >= 0.0;
     vec3 background = ground ? vec3(0.010, 0.009, 0.008) : vec3(0.012, 0.018, 0.035);
 
-    if (!ground && dot(moon_dir, site_up) > 0.0) {
+    if (!ground && dot(moon_seen, site_up) > 0.0) {
         background = lunar_disc(ray, moon_dir, length(moon_delta), background);
     }
 
@@ -133,7 +137,13 @@ void fragment() {
     float start = coverage > 0.0 ? cloud_distance : 0.0;
     air_integrate(observer, ray, sun_dir, earth_radius, start, sky_distance, 20, view_column, air_radiance);
     vec3 sky = air_compose(background, view_column, air_radiance);
-    vec3 color = air_linear_to_srgb(mix(sky, cloud_radiance, coverage));
+    vec3 composite = mix(sky, cloud_radiance, coverage);
+    if (!ground && sky_glow > 0.0) {
+        float night = 1.0 - smoothstep(-0.208, -0.087, dot(sun_dir, site_up));
+        float horizon = 1.0 + 1.1 * pow(1.0 - max(0.0, dot(ray, site_up)), 2.0);
+        composite += sky_glow * night * horizon * vec3(1.0, 0.58, 0.28);
+    }
+    vec3 color = air_linear_to_srgb(composite);
     if (show_horizon_grid) {
         float altitude = asin(clamp(dot(ray, site_up), -1.0, 1.0));
         float azimuth = atan(dot(ray, site_east), dot(ray, site_north));

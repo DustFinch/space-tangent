@@ -16,7 +16,7 @@ public sealed record SimulationScenario(IReadOnlyList<ObserverView> Views, bool 
 /// <summary>Persists observer settings with exact TDB epochs and stable catalog IDs.</summary>
 public static class ScenarioFile
 {
-    private const int Version = 10;
+    private const int Version = 11;
     internal const int MaximumBytes = 32 * 1024;
     private static readonly JsonSerializerOptions Json = new()
     {
@@ -51,7 +51,8 @@ public static class ScenarioFile
             throw new InvalidDataException("The scenario has unsupported reference marks.");
         var document = new Document
         {
-            Version = scenario.Views.Any(view => view.LightTimeDelayed) ? Version :
+            Version = scenario.Views.Any(view => view.EarthObserver?.Conditions is not null) ? Version :
+                scenario.Views.Any(view => view.LightTimeDelayed) ? 10 :
                 scenario.Views.Any(view => view.ReferenceMarks != BodyReferenceMarks.None) ? 9 :
                 scenario.Layout is not null || scenario.Views.Any(view => view.Navigation?.Placement?.Reference is not null) ? 8 : 7,
             Synchronized = scenario.Synchronized,
@@ -146,7 +147,8 @@ public static class ScenarioFile
             NavigationCamera? navigation = data.Navigation?.ToPose();
             if (navigation is { } pose && !pose.IsValid())
                 throw new InvalidDataException("The scenario has an invalid camera pose.");
-            if (data.EarthObserver is { } earth && (document.Version < 3 || !earth.IsValid()))
+            if (data.EarthObserver is { } earth &&
+                (document.Version < 3 || !earth.IsValid() || (document.Version < 11 && earth.Conditions is not null)))
                 throw new InvalidDataException("The scenario has an invalid Earth observer camera.");
             if (data.Sky is not null && document.Version < 4)
                 throw new InvalidDataException("Sky layers require a version 4 scenario.");

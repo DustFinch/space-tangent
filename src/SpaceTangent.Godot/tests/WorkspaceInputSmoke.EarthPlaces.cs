@@ -29,6 +29,14 @@ public partial class WorkspaceInputSmoke
             Require(Session.World.Catalogue.Search("Москва").Any(place => place.Name == "Moscow"),
                 "The original localized site name must be searchable.");
             await OpenPlace("Paranal Observatory", observatory);
+            Require(Session[0].EarthObserver?.Conditions is { Bortle: 1 },
+                "The archived Paranal Bortle class must apply on site selection.");
+            GetViewport().GuiGetFocusOwner()?.ReleaseFocus();
+            await KeyPress(Key.G, ctrl: true);
+            Require(Session[0].EarthObserver?.Conditions is { Bortle: 2 } && Session[1] == right,
+                "The class shortcut must change only the active observer.");
+            await KeyPress(Key.G, ctrl: true, alt: true);
+            Require(Session[0].EarthObserver?.Conditions is null, "The ground sky shortcut must restore the geometric sky.");
             Require(Session[1] == right, "Choosing the observatory must affect only the active view.");
 
             File.WriteAllText(savedFile, "Home Observatory\t51.5\t-0.125\t30\t0\tEurope/London\n");

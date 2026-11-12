@@ -46,7 +46,9 @@ internal partial class SimulationViewport
             if (camera?.KeepAspect == Camera3D.KeepAspectEnum.Width && _spaceSky.Size.X > 0)
                 tangent *= _spaceSky.Size.Y / _spaceSky.Size.X;
             DrawGalacticSky(orbital, camera, tangent);
-            bool render = (catalogue || (observer.Sky.Stars && _spaceSky.HasTransientStars)) && orbital;
+            bool culture = observer.Sky.ConstellationArt ||
+                (observer.Sky.Constellations && observer.Sky.CultureId is not null);
+            bool render = (catalogue || culture || (observer.Sky.Stars && _spaceSky.HasTransientStars)) && orbital;
             _spaceSky.Visible = render;
             _spaceSky.SetFillBackground(!GalacticSkyVisible);
             SkyEnvironment? background = render || GalacticSkyVisible ? _canvasBackground : null;
@@ -55,8 +57,10 @@ internal partial class SimulationViewport
             if (render && camera is not null)
             {
                 Basis basis = camera.GlobalBasis;
+                Vector3d observerFromSun = observer.Navigation is { } pose && CatalogueWorld is { } world
+                    ? pose.AnchorKilometers + pose.ResolvePlacement(snapshot, deltaT).OffsetKilometers - world.StellarOrigin : default;
                 _spaceSky.ShowFrame(new(observer.Epoch, observer.Sky, observer.Selection,
-                    Icrs(-basis.Z), Icrs(basis.X), Icrs(basis.Y), tangent, ShowCatalogue: catalogue));
+                    Icrs(-basis.Z), Icrs(basis.X), Icrs(basis.Y), tangent, ShowCatalogue: catalogue, ObserverFromSun: observerFromSun));
             }
         }
         DrawEyepiece(observer);
@@ -65,6 +69,8 @@ internal partial class SimulationViewport
 
         static Vector3 Icrs(Vector3 value) => new(value.X, -value.Z, value.Y);
     }
+
+    internal BrightSkyOverlay? SpaceCultureOverlay => _spaceSky is { Visible: true } ? _spaceSky : null;
 
     internal bool TransientStarVisible(ObjectId id) => _spaceSky?.TransientVisible(id) == true;
 

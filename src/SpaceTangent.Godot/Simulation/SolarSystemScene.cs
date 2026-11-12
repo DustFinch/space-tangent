@@ -397,11 +397,13 @@ public partial class SolarSystemScene : Control
         button.Toggled += _ =>
         {
             Session!.SetSkyLayers(_active,
-                new SkyLayerSettings(_stars.ButtonPressed, _starLabels.ButtonPressed, _equatorialGrid.ButtonPressed,
-                    _constellations.ButtonPressed)
+                Session[_active].Sky with
                 {
-                    DeepSky = _deepSky.ButtonPressed,
-                    Meteors = Session[_active].Sky.Meteors
+                    Stars = _stars.ButtonPressed,
+                    Labels = _starLabels.ButtonPressed,
+                    EquatorialGrid = _equatorialGrid.ButtonPressed,
+                    Constellations = _constellations.ButtonPressed,
+                    DeepSky = _deepSky.ButtonPressed
                 });
             Refresh();
         };

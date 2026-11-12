@@ -82,6 +82,7 @@ public partial class EarthOrbitProbe : Node
             await ExerciseSmallBodies(scene, epoch, directory);
             if (System.Environment.GetEnvironmentVariable("SPACETANGENT_SPATIAL_SKY_SMOKE") == "1")
                 await ExerciseStellarSpace(scene, epoch, directory);
+            await ExerciseSkyCultures(scene, epoch, directory);
             await CaptureShip(scene, directory);
             await ExerciseHistoricalEpoch(scene, directory);
             await ExerciseHistoricalSurface(scene, directory);

@@ -3,6 +3,7 @@ using System.Globalization;
 using System.Text.Json;
 using Godot;
 using SpaceTangent.Application;
+using SpaceTangent.Core.Observing;
 
 namespace SpaceTangent.Godot.Simulation;
 
@@ -39,6 +40,7 @@ public partial class SolarSystemScene
                 throw new InvalidDataException(_status.Text);
             if (_startupArguments.Contains("--startup-legacy-settings", StringComparer.Ordinal))
                 ImportStartupSettings(RequiredArgument("--startup-legacy-settings"));
+            ApplyStartupSkyCulture();
             if (_startupArguments.Contains("--startup-save-scenario", StringComparer.Ordinal) &&
                 !SaveScenario(RequiredArgument("--startup-save-scenario")))
                 throw new InvalidDataException(_status.Text);
@@ -87,6 +89,34 @@ public partial class SolarSystemScene
         views[_active] = profile.Observer;
         ApplyScenario(current with { Views = Array.AsReadOnly(views), DeltaT = profile.DeltaT });
         GD.Print("Legacy observer profile applied to the active view.");
+    }
+
+    private void ApplyStartupSkyCulture()
+    {
+        var session = Session!;
+        var previous = session[_active].Sky;
+        var sky = previous;
+        if (_startupArguments.Contains("--startup-sky-culture", StringComparer.Ordinal))
+        {
+            string id = RequiredArgument("--startup-sky-culture");
+            var culture = _brightSky?.Cultures.Find(id);
+            if (culture is null && id != "default")
+                throw new InvalidDataException($"Unknown local sky culture {id}.");
+            sky = sky with { CultureId = culture?.Id, Constellations = true };
+        }
+        if (_startupArguments.Contains("--startup-sky-names", StringComparer.Ordinal))
+        {
+            if (!Enum.TryParse(RequiredArgument("--startup-sky-names"), ignoreCase: true, out SkyCultureNames names) || !Enum.IsDefined(names))
+                throw new InvalidDataException("Sky names require International, Native or Russian.");
+            sky = sky with { CultureNames = names, Labels = true };
+        }
+        if (_startupArguments.Contains("--startup-constellation-art", StringComparer.Ordinal))
+            sky = sky with { ConstellationArt = true };
+        if (sky != previous)
+        {
+            session.SetSkyLayers(_active, sky);
+            Refresh();
+        }
     }
 
     private string RequiredArgument(string name)

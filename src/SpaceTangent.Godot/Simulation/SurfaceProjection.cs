@@ -57,6 +57,8 @@ internal sealed partial class SurfaceProjection
         _meteors.SetAnchorsAndOffsetsPreset(Control.LayoutPreset.FullRect);
     }
 
+    internal void SetCultureWorld(SimulationWorld world) => _sky?.SetCultureWorld(world);
+
     internal void SetGalacticSky(Texture2D? image)
     {
         if (ReferenceEquals(_galacticImage, image))

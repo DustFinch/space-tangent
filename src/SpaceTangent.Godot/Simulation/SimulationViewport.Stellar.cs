@@ -46,6 +46,8 @@ internal partial class SimulationViewport
         if (!ReferenceEquals(CatalogueWorld?.DeepSky, world.DeepSky) || CatalogueWorld?.StellarOrigin != world.StellarOrigin)
             CacheDeepSky(world);
         CatalogueWorld = world;
+        _spaceSky?.SetCultureWorld(world);
+        _surface?.SetCultureWorld(world);
     }
 
     private void InitializeStellarRendering()

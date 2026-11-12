@@ -11,7 +11,7 @@ internal partial class BrightSkyOverlay : Control
     internal readonly record struct SkyFrame(JulianInstant Epoch, SkyLayerSettings Layers, ObjectId? Selection,
         Vector3 Forward, Vector3 Right, Vector3 Up, float TangentHalfField, float StarVisibility = 1,
         Vector3? Horizon = null, Vector3? Moon = null, float MoonRadius = 0, bool ShowCatalogue = true,
-        GroundSkyConditions? Conditions = null, EarthSite Site = default, double? OpticalLimit = null);
+        GroundSkyConditions? Conditions = null, EarthSite Site = default, double? OpticalLimit = null, Vector3d ObserverFromSun = default);
 
     private static readonly (Vector3 From, Vector3 To)[] Grid = MakeGrid().ToArray();
     private BrightSkyData _data = null!;
@@ -123,6 +123,8 @@ internal partial class BrightSkyOverlay : Control
     {
         if (_fillBackground && _frame.ShowCatalogue)
             DrawRect(new Rect2(Vector2.Zero, Size), new Color(.02745f, .03529f, .04706f));
+        var occupied = new List<Rect2>();
+        bool customConstellations = DrawCulture(occupied);
         if (!_frame.ShowCatalogue)
         {
             DrawTransients();
@@ -130,12 +132,11 @@ internal partial class BrightSkyOverlay : Control
         }
         if (_frame.Layers.EquatorialGrid)
             DrawSegments(Grid, new(.32f, .52f, .70f, .53f));
-        if (_frame.Layers.Constellations)
+        if (_frame.Layers.Constellations && !customConstellations)
             DrawSegments(_data.Figures, new(.52f, .63f, .85f, .73f));
         if (_frame.StarVisibility <= 0 || (!_frame.Layers.Stars && !_frame.Layers.Labels))
             return;
 
-        var occupied = new List<Rect2>();
         if (_frame.Layers.Labels && _frame.Selection is { } selectedId &&
             _data.Catalogue.Find(selectedId) is { } selectedStar && TryPoint(selectedId, out Vector2 selectedPoint))
             LabelStar(selectedStar, selectedPoint);

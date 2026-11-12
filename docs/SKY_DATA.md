@@ -49,3 +49,9 @@ Place the original `novae.json` and `supernovae.json` in `data/sky/transients` o
 The reference checks use the 119 archived records, a view at the peak of SN 1054, and a view at the peak of V1500 Cygni. Both compare the rendered view against an earlier epoch and check that reloading add-ons preserves the comparison.
 
 The same archive directory can contain the optional `stars-far.bin` and `stars-far-names.txt` pair. The distant field reads spatial leaves on demand, uses the observer's apparent magnitude cutoff, and keeps the active file open until replacement succeeds. Named stars are searchable in the object list. Exact HIP and TYC designations and clicks on identifiable points can resolve additional entries. The built-in near catalogue takes precedence for duplicate designations.
+
+## Local sky cultures and constellation art
+
+Place the archived culture directories under `data/sky/cultures`, or set `SPACETANGENT_SKY_CULTURES` to their parent directory. Use `--startup-sky-culture western --startup-sky-names native --startup-constellation-art` to choose the Western culture and show its drawings in the active view. Name modes are `international`, `native`, and `russian`. Constellation figures use the existing layer control. Scenario version 15 stores the culture, naming style, and art setting independently for each view.
+
+The loader verified 33 archived definitions and 85 available Western illustrations. Keep each culture's credits and licence with its data. A missing image leaves the figure and label available.

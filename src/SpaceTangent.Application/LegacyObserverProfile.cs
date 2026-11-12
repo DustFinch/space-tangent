@@ -62,8 +62,13 @@ public static class LegacyObserverProfiles
             {
                 Constellations = (layers & 1) != 0,
                 EquatorialGrid = (layers & 2) != 0,
-                DeepSky = (layers & 64) != 0
+                DeepSky = (layers & 64) != 0,
+                ConstellationArt = (layers & 128) != 0
             };
+        if (Word(root, "SkyCulture") is { } culture && SkyCultureLibrary.ValidId(culture))
+            sky = sky with { CultureId = culture };
+        if (Enum.TryParse(Word(root, "NameStyle"), out SkyCultureNames names) && Enum.IsDefined(names))
+            sky = sky with { CultureNames = names };
         sky = sky with { Labels = Flag(root, "Labels") ?? sky.Labels, Meteors = Flag(root, "Meteors") ?? sky.Meteors };
         var marks = Integer(root, "BodyMarks") is { } flags ? (BodyReferenceMarks)flags & BodyReferenceMarks.All : current.ReferenceMarks;
         double? field = Number(root, "FieldOfViewDegrees") is { } degrees && ObserverView.ValidFieldOfView(degrees)

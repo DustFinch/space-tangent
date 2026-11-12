@@ -5,8 +5,55 @@ using System.Text.Json;
 
 namespace SpaceTangent.Godot.Simulation;
 
-internal sealed record BrightSkyData(BrightStarCatalogue Catalogue, IReadOnlyList<(Vector3 From, Vector3 To)> Figures, TransientStarCatalogue Transients, MeteorCatalogue Meteors)
+internal sealed record BrightSkyData(BrightStarCatalogue Catalogue, IReadOnlyList<(Vector3 From, Vector3 To)> Figures, TransientStarCatalogue Transients, MeteorCatalogue Meteors, SkyCultureLibrary Cultures)
 {
+    private readonly Dictionary<string, Texture2D?> _artTextures = new(StringComparer.Ordinal);
+    private const int MaximumArtTextures = 128;
+    private const int MaximumArtPixels = 24 * 1024 * 1024;
+    private int _artPixels;
+
+    internal Texture2D? ArtTexture(SkyCultureArtwork art)
+    {
+        if (_artTextures.TryGetValue(art.ImagePath, out var cached))
+            return cached;
+        if (_artTextures.Count >= MaximumArtTextures)
+        {
+            _artTextures.Clear();
+            _artPixels = 0;
+        }
+        try
+        {
+            using FileStream source = File.OpenRead(art.ImagePath);
+            if (source.Length is < 16 or > 8 * 1024 * 1024)
+                throw new InvalidDataException("The artwork exceeds its size limit.");
+            var bytes = new byte[(int)source.Length];
+            source.ReadExactly(bytes);
+            using var image = new Image();
+            Error status = Path.GetExtension(art.ImagePath).ToLowerInvariant() switch
+            {
+                ".webp" => image.LoadWebpFromBuffer(bytes),
+                ".png" => image.LoadPngFromBuffer(bytes),
+                _ => image.LoadJpgFromBuffer(bytes)
+            };
+            if (status != Error.Ok || image.IsEmpty() || image.GetWidth() > 4096 || image.GetHeight() > 4096)
+                throw new InvalidDataException("The artwork image is unreadable or too large.");
+            int pixels = image.GetWidth() * image.GetHeight();
+            if (_artPixels + pixels > MaximumArtPixels)
+            {
+                _artTextures.Clear();
+                _artPixels = 0;
+            }
+            _artPixels += pixels;
+            image.GenerateMipmaps();
+            return _artTextures[art.ImagePath] = ImageTexture.CreateFromImage(image);
+        }
+        catch (Exception error) when (error is IOException or InvalidDataException or UnauthorizedAccessException)
+        {
+            GD.Print($"Constellation artwork {Path.GetFileName(art.ImagePath)}: {error.Message}");
+            return _artTextures[art.ImagePath] = null;
+        }
+    }
+
     internal static BrightSkyData Load()
     {
         using var catalogue = new StringReader(global::Godot.FileAccess.GetFileAsString("res://SkyData/bright-stars.tsv"));
@@ -28,7 +75,18 @@ internal sealed record BrightSkyData(BrightStarCatalogue Catalogue, IReadOnlyLis
         string root = LocalDataPaths.Find("SPACETANGENT_TRANSIENT_ROOT", "sky/transients", directory: true);
         var transients = TransientStarCatalogue.Load(root, message => GD.PushWarning("Transient stars: " + message));
         using var showers = new StringReader(global::Godot.FileAccess.GetFileAsString("res://SkyData/meteor-showers.tsv"));
-        return new(stars, lines.AsReadOnly(), transients, MeteorCatalogue.Read(showers));
+        string cultures = LocalDataPaths.Find("SPACETANGENT_SKY_CULTURES", "sky/cultures", directory: true);
+        int missingArtwork = 0;
+        var library = SkyCultureLibrary.Load(cultures, message =>
+        {
+            if (message.StartsWith("Constellation artwork ", StringComparison.Ordinal))
+                missingArtwork++;
+            else
+                GD.Print("Sky cultures: " + message);
+        });
+        if (missingArtwork > 0)
+            GD.Print($"Sky cultures: {missingArtwork} referenced illustrations are absent from the local archive.");
+        return new(stars, lines.AsReadOnly(), transients, MeteorCatalogue.Read(showers), library);
     }
 
     internal static Vector3 Equatorial(float raDegrees, float decDegrees)
@@ -38,7 +96,7 @@ internal sealed record BrightSkyData(BrightStarCatalogue Catalogue, IReadOnlyLis
         return new(cosDec * cosRa, cosDec * sinRa, sinDec);
     }
 
-    private static void AddArc(Vector3 from, Vector3 to, List<(Vector3, Vector3)> lines)
+    internal static void AddArc(Vector3 from, Vector3 to, List<(Vector3, Vector3)> lines)
     {
         float angle = from.AngleTo(to);
         if (angle < 1e-5f || angle >= MathF.PI - 1e-5f)

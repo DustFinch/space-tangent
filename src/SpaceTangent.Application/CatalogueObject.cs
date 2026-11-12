@@ -6,7 +6,7 @@ using SpaceTangent.Core.Observing;
 
 namespace SpaceTangent.Application;
 
-public enum CatalogueKind { Star, Planet, Moon, Spacecraft, DwarfPlanet, Asteroid, Comet, Galaxy, Nebula, Cluster }
+public enum CatalogueKind { Star, Planet, Moon, Spacecraft, DwarfPlanet, Asteroid, Comet, Galaxy, Nebula, Cluster, SurfaceLocation }
 
 public sealed record CatalogueObject(ObjectId Id, string Name, CatalogueKind Kind, ObjectId? Parent = null)
 {
@@ -16,7 +16,7 @@ public sealed record CatalogueObject(ObjectId Id, string Name, CatalogueKind Kin
 public sealed class ObjectCatalogue
 {
     internal ObjectCatalogue(IReadOnlyList<ScienceSatellite> satellites, BrightStarCatalogue stars,
-        StellarCatalogue spatialStars, IReadOnlyList<InstalledSscBody> sscBodies)
+        StellarCatalogue spatialStars, IReadOnlyList<InstalledSscBody> sscBodies, IEnumerable<SscSurfaceLocation> locations)
     {
         var objects = new List<CatalogueObject> { new(SolarSystemSample.SunId, "Sun", CatalogueKind.Star) };
         objects.AddRange(PlanetCatalogue.Planets.Select(planet =>
@@ -42,10 +42,18 @@ public sealed class ObjectCatalogue
             })));
         Objects = objects.AsReadOnly();
         _byId = objects.ToDictionary(body => body.Id);
+        SurfaceSites = SurfaceSite.Bind(this, locations);
+        foreach (SurfaceSite site in SurfaceSites)
+        {
+            var location = new CatalogueObject(site.Id, site.Definition.Name, CatalogueKind.SurfaceLocation, site.Body);
+            objects.Add(location);
+            _byId.Add(location.Id, location);
+        }
     }
 
     private readonly Dictionary<ObjectId, CatalogueObject> _byId;
     public IReadOnlyList<CatalogueObject> Objects { get; }
+    internal IReadOnlyList<SurfaceSite> SurfaceSites { get; }
     public CatalogueObject? Find(ObjectId id) => _byId.GetValueOrDefault(id);
 
     public IReadOnlyList<CatalogueObject> Search(string query)

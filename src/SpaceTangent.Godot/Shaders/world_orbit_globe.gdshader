@@ -5,6 +5,7 @@ render_mode unshaded;
 #include "res://Shaders/world_orbit_air.gdshaderinc"
 uniform sampler2D globe_map : source_color, filter_linear_mipmap, repeat_enable;
 uniform bool has_globe_map;
+uniform float prime_meridian_offset;
 uniform vec4 globe_color : source_color = vec4(1.0);
 
 void vertex() {
@@ -14,7 +15,7 @@ void vertex() {
 
 void fragment() {
     vec3 normal = normalize(air_surface);
-    vec3 surface = has_globe_map ? texture(globe_map, UV).rgb : globe_color.rgb;
+    vec3 surface = has_globe_map ? texture(globe_map, UV + vec2(prime_meridian_offset, 0.0)).rgb : globe_color.rgb;
     surface = OUTPUT_IS_SRGB ? air_srgb_linear(surface) : surface;
     float sun = max(0.0, dot(normal, light_in_body));
     vec3 transmission;

@@ -88,9 +88,10 @@ internal sealed class ObjectSearchPanel
         }
         _rows.Clear();
         bool browsing = string.IsNullOrWhiteSpace(_query.Text);
-        var matches = _catalogue.Search(_query.Text).Where(body => _filter switch
+        var matches = _catalogue.Search(_query.Text).Where(body => !browsing || body.Kind != CatalogueKind.SurfaceLocation)
+            .Where(body => _filter switch
         {
-            1 => body.Kind is CatalogueKind.Planet or CatalogueKind.Moon or CatalogueKind.DwarfPlanet or CatalogueKind.Asteroid or CatalogueKind.Comet || body.Id.Value == "sol/sun",
+            1 => body.Kind is CatalogueKind.Planet or CatalogueKind.Moon or CatalogueKind.DwarfPlanet or CatalogueKind.Asteroid or CatalogueKind.Comet or CatalogueKind.SurfaceLocation || body.Id.Value == "sol/sun",
             2 => body.Kind == CatalogueKind.Spacecraft,
             3 => body.Kind == CatalogueKind.Star,
             4 => body.Kind is CatalogueKind.Galaxy or CatalogueKind.Nebula or CatalogueKind.Cluster,

@@ -25,7 +25,7 @@ public static partial class SceneLink
         Func<Vector3d, Vector3d> coordinates = ToEcliptic;
         if (pose.Tracking && pose.Target is { } target)
         {
-            if (!world.TryNavigationState(target, snapshot, out var body))
+            if (!world.TryNavigationState(target, snapshot, out var body, deltaT))
                 throw new InvalidDataException("The followed body has no state for a legacy link.");
             references.Add(target);
             localPosition = pose.AnchorKilometers + placement.OffsetKilometers - body.PositionKilometers;
@@ -35,7 +35,13 @@ public static partial class SceneLink
                 if (!pose.TryFrameBasis(snapshot, deltaT, out var basis))
                     throw new InvalidDataException("The observer frame cannot be exported at this epoch.");
                 Basis3d inverse = basis.Transpose();
-                if (frame.BodyFixed)
+                if (frame.Frame == NavigationFrame.Surface && frame.Reference is { } surfaceBody &&
+                    snapshot.TryState(surfaceBody, out var surfaceOrigin))
+                {
+                    references[0] = surfaceBody;
+                    localPosition = pose.AnchorKilometers + placement.OffsetKilometers - surfaceOrigin.PositionKilometers;
+                }
+                if (frame.BodyFixed || frame.Frame == NavigationFrame.Surface)
                 {
                     mode = "SyncOrbit";
                     coordinates = vector =>

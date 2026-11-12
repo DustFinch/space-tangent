@@ -34,6 +34,7 @@ internal sealed class PlanetRingRendering
         _surface.SetShaderParameter("ring_inner", inner);
         _surface.SetShaderParameter("ring_outer", outer);
         _surface.SetShaderParameter("surface_color", original.AlbedoColor);
+        _surface.SetShaderParameter("prime_meridian_offset", original.Uv1Offset.X);
         Textured = original.AlbedoTexture is not null;
         _surface.SetShaderParameter("has_surface_map", Textured);
         if (original.AlbedoTexture is { } map)

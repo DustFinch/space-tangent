@@ -74,6 +74,7 @@ public partial class EarthOrbitProbe : Node
                 await ExerciseStellarSpace(scene, epoch, directory);
             await CaptureShip(scene, directory);
             await ExerciseHistoricalEpoch(scene, directory);
+            await CaptureSurfaceSite(scene, epoch, directory);
             result = 0;
         }
         catch (Exception error)

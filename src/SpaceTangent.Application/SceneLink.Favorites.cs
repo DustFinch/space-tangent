@@ -48,7 +48,7 @@ public static partial class SceneLink
         Vector3d eye, NavigationPlacement attitude, ObjectId selected, ObjectId? target, bool bodyFixed,
         NavigationFrame frame, ObjectId? reference, out NavigationCamera camera)
     {
-        bool hasState = world.TryNavigationState(target ?? selected, snapshot, out CartesianState body);
+        bool hasState = world.TryNavigationState(target ?? selected, snapshot, out CartesianState body, deltaT);
         if (target.HasValue && !hasState)
         {
             camera = default;

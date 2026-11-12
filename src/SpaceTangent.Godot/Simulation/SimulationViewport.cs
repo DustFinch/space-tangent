@@ -232,11 +232,13 @@ internal partial class SimulationViewport : Node3D
         _terrain?.Hide();
         _marsTerrain?.Hide();
         HidePlanetOverview();
+        HideSurfaceSites();
         if (observer.Navigation is { } navigation)
         {
             _surface?.Draw(false, sample, deltaT);
             HideOrbitalMarkers();
             DrawNavigation(navigation, snapshot, sample, deltaT, observer.Sky, observer.EffectiveFieldOfView);
+            DrawSurfaceSites(navigation, observer.Selection, snapshot, deltaT);
             return true;
         }
         HideNavigation();

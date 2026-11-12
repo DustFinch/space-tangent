@@ -124,6 +124,7 @@ public partial class WorkspaceInputSmoke : Node
             if (!string.IsNullOrWhiteSpace(System.Environment.GetEnvironmentVariable("SPACETANGENT_PLANET_TEXTURES")))
                 await ExerciseEarthOrbit();
             await ExerciseShipFlight();
+            await ExerciseSurfaceSites(scratch.FullName);
             GD.Print($"SpaceTangent workspace input smoke passed ({DisplayServer.GetName()})");
             exitCode = 0;
         }

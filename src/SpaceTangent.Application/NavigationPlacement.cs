@@ -4,7 +4,7 @@ using SpaceTangent.Contracts;
 
 namespace SpaceTangent.Application;
 
-public enum NavigationFrame { Inertial, Chase, PhaseLock }
+public enum NavigationFrame { Inertial, Chase, PhaseLock, Surface }
 
 /// <summary>Eye offset and orthonormal attitude, in ICRS axes or the tracked body's local axes.</summary>
 public readonly record struct NavigationPlacement(Vector3d OffsetKilometers, Vector3d Forward, Vector3d Up,

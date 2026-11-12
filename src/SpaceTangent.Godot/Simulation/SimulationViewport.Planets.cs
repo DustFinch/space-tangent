@@ -52,6 +52,7 @@ internal partial class SimulationViewport
         {
             var material = (StandardMaterial3D)_planetGlobes[id].MaterialOverride;
             material.AlbedoTexture = texture;
+            material.Uv1Offset = new(.25f, 0, 0); // The sphere seam is 90° west of the map seam.
             material.AlbedoColor = Colors.White;
         }
         foreach (PlanetRingProfile profile in PlanetRingRendering.Profiles)

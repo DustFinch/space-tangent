@@ -128,7 +128,7 @@ public sealed partial class SimulationSession
         if (!_ships.TryGetValue(ViewIdentity(view), out ShipFlight? ship))
             return;
         double dt = Math.Clamp(wallSeconds, 0, .25);
-        if (ship.Target is { } id && World.TryNavigationState(id, snapshot, out var target))
+        if (ship.Target is { } id && World.TryNavigationState(id, snapshot, out var target, DeltaT))
         {
             Vector3d before = ship.Offset;
             double distance = before.Length;

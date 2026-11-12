@@ -146,7 +146,12 @@ internal sealed class SimulatorWorkspace
         _track.Text = tracking ? "Stop tracking" : "Track";
         if (target is null)
             return;
-        _objectKind.Text = target.Kind == CatalogueKind.DwarfPlanet ? "DWARF PLANET" : target.Kind.ToString().ToUpperInvariant();
+        _objectKind.Text = target.Kind switch
+        {
+            CatalogueKind.DwarfPlanet => "DWARF PLANET",
+            CatalogueKind.SurfaceLocation => "SURFACE LOCATION",
+            _ => target.Kind.ToString().ToUpperInvariant()
+        };
         _objectName.Text = target.Name;
         _objectDetails.Text = details;
     }

@@ -87,7 +87,7 @@ public static partial class SceneLink
         };
         ObjectId? selected = parameters.TryGetValue("select", out string? selection) && selection.Length != 0
             ? ResolveObject(selection, world.Catalogue) : parent;
-        if (!world.TryNavigationState(parent ?? SolarSystemSample.SunId, snapshot, out CartesianState center))
+        if (!world.TryNavigationState(parent ?? SolarSystemSample.SunId, snapshot, out CartesianState center, deltaT))
             throw new InvalidDataException("The linked reference has no state at this epoch.");
 
         Vector3d offset = FrameCoordinates(new(ReadCoordinate(Value("x")), ReadCoordinate(Value("y")), ReadCoordinate(Value("z"))));
@@ -103,7 +103,7 @@ public static partial class SceneLink
         Vector3d anchor = center.PositionKilometers + (follow ? default : offset);
         double scale = offset.Length;
         if (!follow)
-            scale = selected is { } target && world.TryNavigationState(target, snapshot, out CartesianState selectedState)
+            scale = selected is { } target && world.TryNavigationState(target, snapshot, out CartesianState selectedState, deltaT)
                 ? (anchor - selectedState.PositionKilometers).Length : 100_000;
         var camera = new NavigationCamera(anchor, Math.Max(NavigationCamera.MinRange, scale), 0, 0, parent, follow)
         {

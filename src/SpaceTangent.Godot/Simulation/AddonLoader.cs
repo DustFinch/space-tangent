@@ -44,7 +44,7 @@ internal static class AddonLoader
     internal sealed record DecodedAddOns(SimulationWorld World, IReadOnlyList<Cached<IReadOnlyList<DecodedSatellite>>> Science,
         Cached<DecodedMission?>? Mission, Cached<DecodedTimeline?>? Timeline, Cached<DecodedTerrain?>? Terrain,
         PlanetEphemerides Planets, Cached<DecodedBodyTerrain>? MarsTerrain, StellarCatalogue Stellar,
-        IReadOnlyList<Cached<IReadOnlyList<DecodedSscBody>>> BodyCatalogues)
+        IReadOnlyList<Cached<IReadOnlyList<DecodedSscBody>>> BodyCatalogues, Cached<IReadOnlyList<SscSurfaceLocation>> Locations)
     {
         internal bool HasSource(LocalAddonKind kind, LocalDataPath path) => kind switch
         {
@@ -82,6 +82,7 @@ internal static class AddonLoader
         var planetPath = LocalDataPaths.Candidates("SPACETANGENT_PLANET_TEXTURES", "planets", directory: true);
         var pckPath = LocalDataPaths.Candidates("SPACETANGENT_PCK", "timeline/pck00011.tpc");
         var stellarPath = LocalDataPaths.Candidates("SPACETANGENT_SPATIAL_STARS", "sky/spatial-stars.tsv");
+        var locationPath = LocalDataPaths.Candidates("SPACETANGENT_SURFACE_LOCATIONS", "surface-locations", directory: true);
         return Task.Run(() =>
         {
             var satellites = science.Select(path => Cached<IReadOnlyList<DecodedSatellite>>.Load(
@@ -102,11 +103,13 @@ internal static class AddonLoader
                 : null;
             cancellation.ThrowIfCancellationRequested();
 
+            var locations = Cached<IReadOnlyList<SscSurfaceLocation>>.Load(previous?.Locations, locationPath, "Surface locations",
+                (path, token) => SscSurfaceLocations.Load(path.Resolve(), token), cancellation);
             bool sameScience = previous is not null && previous.Science.SequenceEqual(satellites);
             bool sameBodies = previous is not null && previous.BodyCatalogues.SequenceEqual(bodies);
             if (previous is not null && sameScience && sameBodies && ReferenceEquals(previous.Mission, spice) &&
                 ReferenceEquals(previous.Timeline, sampled) && ReferenceEquals(previous.Terrain, relief) &&
-                ReferenceEquals(previous.MarsTerrain, marsTerrain))
+                ReferenceEquals(previous.MarsTerrain, marsTerrain) && ReferenceEquals(previous.Locations, locations))
                 return previous;
 
             var tracks = new List<ScienceSatellite>();
@@ -127,8 +130,8 @@ internal static class AddonLoader
                 ? StellarCatalogue.Load(starsFile) : StellarCatalogue.Empty);
             var world = AddonDiagnostics.Read(AddonStage.World, null, () => new SimulationWorld(ephemeris, tracks,
                 spice?.Value?.Track, sampled?.Value?.Track, sampled?.Value?.Probe, relief?.Value?.Frame, brightStars, planets, marsTerrain is not null, stellar,
-                bodies.SelectMany(source => source.Value).Select(body => body.Body)));
-            return new(world, sameScience ? previous!.Science : satellites, spice, sampled, relief, planets, marsTerrain, stellar, sameBodies ? previous!.BodyCatalogues : bodies);
+                bodies.SelectMany(source => source.Value).Select(body => body.Body), locations.Value));
+            return new(world, sameScience ? previous!.Science : satellites, spice, sampled, relief, planets, marsTerrain, stellar, sameBodies ? previous!.BodyCatalogues : bodies, locations);
         }, cancellation);
 
         Cached<T>? Read<T>(Cached<T>? cached, LocalDataPath? path, string category, Func<LocalDataPath, CancellationToken, T> reader) =>

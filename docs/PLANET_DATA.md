@@ -48,3 +48,7 @@ The Moon is taken from DE440. The Mars and Jupiter kernel files can also supply 
 The optional `ceres.xyzv`, `vesta.xyzv` and `67p.xyzv` files contain geometric heliocentric ICRS vectors from [JPL Horizons](https://ssd.jpl.nasa.gov/horizons/). Use Julian date TDB, kilometers, and kilometers per second. The verified input covers 2010–2050 at three-day intervals. Outside that span the application reports that the target has no usable state. The comet's visible tail is an anti-solar illustration with a nominal scale. Its length and brightness are rendering choices.
 
 Optional maps have the same names as their objects in lowercase, such as `titan.jpg` and `pluto.jpg`. The verified Phobos, Deimos and Vesta renderers use ellipsoid approximations.
+
+## Surface locations
+
+Supply local `*_locs.ssc` files in `data/surface-locations`, or set `SPACETANGENT_SURFACE_LOCATIONS` to their directory. Search for a location on a loaded body and use **Go to** or **G**. The camera approaches above the site and rotates with its parent. The selected label appears on the visible side. **Ctrl+L** toggles additional labels at the current map scale. Locations require a valid state and rotation for their parent at the selected epoch.

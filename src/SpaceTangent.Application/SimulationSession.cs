@@ -41,7 +41,8 @@ public sealed class SimulationWorld
 {
     public SimulationWorld(ISolarSystemEphemeris ephemeris, IEnumerable<ScienceSatellite> satellites,
         SpiceSpacecraft? mission = null, SscSampledSpacecraft? timeline = null, HuygensMission? probe = null,
-        SpicePolynomialBodyFrame? moonFrame = null, BrightStarCatalogue? brightStars = null, PlanetEphemerides? planets = null, bool hasMarsTerrain = false, StellarCatalogue? stellar = null, IEnumerable<SscBodyDefinition>? bodyCatalog = null)
+        SpicePolynomialBodyFrame? moonFrame = null, BrightStarCatalogue? brightStars = null, PlanetEphemerides? planets = null, bool hasMarsTerrain = false, StellarCatalogue? stellar = null, IEnumerable<SscBodyDefinition>? bodyCatalog = null,
+        IEnumerable<SscSurfaceLocation>? locations = null)
     {
         Ephemeris = ephemeris;
         Satellites = Array.AsReadOnly(satellites.ToArray());
@@ -82,9 +83,14 @@ public sealed class SimulationWorld
             graph.AddOrientation(SolarSystemSample.MoonId, epoch => moonFrame.Sample(epoch));
             HasLunarTerrain = true;
         }
+        else
+            PlanetEphemerides.AddMoonFrame(graph, planets);
         SscBodies = InstalledSscBody.Install(graph, bodyCatalog ?? []);
         _sscById = SscBodies.ToDictionary(body => body.Id);
-        Catalogue = new(Satellites, BrightStars, Stellar, SscBodies);
+        Catalogue = new(Satellites, BrightStars, Stellar, SscBodies, locations ?? []);
+        _sitesById = Catalogue.SurfaceSites.ToDictionary(site => site.Id);
+        _sitesByBody = Catalogue.SurfaceSites.GroupBy(site => site.Body)
+            .ToDictionary(group => group.Key, group => group.OrderByDescending(site => site.Definition.Importance ?? site.Definition.SizeKilometers).ToArray());
         Graph = graph.Build();
     }
 
@@ -97,10 +103,32 @@ public sealed class SimulationWorld
     public StellarCatalogue Stellar { get; }
     public Vector3d StellarOrigin { get; }
 
-    public bool TryNavigationState(ObjectId id, WorldSnapshot snapshot, out CartesianState state)
+    private readonly Dictionary<ObjectId, SurfaceSite> _sitesById;
+    private readonly Dictionary<ObjectId, SurfaceSite[]> _sitesByBody;
+
+    public SurfaceSite? FindSurfaceSite(ObjectId id) => _sitesById.GetValueOrDefault(id);
+    public IReadOnlyList<SurfaceSite> SurfaceSitesOn(ObjectId id) => _sitesByBody.GetValueOrDefault(id) ?? [];
+
+    public bool TrySurfaceFrame(SurfaceSite site, WorldSnapshot snapshot, DeltaTModel model,
+        out CartesianState body, out Basis3d orientation)
+    {
+        orientation = default;
+        return snapshot.TryState(site.Body, out body) && NavigationCamera.TryBodyBasis(snapshot, site.Body, model, out orientation);
+    }
+
+    public bool TryNavigationState(ObjectId id, WorldSnapshot snapshot, out CartesianState state,
+        DeltaTModel deltaT = DeltaTModel.MorrisonStephenson2004)
     {
         if (snapshot.TryState(id, out state))
             return true;
+        if (FindSurfaceSite(id) is { } site && TrySurfaceFrame(site, snapshot, deltaT, out CartesianState body, out Basis3d frame))
+        {
+            Vector3d offset = frame.Transform(site.OffsetKilometers);
+            Vector3d spin = site.Body == SolarSystemSample.EarthId ? frame.Z * (2 * Math.PI / 86164.0905) :
+                snapshot.TryOrientation(site.Body, out var rotation) ? rotation.AngularVelocityRadiansPerSecond.GetValueOrDefault() : default;
+            state = body + new CartesianState(offset, Vector3d.Cross(spin, offset));
+            return true;
+        }
         if (Stellar.Find(id) is { } star)
         {
             CartesianState relative = star.StateAt(snapshot.Epoch);
@@ -116,7 +144,7 @@ public sealed class SimulationWorld
     }
 
     public double TargetRadiusKilometers(ObjectId id) =>
-        Stellar.Find(id)?.RadiusKilometers ?? DeepSkyCatalogue.Find(id)?.RadiusKilometers ??
+        FindSurfaceSite(id)?.ScaleKilometers ?? Stellar.Find(id)?.RadiusKilometers ?? DeepSkyCatalogue.Find(id)?.RadiusKilometers ??
         _sscById.GetValueOrDefault(id)?.Definition.RadiusKilometers ?? NavigationCamera.BodyRadiusKilometers(id);
     public WorldGraph Graph { get; }
     public ObjectId? MissionId { get; }

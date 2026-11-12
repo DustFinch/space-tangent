@@ -30,6 +30,8 @@ public sealed class PlanetEphemerides
                 _centers.Add(planet.NaifId / 100, new(kernel));
         }
         string saturn = Path.Combine(root, "moons-6.bsp");
+        if (hasFrames)
+            _frames.Add(301, new(pck, 301));
         if (File.Exists(saturn))
             _saturnMoons = new(saturn);
         string pluto = Path.Combine(root, "center-9.bsp");
@@ -81,6 +83,9 @@ public sealed class PlanetEphemerides
         }
         AddFrame(graph, body.Id, body.NaifId, source);
     }
+
+    internal static void AddMoonFrame(WorldGraphBuilder graph, PlanetEphemerides? source) =>
+        AddFrame(graph, SolarSystemSample.MoonId, 301, source);
 
     private static void AddFrame(WorldGraphBuilder graph, ObjectId id, int naifId, PlanetEphemerides? source)
     {

@@ -444,6 +444,8 @@ public partial class SolarSystemScene : Control
         GetViewport().SetInputAsHandled();
     }
 
+    private bool _showSurfaceSites;
+
     public override void _UnhandledKeyInput(InputEvent input)
     {
         if (Session is null || input is not InputEventKey { Pressed: true } key)
@@ -468,6 +470,11 @@ public partial class SolarSystemScene : Control
                 break;
             case Key.U when key.CtrlPressed:
                 ToggleSplit();
+                break;
+            case Key.L when key.CtrlPressed:
+                _showSurfaceSites = !_showSurfaceSites;
+                _status.Text = _showSurfaceSites ? "Surface locations visible at their map scale." : "Surface location labels hidden.";
+                Refresh();
                 break;
             case Key.R when key.CtrlPressed:
                 SplitActiveView(ViewSplit.Stacked);
@@ -686,6 +693,11 @@ public partial class SolarSystemScene : Control
 
     private bool TryObserverFrameKey(InputEventKey key)
     {
+        if (key.Keycode == Key.G)
+        {
+            GoToActiveObject();
+            return true;
+        }
         if (key.Keycode == Key.C)
         {
             var observer = Session![_active];
@@ -1306,7 +1318,12 @@ public partial class SolarSystemScene : Control
         if (target is null)
             return "";
         var details = $"Catalogue ID: {target.Id.Value}";
-        if (Session!.World.Stellar.Find(target.Id) is { } spatial)
+        if (Session!.World.FindSurfaceSite(target.Id) is { } site)
+        {
+            var parent = Session.World.Catalogue.Find(site.Body)?.Name ?? site.Body.Value;
+            return details + FormattableString.Invariant($"\nOn {parent}\n{site.Definition.LatitudeDegrees:F2}° latitude, {site.Definition.LongitudeDegrees:F2}° longitude");
+        }
+        if (Session.World.Stellar.Find(target.Id) is { } spatial)
             return details + FormattableString.Invariant($"\nDistance: {spatial.DistanceParsecs * StellarEntry.KilometersPerParsec / StellarEntry.KilometersPerLightYear:N2} ly\nVisual magnitude: {spatial.VisualMagnitude:F2}");
         if (Session.World.BrightStars.Find(target.Id) is { } bright)
             return details + FormattableString.Invariant($"\nVisual magnitude: {bright.VisualMagnitude:F2}");
@@ -1330,6 +1347,7 @@ public partial class SolarSystemScene : Control
             ShipView? ship = session.Ship(index);
             ObserverView view = session[index];
             controls.Snapshot = snapshot;
+            controls.Renderer.ShowSurfaceSiteLabels = _showSurfaceSites;
             bool available = controls.Renderer.Draw(view, snapshot, session.DeltaT);
             controls.Renderer.DrawShip(ship, view.Navigation);
             controls.Epoch.Text = FormattableString.Invariant($"View {index + 1}   JD {view.Epoch.ToJulianDate():F6} TDB");

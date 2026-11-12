@@ -127,7 +127,7 @@ public sealed partial class SimulationSession
         // Reevaluate the anchor when the clock advances, not on a render refresh or a reload.
         if (_flights[view] is null && (!pose.Tracking || _trackingEpochs[view] == (target, snapshot.Epoch)))
             return;
-        if (!World.TryNavigationState(target, snapshot, out var state))
+        if (!World.TryNavigationState(target, snapshot, out var state, DeltaT))
         {
             CancelFlight(view);
             return;
@@ -156,19 +156,25 @@ public sealed partial class SimulationSession
                 else
                     range = wide;
             }
+            SurfaceSite? site = World.FindSurfaceSite(target);
             pose = pose with
             {
                 AnchorKilometers = pan == 1 ? position : flight.Start.AnchorKilometers + (position - flight.Start.AnchorKilometers) * pan,
                 RangeKilometers = t == 1 ? destinationRange : range,
                 Placement = null
             };
-            if (t < 1 && flight.Start.Placement is { } start)
+            if (site is not null)
+                pose = pose with { Placement = site.Approach(range), Tracking = true };
+            if (t < 1 && (flight.Start.Placement is not null || site is not null))
             {
+                var start = flight.Start.ResolvePlacement(snapshot, DeltaT);
                 var end = pose.ResolvePlacement(snapshot, DeltaT);
                 double blend = Smooth(t);
                 var scaledStart = start with { OffsetKilometers = start.OffsetKilometers * (range / flight.Start.RangeKilometers) };
-                pose = pose with { Placement = scaledStart.Interpolate(end, blend) };
+                pose = pose with { Placement = scaledStart.Interpolate(end, blend), Tracking = false };
             }
+            if (t == 1 && site is not null)
+                _trackingEpochs[view] = (target, snapshot.Epoch);
             _flights[view] = elapsed >= flight.Duration ? null : flight with { Elapsed = elapsed };
         }
         else if (pose.Tracking)
@@ -199,7 +205,7 @@ public sealed partial class SimulationSession
         state = default;
         if (observer.Selection is null)
             return false;
-        if (World.TryNavigationState(target, snapshot, out state))
+        if (World.TryNavigationState(target, snapshot, out state, DeltaT))
             return true;
         ObjectId id = target;
         if (World.Satellites.FirstOrDefault(satellite => satellite.Id == id) is not { } satellite ||

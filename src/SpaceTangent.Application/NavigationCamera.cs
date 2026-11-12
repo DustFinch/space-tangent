@@ -48,6 +48,8 @@ public readonly record struct NavigationCamera(Vector3d AnchorKilometers, double
         basis = default;
         if (Target is not { } target || Placement is not { } placement)
             return false;
+        if (placement is { Frame: NavigationFrame.Surface, Reference: { } body })
+            return TryBodyBasis(snapshot, body, deltaT, out basis);
         return placement.BodyFixed
             ? TryBodyBasis(snapshot, target, deltaT, out basis)
             : placement.Reference is { } reference && TryRelativeBasis(snapshot, placement.Frame, target, reference, out basis);

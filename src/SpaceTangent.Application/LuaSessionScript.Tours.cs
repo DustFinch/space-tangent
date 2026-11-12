@@ -54,7 +54,7 @@ public sealed partial class LuaSessionScript
     private DynValue TourTargets(Script script)
     {
         const int limit = 32;
-        var children = _session.World.Catalogue.Objects.Where(body => body.Parent.HasValue)
+        var children = _session.World.Catalogue.Objects.Where(body => body.Parent.HasValue && body.Kind != CatalogueKind.SurfaceLocation)
             .ToLookup(body => body.Parent!.Value);
         var table = new Table(script);
         var seen = new HashSet<ObjectId>();

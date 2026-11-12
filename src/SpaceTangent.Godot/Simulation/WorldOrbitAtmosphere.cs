@@ -28,6 +28,7 @@ internal sealed class WorldOrbitAtmosphere
         }
         _ground.SetShaderParameter("has_globe_map", _surface.AlbedoTexture is not null);
         _ground.SetShaderParameter("globe_color", _surface.AlbedoColor);
+        _ground.SetShaderParameter("prime_meridian_offset", _surface.Uv1Offset.X);
         if (_surface.AlbedoTexture is { } map)
             _ground.SetShaderParameter("globe_map", map);
         _shell = new MeshInstance3D

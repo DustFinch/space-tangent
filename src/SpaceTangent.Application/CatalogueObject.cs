@@ -16,7 +16,7 @@ public sealed record CatalogueObject(ObjectId Id, string Name, CatalogueKind Kin
 public sealed class ObjectCatalogue
 {
     internal ObjectCatalogue(IReadOnlyList<ScienceSatellite> satellites, BrightStarCatalogue stars,
-        StellarCatalogue spatialStars, DeepSkyIndex deepSky, ExoplanetCatalogue exoplanets, IReadOnlyList<InstalledSscBody> sscBodies, IEnumerable<SscSurfaceLocation> locations)
+        StellarCatalogue spatialStars, DeepSkyIndex deepSky, ExoplanetCatalogue exoplanets, IReadOnlyList<InstalledSscBody> sscBodies, IEnumerable<SscSurfaceLocation> locations, IEnumerable<SampledMission> missions)
     {
         var objects = new List<CatalogueObject> { new(SolarSystemSample.SunId, "Sun", CatalogueKind.Star) };
         objects.AddRange(PlanetCatalogue.Planets.Select(planet =>
@@ -28,6 +28,8 @@ public sealed class ObjectCatalogue
             new CatalogueObject(satellite.Id, satellite.Name, CatalogueKind.Spacecraft, SolarSystemSample.EarthId)));
         objects.AddRange(sscBodies.Select(body => new CatalogueObject(body.Id, body.Definition.Name, body.Kind, body.Parent)
             { Aliases = Array.AsReadOnly(body.Definition.Names.Split(':').Skip(1).ToArray()) }));
+        objects.AddRange(missions.Select(mission =>
+            new CatalogueObject(mission.Id, mission.Name, CatalogueKind.Spacecraft, mission.Arcs[0].Center)));
         objects.AddRange(stars.Stars.Select(star =>
         {
             StellarEntry? spatial = spatialStars.Find(star.Id);

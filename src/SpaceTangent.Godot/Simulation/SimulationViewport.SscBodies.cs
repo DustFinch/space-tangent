@@ -6,27 +6,28 @@ using SpaceTangent.Core.World;
 
 namespace SpaceTangent.Godot.Simulation;
 
-internal sealed record PreparedSscBody(InstalledSscBody Body, ArrayMesh? Model, double ModelDiameter);
+internal sealed record PreparedImportedBody(ObjectId Id, CatalogueKind Kind, Vector3d Color, double RadiusKilometers,
+    Basis3d MeshRotation, Vector3d MeshCenter, ArrayMesh? Model, double ModelDiameter);
 
 internal partial class SimulationViewport
 {
-    private IReadOnlyList<PreparedSscBody>? _sscAssets;
-    private readonly Dictionary<ObjectId, (PreparedSscBody Asset, MeshInstance3D Node)> _sscNodes = new();
+    private IReadOnlyList<PreparedImportedBody>? _importedAssets;
+    private readonly Dictionary<ObjectId, (PreparedImportedBody Asset, MeshInstance3D Node)> _importedNodes = new();
 
-    internal void ReplaceSscBodies(IReadOnlyList<PreparedSscBody> assets)
+    internal void ReplaceImportedBodies(IReadOnlyList<PreparedImportedBody> assets)
     {
-        if (ReferenceEquals(_sscAssets, assets))
+        if (ReferenceEquals(_importedAssets, assets))
             return;
-        _sscAssets = assets;
-        foreach (var (_, node) in _sscNodes.Values)
+        _importedAssets = assets;
+        foreach (var (_, node) in _importedNodes.Values)
         {
             RemoveChild(node);
             node.QueueFree();
         }
-        _sscNodes.Clear();
-        foreach (PreparedSscBody asset in assets)
+        _importedNodes.Clear();
+        foreach (PreparedImportedBody asset in assets)
         {
-            var color = asset.Body.Definition.Color;
+            var color = asset.Color;
             MeshInstance3D node;
             if (asset.Model is { } mesh)
             {
@@ -35,24 +36,24 @@ internal partial class SimulationViewport
             }
             else
                 node = CreateNavigationSphere(new((float)color.X, (float)color.Y, (float)color.Z));
-            _sscNodes.Add(asset.Body.Id, (asset, node));
+            _importedNodes.Add(asset.Id, (asset, node));
         }
     }
 
-    internal MeshInstance3D? ImportedBodyNode(ObjectId id) => _sscNodes.TryGetValue(id, out var entry) ? entry.Node : null;
+    internal MeshInstance3D? ImportedBodyNode(ObjectId id) => _importedNodes.TryGetValue(id, out var entry) ? entry.Node : null;
 
-    private void DrawSscBodies(WorldSnapshot snapshot, NavigationCamera pose, double units,
+    private void DrawImportedBodies(WorldSnapshot snapshot, NavigationCamera pose, double units,
         Func<Vector3d, (Vector3 Position, double Scale)> project)
     {
-        foreach (var (asset, node) in _sscNodes.Values)
+        foreach (var (asset, node) in _importedNodes.Values)
         {
             node.Hide();
-            var body = asset.Body;
+            var body = asset;
             if (!snapshot.TryState(body.Id, out CartesianState state) ||
                 !snapshot.TryOrientation(body.Id, out FrameKinematics frame))
                 continue;
             var (position, projection) = project(state.PositionKilometers);
-            double radius = body.Definition.RadiusKilometers * projection / units;
+            double radius = body.RadiusKilometers * projection / units;
             if (radius < .035 && pose.Target != body.Id)
                 continue;
             if (asset.Model is null)
@@ -63,19 +64,19 @@ internal partial class SimulationViewport
             else
             {
                 double scale = radius * 2 / asset.ModelDiameter;
-                Basis3d axes = frame.ToWorld, rotation = body.Definition.MeshRotation;
+                Basis3d axes = frame.ToWorld, rotation = body.MeshRotation;
                 Vector3 Column(Vector3d value) => ToGodot(axes.Transform(rotation.Transform(value)) * scale, 1);
                 Basis basis = new(Column(new(1, 0, 0)), Column(new(0, 1, 0)), Column(new(0, 0, 1)));
-                Vector3 offset = Column(body.Definition.MeshCenter);
+                Vector3 offset = Column(body.MeshCenter);
                 node.Transform = new(basis, position - offset);
             }
             node.Show();
         }
     }
 
-    private void HideSscBodies()
+    private void HideImportedBodies()
     {
-        foreach (var (_, node) in _sscNodes.Values)
+        foreach (var (_, node) in _importedNodes.Values)
             node.Hide();
     }
 }

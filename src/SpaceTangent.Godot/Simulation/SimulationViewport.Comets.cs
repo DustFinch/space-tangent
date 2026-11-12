@@ -19,9 +19,9 @@ internal partial class SimulationViewport
     {
         _cometCandidates.Clear();
         AddComet(NaturalBodyCatalogue.CometId, NaturalBodyCatalogue.Find(NaturalBodyCatalogue.CometId)!.RadiusKilometers);
-        foreach (var entry in _sscNodes.Values)
-            if (entry.Asset.Body.Kind == CatalogueKind.Comet)
-                AddComet(entry.Asset.Body.Id, entry.Asset.Body.Definition.RadiusKilometers);
+        foreach (var entry in _importedNodes.Values)
+            if (entry.Asset.Kind == CatalogueKind.Comet)
+                AddComet(entry.Asset.Id, entry.Asset.RadiusKilometers);
         _cometCandidates.Sort((left, right) => left.Distance.CompareTo(right.Distance));
         for (int i = 0; i < Math.Min(MaximumActiveComets, _cometCandidates.Count); i++)
         {

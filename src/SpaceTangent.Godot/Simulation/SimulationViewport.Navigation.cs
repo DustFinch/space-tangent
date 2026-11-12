@@ -105,7 +105,7 @@ internal partial class SimulationViewport
         DrawPlanetGlobes(snapshot, pose, units, ProjectWithScale);
         DrawWorldAtmospheres(snapshot, solar.Sun.PositionKilometers);
         DrawStellarObjects(pose, snapshot, sky, units, ProjectWithScale);
-        DrawSscBodies(snapshot, pose, units, ProjectWithScale);
+        DrawImportedBodies(snapshot, pose, units, ProjectWithScale);
         HideComets();
         DrawComets(snapshot, solar.Sun, units, ProjectWithScale);
 
@@ -173,7 +173,7 @@ internal partial class SimulationViewport
             Consider(id, globe);
         foreach (var (id, satellite) in _satellites)
             Consider(id, satellite.Node);
-        foreach (var (id, body) in _sscNodes)
+        foreach (var (id, body) in _importedNodes)
             Consider(id, body.Node);
         foreach (var (id, disk) in _visibleStars)
             Consider(id, disk);
@@ -219,7 +219,7 @@ internal partial class SimulationViewport
         _navigationMoon.Hide();
         HidePlanetGlobes();
         HideStellarObjects();
-        HideSscBodies();
+        HideImportedBodies();
         HideComets();
     }
 }

@@ -43,7 +43,7 @@ public sealed class SimulationWorld
     public SimulationWorld(ISolarSystemEphemeris ephemeris, IEnumerable<ScienceSatellite> satellites,
         SpiceSpacecraft? mission = null, SscSampledSpacecraft? timeline = null, HuygensMission? probe = null,
         SpicePolynomialBodyFrame? moonFrame = null, BrightStarCatalogue? brightStars = null, PlanetEphemerides? planets = null, bool hasMarsTerrain = false, StellarCatalogue? stellar = null, IEnumerable<SscBodyDefinition>? bodyCatalog = null,
-        IEnumerable<SscSurfaceLocation>? locations = null, DeepSkyIndex? deepSky = null, ExoplanetCatalogue? exoplanets = null)
+        IEnumerable<SscSurfaceLocation>? locations = null, DeepSkyIndex? deepSky = null, ExoplanetCatalogue? exoplanets = null, IEnumerable<SampledMission>? sampledMissions = null)
     {
         Ephemeris = ephemeris;
         Satellites = Array.AsReadOnly(satellites.ToArray());
@@ -90,7 +90,10 @@ public sealed class SimulationWorld
             PlanetEphemerides.AddMoonFrame(graph, planets);
         SscBodies = InstalledSscBody.Install(graph, bodyCatalog ?? []);
         _sscById = SscBodies.ToDictionary(body => body.Id);
-        Catalogue = new(Satellites, BrightStars, Stellar, DeepSky, Exoplanets, SscBodies, locations ?? []);
+        _sampledMissions = (sampledMissions ?? []).ToDictionary(mission => mission.Id);
+        foreach (var imported in _sampledMissions.Values)
+            graph.AddSampledMission(imported);
+        Catalogue = new(Satellites, BrightStars, Stellar, DeepSky, Exoplanets, SscBodies, locations ?? [], _sampledMissions.Values);
         _sitesById = Catalogue.SurfaceSites.ToDictionary(site => site.Id);
         _sitesByBody = Catalogue.SurfaceSites.GroupBy(site => site.Body)
             .ToDictionary(group => group.Key, group => group.OrderByDescending(site => site.Definition.Importance ?? site.Definition.SizeKilometers).ToArray());
@@ -100,6 +103,7 @@ public sealed class SimulationWorld
     public ISolarSystemEphemeris Ephemeris { get; }
     public IReadOnlyList<ScienceSatellite> Satellites { get; }
     private readonly Dictionary<ObjectId, InstalledSscBody> _sscById;
+    private readonly Dictionary<ObjectId, SampledMission> _sampledMissions;
     public IReadOnlyList<InstalledSscBody> SscBodies { get; }
     public ObjectCatalogue Catalogue { get; }
     public BrightStarCatalogue BrightStars { get; }
@@ -171,7 +175,8 @@ public sealed class SimulationWorld
     public double TargetRadiusKilometers(ObjectId id) =>
         FindSurfaceSite(id)?.ScaleKilometers ?? StarRadius(FindStellarTarget(id)) ?? DeepSky.Find(id)?.RadiusKilometers ??
         Exoplanets.Find(id)?.RadiusKilometers ??
-        _sscById.GetValueOrDefault(id)?.Definition.RadiusKilometers ?? NavigationCamera.BodyRadiusKilometers(id);
+        _sscById.GetValueOrDefault(id)?.Definition.RadiusKilometers ??
+        _sampledMissions.GetValueOrDefault(id)?.RadiusKilometers ?? NavigationCamera.BodyRadiusKilometers(id);
     private static double? StarRadius(StellarEntry? star) => star is null ? null :
         star.IsBarycenter ? Math.Max(1000, star.SystemRadiusKilometers) : Math.Max(.007, star.RadiusKilometers);
 

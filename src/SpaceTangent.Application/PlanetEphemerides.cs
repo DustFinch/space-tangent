@@ -74,6 +74,8 @@ public sealed class PlanetEphemerides
             if (source?._sampled.GetValueOrDefault(body.Id) is { Start: { } start, End: { } end } trajectory)
                 graph.AddTrajectory(body.Id, epoch => epoch.CompareTo(start) >= 0 && epoch.CompareTo(end) <= 0 &&
                     trajectory.TrySample(epoch, out CartesianState state) ? state : null, SolarSystemSample.SunId);
+            else
+                graph.AddTrajectory(body.Id, _ => null, SolarSystemSample.SunId);
         }
         else
         {
@@ -107,5 +109,7 @@ public sealed class PlanetEphemerides
     {
         if (source?._frames.GetValueOrDefault(naifId) is { } frame)
             graph.AddOrientation(id, epoch => frame.Sample(epoch));
+        else
+            graph.AddOrientation(id, _ => null);
     }
 }

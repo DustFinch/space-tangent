@@ -12,7 +12,7 @@ namespace SpaceTangent.Godot.Simulation;
 internal sealed record AddonGeneration(AddonLoader.DecodedAddOns Decoded, IReadOnlyList<PreparedSatellite> Satellites,
     PreparedMission? Mission, PreparedMission? Timeline, PreparedProbe? Probe, BodyTerrainAsset? Terrain, BodyTerrainAsset? MarsTerrain, IReadOnlyList<PreparedImportedBody> ImportedBodies);
 
-internal static class AddonLoader
+internal static partial class AddonLoader
 {
     internal sealed record DecodedSatellite(ScienceSatellite Track, DecodedScienceModel Model);
     internal sealed record DecodedMission(SpiceSpacecraft Track, DecodedScienceModel Model,
@@ -49,7 +49,8 @@ internal static class AddonLoader
         Cached<StellarCatalogue?> StellarArchive, Cached<StellarImport> StellarDefinitions,
         IReadOnlyList<Cached<IReadOnlyList<DecodedSscBody>>> BodyCatalogues, Cached<IReadOnlyList<SscSurfaceLocation>> Locations, Cached<DeepSkyIndex> DeepSky, Cached<ExoplanetCatalogue> Exoplanets,
         Cached<IReadOnlyList<DecodedSampledMission>> SampledMissions, Cached<IReadOnlyList<LocalTleSatellite>> LocalSatellites,
-        Cached<EarthPlaceCatalogue> EarthPlaces, LocalDataPath SavedEarthPlacesPath, bool AllowAddonLua)
+        Cached<EarthPlaceCatalogue> EarthPlaces, LocalDataPath SavedEarthPlacesPath, bool AllowAddonLua,
+        IReadOnlyDictionary<ObjectId, PreparedMissionObservation> Observations)
     {
         internal bool HasSource(LocalAddonKind kind, LocalDataPath path) => kind switch
         {
@@ -191,7 +192,8 @@ internal static class AddonLoader
             var world = AddonDiagnostics.Read(AddonStage.World, null, () => new SimulationWorld(ephemeris, tracks,
                 spice?.Value?.Track, sampled?.Value?.Track, sampled?.Value?.Probe, relief?.Value?.Frame, brightStars, planets, marsTerrain is not null, definitions.Value.Catalogue,
                 bodies.SelectMany(source => source.Value).Select(body => body.Body), locations.Value, deepSky.Value, exoplanets.Value, missions.Value.Select(mission => mission.Track), tle.Value, earthPlaces.Value));
-            return new(world, sameScience ? previous!.Science : satellites, spice, sampled, relief, planets, marsTerrain, stellar, archive, definitions, sameBodies ? previous!.BodyCatalogues : bodies, locations, deepSky, exoplanets, missions, tle, earthPlaces, savedEarthPlacesPath, allowAddonLua);
+            var observations = PrepareObservations(world, missions.Value, cancellation);
+            return new(world, sameScience ? previous!.Science : satellites, spice, sampled, relief, planets, marsTerrain, stellar, archive, definitions, sameBodies ? previous!.BodyCatalogues : bodies, locations, deepSky, exoplanets, missions, tle, earthPlaces, savedEarthPlacesPath, allowAddonLua, observations);
         }, cancellation);
 
         Cached<T>? Read<T>(Cached<T>? cached, LocalDataPath? path, string category, Func<LocalDataPath, CancellationToken, T> reader) =>
@@ -237,7 +239,9 @@ internal static class AddonLoader
             ? previous.MarsTerrain : decoded.MarsTerrain?.Value is { } mars ? BodyTerrainAsset.Publish(mars) : null;
         IReadOnlyList<PreparedImportedBody> bodies = previous is not null &&
             ReferenceEquals(previous.Decoded.BodyCatalogues, decoded.BodyCatalogues) &&
-            ReferenceEquals(previous.Decoded.SampledMissions, decoded.SampledMissions)
+            ReferenceEquals(previous.Decoded.SampledMissions, decoded.SampledMissions) &&
+            (ReferenceEquals(previous.Decoded.Observations, decoded.Observations) ||
+             (previous.Decoded.Observations.Count == 0 && decoded.Observations.Count == 0))
                 ? previous.ImportedBodies : PublishImportedBodies(decoded, previous);
         return new(decoded, satellites, mission, timeline, probe, terrain, marsTerrain, bodies);
 
@@ -275,7 +279,7 @@ internal static class AddonLoader
         var missions = decoded.SampledMissions.Value.Select(item =>
         {
             var track = item.Track;
-            if (ReferenceEquals(decoded.SampledMissions, previous?.Decoded.SampledMissions) &&
+            if (track.Observation is null && ReferenceEquals(decoded.SampledMissions, previous?.Decoded.SampledMissions) &&
                 priorAssets?.TryGetValue(track.Id, out var ready) == true)
                 return ready;
             var models = item.Meshes.ToDictionary(pair => pair.Key,
@@ -288,7 +292,7 @@ internal static class AddonLoader
                     shape.MeshRotation, shape.MeshOffset, model.Mesh, model.Diameter, shape.Sensor);
             }).ToArray();
             return new PreparedImportedBody(track.Id, CatalogueKind.Spacecraft, new(.8, .8, .8), track.RadiusKilometers, Basis3d.Identity, default,
-                null, 2, geometry);
+                null, 2, geometry, decoded.Observations.GetValueOrDefault(track.Id));
         });
         return Array.AsReadOnly(bodies.Concat(missions).ToArray());
     }

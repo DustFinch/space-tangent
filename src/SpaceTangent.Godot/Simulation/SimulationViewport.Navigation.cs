@@ -179,7 +179,8 @@ internal partial class SimulationViewport
         if (_localSatelliteId is { } tracked && _localSatelliteMarker is { } marker)
             Consider(tracked, marker);
         foreach (var (id, body) in _importedNodes)
-            Consider(id, body.Node);
+            if (body.Asset.Observation is null)
+                Consider(id, body.Node);
         foreach (var (id, disk) in _visibleStars)
             Consider(id, disk);
         foreach (var (id, planet) in _visibleExoplanets)

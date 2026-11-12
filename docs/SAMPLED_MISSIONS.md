@@ -19,3 +19,5 @@ The loader visits local `require` entries first and opens each catalogue once. I
 A `Sensor` uses a resolved target, a range in kilometres, rectangular or elliptical fields, full horizontal and vertical angles in degrees, and an optional local WXYZ quaternion. The field follows its item's declared body frame. Timed geometry may switch a sensor on and off. In the spatial view the visible grid clips each ray against the target ellipsoid and the instrument range.
 
 The archived sensor fixture attaches authored fields to the original Jason-1 and SORCE spacecraft. The checks use both the source OBJ catalogue and the archived GLB installation, preserving the fixed spacecraft attitude in either case.
+
+An `Observations` item names a local sensor and the target it is centered on. Positive `obsRate` gives individual footprints at that interval in seconds. Zero gives a continuous swath with configurable `alongTrackDivisions`. A footprint is kept when every boundary ray reaches the surface within range. Each observer sees the footprints collected by its own epoch. `showResWithColor` colours them by their mean range to the surface.

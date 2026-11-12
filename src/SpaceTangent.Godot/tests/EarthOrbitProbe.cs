@@ -92,6 +92,7 @@ public partial class EarthOrbitProbe : Node
             await CapturePackedScience(scene, directory);
             await ExerciseMissionGeometry(scene, directory);
             await ExerciseMissionSensors(scene, directory);
+            await ExerciseMissionObservations(scene, directory);
             await ExerciseSourceFactories(scene, directory);
             await ExercisePackedFactories(scene, directory);
             await ExerciseRecording(scene, directory);

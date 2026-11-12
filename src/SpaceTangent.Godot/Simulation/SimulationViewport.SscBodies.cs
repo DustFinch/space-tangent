@@ -9,7 +9,7 @@ namespace SpaceTangent.Godot.Simulation;
 
 internal sealed record PreparedImportedBody(ObjectId Id, CatalogueKind Kind, Vector3d Color, double RadiusKilometers,
     Basis3d MeshRotation, Vector3d MeshCenter, ArrayMesh? Model, double ModelDiameter,
-    IReadOnlyList<PreparedMissionGeometry>? Geometry = null);
+    IReadOnlyList<PreparedMissionGeometry>? Geometry = null, PreparedMissionObservation? Observation = null);
 
 internal sealed record PreparedMissionGeometry(JulianInstant Start, JulianInstant End, double RadiusKilometers,
     Basis3d MeshRotation, Vector3d MeshOffset, ArrayMesh? Model, double ModelDiameter, MissionSensor? Sensor);
@@ -18,6 +18,9 @@ internal partial class SimulationViewport
 {
     private MissionSensorRendering? _missionSensorRendering;
     internal MissionSensorRenderResult? MissionSensorResult(ObjectId id) => _missionSensorRendering?.Result(id);
+
+    private readonly Dictionary<ObjectId, MissionObservationRendering> _missionObservations = new();
+    internal int ObservationFootprintCount(ObjectId id) => _missionObservations.GetValueOrDefault(id)?.Count ?? 0;
 
     private IReadOnlyList<PreparedImportedBody>? _importedAssets;
     private readonly SphereMesh _missionMarkerMesh = new() { Radius = 1, Height = 2, RadialSegments = 32, Rings = 16 };
@@ -42,6 +45,7 @@ internal partial class SimulationViewport
             node.QueueFree();
         }
         _importedNodes.Clear();
+        _missionObservations.Clear();
         foreach (PreparedImportedBody asset in assets)
         {
             var color = asset.Color;
@@ -58,6 +62,8 @@ internal partial class SimulationViewport
             }
             else
                 node = CreateNavigationSphere(new((float)color.X, (float)color.Y, (float)color.Z));
+            if (asset.Observation is { } observation)
+                _missionObservations.Add(asset.Id, new(node, observation));
             _importedNodes.Add(asset.Id, (asset, node));
         }
     }
@@ -76,6 +82,17 @@ internal partial class SimulationViewport
                 !snapshot.TryOrientation(body.Id, out FrameKinematics frame))
                 continue;
             var (position, projection) = project(state.PositionKilometers);
+            if (asset.Observation is { } observation)
+            {
+                if (snapshot.TryOrientation(observation.Style.Target, out FrameKinematics targetFrame))
+                {
+                    float displayRadius = (float)(observation.RadiusKilometers * projection / units);
+                    if (displayRadius >= .025f)
+                        _missionObservations[asset.Id].Draw(snapshot.Epoch, new(
+                            PlanetBasis(targetFrame.ToWorld).Scaled(Vector3.One * displayRadius), position));
+                }
+                continue;
+            }
             PreparedMissionGeometry? active = null;
             if (asset.Geometry is { } intervals)
             {

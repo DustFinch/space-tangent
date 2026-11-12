@@ -21,7 +21,7 @@ public partial class SolarSystemScene
         {
             try
             {
-                pending = TourConverter.ConvertFile(path);
+                pending = ConvertTourFile(path);
                 destination.CurrentFile = Path.GetFileNameWithoutExtension(path) + ".lua";
                 destination.PopupCentered(new(700, 460));
             }

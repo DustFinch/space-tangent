@@ -593,6 +593,7 @@ public partial class SolarSystemScene : Control
     {
         _eventSearch?.Cancel();
         _landscapeLifetime.Cancel();
+        DisablePlugins(updateMenu: false);
         _script?.Stop();
         _loadGeneration++;
         _loadCancellation?.Cancel();
@@ -610,6 +611,7 @@ public partial class SolarSystemScene : Control
     {
         FlyShip(delta);
         bool changed = Session?.Tick(delta) == true;
+        changed |= StepPlugins(delta);
         if (_script is { } script)
         {
             changed |= script.Step(delta);
@@ -965,11 +967,18 @@ public partial class SolarSystemScene : Control
             FileMode = FileDialog.FileModeEnum.OpenFile, DeletingEnabled = false };
         AddChild(open);
         open.AddFilter("*.lua,*.celx", "Lua scripts");
-        open.FileSelected += path => RunScript(path);
+        open.AddFilter("plugin.json", "Lua plugin manifest");
+        open.FileSelected += path =>
+        {
+            if (Path.GetFileName(path).Equals("plugin.json", StringComparison.OrdinalIgnoreCase))
+                OpenPlugin(path);
+            else
+                RunScript(path);
+        };
         _scriptMenu = menu.GetPopup();
         _scriptMenu.AddItem("Run Lua…", 0);
         _scriptMenu.AddItem("Stop script", 1);
-        var conversionSource = AddTourDialogs();
+        _tourConversionSource = AddTourDialogs();
         _scriptMenu.AddItem("Convert tour…", 2);
         _scriptMenu.SetItemDisabled(1, true);
         _scriptMenu.IdPressed += id =>
@@ -978,8 +987,10 @@ public partial class SolarSystemScene : Control
                 open.PopupCentered(new Vector2I(700, 460));
             else if (id == 1)
                 StopScript();
+            else if (id == 2)
+                _tourConversionSource.PopupCentered(new Vector2I(700, 460));
             else
-                conversionSource.PopupCentered(new Vector2I(700, 460));
+                RunPluginMenuAction(id);
         };
     }
 

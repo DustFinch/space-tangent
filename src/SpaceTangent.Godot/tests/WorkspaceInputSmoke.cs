@@ -49,6 +49,19 @@ public partial class WorkspaceInputSmoke : Node
                 "DE440 and the original Jason-1 add-on must load.");
             Tree.Root.NotifyMouseEntered();
 
+            if (System.Environment.GetEnvironmentVariable("SPACETANGENT_PLUGIN_SMOKE_ONLY") == "1")
+            {
+                var left = Session[0] with { Playing = false };
+                var right = new ObserverView(SurfaceProjection.FullMoonEpoch, CameraMode.Surface, SolarSystemSample.MoonId, false)
+                    { EarthObserver = EarthObserverCamera.Moscow };
+                string path = Path.Combine(scratch.FullName, "plugin-test.stscene");
+                ScenarioFile.Save(path, new([left, right], false, 0, 0, Session.DeltaT));
+                Require(_scene.LoadScenario(path), "The independent plugin test workspace must open.");
+                await ExercisePlugins(scratch.FullName);
+                exitCode = 0;
+                return;
+            }
+
             await ExerciseStartupFlight(scratch.FullName);
             await ExerciseNestedViews(scratch.FullName);
             await ExerciseViews();
@@ -138,6 +151,7 @@ public partial class WorkspaceInputSmoke : Node
             await ExerciseMeteors(scratch.FullName);
             await ExercisePanoramas(scratch.FullName);
             await ExerciseOptics(scratch.FullName);
+            await ExercisePlugins(scratch.FullName);
             GD.Print($"SpaceTangent workspace input smoke passed ({DisplayServer.GetName()})");
             exitCode = 0;
         }

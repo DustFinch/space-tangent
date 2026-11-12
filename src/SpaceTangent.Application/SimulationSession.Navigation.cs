@@ -46,11 +46,11 @@ public sealed partial class SimulationSession
 
     public bool GoToSelection(int view) => InShip(view) ? SetShipPilot(view, ShipPilot.Approach) : GoToSelection(view, FlightDuration, null);
 
-    internal bool GoToSelection(int view, double duration, double? range)
+    internal bool GoToSelection(int view, double duration, double? range, WorldSnapshot? evaluated = null)
     {
         if (!double.IsFinite(duration) || duration is < 0 or > 300 || (range.HasValue && !double.IsFinite(range.Value)))
             throw new ArgumentOutOfRangeException(nameof(duration));
-        if (!TrySelectedState(view, out ObjectId target, out WorldSnapshot snapshot, out _))
+        if (!TrySelectedState(view, out ObjectId target, out WorldSnapshot snapshot, out _, evaluated))
             return false;
         ObserverView observer = _views[view];
         NavigationCamera start = observer.Navigation ?? PresetCamera(observer, snapshot);
@@ -62,7 +62,9 @@ public sealed partial class SimulationSession
         return true;
     }
 
-    public bool ToggleTracking(int view)
+    public bool ToggleTracking(int view) => ToggleTracking(view, null);
+
+    internal bool ToggleTracking(int view, WorldSnapshot? evaluated)
     {
         if (InShip(view))
             return SetShipPilot(view, ShipPilot.Orbit);
@@ -74,7 +76,7 @@ public sealed partial class SimulationSession
             _views[view] = observer with { Navigation = tracked with { Tracking = false, Placement = placement } };
             return true;
         }
-        if (!TrySelectedState(view, out ObjectId target, out WorldSnapshot snapshot, out CartesianState state))
+        if (!TrySelectedState(view, out ObjectId target, out WorldSnapshot snapshot, out CartesianState state, evaluated))
             return false;
         observer = _views[view];
         NavigationCamera pose = observer.Navigation ?? PresetCamera(observer, snapshot);
@@ -213,10 +215,11 @@ public sealed partial class SimulationSession
     private double FramingRange(ObjectId target) =>
         (target == PlanetCatalogue.SaturnId ? 6.4 : 4.2) * World.TargetRadiusKilometers(target);
 
-    private bool TrySelectedState(int view, out ObjectId target, out WorldSnapshot snapshot, out CartesianState state)
+    private bool TrySelectedState(int view, out ObjectId target, out WorldSnapshot snapshot, out CartesianState state,
+        WorldSnapshot? evaluated = null)
     {
         ObserverView observer = _views[view];
-        snapshot = World.Graph.Evaluate(observer.Epoch);
+        snapshot = evaluated?.Epoch == observer.Epoch ? evaluated : World.Graph.Evaluate(observer.Epoch);
         target = observer.Selection.GetValueOrDefault();
         state = default;
         if (observer.Selection is null)

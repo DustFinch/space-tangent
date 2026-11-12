@@ -19,3 +19,9 @@ An explicitly trusted local SSC add-on can use `ScriptedOrbit` and `ScriptedRota
 
 Callbacks use separate instruction and allocation quotas and have no observer or operating-system API. An unaccepted factory uses an available declared fallback. An unavailable body and its descendants are omitted, and the status of the other add-ons is preserved.
 An installed pack can contain embedded SSC with a resource table. The source catalogue keeps its scope inside the installed pack, including remapped GLB meshes and available fallback files.
+
+## Folder plugins
+
+Open a local `plugin.json` with **Script → Run Lua…**. An enabled plugin adds its manifest scripts and registered commands to the existing **Script** menu. Use the menu's **Disable** entry to remove the plugin. A plugin remains attached to the observer that opened it. Closing that observer or replacing the scenario stops its jobs.
+
+The archived version 1 manifest can declare `main` and `scripts`. The interpreter accepts local Lua modules through `require` and files through `plugin.read`. Use `plugin.command`, `plugin.on`, `plugin.run` and `plugin.importer` for commands, selection or tick handlers, background Lua invocations and conversion extensions. Commands can wait and a failed job reports its own error. An importer must return valid Lua within the source quota.

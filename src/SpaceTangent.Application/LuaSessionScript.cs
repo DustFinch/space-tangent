@@ -17,11 +17,20 @@ public sealed partial class LuaSessionScript
     private readonly int _viewIdentity;
     private readonly Action<string> _log;
     private readonly bool _hasSurface;
-    private Coroutine? _coroutine;
-    private int _steps, _messages;
-    private long _allocated;
-    private double _waitRemaining, _totalWait;
+    private readonly Script _vm;
+    private Invocation? _foreground, _running;
     private bool _changed;
+
+    internal sealed class Invocation(Coroutine coroutine, DynValue[] arguments)
+    {
+        internal Coroutine Coroutine { get; } = coroutine;
+        internal DynValue[]? Arguments = arguments;
+        internal int Steps, Messages;
+        internal long Allocated;
+        internal double WaitRemaining, TotalWait;
+        internal bool Complete, Yielded;
+        internal string? Error;
+    }
 
     private LuaSessionScript(string source, string name, SimulationSession session, int view, bool hasSurface, Action<string> log)
     {
@@ -32,7 +41,7 @@ public sealed partial class LuaSessionScript
         if (StrictUtf8.GetByteCount(source) > MaximumSourceBytes)
             throw new InvalidDataException("Lua source exceeds the size quota.");
 
-        var script = new Script(CoreModules.Basic | CoreModules.GlobalConsts | CoreModules.TableIterators |
+        var script = _vm = new Script(CoreModules.Basic | CoreModules.GlobalConsts | CoreModules.TableIterators |
             CoreModules.Math | CoreModules.Bit32);
         script.Options.DebugPrint = Log;
         script.Globals.Set("collectgarbage", DynValue.Nil);
@@ -43,10 +52,17 @@ public sealed partial class LuaSessionScript
         Bind(api, "synchronizetime", (_, arguments) => Change(() =>
             _session.Synchronize(Boolean(arguments[0]), View)));
         Bind(api, "mode", SetMode);
-        Bind(api, "select", (_, arguments) => Change(() => _session.Select(View, new ObjectId(Text(arguments[0])))));
+        Bind(api, "select", (_, arguments) => Change(() =>
+        {
+            if (arguments[0].Type == DataType.Table)
+                _session.SelectObject(View, LuaObjectId(arguments[0]));
+            else
+                _session.Select(View, new ObjectId(Text(arguments[0])));
+        }));
         Bind(api, "wait", Wait);
         Bind(api, "log", (_, arguments) => { Log(Text(arguments[0])); return DynValue.Nil; });
         BindTourActions(api);
+        BindNativeObjects(api);
         script.Globals.Set("st", DynValue.NewTable(api));
         Bind(script.Globals, "wait", Wait);
 
@@ -55,16 +71,29 @@ public sealed partial class LuaSessionScript
         Bind(upstream, "print", (_, arguments) => { Log(Text(arguments.SkipMethodCall()[0])); return DynValue.Nil; });
         Bind(upstream, "settime", (context, arguments) => SetTime(context, arguments.SkipMethodCall()));
         Bind(upstream, "gettime", (_, _) => DynValue.NewNumber(_session[View].Epoch.ToJulianDate()));
+        BindNativeObserver(upstream);
         script.Globals.Set("celestia", DynValue.NewTable(upstream));
 
-        DynValue function = script.LoadString(source, codeFriendlyName: name);
-        _coroutine = script.CreateCoroutine(function).Coroutine;
-        // Check allocations between VM instructions to catch exponential string growth.
-        _coroutine.AutoYieldCounter = 1;
+        _foreground = NewInvocation(script.LoadString(source, codeFriendlyName: name));
     }
 
     public int View => _session.IndexOfView(_viewIdentity);
-    public bool Finished => _coroutine is null;
+    public bool Finished => _foreground is null;
+    internal Script Interpreter => _vm;
+
+    internal static LuaSessionScript PluginRuntime(SimulationSession session, int view, bool hasSurface, Action<string> log)
+    {
+        var runtime = new LuaSessionScript("", "plugin", session, view, hasSurface, log);
+        runtime.Stop();
+        return runtime;
+    }
+
+    internal Invocation NewInvocation(DynValue function, params DynValue[] arguments)
+    {
+        var coroutine = _vm.CreateCoroutine(function).Coroutine;
+        coroutine.AutoYieldCounter = 1;
+        return new(coroutine, arguments);
+    }
     public string? Error { get; private set; }
 
     public static LuaSessionScript Load(string path, SimulationSession session, int view, bool hasSurface, Action<string> log)
@@ -89,56 +118,69 @@ public sealed partial class LuaSessionScript
         }
     }
 
-    public void Stop() => _coroutine = null;
+    public void Stop() => _foreground = null;
 
     public bool Step(double elapsed)
     {
-        _changed = false;
-        if (_coroutine is not { } coroutine)
+        if (_foreground is not { } work)
             return false;
+        bool changed = Step(work, elapsed, StepsPerFrame);
+        if (work.Complete)
+        {
+            Error = work.Error;
+            Stop();
+        }
+        return changed;
+    }
+
+    internal bool Step(Invocation work, double elapsed, int slice)
+    {
+        _changed = false;
         if (View < 0)
         {
-            Fail("The script's view has been closed.");
+            work.Error = "The script's view has been closed.";
+            work.Complete = true;
             return false;
         }
-        _waitRemaining = Math.Max(0, _waitRemaining - elapsed);
-        if (_waitRemaining > 0)
+        work.WaitRemaining = Math.Max(0, work.WaitRemaining - elapsed);
+        if (work.Complete || work.WaitRemaining > 0)
             return false;
 
+        work.Yielded = false;
+        _running = work;
         try
         {
-            for (int step = 0; step < StepsPerFrame; step++)
+            for (int step = 0; step < slice; step++)
             {
-                if (_steps++ >= MaximumSteps)
-                {
-                    Fail("Lua instruction quota exceeded.");
-                    break;
-                }
+                if (work.Steps++ >= MaximumSteps)
+                    throw new ScriptRuntimeException("Lua instruction quota exceeded.");
                 long before = GC.GetAllocatedBytesForCurrentThread();
-                coroutine.Resume();
-                _allocated += GC.GetAllocatedBytesForCurrentThread() - before;
-                if (_allocated > MaximumAllocatedBytes)
+                if (work.Arguments is { } arguments)
                 {
-                    Fail("Lua allocation quota exceeded.");
+                    work.Arguments = null;
+                    work.Coroutine.Resume(arguments);
+                }
+                else
+                    work.Coroutine.Resume();
+                work.Allocated += GC.GetAllocatedBytesForCurrentThread() - before;
+                if (work.Allocated > MaximumAllocatedBytes)
+                    throw new ScriptRuntimeException("Lua allocation quota exceeded.");
+                if (work.Coroutine.State == CoroutineState.Dead)
+                {
+                    work.Complete = true;
                     break;
                 }
-                if (coroutine.State == CoroutineState.Dead)
-                {
-                    Stop();
-                    break;
-                }
-                if (_waitRemaining > 0)
+                if (work.Yielded)
                     break;
             }
         }
-        catch (InterpreterException error)
+        catch (Exception error) when (error is InterpreterException or ArgumentException or
+            InvalidOperationException or ArithmeticException or IOException or InvalidDataException or UnauthorizedAccessException)
         {
-            Fail(error.DecoratedMessage ?? error.Message);
+            work.Error = error is InterpreterException lua ? lua.DecoratedMessage ?? lua.Message : error.Message;
+            work.Complete = true;
         }
-        catch (Exception error) when (error is ArgumentException or InvalidOperationException or ArithmeticException)
-        {
-            Fail(error.Message);
-        }
+        finally { _running = null; }
         return _changed;
     }
 
@@ -162,11 +204,14 @@ public sealed partial class LuaSessionScript
 
     private DynValue Wait(ScriptExecutionContext context, CallbackArguments arguments)
     {
+        if (_running is not { } work)
+            throw new ScriptRuntimeException("This Lua callback cannot wait.");
         double seconds = Number(arguments[0]);
-        if (seconds < 0 || _totalWait + seconds > MaximumWaitSeconds)
+        if (seconds < 0 || work.TotalWait + seconds > MaximumWaitSeconds)
             throw new ScriptRuntimeException("Lua wait quota exceeded.");
-        _totalWait += seconds;
-        _waitRemaining = seconds;
+        work.TotalWait += seconds;
+        work.WaitRemaining = seconds;
+        work.Yielded = true;
         return DynValue.NewYieldReq([]);
     }
 
@@ -179,11 +224,10 @@ public sealed partial class LuaSessionScript
 
     private void Log(string text)
     {
-        if (_messages++ >= 128)
-            throw new ScriptRuntimeException("Lua log quota exceeded.");
+        if (_running is not { } work || work.Messages++ >= 128)
+            throw new ScriptRuntimeException("Lua log quota exceeded or unavailable for this callback.");
         _log(text.Length > 512 ? text[..512] : text);
     }
-    private void Fail(string error) { Error = error; Stop(); }
     private static void Bind(Table table, string name, Func<ScriptExecutionContext, CallbackArguments, DynValue> callback) =>
         table.Set(name, DynValue.NewCallback((context, arguments) => callback(context, arguments)));
     private static double Number(DynValue value) => value.Type == DataType.Number && double.IsFinite(value.Number)

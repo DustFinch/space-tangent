@@ -16,7 +16,7 @@ public sealed record SimulationScenario(IReadOnlyList<ObserverView> Views, bool 
 /// <summary>Persists observer settings with exact TDB epochs and stable catalog IDs.</summary>
 public static class ScenarioFile
 {
-    private const int Version = 13;
+    private const int Version = 14;
     internal const int MaximumBytes = 32 * 1024;
     private static readonly JsonSerializerOptions Json = new()
     {
@@ -49,9 +49,12 @@ public static class ScenarioFile
             throw new InvalidDataException("The scenario has an invalid layout or field of view.");
         if (scenario.Views.Any(view => (view.ReferenceMarks & ~BodyReferenceMarks.All) != 0))
             throw new InvalidDataException("The scenario has unsupported reference marks.");
+        if (scenario.Views.Any(view => view.Optics is { } optical && !optical.IsValid()))
+            throw new InvalidDataException("The scenario has an invalid optics profile.");
         var document = new Document
         {
-            Version = scenario.Views.Any(view => view.EarthObserver?.LandscapeId is not null) ? Version :
+            Version = scenario.Views.Any(view => view.Optics is not null) ? Version :
+                scenario.Views.Any(view => view.EarthObserver?.LandscapeId is not null) ? 13 :
                 scenario.Views.Any(view => view.Sky.Meteors) ? 12 :
                 scenario.Views.Any(view => view.EarthObserver?.Conditions is not null) ? 11 :
                 scenario.Views.Any(view => view.LightTimeDelayed) ? 10 :
@@ -77,6 +80,7 @@ public static class ScenarioFile
                 EarthObserver = view.EarthObserver,
                 Sky = view.Sky.Visible ? view.Sky : null,
                 ReferenceMarks = view.ReferenceMarks,
+                Optics = view.Optics,
                 LightTimeDelayed = view.LightTimeDelayed
             }).ToArray()
         };
@@ -169,6 +173,8 @@ public static class ScenarioFile
             if ((data.ReferenceMarks & ~BodyReferenceMarks.All) != 0 ||
                 (document.Version < 9 && data.ReferenceMarks != BodyReferenceMarks.None))
                 throw new InvalidDataException("The scene reference marks are unsupported.");
+            if (data.Optics is { } optical && (document.Version < 14 || !optical.IsValid()))
+                throw new InvalidDataException("The scenario has an invalid optics profile.");
             if (document.Version < 10 && data.LightTimeDelayed)
                 throw new InvalidDataException("Light-time correction requires a version 10 scenario.");
             views[i] = new(epoch, data.Camera, selection, data.Playing)
@@ -180,6 +186,7 @@ public static class ScenarioFile
                 EarthObserver = data.EarthObserver,
                 Sky = data.Sky ?? default,
                 ReferenceMarks = data.ReferenceMarks,
+                Optics = data.Optics,
                 LightTimeDelayed = data.LightTimeDelayed
             };
         }
@@ -222,6 +229,8 @@ public static class ScenarioFile
         public SkyLayerSettings? Sky { get; init; }
         [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingDefault)]
         public BodyReferenceMarks ReferenceMarks { get; init; }
+        [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+        public ObserverOptics? Optics { get; init; }
         [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingDefault)]
         public bool LightTimeDelayed { get; init; }
     }

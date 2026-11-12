@@ -54,6 +54,8 @@ internal partial class SimulationViewport
                     Icrs(-basis.Z), Icrs(basis.X), Icrs(basis.Y), tangent, ShowCatalogue: catalogue));
             }
         }
+        DrawEyepiece(observer);
+        _lastOpticalFrame = observer.ActiveOptics is null ? null : (observer, snapshot, deltaT);
         return available;
 
         static Vector3 Icrs(Vector3 value) => new(value.X, -value.Z, value.Y);
@@ -62,5 +64,5 @@ internal partial class SimulationViewport
     internal bool TransientStarVisible(ObjectId id) => _spaceSky?.TransientVisible(id) == true;
 
     internal ObjectId? PickObject(Vector2 position) =>
-        PickNavigationBody(position) ?? _surface?.PickStar(position) ?? _spaceSky?.Pick(position);
+        InsideEyepiece(position) ? PickNavigationBody(position) ?? _surface?.PickStar(position) ?? _spaceSky?.Pick(position) : null;
 }

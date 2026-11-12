@@ -61,7 +61,7 @@ internal partial class SimulationViewport
     }
 
     private void DrawNavigation(NavigationCamera pose, WorldSnapshot snapshot, SolarSystemSample solar, DeltaTModel deltaT,
-        SkyLayerSettings sky, double fieldOfView)
+        SkyLayerSettings sky, double fieldOfView, bool inverted)
     {
         double units = pose.RangeKilometers / NavigationCameraUnits;
         double azimuth = pose.AzimuthRadians, elevation = pose.ElevationRadians;
@@ -81,6 +81,8 @@ internal partial class SimulationViewport
             _navigationCamera.Position = offset * NavigationCameraUnits;
             _navigationCamera.LookAt(Vector3.Zero);
         }
+        if (inverted)
+            _navigationCamera.RotateObjectLocal(Vector3.Back, Mathf.Pi);
         if (!_navigationCamera.Current)
             _navigationCamera.MakeCurrent();
 

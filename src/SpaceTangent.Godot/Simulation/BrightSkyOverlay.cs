@@ -11,7 +11,7 @@ internal partial class BrightSkyOverlay : Control
     internal readonly record struct SkyFrame(JulianInstant Epoch, SkyLayerSettings Layers, ObjectId? Selection,
         Vector3 Forward, Vector3 Right, Vector3 Up, float TangentHalfField, float StarVisibility = 1,
         Vector3? Horizon = null, Vector3? Moon = null, float MoonRadius = 0, bool ShowCatalogue = true,
-        GroundSkyConditions? Conditions = null, EarthSite Site = default);
+        GroundSkyConditions? Conditions = null, EarthSite Site = default, double? OpticalLimit = null);
 
     private static readonly (Vector3 From, Vector3 To)[] Grid = MakeGrid().ToArray();
     private BrightSkyData _data = null!;
@@ -104,7 +104,7 @@ internal partial class BrightSkyOverlay : Control
         {
             double altitude = Math.Asin(Math.Clamp(seen.Dot(horizon), -1, 1)) * 180 / Math.PI;
             magnitude += (float)conditions.AttenuationMagnitude(altitude);
-            if (magnitude > conditions.LimitingMagnitude())
+            if (magnitude > (_frame.OpticalLimit ?? conditions.LimitingMagnitude()))
                 return false;
             scintillation = (float)conditions.ScintillationFactor(altitude, _scintillationTime, phase);
         }

@@ -519,6 +519,15 @@ public partial class SolarSystemScene : Control
             case Key.E when key.CtrlPressed:
                 _ = FindNextObserverEvent();
                 break;
+            case Key.Key0 when key.CtrlPressed:
+                ChangeOptics(cycleTube: key.ShiftPressed, cycleEyepiece: key.AltPressed, flip: false, barlow: false);
+                break;
+            case Key.Key0 when key.AltPressed && !key.ShiftPressed:
+                ChangeOptics(cycleTube: false, cycleEyepiece: false, flip: true, barlow: false);
+                break;
+            case Key.Key0 when key.ShiftPressed && !key.AltPressed:
+                ChangeOptics(cycleTube: false, cycleEyepiece: false, flip: false, barlow: true);
+                break;
             case Key.P when key.CtrlPressed && !key.ShiftPressed:
                 CycleLandscape(clear: key.AltPressed);
                 break;

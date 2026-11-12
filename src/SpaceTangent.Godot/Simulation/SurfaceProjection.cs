@@ -5,6 +5,7 @@ using SpaceTangent.Contracts;
 using SpaceTangent.Core.Ephemerides;
 using SpaceTangent.Core.Observing;
 using SpaceTangent.Core.Time;
+using SpaceTangent.Core.World;
 
 namespace SpaceTangent.Godot.Simulation;
 
@@ -56,7 +57,8 @@ internal sealed partial class SurfaceProjection
     internal ObjectId? PickStar(Vector2 position) => _sky?.Pick(position);
 
     internal bool Draw(bool surface, SolarSystemSample sample, DeltaTModel model, EarthObserverCamera? camera = null,
-        SkyLayerSettings sky = default, ObjectId? selection = null, double fieldOfView = 10)
+        SkyLayerSettings sky = default, ObjectId? selection = null, double fieldOfView = 10,
+        VisualOptics? optics = null, SimulationWorld? world = null, WorldSnapshot? snapshot = null)
     {
         _surface.Visible = surface;
         if (!surface)
@@ -78,6 +80,19 @@ internal sealed partial class SurfaceProjection
             return false;
         }
 
+        if (optics is { HoldSelection: true } && selection is { } target && world is not null)
+        {
+            var horizontalAtTarget = world.BrightStars.Find(target) is { } star
+                ? EarthObserving.HorizontalDirection(lighting, star.DirectionAt(sample.Epoch))
+                : snapshot is not null && world.TryNavigationState(target, snapshot, out var state, model)
+                    ? EarthObserving.Horizontal(lighting, (state - sample.Earth).PositionKilometers) : null;
+            if (horizontalAtTarget is { } point)
+                observer = observer with
+                {
+                    AzimuthDegrees = point.AzimuthDegrees ?? observer.AzimuthDegrees,
+                    ElevationDegrees = observer.Conditions?.ApparentAltitude(point.AltitudeDegrees, observer.Site) ?? point.AltitudeDegrees
+                };
+        }
         Vector3 east = Convert(lighting.EastNorthUp.X);
         Vector3 north = Convert(lighting.EastNorthUp.Y);
         Vector3 up = Convert(lighting.EastNorthUp.Z);
@@ -87,6 +102,11 @@ internal sealed partial class SurfaceProjection
         Vector3 forward = horizontal * (float)Math.Cos(pitch) + up * (float)Math.Sin(pitch);
         Vector3 right = horizontal.Cross(up).Normalized();
         Vector3 cameraUp = right.Cross(forward);
+        if (optics?.Inverted == true)
+        {
+            right = -right;
+            cameraUp = -cameraUp;
+        }
         _tanHalfField = (float)Math.Tan(fieldOfView * Degrees / 2);
         _material.SetShaderParameter("tan_half_field", _tanHalfField);
         _material.SetShaderParameter("observer", Convert(lighting.PositionKilometers));
@@ -114,7 +134,7 @@ internal sealed partial class SurfaceProjection
             float moonRadius = MathF.Asin(MathF.Min(4 * (float)(EarthSurfaceLighting.MoonRadiusKilometers / moonOffset.Length), .1f));
             _sky.ShowFrame(new(sample.Epoch, sky, selection, forward, right, cameraUp, _tanHalfField,
                 1 - Mathf.SmoothStep(-12, -4, solarAltitude), up, Convert(moonSeen), moonRadius,
-                Conditions: observer.Conditions, Site: observer.Site));
+                Conditions: observer.Conditions, Site: observer.Site, OpticalLimit: optics?.LimitingMagnitude()));
         }
         else
             _sky?.Hide();

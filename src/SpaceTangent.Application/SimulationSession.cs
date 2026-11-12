@@ -32,6 +32,9 @@ public readonly record struct ObserverView(JulianInstant Epoch, CameraMode Mode,
     public double? FieldOfViewDegrees { get; init; }
     public double? PlaybackRate { get; init; }
     public bool LightTimeDelayed { get; init; }
+    public ObserverOptics? Optics { get; init; }
+    public bool SupportsOptics => Mode == CameraMode.Surface || Navigation is not null;
+    public VisualOptics? ActiveOptics => SupportsOptics && Optics is { Active: true } optical ? optical.Profile : null;
     public static bool ValidPlaybackRate(double rate) => rate is >= -100_000_000 and <= 100_000_000;
     public double EffectiveFieldOfView => FieldOfViewDegrees ?? (Mode == CameraMode.Surface && Navigation is null ? 10 : 49);
     public static bool ValidFieldOfView(double field) => field is >= 2 and <= 120;
@@ -266,6 +269,8 @@ public sealed partial class SimulationSession
                 throw new InvalidDataException("The scenario has an invalid Earth observer camera.");
             if (view.FieldOfViewDegrees is { } field && !ObserverView.ValidFieldOfView(field))
                 throw new InvalidDataException("The scenario has an invalid field of view.");
+            if (view.Optics is { } optical && !optical.IsValid())
+                throw new InvalidDataException("The scenario has an invalid optics profile.");
             if (view.PlaybackRate is { } rate && !ObserverView.ValidPlaybackRate(rate))
                 throw new InvalidDataException("The scenario has an invalid playback rate.");
             if ((view.ReferenceMarks & ~BodyReferenceMarks.All) != 0)
@@ -311,6 +316,13 @@ public sealed partial class SimulationSession
         if (!camera.IsValid())
             throw new ArgumentOutOfRangeException(nameof(camera));
         _views[view] = _views[view] with { EarthObserver = camera };
+    }
+
+    public void SetOptics(int view, ObserverOptics optics)
+    {
+        if (!optics.IsValid())
+            throw new ArgumentOutOfRangeException(nameof(optics));
+        _views[view] = _views[view] with { Optics = optics };
     }
 
     public void SetSkyLayers(int view, SkyLayerSettings sky) => _views[view] = _views[view] with { Sky = sky };

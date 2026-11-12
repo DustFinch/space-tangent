@@ -89,3 +89,9 @@ Version 12 scenarios preserve the meteor layer per view. Shower and sporadic tra
 Put landscape folders under `data/landscapes` or set `SPACETANGENT_LANDSCAPES` to their common parent. Each folder contains `landscape.ini` and its PNG or horizon files. The Earth observer reads spherical, old-style panel, fisheye and polygonal panoramas with their local lights and fog. Keep each panorama's original credits and license with its files.
 
 Press **Ctrl+P** to cycle the available Earth panoramas and **Ctrl+Alt+P** to clear the active view. Panorama changes leave the observer's coordinates and epoch in place. Version 13 scenarios save the chosen local folder ID. A missing panorama falls back to the geometric ground.
+
+## Virtual optics
+
+In a perspective flight or Earth surface view, use **Ctrl+0** to look through the current eyepiece or return to the normal view. **Ctrl+Shift+0** cycles telescopes, **Ctrl+Alt+0** cycles eyepieces, **Shift+0** cycles Barlow factors and **Alt+0** flips the image. The view reports its magnification and true field. The Earth observer can hold the selected target, and the lens applies diffraction and ground seeing.
+
+An archived `optics-v1.json` is loaded from the local user profile or the path set in `SPACETANGENT_OPTICS_FILE`. It uses a `Telescopes` array with `Name`, `ApertureMillimeters` and `FocalMillimeters`, and an `Eyepieces` array with `Name`, `FocalMillimeters` and `ApparentFieldDegrees`. Version 14 scenarios preserve each view's profile and whether the eyepiece is active. Closing the eyepiece returns to the observer's original field and camera.

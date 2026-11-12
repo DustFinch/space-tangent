@@ -12,6 +12,7 @@ uniform vec3 site_east;
 uniform vec3 site_north;
 uniform float patch_span;
 uniform vec3 sun_direction;
+uniform float sun_fraction = 1.0;
 
 varying vec3 terrain_normal;
 varying vec3 terrain_radial;
@@ -46,7 +47,7 @@ void vertex() {
 }
 
 void fragment() {
-    float illumination = 0.055 + 0.945 * max(dot(normalize(terrain_normal), sun_direction), 0.0);
+    float illumination = 0.055 + 0.945 * sun_fraction * max(dot(normalize(terrain_normal), sun_direction), 0.0);
     vec3 radial = normalize(terrain_radial);
     vec2 surface_uv = vec2(0.5 + atan(-radial.z, radial.x) / TAU, 0.5 - asin(clamp(radial.y, -1.0, 1.0)) / PI);
     vec3 surface = textured_surface ? texture(surface_map, surface_uv).rgb : vec3(0.59, 0.57, 0.54);

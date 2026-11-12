@@ -3,6 +3,7 @@ using Godot;
 using SpaceTangent.Application;
 using SpaceTangent.Contracts;
 using SpaceTangent.Core.Ephemerides;
+using SpaceTangent.Core.Observing;
 using SpaceTangent.Core.Time;
 using SpaceTangent.Core.World;
 
@@ -17,6 +18,7 @@ internal partial class SimulationViewport
     private MeshInstance3D _navigationSun = null!, _navigationEarth = null!, _navigationMoon = null!;
 
     private EarthOrbitRenderer? _earthOrbit;
+    private ShaderMaterial _navigationMoonMaterial = null!;
 
     internal void SetEarthOrbitTextures(EarthOrbitTextures textures) => _earthOrbit = new(_navigationEarth, textures);
 
@@ -32,6 +34,10 @@ internal partial class SimulationViewport
         _navigationSun = CreateNavigationSphere(new Color("ffd18d"), emissive: true);
         _navigationEarth = CreateNavigationSphere(new Color("4a76ad"));
         _navigationMoon = CreateNavigationSphere(new Color("c9c4b6"));
+        _navigationMoonMaterial = new() { Shader = GD.Load<Shader>("res://Shaders/moon_orbit.gdshader") };
+        _navigationMoonMaterial.SetShaderParameter("earth_radius_km", (float)EarthSurfaceLighting.EarthRadiusKilometers);
+        _navigationMoonMaterial.SetShaderParameter("moon_radius_km", (float)EarthSurfaceLighting.MoonRadiusKilometers);
+        _navigationMoon.MaterialOverride = _navigationMoonMaterial;
         InitializeStellarRendering();
     }
 
@@ -91,6 +97,8 @@ internal partial class SimulationViewport
             _earthOrbit.Update(solar, deltaT, _navigationEarth.Scale.X > projectedDistance * .004f);
         }
         PlaceBody(_navigationMoon, solar.Moon.PositionKilometers, SolarSystemSample.MoonId);
+        _navigationMoonMaterial.SetShaderParameter("sun_from_moon", ToGodot((solar.Sun - solar.Moon).PositionKilometers, 1));
+        _navigationMoonMaterial.SetShaderParameter("earth_from_moon", ToGodot((solar.Earth - solar.Moon).PositionKilometers, 1));
         HidePlanetGlobes();
         DrawPlanetGlobes(snapshot, pose, units, ProjectWithScale);
         DrawStellarObjects(pose, snapshot, sky, units, ProjectWithScale);

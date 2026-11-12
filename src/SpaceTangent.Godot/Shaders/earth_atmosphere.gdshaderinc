@@ -1,5 +1,11 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
 
+#include "res://Shaders/solar_occultation.gdshaderinc"
+
+uniform bool solar_eclipse_active = false;
+uniform vec3 eclipse_sun_km;
+uniform vec3 eclipse_moon_km;
+
 const float AIR_TOP_KM = 100.0;
 const vec2 AIR_SCALE_KM = vec2(8.5, 1.2);
 const vec3 AIR_RAYLEIGH = vec3(0.004847, 0.01149, 0.02870);
@@ -7,6 +13,10 @@ const vec3 AIR_ABSORPTION = vec3(0.00407, 0.00254, 0.00001);
 const float AIR_MIE = 0.01;
 const float AIR_MIE_G = 0.76;
 const float AIR_EXPOSURE = 7.0;
+
+float earth_solar_visibility(vec3 position) {
+    return solar_eclipse_active ? solar_visibility(eclipse_sun_km - position, eclipse_moon_km - position, 1737.4) : 1.0;
+}
 
 float air_exit(vec3 position, vec3 direction, float radius) {
     float along = dot(position, direction);
@@ -58,6 +68,7 @@ void air_integrate(vec3 eye, vec3 ray, vec3 sun, float ground_radius, float star
         // The Sun has a finite angular radius of about 0.27 degrees.
         float visibility = smoothstep(horizon - 0.00465, horizon + 0.00465, mu);
         if (visibility > 0.0) {
+            visibility *= earth_solar_visibility(eye + ray * midpoint);
             vec2 column = view_column + 0.5 * segment_column + air_solar_column(radius, mu, ground_radius);
             vec3 source = AIR_RAYLEIGH * (density.x * rayleigh_phase) + vec3(AIR_MIE * density.y * mie_phase);
             radiance += exp(-air_extinction(column)) * source * (step_km * visibility);

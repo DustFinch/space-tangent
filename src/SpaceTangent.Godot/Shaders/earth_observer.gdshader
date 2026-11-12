@@ -67,7 +67,9 @@ vec3 lunar_disc(vec3 ray, vec3 moon_dir, float moon_distance, vec3 background) {
     float y = dot(ray, north) / radius;
     float depth = sqrt(max(0.0, 1.0 - x * x - y * y));
     vec3 normal = x * east + y * north - depth * moon_dir;
-    float diffuse = max(0.0, dot(normal, normalize(earth_to_sun - earth_to_moon)));
+    vec3 lunar_point = earth_to_moon + normal * moon_radius;
+    vec3 sun_from_moon = earth_to_sun - lunar_point;
+    float diffuse = max(0.0, dot(normal, normalize(sun_from_moon))) * solar_visibility(sun_from_moon, -lunar_point, earth_radius);
     vec2 uv = vec2(0.5 + atan(x, depth) / TAU, 0.5 - asin(clamp(y, -1.0, 1.0)) / PI);
     vec3 lunar = texture(moon_texture, uv).rgb;
     return pow(max(lunar, vec3(0.0)), vec3(0.58)) * (0.035 + 1.35 * diffuse);
@@ -112,7 +114,7 @@ void fragment() {
         coverage = cloud_cover(cloud, regional_cover);
         float solar_incidence = dot(normal, sun_dir);
         float night = 1.0 - smoothstep(-0.105, 0.0, solar_incidence);
-        float sunlight = max(0.0, solar_incidence);
+        float sunlight = max(0.0, solar_incidence) * earth_solar_visibility(cloud);
         float moonlight = 0.0;
         if (lunar_cloud_light) {
             moonlight = lunar_strength * night * max(0.0, dot(normal, normalize(earth_to_moon - cloud)));

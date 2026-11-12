@@ -83,6 +83,7 @@ internal sealed class SurfaceProjection
         _material.SetShaderParameter("camera_up", cameraUp);
         _material.SetShaderParameter("earth_to_sun", Convert(lighting.EarthToSun));
         _material.SetShaderParameter("earth_to_moon", Convert(lighting.EarthToMoon));
+        EclipseRendering.SetEarthShadow(_material, lighting, godotAxes: false);
         _material.SetShaderParameter("earth_angle", (float)lighting.EarthRotationRadians);
         _material.SetShaderParameter("earth_radius", (float)EarthSurfaceLighting.EarthRadiusKilometers);
         _material.SetShaderParameter("moon_radius", (float)EarthSurfaceLighting.MoonRadiusKilometers);

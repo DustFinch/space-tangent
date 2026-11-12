@@ -70,6 +70,8 @@ internal sealed class EarthOrbitRenderer
         _ground.SetShaderParameter("earth_angle", (float)light.EarthRotationRadians);
         _ground.SetShaderParameter("lunar_strength", (float)Math.Clamp(.12 * light.RelativeLunarFlux, 0, 1));
         _ground.SetShaderParameter("show_atmosphere", useAtmosphere);
+        EclipseRendering.SetEarthShadow(_ground, light, godotAxes: true);
+        EclipseRendering.SetEarthShadow(_air, light, godotAxes: true);
         _air.SetShaderParameter("sun_direction", sun);
         _globe.MaterialOverride = _ground;
         _shell.Visible = useAtmosphere;

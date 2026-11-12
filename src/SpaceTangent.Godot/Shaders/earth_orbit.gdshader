@@ -34,7 +34,7 @@ void fragment() {
     vec3 ray = normalize(model_surface - model_eye);
     vec3 normal = normalize(surface);
     vec2 coordinates = globe_uv(normal);
-    float direct = max(0.0, dot(normal, sun_direction));
+    float direct = max(0.0, dot(normal, sun_direction)) * earth_solar_visibility(surface);
     float reflected = max(0.0, dot(normal, moon_direction)) * lunar_strength;
     vec3 color = texture(day_map, coordinates).rgb;
     if (OUTPUT_IS_SRGB) {
@@ -58,7 +58,7 @@ void fragment() {
         if (cloud_distance >= 0.0 && cloud_distance < end) {
             vec3 cloud = normalize(eye + ray * cloud_distance);
             float coverage = texture(cloud_map, globe_uv(cloud)).r;
-            float daylight = max(0.0, dot(cloud, sun_direction));
+            float daylight = max(0.0, dot(cloud, sun_direction)) * earth_solar_visibility(cloud * (earth_radius_km + 8.0));
             float moonlight = max(0.0, dot(cloud, moon_direction)) * lunar_strength;
             float brightness = 0.016 + 0.82 * daylight + 0.37 * moonlight;
             color = mix(color, vec3(brightness), smoothstep(0.06, 0.93, coverage) * 0.88);

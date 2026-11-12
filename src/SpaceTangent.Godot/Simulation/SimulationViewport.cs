@@ -184,8 +184,8 @@ internal partial class SimulationViewport : Node3D
     internal void SetSurfaceTextures(SurfaceTextures textures)
     {
         _surface = new SurfaceProjection(this, textures);
-        if (_navigationMoon.MaterialOverride is StandardMaterial3D moon)
-            moon.AlbedoTexture = textures.Moon;
+        _navigationMoonMaterial.SetShaderParameter("surface_map", textures.Moon);
+        _navigationMoonMaterial.SetShaderParameter("has_surface_map", true);
     }
 
     internal void ReplaceLunarTerrain(BodyTerrainAsset? asset)
@@ -260,7 +260,8 @@ internal partial class SimulationViewport : Node3D
             if (_terrain is null || !snapshot.TryOrientation(SolarSystemSample.MoonId, out var moonFrame))
                 return false;
             Vector3d sun = (sample.Sun - sample.Moon).PositionKilometers;
-            return _terrain.Draw(observer.Terrain ?? LunarTerrainCamera.Globe, moonFrame.ToWorld.Transpose().Transform(sun));
+            return _terrain.Draw(observer.Terrain ?? LunarTerrainCamera.Globe, moonFrame.ToWorld.Transpose().Transform(sun),
+                (float)EclipseRendering.MoonSunFraction(sample));
         }
 
         if (observer.Mode == CameraMode.MarsTerrain)

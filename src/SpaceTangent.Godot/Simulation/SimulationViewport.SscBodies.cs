@@ -9,7 +9,12 @@ namespace SpaceTangent.Godot.Simulation;
 
 internal sealed record PreparedImportedBody(ObjectId Id, CatalogueKind Kind, Vector3d Color, double RadiusKilometers,
     Basis3d MeshRotation, Vector3d MeshCenter, ArrayMesh? Model, double ModelDiameter,
-    IReadOnlyList<PreparedMissionGeometry>? Geometry = null, PreparedMissionObservation? Observation = null);
+    IReadOnlyList<PreparedMissionGeometry>? Geometry = null, PreparedMissionObservation? Observation = null)
+{
+    internal Vector3d? EllipsoidRadiiKilometers { get; init; }
+    internal Texture2D? Surface { get; init; }
+    internal Vector3d? MeshSpan { get; init; }
+}
 
 internal sealed record PreparedMissionGeometry(JulianInstant Start, JulianInstant End, double RadiusKilometers,
     Basis3d MeshRotation, Vector3d MeshOffset, ArrayMesh? Model, double ModelDiameter, MissionSensor? Sensor,
@@ -72,6 +77,11 @@ internal partial class SimulationViewport
             }
             else
                 node = CreateNavigationSphere(new((float)color.X, (float)color.Y, (float)color.Z));
+            if (asset.Model is null && asset.Surface is { } map && node.MaterialOverride is StandardMaterial3D material)
+            {
+                material.AlbedoColor = Colors.White;
+                material.AlbedoTexture = map;
+            }
             if (asset.Observation is { } observation)
                 _missionObservations.Add(asset.Id, new(node, observation));
             _importedNodes.Add(asset.Id, (asset, node));
@@ -145,7 +155,7 @@ internal partial class SimulationViewport
             double radius = (active?.RadiusKilometers ?? body.RadiusKilometers) * projection / units;
             if (radius < .035 && pose.Target != body.Id)
                 continue;
-            if (active?.EllipsoidRadiiKilometers is { } radii)
+            if ((active?.EllipsoidRadiiKilometers ?? ((active?.Model ?? asset.Model) is null ? asset.EllipsoidRadiiKilometers : null)) is { } radii)
             {
                 double factor = projection / units;
                 var scale = new Vector3((float)(radii.X * factor), (float)(radii.Z * factor), (float)(radii.Y * factor));
@@ -160,7 +170,15 @@ internal partial class SimulationViewport
             {
                 double scale = radius * 2 / (active?.ModelDiameter ?? asset.ModelDiameter);
                 Basis3d axes = frame.ToWorld, rotation = active?.MeshRotation ?? body.MeshRotation;
-                Vector3 Column(Vector3d value) => ToGodot(axes.Transform(rotation.Transform(value)) * scale, 1);
+                Vector3d modelScale = new(scale, scale, scale);
+                if (active is null && asset.EllipsoidRadiiKilometers is { } shape &&
+                    asset.MeshSpan is { X: > 1e-12, Y: > 1e-12, Z: > 1e-12 } span)
+                {
+                    double factor = 2 * projection / units;
+                    modelScale = new(shape.X * factor / span.X, shape.Z * factor / span.Y, shape.Y * factor / span.Z);
+                }
+                Vector3 Column(Vector3d value) => ToGodot(axes.Transform(rotation.Transform(new(
+                    value.X * modelScale.X, value.Y * modelScale.Y, value.Z * modelScale.Z))), 1);
                 Basis basis = new(Column(new(1, 0, 0)), Column(new(0, 1, 0)), Column(new(0, 0, 1)));
                 Vector3 offset = active is null ? -Column(body.MeshCenter) :
                     ToGodot(axes.Transform(active.MeshOffset) * scale, 1);

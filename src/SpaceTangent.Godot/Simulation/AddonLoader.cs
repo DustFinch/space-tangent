@@ -19,7 +19,7 @@ internal static partial class AddonLoader
         IReadOnlyList<SpiceSensor> Sensors, SaturnSurface? Surface);
     internal sealed record DecodedTimeline(SscSampledSpacecraft Track, DecodedScienceModel Model, HuygensMission? Probe,
         DecodedScienceModel? ProbeModel);
-    internal sealed record DecodedSscBody(SscBodyDefinition Body, DecodedScienceModel? Geometry);
+    internal sealed record DecodedSscBody(SscBodyDefinition Body, DecodedScienceModel? Geometry, byte[]? Surface);
     internal sealed record DecodedSampledMission(SampledMission Track,
         IReadOnlyDictionary<string, DecodedScienceModel> Meshes, IReadOnlyDictionary<string, byte[]> Textures);
     internal sealed record DecodedTerrain(SpicePolynomialBodyFrame Frame, DecodedBodyTerrain Model);
@@ -314,16 +314,32 @@ internal static partial class AddonLoader
         var sources = decoded.BodyCatalogues.SelectMany(source => source.Value).ToDictionary(body => body.Body);
         var priorDefinitions = previous?.Decoded.World.SscBodies.ToDictionary(body => body.Id, body => body.Definition);
         var priorAssets = previous?.ImportedBodies.ToDictionary(body => body.Id);
+        var publishedSscMeshes = new Dictionary<(DecodedScienceModel Model, string? Map, bool Lit), global::Godot.ArrayMesh>();
+        var publishedSscTextures = new Dictionary<string, global::Godot.Texture2D>(StringComparer.Ordinal);
         var bodies = decoded.World.SscBodies.Where(body => !body.Definition.Class.Equals("invisible", StringComparison.OrdinalIgnoreCase)).Select(body =>
         {
             SscBodyDefinition definition = body.Definition;
             if (priorDefinitions?.TryGetValue(body.Id, out var prior) == true && definition == prior &&
                 priorAssets?.TryGetValue(body.Id, out var ready) == true)
                 return ready;
-            var model = sources[definition].Geometry;
+            var input = sources[definition];
+            var model = input.Geometry;
+            global::Godot.Texture2D? texture = null;
+            if (definition.SurfaceMap is { } map && input.Surface is { } pixels &&
+                !publishedSscTextures.TryGetValue(map, out texture))
+                publishedSscTextures.Add(map, texture = PublishMissionTexture(map, pixels));
+            bool lit = body.Kind == CatalogueKind.Moon && definition.Class.Equals("minormoon", StringComparison.OrdinalIgnoreCase);
+            global::Godot.ArrayMesh? mesh = null;
+            if (model is not null && !publishedSscMeshes.TryGetValue((model, definition.SurfaceMap, lit), out mesh))
+                publishedSscMeshes.Add((model, definition.SurfaceMap, lit),
+                    mesh = ScienceMeshLoader.Publish(model, definition.Mesh!, litBody: lit, bodySurface: texture));
             return new PreparedImportedBody(body.Id, body.Kind, definition.Color, definition.RadiusKilometers,
-                definition.MeshRotation, definition.MeshCenter,
-                model is null ? null : ScienceMeshLoader.Publish(model, definition.Mesh!), model?.Diameter ?? 2);
+                definition.MeshRotation, definition.MeshCenter, mesh, model?.Diameter ?? 2)
+            {
+                EllipsoidRadiiKilometers = definition.EllipsoidRadiiKilometers,
+                Surface = texture,
+                MeshSpan = model is null || definition.EllipsoidRadiiKilometers is null ? null : MeshSpan(model)
+            };
         });
         var textures = new Dictionary<string, global::Godot.Texture2D>(StringComparer.Ordinal);
         var missions = decoded.SampledMissions.Value.Select(item =>
@@ -400,20 +416,45 @@ internal static partial class AddonLoader
     {
         string root = location.Resolve();
         var scripts = allowLua ? new LuaCatalogueFactories() : null;
+        var decodedMeshes = new Dictionary<(string File, bool Native), DecodedScienceModel>();
+        var decodedSurfaces = new Dictionary<string, byte[]>(StringComparer.Ordinal);
+        int textureBytes = 0;
         return Array.AsReadOnly(SscBodyCatalogue.LoadWithMpc(root, message => global::Godot.GD.Print("SSC bodies: " + message),
             cancellation, scripts).Select(body =>
         {
             cancellation.ThrowIfCancellationRequested();
-            DecodedScienceModel? mesh = body.Mesh is { } file ? ReadAddonMesh(root, file, cancellation) : null;
-            return new DecodedSscBody(body, mesh);
+            DecodedScienceModel? mesh = null;
+            bool native = body.Class.Equals("minormoon", StringComparison.OrdinalIgnoreCase);
+            if (body.Mesh is { } file && !decodedMeshes.TryGetValue((file, native), out mesh))
+                decodedMeshes.Add((file, native), mesh = ReadAddonMesh(root, file, cancellation, native));
+            byte[]? pixels = null;
+            if (body.SurfaceMap is { } map && !decodedSurfaces.TryGetValue(map, out pixels))
+            {
+                pixels = ReadMissionTexture(map, ref textureBytes);
+                decodedSurfaces.Add(map, pixels);
+            }
+            return new DecodedSscBody(body, mesh, pixels);
         }).ToArray());
     }
 
-    private static DecodedScienceModel ReadAddonMesh(string root, string file, CancellationToken cancellation) =>
+    private static Vector3d MeshSpan(DecodedScienceModel model)
+    {
+        Vector3d lower = new(double.PositiveInfinity, double.PositiveInfinity, double.PositiveInfinity);
+        Vector3d upper = lower * -1;
+        foreach (var surface in model.Surfaces)
+        foreach (var p in surface.Positions.Span)
+        {
+            lower = new(Math.Min(lower.X, p.X), Math.Min(lower.Y, p.Y), Math.Min(lower.Z, p.Z));
+            upper = new(Math.Max(upper.X, p.X), Math.Max(upper.Y, p.Y), Math.Max(upper.Z, p.Z));
+        }
+        return upper - lower;
+    }
+
+    private static DecodedScienceModel ReadAddonMesh(string root, string file, CancellationToken cancellation, bool nativeBody = false) =>
         Path.GetExtension(file).ToLowerInvariant() switch
         {
             ".obj" => ScienceModelDecoder.Decode(file, cancellation),
-            ".cmod" => CmodMeshDecoder.Decode(root, file, cancellation),
+            ".cmod" => nativeBody ? CmodMeshDecoder.DecodeNativeBody(root, file, cancellation) : CmodMeshDecoder.Decode(root, file, cancellation),
             ".cms" => DisplacedSphereDecoder.Decode(file, cancellation),
             ".3ds" => StudioMeshDecoder.Decode(file, cancellation),
             ".glb" => PackedModelDecoder.Decode(file, cancellation),

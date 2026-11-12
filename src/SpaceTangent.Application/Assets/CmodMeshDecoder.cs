@@ -177,7 +177,9 @@ public static partial class CmodMeshDecoder
                 }
                 if (indexCount < 3 || (type == 0 && indexCount % 3 != 0))
                     throw new InvalidDataException("Incomplete CMOD triangle group.");
-                DecodedMaterial definition = material == uint.MaxValue ? Default : material < materials.Count
+                // The original Metis model uses material index 1 for its single surface without a second material.
+                bool catalogueSurface = nativeBody && materials.Count == 1 && material == 1;
+                DecodedMaterial definition = material == uint.MaxValue || catalogueSurface ? Default : material < materials.Count
                     ? materials[(int)material] : throw new InvalidDataException("A CMOD surface refers to a missing material.");
                 if (!surfaces.TryGetValue(definition, out Surface? surface))
                 {

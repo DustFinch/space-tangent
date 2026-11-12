@@ -13,7 +13,7 @@ public sealed record InstalledSscBody(ObjectId Id, ObjectId Parent, SscBodyDefin
     {
         "spacecraft" => CatalogueKind.Spacecraft,
         "planet" => CatalogueKind.Planet,
-        "moon" => CatalogueKind.Moon,
+        "moon" or "minormoon" => CatalogueKind.Moon,
         "comet" => CatalogueKind.Comet,
         "dwarfplanet" or "dwarf planet" => CatalogueKind.DwarfPlanet,
         _ => CatalogueKind.Asteroid

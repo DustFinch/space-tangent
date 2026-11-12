@@ -20,7 +20,8 @@ internal partial class SimulationViewport
     private EarthOrbitRenderer? _earthOrbit;
     private ShaderMaterial _navigationMoonMaterial = null!;
 
-    internal void SetEarthOrbitTextures(EarthOrbitTextures textures) => _earthOrbit = new(_navigationEarth, textures);
+    internal void SetEarthOrbitTextures(EarthOrbitTextures textures, OrbitAtmosphereTextures? lookup) =>
+        _earthOrbit = new(_navigationEarth, textures, lookup);
 
     internal bool EarthOrbitAtmosphereActive => _earthOrbit?.Active == true;
     internal bool NavigationCameraCurrent => _navigationCamera.Current;
@@ -101,6 +102,7 @@ internal partial class SimulationViewport
         _navigationMoonMaterial.SetShaderParameter("earth_from_moon", ToGodot((solar.Earth - solar.Moon).PositionKilometers, 1));
         HidePlanetGlobes();
         DrawPlanetGlobes(snapshot, pose, units, ProjectWithScale);
+        DrawWorldAtmospheres(snapshot, solar.Sun.PositionKilometers);
         DrawStellarObjects(pose, snapshot, sky, units, ProjectWithScale);
         DrawSscBodies(snapshot, pose, units, ProjectWithScale);
 

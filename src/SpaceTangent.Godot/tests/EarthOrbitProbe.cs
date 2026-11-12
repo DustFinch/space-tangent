@@ -66,6 +66,7 @@ public partial class EarthOrbitProbe : Node
                 }
                 GD.Print($"Earth orbit accepted camera: {name}, {range:F0} km from center.");
             }
+            await ExercisePlanetAtmospheres(scene, epoch, directory);
             await ExerciseEclipses(scene, directory);
             await ExercisePlanets(scene, epoch, directory);
             await ExerciseSmallBodies(scene, epoch, directory);

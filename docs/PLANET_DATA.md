@@ -11,6 +11,12 @@ Blue Marble imagery credit goes to NASA Earth Observatory, Reto Stöckli and Rob
 
 The orbital renderer and the surface observer share the single-scattering profiles. The texture orientation uses the Earth observer's selected ΔT model and is available inside its 1900–2099 range. At more distant epochs, the orbital renderer uses the generic Earth material. The global maps show broad features from orbit. Regional detail requires a separate surface dataset.
 
+## Original atmosphere tables
+
+The optional `data/atmospheres` directory, or `SPACETANGENT_ATMOSPHERE_ROOT`, accepts `builtin-original-earth.atmscat`, `builtin-original-mars.atmscat`, and `builtin-original-titan.atmscat`. Each file supplies both the transmission table and the inscatter volume. The renderer uses them from above and inside the atmosphere. Earth keeps its own surface maps, cloud lighting, and eclipse geometry with either atmosphere path.
+
+Venus uses its cloud map and an approximate cloud-top haze. The atmosphere lookup files are supplied separately as local data.
+
 ## Other planets
 
 Place equirectangular images in the same directory with the filenames `mercury.jpg`, `venus-clouds.jpg`, `mars.jpg`, `jupiter.jpg`, `saturn.jpg`, `uranus.jpg` and `neptune.jpg`. Place the Saturn ring profile in `saturn-rings.png` as a horizontal strip with alpha, sampled from the inner edge at the left to the outer edge at the right. The renderer also supports solid-color planets when the optional image files are absent.

@@ -14,6 +14,7 @@ internal partial class SimulationViewport
     private const float SaturnRingInner = 74500f / 60268f, SaturnRingOuter = 140220f / 60268f;
     private readonly Dictionary<ObjectId, Node3D> _planetMarkers = new();
     private readonly Dictionary<ObjectId, MeshInstance3D> _planetGlobes = new();
+    private readonly Dictionary<ObjectId, WorldOrbitAtmosphere> _worldAtmospheres = new();
     private readonly ImmediateMesh _planetPaths = new();
     private MeshInstance3D _planetPathNode = null!;
     private Node3D _saturnRings = null!;
@@ -27,7 +28,8 @@ internal partial class SimulationViewport
     internal bool SaturnRingsVisible => _saturnRings.Visible;
     internal bool PlanetGlobeTextured(ObjectId id) => _planetGlobes.TryGetValue(id, out var mesh) && mesh.Visible &&
         (mesh.MaterialOverride is StandardMaterial3D { AlbedoTexture: not null } ||
-            (id == PlanetCatalogue.SaturnId && _saturnSurfaceTextured));
+            (id == PlanetCatalogue.SaturnId && _saturnSurfaceTextured) ||
+            _worldAtmospheres.GetValueOrDefault(id)?.Textured == true);
 
     private void InitializePlanets()
     {
@@ -82,6 +84,30 @@ internal partial class SimulationViewport
         }
         mesh.SurfaceEnd();
         _saturnRings.AddChild(new MeshInstance3D { Mesh = mesh, CastShadow = GeometryInstance3D.ShadowCastingSetting.Off });
+    }
+
+    internal void SetWorldAtmospheres(IReadOnlyDictionary<ObjectId, OrbitAtmosphereTextures> lookups)
+    {
+        ObjectId venus = SolarSystemSample.VenusId;
+        _worldAtmospheres.Add(venus, new(_planetGlobes[venus], 6051.8f, null));
+        foreach (var (id, lookup) in lookups)
+            if (_planetGlobes.TryGetValue(id, out MeshInstance3D? globe))
+                _worldAtmospheres.Add(id, new(globe, lookup.RadiusKilometers, lookup));
+    }
+
+    internal bool WorldAtmosphereActive(ObjectId id, bool lookup) => id == SolarSystemSample.EarthId
+        ? _earthOrbit is { Active: true } air && air.UsesLookup == lookup
+        : _worldAtmospheres.TryGetValue(id, out var atmosphere) && atmosphere.Active && atmosphere.UsesLookup == lookup;
+
+    private void DrawWorldAtmospheres(WorldSnapshot snapshot, Vector3d sun)
+    {
+        foreach (var (id, atmosphere) in _worldAtmospheres)
+        {
+            if (!_planetGlobes[id].Visible || !snapshot.TryState(id, out CartesianState state))
+                continue;
+            Vector3d direction = sun - state.PositionKilometers;
+            atmosphere.Update(ToGodot(direction / direction.Length, 1), _navigationCamera.Position);
+        }
     }
 
     private void DrawPlanetOverview(WorldSnapshot snapshot, De440Ephemeris ephemeris, Vector3d sun, bool outer)

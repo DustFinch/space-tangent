@@ -31,6 +31,8 @@ public partial class SolarSystemScene : Control
     private SurfaceTextures? _surfaceTextures;
     private EarthOrbitTextures? _earthOrbitTextures;
     private PlanetTextures? _planetTextures;
+    private IReadOnlyDictionary<ObjectId, OrbitAtmosphereTextures> _orbitAtmospheres =
+        new Dictionary<ObjectId, OrbitAtmosphereTextures>();
     private CheckButton _showPlanetOrbits = null!;
     private bool _refreshingViewField;
     private BrightSkyData? _brightSky;
@@ -152,6 +154,7 @@ public partial class SolarSystemScene : Control
         {
             _earthOrbitTextures = EarthOrbitTextures.Load(_surfaceTextures);
             _planetTextures = PlanetTextures.Load();
+            _orbitAtmospheres = OrbitAtmosphereTextures.LoadAll();
         }
         catch (Exception error) when (IsLoadError(error))
         {
@@ -1114,9 +1117,10 @@ public partial class SolarSystemScene : Control
         if (_surfaceTextures is { } textures)
             renderer.SetSurfaceTextures(textures);
         if (_earthOrbitTextures is { } earthOrbit)
-            renderer.SetEarthOrbitTextures(earthOrbit);
+            renderer.SetEarthOrbitTextures(earthOrbit, _orbitAtmospheres.GetValueOrDefault(SolarSystemSample.EarthId));
         if (_planetTextures is { } planets)
             renderer.SetPlanetTextures(planets);
+        renderer.SetWorldAtmospheres(_orbitAtmospheres);
         renderer.PlanetEphemeris = Session!.World.Ephemeris;
         renderer.ShowPlanetOrbits = _showPlanetOrbits.ButtonPressed;
         if (_brightSky is { } sky)

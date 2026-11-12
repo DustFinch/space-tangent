@@ -4,6 +4,7 @@ render_mode unshaded;
 
 #include "res://Shaders/earth_atmosphere.gdshaderinc"
 #include "res://Shaders/earth_orbit_geometry.gdshaderinc"
+#include "res://Shaders/atmosphere_lookup.gdshaderinc"
 
 uniform sampler2D day_map : source_color, filter_linear_mipmap, repeat_enable;
 uniform sampler2D night_map : source_color, filter_linear_mipmap, repeat_enable;
@@ -64,7 +65,12 @@ void fragment() {
             color = mix(color, vec3(brightness), smoothstep(0.06, 0.93, coverage) * 0.88);
         }
     }
-    if (show_atmosphere && end > start) {
+    if (show_atmosphere && use_atmosphere_lookup) {
+        vec3 transmission;
+        vec3 entry;
+        sample_atmosphere_lookup(eye, ray, sun_direction, earth_radius_km, transmission, radiance, entry);
+        color = color * transmission + radiance * earth_solar_visibility(surface);
+    } else if (show_atmosphere && end > start) {
         air_integrate(eye, ray, sun_direction, earth_radius_km, start, end, 24, column, radiance);
         color = color * exp(-air_extinction(column)) + (1.0 - exp(-2.3 * radiance));
     }

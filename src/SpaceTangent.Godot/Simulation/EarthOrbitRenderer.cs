@@ -24,8 +24,9 @@ internal sealed class EarthOrbitRenderer
     private readonly MeshInstance3D _globe, _shell;
     private readonly Material? _fallback;
     private readonly ShaderMaterial _ground, _air;
+    internal bool UsesLookup { get; }
 
-    internal EarthOrbitRenderer(MeshInstance3D globe, EarthOrbitTextures textures)
+    internal EarthOrbitRenderer(MeshInstance3D globe, EarthOrbitTextures textures, OrbitAtmosphereTextures? lookup)
     {
         _globe = globe;
         _fallback = globe.MaterialOverride;
@@ -40,10 +41,13 @@ internal sealed class EarthOrbitRenderer
             _ground.SetShaderParameter("cloud_map", clouds);
         _air = new ShaderMaterial { Shader = GD.Load<Shader>("res://Shaders/earth_limb.gdshader") };
         _air.SetShaderParameter("earth_radius_km", Radius);
+        UsesLookup = lookup is not null;
+        lookup?.Bind(_air);
+        lookup?.Bind(_ground);
         _shell = new MeshInstance3D
         {
             Mesh = globe.Mesh, MaterialOverride = _air, Visible = false,
-            Scale = Vector3.One * (float)(1 + AirTop / Radius),
+            Scale = Vector3.One * (float)(1 + (lookup?.HeightKilometers ?? AirTop) / Radius),
             CastShadow = GeometryInstance3D.ShadowCastingSetting.Off
         };
         _globe.AddChild(_shell);

@@ -95,6 +95,45 @@ public sealed partial class SimulationSession
         FlyToScriptPose(view, pose, 0, snapshot);
     }
 
+    internal bool DollyScriptView(int view, double logarithmicChange, WorldSnapshot snapshot)
+    {
+        var observer = _views[view];
+        if (InShip(view) || observer.Mode == CameraMode.Surface && observer.Navigation is null)
+            return false;
+        var pose = ScriptCamera(view, snapshot);
+        var pivot = pose.Target ?? observer.Selection;
+        if (pivot is not { } target || !World.TryNavigationState(target, snapshot, out var state, DeltaT))
+            return false;
+        var placement = pose.ResolvePlacement(snapshot, DeltaT);
+        bool attached = pose is { Tracking: true, Target: { } id } && id == target;
+        Vector3d offset = attached ? placement.OffsetKilometers : pose.AnchorKilometers + placement.OffsetKilometers - state.PositionKilometers;
+        double distance = offset.Length;
+        if (!(distance > 0))
+            return false;
+        double minimum = Math.Max(NavigationCamera.MinRange, World.TargetRadiusKilometers(target) * 1.02);
+        double next = Math.Clamp(distance * Math.Exp(Math.Clamp(logarithmicChange, -700, 700)), minimum, 1e17);
+        if (next == distance)
+            return false;
+        double scale = next / distance;
+        if (attached)
+        {
+            var stored = pose.Placement ?? placement;
+            pose = pose with
+            {
+                AnchorKilometers = state.PositionKilometers, RangeKilometers = next,
+                Placement = stored with { OffsetKilometers = stored.OffsetKilometers * scale }
+            };
+        }
+        else
+        {
+            pose = new NavigationCamera(state.PositionKilometers + offset * scale, next, 0, 0, pivot, false)
+            {
+                Placement = placement with { OffsetKilometers = default }
+            };
+        }
+        return FlyToScriptPose(view, pose, 0, snapshot);
+    }
+
     internal static Vector3d CameraAxis(NavigationPlacement pose, Vector3d axis) =>
         Vector3d.Cross(pose.Forward, pose.Up) * axis.X + pose.Up * axis.Y - pose.Forward * axis.Z;
 }

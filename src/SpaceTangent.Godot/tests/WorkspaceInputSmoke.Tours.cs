@@ -35,7 +35,7 @@ public partial class WorkspaceInputSmoke
         TourConversion demoConversion = TourConverter.ConvertFile(Path.Combine(sources, "demo.cel"));
         Require(File.ReadAllText(demo) == demoConversion.Lua && demoConversion.Commands >= 60 &&
             !demoConversion.Unapplied.Contains("gotoloc") && !demoConversion.Unapplied.Contains("rotate") &&
-            demoConversion.Unapplied.Contains("changedistance"),
+            !demoConversion.Unapplied.Contains("changedistance"),
             "The converted original demo must contain runnable Lua and visible notes for unsupported commands.");
 
         string tour = Path.Combine(directory, "tour-system.lua");

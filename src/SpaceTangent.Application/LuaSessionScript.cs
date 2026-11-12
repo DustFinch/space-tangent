@@ -27,7 +27,7 @@ public sealed partial class LuaSessionScript
         internal DynValue[]? Arguments = arguments;
         internal int Steps, Messages;
         internal long Allocated;
-        internal double WaitRemaining, TotalWait;
+        internal double WaitRemaining, TotalWait, DollyRate;
         internal bool Complete, Yielded;
         internal string? Error;
     }
@@ -142,14 +142,20 @@ public sealed partial class LuaSessionScript
             work.Complete = true;
             return false;
         }
-        work.WaitRemaining = Math.Max(0, work.WaitRemaining - elapsed);
-        if (work.Complete || work.WaitRemaining > 0)
+        if (work.Complete)
             return false;
 
         work.Yielded = false;
         _running = work;
         try
         {
+            double interval = Math.Clamp(elapsed, 0, work.WaitRemaining);
+            if (work.DollyRate != 0 && interval > 0)
+                _changed = _session.DollyScriptView(View, work.DollyRate * interval, NativeSnapshot());
+            work.WaitRemaining -= interval;
+            if (work.WaitRemaining > 0)
+                return _changed;
+            work.DollyRate = 0;
             for (int step = 0; step < slice; step++)
             {
                 if (work.Steps++ >= MaximumSteps)
@@ -202,15 +208,17 @@ public sealed partial class LuaSessionScript
         return Change(() => _session.SetMode(View, mode));
     }
 
-    private DynValue Wait(ScriptExecutionContext context, CallbackArguments arguments)
+    private DynValue Wait(ScriptExecutionContext context, CallbackArguments arguments) => WaitFor(Number(arguments[0]));
+
+    private DynValue WaitFor(double seconds, double dollyRate = 0)
     {
         if (_running is not { } work)
             throw new ScriptRuntimeException("This Lua callback cannot wait.");
-        double seconds = Number(arguments[0]);
         if (seconds < 0 || work.TotalWait + seconds > MaximumWaitSeconds)
             throw new ScriptRuntimeException("Lua wait quota exceeded.");
         work.TotalWait += seconds;
         work.WaitRemaining = seconds;
+        work.DollyRate = dollyRate;
         work.Yielded = true;
         return DynValue.NewYieldReq([]);
     }

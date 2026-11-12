@@ -1,4 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
+using System.Globalization;
+using System.Text.RegularExpressions;
 using SpaceTangent.Contracts;
 using SpaceTangent.Core.Ephemerides;
 using SpaceTangent.Core.Observing;
@@ -51,10 +53,32 @@ public sealed class NativeTourGeometryTests
             var placement = surface.Placement!.Value;
             Assert.InRange((placement.OffsetKilometers / surface.RangeKilometers - lighting.EastNorthUp.Z).Length, 0, 1e-12);
             Assert.InRange(Math.Abs(Vector3d.Dot(placement.Up, placement.Forward)), 0, 1e-12);
+
+            string demo = File.ReadAllText(Path.Combine(sources, "demo.cel"));
+            var commands = Regex.Matches(demo, @"changedistance\s*\{\s*duration\s+([0-9.]+)\s+rate\s+([0-9.]+)\s*\}");
+            Assert.Equal(3, commands.Count);
+            var initial = new SimulationSession(world, epoch, model);
+            initial.OpenSpaceView(0);
+            var starting = initial[0].Navigation!.Value;
+            for (int index = 0; index < commands.Count; index++)
+            {
+                var command = commands[index];
+                string dolly = Path.Combine(folder.FullName, $"distance-{index}.cel");
+                File.WriteAllText(dolly, "{ " + command.Value + " }");
+                double seconds = double.Parse(command.Groups[1].Value, CultureInfo.InvariantCulture);
+                double rate = double.Parse(command.Groups[2].Value, CultureInfo.InvariantCulture);
+                var result = Run(dolly, uneven: true);
+                var completed = result.Final.Navigation!.Value;
+                Assert.Equal(starting.Target, completed.Target);
+                Assert.Equal(starting.ResolvePlacement(world.Graph.Evaluate(epoch)).Forward, completed.Placement!.Value.Forward);
+                Assert.Contains(result.Poses, pose => pose.RangeKilometers > starting.RangeKilometers &&
+                    pose.RangeKilometers < starting.RangeKilometers * Math.Exp(rate * seconds) * .999);
+                Assert.InRange(completed.RangeKilometers / (starting.RangeKilometers * Math.Exp(rate * seconds)), 1 - 1e-11, 1 + 1e-11);
+            }
         }
         finally { folder.Delete(recursive: true); }
 
-        (ObserverView Final, List<NavigationCamera> Poses) Run(string name)
+        (ObserverView Final, List<NavigationCamera> Poses) Run(string name, bool uneven = false)
         {
             var session = new SimulationSession(world, epoch, model);
             session.OpenSpaceView(0);
@@ -67,7 +91,7 @@ public sealed class NativeTourGeometryTests
             var poses = new List<NavigationCamera>();
             for (int frame = 0; (!script.Finished || session.IsFlying(0)) && frame < 800; frame++)
             {
-                const double elapsed = .125;
+                double elapsed = uneven ? (frame % 3) switch { 0 => .07, 1 => .19, _ => .31 } : .125;
                 script.Step(elapsed);
                 session.UpdateCamera(0, world.Graph.Evaluate(session[0].Epoch), elapsed);
                 if (!session.IsFlying(0) && session[0].Navigation is { } pose)

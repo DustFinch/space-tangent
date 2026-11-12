@@ -44,8 +44,8 @@ public static class TourConverter
             throw new NotSupportedException("Choose a CEL or CELX tour.");
         Command[] commands = Parse(input);
         var unapplied = new SortedSet<string>(StringComparer.Ordinal);
-        double wait = commands.Where(command => command.Name is "wait" or "orbit" or "rotate")
-            .Sum(command => Duration(command.Number("duration")));
+        double wait = commands.Where(command => command.Name is "wait" or "orbit" or "rotate" or "changedistance")
+            .Sum(command => Duration(command.Number("duration", command.Name == "wait" ? 0 : 1)));
         double scale = wait > 110 ? 110 / wait : 1;
         if (scale < 1)
             unapplied.Add("original timing compressed to fit the Lua wait quota");
@@ -58,6 +58,10 @@ public static class TourConverter
                     st.turnaxis(x, y, z, angle / steps, orbit)
                     if duration > 0 then st.wait(duration / steps) end
                 end
+            end
+            local function dolly(amount, duration)
+                while st.travelling() do st.wait(0) end
+                st.legacydolly(amount, duration)
             end
 
             """);
@@ -113,6 +117,10 @@ public static class TourConverter
                 case "renderflags":
                     AppendFlags(command, true);
                     AppendFlags(command, false);
+                    break;
+                case "changedistance":
+                    double dollyDuration = Duration(command.Number("duration", 1));
+                    lua.AppendLine($"if selected then dolly({Number(command.Number("rate") * dollyDuration)}, {Number(dollyDuration * scale)}) end");
                     break;
                 case "orbit":
                 case "rotate":

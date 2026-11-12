@@ -22,6 +22,14 @@ public sealed partial class LuaSessionScript
         Bind(api, "turnaxis", (_, a) => Change(() =>
             _session.TurnScriptView(View, Vector(a, 0), Number(a[3]), Boolean(a[4]), NativeSnapshot())));
         Bind(api, "travelling", (_, _) => DynValue.NewBoolean(_session.IsFlying(View)));
+        Bind(api, "legacydolly", (_, a) =>
+        {
+            double amount = Number(a[0]), seconds = Number(a[1]);
+            double rate = seconds > 0 ? amount / seconds : 0;
+            if (seconds < 0 || !double.IsFinite(rate))
+                throw new ScriptRuntimeException("Invalid timed distance change.");
+            return WaitFor(seconds, rate);
+        });
     }
 
     private DynValue BeginLookFlight(double seconds, double multiple, Vector3d authoredUp, string frame,

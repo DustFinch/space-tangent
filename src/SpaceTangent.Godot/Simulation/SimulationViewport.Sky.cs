@@ -11,6 +11,8 @@ namespace SpaceTangent.Godot.Simulation;
 internal partial class SimulationViewport
 {
     private BrightSkyOverlay? _spaceSky;
+    internal SkySurveyCanvas? SpaceSurveyCanvas { get; private set; }
+    internal SkySurveyCanvas? SurfaceSurveyCanvas => _surface?.SurveyCanvas;
     private WorldEnvironment? _skyEnvironment;
     private readonly SkyEnvironment _canvasBackground = new()
     {
@@ -23,6 +25,9 @@ internal partial class SimulationViewport
         var layer = new CanvasLayer { Layer = -1 };
         AddChild(layer);
         InstallGalacticSky(layer);
+        SpaceSurveyCanvas = new(data.Surveys, additive: true);
+        layer.AddChild(SpaceSurveyCanvas);
+        SpaceSurveyCanvas.SetAnchorsAndOffsetsPreset(Control.LayoutPreset.FullRect);
         _spaceSky = new();
         _spaceSky.Configure(data, fillBackground: true);
         layer.AddChild(_spaceSky);
@@ -46,12 +51,16 @@ internal partial class SimulationViewport
             if (camera?.KeepAspect == Camera3D.KeepAspectEnum.Width && _spaceSky.Size.X > 0)
                 tangent *= _spaceSky.Size.Y / _spaceSky.Size.X;
             DrawGalacticSky(orbital, camera, tangent);
+            Basis orientation = camera?.GlobalBasis ?? Basis.Identity;
+            bool survey = SpaceSurveyCanvas!.ShowFrame(orbital ? observer.Sky.SurveyId : null,
+                Icrs(-orientation.Z), Icrs(orientation.X), Icrs(orientation.Y), tangent,
+                (float)observer.Sky.EffectiveSurveyBrightness, !GalacticSkyVisible);
             bool culture = observer.Sky.ConstellationArt ||
                 (observer.Sky.Constellations && observer.Sky.CultureId is not null);
             bool render = (catalogue || culture || (observer.Sky.Stars && _spaceSky.HasTransientStars)) && orbital;
             _spaceSky.Visible = render;
-            _spaceSky.SetFillBackground(!GalacticSkyVisible);
-            SkyEnvironment? background = render || GalacticSkyVisible ? _canvasBackground : null;
+            _spaceSky.SetFillBackground(!GalacticSkyVisible && !survey);
+            SkyEnvironment? background = render || GalacticSkyVisible || survey ? _canvasBackground : null;
             if (_skyEnvironment!.Environment != background)
                 _skyEnvironment.Environment = background;
             if (render && camera is not null)

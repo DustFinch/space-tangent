@@ -5,7 +5,7 @@ using System.Text.Json;
 
 namespace SpaceTangent.Godot.Simulation;
 
-internal sealed record BrightSkyData(BrightStarCatalogue Catalogue, IReadOnlyList<(Vector3 From, Vector3 To)> Figures, TransientStarCatalogue Transients, MeteorCatalogue Meteors, SkyCultureLibrary Cultures)
+internal sealed record BrightSkyData(BrightStarCatalogue Catalogue, IReadOnlyList<(Vector3 From, Vector3 To)> Figures, TransientStarCatalogue Transients, MeteorCatalogue Meteors, SkyCultureLibrary Cultures, SkySurveyTiles Surveys)
 {
     private readonly Dictionary<string, Texture2D?> _artTextures = new(StringComparer.Ordinal);
     private const int MaximumArtTextures = 128;
@@ -86,7 +86,8 @@ internal sealed record BrightSkyData(BrightStarCatalogue Catalogue, IReadOnlyLis
         });
         if (missingArtwork > 0)
             GD.Print($"Sky cultures: {missingArtwork} referenced illustrations are absent from the local archive.");
-        return new(stars, lines.AsReadOnly(), transients, MeteorCatalogue.Read(showers), library);
+        string surveys = LocalDataPaths.Find("SPACETANGENT_SKY_SURVEYS", "sky/surveys", directory: true);
+        return new(stars, lines.AsReadOnly(), transients, MeteorCatalogue.Read(showers), library, new(surveys));
     }
 
     internal static Vector3 Equatorial(float raDegrees, float decDegrees)

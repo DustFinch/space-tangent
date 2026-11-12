@@ -6,6 +6,9 @@ render_mode unshaded;
 #include "res://Shaders/galactic_background.gdshaderinc"
 
 uniform bool show_galactic_sky = false;
+uniform bool show_survey = false;
+uniform sampler2D survey_view : filter_linear, repeat_disable;
+uniform float survey_brightness = 1.0;
 
 uniform sampler2D cloud_texture : filter_linear_mipmap, repeat_enable;
 uniform sampler2D moon_texture : source_color, filter_linear_mipmap;
@@ -106,6 +109,10 @@ void fragment() {
         float dark = 1.0 - smoothstep(-0.208, -0.087, dot(sun_dir, site_up));
         float contrast = dark / (1.0 + 64.0 * sky_glow);
         background += galactic_radiance(ray) * contrast;
+    }
+    if (!ground && show_survey) {
+        float dark = 1.0 - smoothstep(-0.208, -0.087, dot(sun_dir, site_up));
+        background += texture(survey_view, UV).rgb * (survey_brightness * dark / (1.0 + 64.0 * sky_glow));
     }
     if (!ground && dot(moon_seen, site_up) > 0.0) {
         background = lunar_disc(ray, moon_dir, length(moon_delta), background);

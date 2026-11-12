@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
 using System.Text.Json.Serialization;
+using SpaceTangent.Application.Assets;
 using SpaceTangent.Core.Observing;
 
 namespace SpaceTangent.Application;
@@ -21,11 +22,24 @@ public readonly record struct SkyLayerSettings(bool Stars, bool Labels, bool Equ
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingDefault)]
     public bool ConstellationArt { get; init; }
 
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public string? SurveyId { get; init; }
+
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public double? SurveyBrightness { get; init; }
+
+    [JsonIgnore]
+    public double EffectiveSurveyBrightness => SurveyBrightness ?? 1;
+
+    [JsonIgnore]
+    public bool HasSurveySettings => SurveyId is not null || SurveyBrightness is not null;
+
     [JsonIgnore]
     public bool HasCultureSettings => CultureId is not null || CultureNames != default || ConstellationArt;
 
     [JsonIgnore]
-    public bool Visible => Stars || Labels || EquatorialGrid || Constellations || DeepSky || Meteors || ConstellationArt;
+    public bool Visible => Stars || Labels || EquatorialGrid || Constellations || DeepSky || Meteors || ConstellationArt || SurveyId is not null;
 
-    internal bool IsValid() => (CultureId is null || SkyCultureLibrary.ValidId(CultureId)) && Enum.IsDefined(CultureNames);
+    internal bool IsValid() =>         (CultureId is null || SkyCultureLibrary.ValidId(CultureId)) && Enum.IsDefined(CultureNames) &&
+        (SurveyId is null || LocalSkySurvey.ValidId(SurveyId)) && SurveyBrightness is null or (>= 0 and <= 2);
 }

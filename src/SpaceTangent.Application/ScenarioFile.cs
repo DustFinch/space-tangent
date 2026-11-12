@@ -17,7 +17,7 @@ public sealed record SimulationScenario(IReadOnlyList<ObserverView> Views, bool 
 /// <summary>Persists observer settings with exact TDB epochs and stable catalog IDs.</summary>
 public static class ScenarioFile
 {
-    private const int Version = 15;
+    private const int Version = 16;
     internal const int MaximumBytes = 32 * 1024;
     private static readonly JsonSerializerOptions Json = new()
     {
@@ -54,10 +54,11 @@ public static class ScenarioFile
         if (scenario.Views.Any(view => view.Optics is { } optical && !optical.IsValid()))
             throw new InvalidDataException("The scenario has an invalid optics profile.");
         if (scenario.Views.Any(view => !view.Sky.IsValid()))
-            throw new InvalidDataException("The scenario has invalid sky culture settings.");
+            throw new InvalidDataException("The scenario has invalid sky layer settings.");
         var document = new Document
         {
-            Version = scenario.Views.Any(view => view.Sky.HasCultureSettings) ? Version :
+            Version = scenario.Views.Any(view => view.Sky.HasSurveySettings) ? Version :
+                scenario.Views.Any(view => view.Sky.HasCultureSettings) ? 15 :
                 scenario.Views.Any(view => view.Optics is not null) ? 14 :
                 scenario.Views.Any(view => view.EarthObserver?.LandscapeId is not null) ? 13 :
                 scenario.Views.Any(view => view.Sky.Meteors) ? 12 :
@@ -83,7 +84,7 @@ public static class ScenarioFile
                 PlaybackRate = view.PlaybackRate,
                 Navigation = view.Navigation is { } pose ? Camera.From(pose) : null,
                 EarthObserver = view.EarthObserver,
-                Sky = view.Sky.Visible || view.Sky.HasCultureSettings ? view.Sky : null,
+                Sky = view.Sky.Visible || view.Sky.HasCultureSettings || view.Sky.HasSurveySettings ? view.Sky : null,
                 ReferenceMarks = view.ReferenceMarks,
                 Optics = view.Optics,
                 LightTimeDelayed = view.LightTimeDelayed
@@ -164,7 +165,7 @@ public static class ScenarioFile
                 throw new InvalidDataException("The scenario has an invalid Earth observer camera.");
             if (data.Sky is { Meteors: true } && document.Version < 12)
                 throw new InvalidDataException("This scenario version does not support meteor layers.");
-            if (data.Sky is { } sky && (!sky.IsValid() || sky.HasCultureSettings && document.Version < 15))
+            if (data.Sky is { } sky && (!sky.IsValid() || sky.HasCultureSettings && document.Version < 15 || sky.HasSurveySettings && document.Version < 16))
                 throw new InvalidDataException("The scene sky culture settings are invalid or unsupported.");
             if (data.Sky is not null && document.Version < 4)
                 throw new InvalidDataException("Sky layers require a version 4 scenario.");

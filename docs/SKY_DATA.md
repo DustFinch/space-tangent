@@ -55,3 +55,9 @@ The same archive directory can contain the optional `stars-far.bin` and `stars-f
 Place the archived culture directories under `data/sky/cultures`, or set `SPACETANGENT_SKY_CULTURES` to their parent directory. Use `--startup-sky-culture western --startup-sky-names native --startup-constellation-art` to choose the Western culture and show its drawings in the active view. Name modes are `international`, `native`, and `russian`. Constellation figures use the existing layer control. Scenario version 15 stores the culture, naming style, and art setting independently for each view.
 
 The loader verified 33 archived definitions and 85 available Western illustrations. Keep each culture's credits and licence with its data. A missing image leaves the figure and label available.
+
+## Local HiPS surveys
+
+Place each survey in its own lowercase directory under `data/sky/surveys`, or set `SPACETANGENT_SKY_SURVEYS` to the parent. Keep `properties`, `Norder3/Allsky.jpg` or the PNG equivalent, and any cached detail tiles in their original `NorderN/DirD/NpixP` layout. The renderer uses the closest available parent tile and the survey overview for uncached areas. Equatorial and Galactic surveys work in both perspective and Earth-observatory projections.
+
+Use `--startup-sky-survey dss --startup-sky-survey-brightness 0.8` for a local survey directory named `dss`. Brightness ranges from 0 to 2. Use `none` to clear the selection. Scenario version 16 stores the layer independently in each view. The verified files are from the color DSS by STScI/NASA and CDS. Keep the survey properties and credits with the files.

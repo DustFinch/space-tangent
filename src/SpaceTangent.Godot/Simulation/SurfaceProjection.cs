@@ -45,6 +45,7 @@ internal sealed partial class SurfaceProjection
 
     internal void SetSkyData(BrightSkyData data)
     {
+        _surveySources = data.Surveys;
         _sky = new();
         _sky.Configure(data, fillBackground: false);
         _surface.AddChild(_sky);
@@ -78,6 +79,7 @@ internal sealed partial class SurfaceProjection
         _surface.Visible = surface;
         if (!surface)
         {
+            HideSurvey();
             _meteors?.HideFrame();
             return true;
         }
@@ -91,6 +93,7 @@ internal sealed partial class SurfaceProjection
         catch (ArgumentOutOfRangeException)
         {
             _surface.Hide();
+            HideSurvey();
             _meteors?.HideFrame();
             return false;
         }
@@ -128,6 +131,7 @@ internal sealed partial class SurfaceProjection
         _material.SetShaderParameter("forward", forward);
         _material.SetShaderParameter("right", right);
         _material.SetShaderParameter("camera_up", cameraUp);
+        DrawSurvey(sky, forward, right, cameraUp);
         _material.SetShaderParameter("earth_to_sun", Convert(lighting.EarthToSun));
         _material.SetShaderParameter("earth_to_moon", Convert(lighting.EarthToMoon));
         var moonOffset = lighting.EarthToMoon - lighting.PositionKilometers;

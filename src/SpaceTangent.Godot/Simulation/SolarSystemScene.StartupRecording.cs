@@ -40,7 +40,7 @@ public partial class SolarSystemScene
                 throw new InvalidDataException(_status.Text);
             if (_startupArguments.Contains("--startup-legacy-settings", StringComparer.Ordinal))
                 await ImportStartupSettings(RequiredArgument("--startup-legacy-settings"));
-            ApplyStartupSkyCulture();
+            ApplyStartupSkyLayers();
             if (_startupArguments.Contains("--startup-save-scenario", StringComparer.Ordinal) &&
                 !SaveScenario(RequiredArgument("--startup-save-scenario")))
                 throw new InvalidDataException(_status.Text);
@@ -95,7 +95,7 @@ public partial class SolarSystemScene
         GD.Print($"Legacy observer profile applied to the active view. Added {sites} observing sites.");
     }
 
-    private void ApplyStartupSkyCulture()
+    private void ApplyStartupSkyLayers()
     {
         var session = Session!;
         var previous = session[_active].Sky;
@@ -116,6 +116,20 @@ public partial class SolarSystemScene
         }
         if (_startupArguments.Contains("--startup-constellation-art", StringComparer.Ordinal))
             sky = sky with { ConstellationArt = true };
+        if (_startupArguments.Contains("--startup-sky-survey", StringComparer.Ordinal))
+        {
+            string id = RequiredArgument("--startup-sky-survey");
+            if (id != "none" && _brightSky?.Surveys.Find(id) is null)
+                throw new InvalidDataException($"Unknown local sky survey {id}.");
+            sky = sky with { SurveyId = id == "none" ? null : id };
+        }
+        if (_startupArguments.Contains("--startup-sky-survey-brightness", StringComparer.Ordinal))
+        {
+            if (!double.TryParse(RequiredArgument("--startup-sky-survey-brightness"), NumberStyles.Float,
+                    CultureInfo.InvariantCulture, out double brightness) || brightness is not (>= 0 and <= 2))
+                throw new InvalidDataException("Sky survey brightness requires a value from 0 to 2.");
+            sky = sky with { SurveyBrightness = brightness };
+        }
         if (sky != previous)
         {
             session.SetSkyLayers(_active, sky);

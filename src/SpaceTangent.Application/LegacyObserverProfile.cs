@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
 using System.Text.Json;
+using SpaceTangent.Application.Assets;
 using SpaceTangent.Core.Observing;
 using SpaceTangent.Core.Time;
 
@@ -72,6 +73,8 @@ public static class LegacyObserverProfiles
             sky = sky with { CultureId = culture };
         if (Enum.TryParse(Word(root, "NameStyle"), out SkyCultureNames names) && Enum.IsDefined(names))
             sky = sky with { CultureNames = names };
+        if (Word(root, "HipsSurvey") is { } survey && (survey.Length == 0 || LocalSkySurvey.ValidId(survey)))
+            sky = sky with { SurveyId = survey.Length == 0 ? null : survey };
         sky = sky with { Labels = Flag(root, "Labels") ?? sky.Labels, Meteors = Flag(root, "Meteors") ?? sky.Meteors };
         var marks = Integer(root, "BodyMarks") is { } flags ? (BodyReferenceMarks)flags & BodyReferenceMarks.All : current.ReferenceMarks;
         double? field = Number(root, "FieldOfViewDegrees") is { } degrees && ObserverView.ValidFieldOfView(degrees)

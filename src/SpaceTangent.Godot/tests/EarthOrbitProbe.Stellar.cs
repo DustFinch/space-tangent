@@ -16,7 +16,9 @@ public partial class EarthOrbitProbe
         var snapshot = world.Graph.Evaluate(epoch);
         ObjectId star = new("hip/70890");
         bool archive = System.Environment.GetEnvironmentVariable("SPACETANGENT_STELLAR_ARCHIVE") is { Length: > 0 };
-        if (world.Stellar.Stars.Count != (archive ? 182_625 : 109_400) || !world.TryNavigationState(star, snapshot, out var proxima))
+        bool stc = System.Environment.GetEnvironmentVariable("SPACETANGENT_STC_ROOT") is { Length: > 0 };
+        int baseCount = archive ? 182_625 : 109_400;
+        if ((stc ? world.Stellar.Stars.Count <= baseCount : world.Stellar.Stars.Count != baseCount) || !world.TryNavigationState(star, snapshot, out var proxima))
             throw new InvalidOperationException("The spatial catalogue count or Proxima Centauri does not match the verified source.");
         var sky = new SkyLayerSettings(true, false, false, false) { DeepSky = true };
         await Capture("proxima-distant", star, proxima.PositionKilometers, 6e8, sky);
@@ -32,6 +34,14 @@ public partial class EarthOrbitProbe
                 center.SystemRadiusKilometers * 2.7, sky);
             if (scene.Renderer(0).VisibleStellarDisks != 2 || scene.Renderer(0).StellarDiskResolved)
                 throw new InvalidOperationException("The Sirius system must render two components and an invisible barycenter.");
+        }
+        if (stc)
+        {
+            var center = world.Stellar.Find(new("hip/116727"))!;
+            await Capture("errai-system", center.Id, center.StateAt(epoch).PositionKilometers + world.StellarOrigin,
+                center.SystemRadiusKilometers * 2.7, sky);
+            if (scene.Renderer(0).VisibleStellarDisks != 2 || scene.Renderer(0).StellarDiskResolved)
+                throw new InvalidOperationException("The original STC Errai system must render both components.");
         }
         string[] nearby = world.DeepSky.Objects.Count > DeepSkyCatalogue.Objects.Count
             ? ["dso/m31", "dso/m42", "dso/m45", "dso/m13"] : ["dso/m31", "dso/m42", "dso/m45"];

@@ -31,3 +31,7 @@ The verified original files contain 10,937 galaxies, 196 globular clusters, and 
 Place the archived `stars.bin` and optional `stars-names.txt` in `data/sky/stellar-archive` or set `SPACETANGENT_STELLAR_ARCHIVE` to their directory. This selects the archived nearby catalogue and uses the current HYG sidecar for proper-motion data on matching stars. The default HYG-only setup still works when the archived files are absent. Reload add-ons after replacing the files.
 
 Search for a system or a component by name or alias. Flying to a barycenter frames the component stars at the selected epoch. A barycenter provides the reference position and has no luminous disk.
+
+### Local STC sources
+
+Place `.stc` files in `data/sky/stc` or set `SPACETANGENT_STC_ROOT` to their directory. The files add names, stellar positions, sizes and barycentric orbits to the selected catalogue. Numbered edits use the existing star when it is available. Inspect the Godot log for records with invalid coordinates or missing reference stars.

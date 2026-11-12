@@ -50,7 +50,7 @@ public partial class WorkspaceInputSmoke
 
         if (System.Environment.GetEnvironmentVariable("SPACETANGENT_STELLAR_ARCHIVE") is { Length: > 0 })
         {
-            Require(Session.World.Stellar.Stars.Count == 182_625, "The source archive must preserve its entire nearby-star catalogue.");
+            Require(Session.World.Stellar.Stars.Count >= 182_625, "The source archive must preserve its entire nearby-star catalogue.");
             var sirius = new ObjectId("hip/32349");
             await FlyTo(0, "Dog Star", sirius);
             Require(_scene.Renderer(0).VisibleStellarDisks == 2 && !_scene.Renderer(0).StellarDiskResolved,
@@ -64,6 +64,20 @@ public partial class WorkspaceInputSmoke
             Require(Math.Abs(distance - next) > 1e6 && Session[0].Navigation?.Target == sirius,
                 "The tracked binary must move around its own barycenter as time advances.");
             GD.Print("UI: found the archived Sirius barycenter by an original alias, flew to the two components, and advanced their orbit");
+        }
+
+        if (System.Environment.GetEnvironmentVariable("SPACETANGENT_STC_ROOT") is { Length: > 0 })
+        {
+            var gamma = new ObjectId("hip/116727");
+            await FlyTo(0, "GAM Cep", gamma);
+            var world = Session.World;
+            Require(world.Stellar.FindByName("GAM Cep A")?.BarycenterId == gamma &&
+                world.Stellar.FindByName("GAM Cep B")?.BarycenterId == gamma && _scene.Renderer(0).VisibleStellarDisks == 2,
+                "Both original STC components must retain their separate identity and orbit the common center.");
+            var accepted = Session.CaptureScenario(0);
+            Require(await _scene.ReloadAddOns(), "The original STC sources must reload.");
+            RequireScenario(accepted, Session.CaptureScenario(0), "Reloading the original STC binary system");
+            GD.Print("UI: loaded the original STC corpus, flew to Gamma Cephei by its alias and retained both components after reload");
         }
 
         async Task FlyTo(int view, string query, ObjectId target)

@@ -10,9 +10,12 @@ internal sealed partial class SurfaceProjection
     private SubViewport? _surveyViewport;
     internal SkySurveyCanvas? SurveyCanvas { get; private set; }
 
-    private void DrawSurvey(SkyLayerSettings sky, Vector3 forward, Vector3 right, Vector3 up)
+    private void DrawSurvey(SkyLayerSettings sky, Vector3 forward, Vector3 right, Vector3 up,
+        double julianDate, double limitingMagnitude)
     {
-        if (_surveySources?.Find(sky.SurveyId) is null || sky.EffectiveSurveyBrightness == 0)
+        bool survey = _surveySources?.Find(sky.SurveyId) is not null && sky.EffectiveSurveyBrightness > 0;
+        bool photographs = sky.DeepSky && sky.SurveyId is null && _surveySources?.Photographs.Count > 0;
+        if (!survey && !photographs)
         {
             HideSurvey();
             return;
@@ -24,17 +27,18 @@ internal sealed partial class SurfaceProjection
                 TransparentBg = true, Disable3D = true, RenderTargetUpdateMode = SubViewport.UpdateMode.Disabled
             };
             _surface.AddChild(_surveyViewport);
-            SurveyCanvas = new(_surveySources, additive: false);
+            SurveyCanvas = new(_surveySources!, additive: false);
             _surveyViewport.AddChild(SurveyCanvas);
             SurveyCanvas.SetAnchorsAndOffsetsPreset(Control.LayoutPreset.FullRect);
             _surface.Resized += ResizeSurvey;
             ResizeSurvey();
             _material.SetShaderParameter("survey_view", _surveyViewport.GetTexture());
         }
-        bool visible = SurveyCanvas!.ShowFrame(sky.SurveyId, forward, right, up, _tanHalfField);
+        bool visible = SurveyCanvas!.ShowFrame(survey ? sky.SurveyId : null, forward, right, up, _tanHalfField,
+            photographs: photographs, limitingMagnitude: limitingMagnitude, julianDate: julianDate);
         _surveyViewport.RenderTargetUpdateMode = visible ? SubViewport.UpdateMode.Always : SubViewport.UpdateMode.Disabled;
         _material.SetShaderParameter("show_survey", visible);
-        _material.SetShaderParameter("survey_brightness", (float)sky.EffectiveSurveyBrightness);
+        _material.SetShaderParameter("survey_brightness", survey ? (float)sky.EffectiveSurveyBrightness : 1f);
     }
 
     private void ResizeSurvey()

@@ -54,7 +54,9 @@ internal partial class SimulationViewport
             Basis orientation = camera?.GlobalBasis ?? Basis.Identity;
             bool survey = SpaceSurveyCanvas!.ShowFrame(orbital ? observer.Sky.SurveyId : null,
                 Icrs(-orientation.Z), Icrs(orientation.X), Icrs(orientation.Y), tangent,
-                (float)observer.Sky.EffectiveSurveyBrightness, !GalacticSkyVisible);
+                (float)observer.Sky.EffectiveSurveyBrightness, !GalacticSkyVisible,
+                photographs: orbital && observer.Sky.DeepSky && observer.Sky.SurveyId is null,
+                julianDate: observer.Epoch.ToJulianDate());
             bool culture = observer.Sky.ConstellationArt ||
                 (observer.Sky.Constellations && observer.Sky.CultureId is not null);
             bool render = (catalogue || culture || (observer.Sky.Stars && _spaceSky.HasTransientStars)) && orbital;

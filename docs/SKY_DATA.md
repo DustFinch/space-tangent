@@ -61,3 +61,9 @@ The loader verified 33 archived definitions and 85 available Western illustratio
 Place each survey in its own lowercase directory under `data/sky/surveys`, or set `SPACETANGENT_SKY_SURVEYS` to the parent. Keep `properties`, `Norder3/Allsky.jpg` or the PNG equivalent, and any cached detail tiles in their original `NorderN/DirD/NpixP` layout. The renderer uses the closest available parent tile and the survey overview for uncached areas. Equatorial and Galactic surveys work in both perspective and Earth-observatory projections.
 
 Use `--startup-sky-survey dss --startup-sky-survey-brightness 0.8` for a local survey directory named `dss`. Brightness ranges from 0 to 2. Use `none` to clear the selection. Scenario version 16 stores the layer independently in each view. The verified files are from the color DSS by STScI/NASA and CDS. Keep the survey properties and credits with the files.
+
+## Local sky photographs
+
+Place the archived `textures.json` and its PNG files in `data/sky/nebula-images`, or set `SPACETANGENT_SKY_PHOTOGRAPHS` to that directory. The Deep sky layer shows the images at their recorded positions. Their visibility depends on field of view, sky brightness, and the recorded event epoch. The selected HiPS survey takes precedence in its own view.
+
+The archive contains 674 photographs. Keep the supplied metadata with the files so the original credits and information links remain available. Check the rights of each image before redistributing it.

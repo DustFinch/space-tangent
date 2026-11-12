@@ -15,7 +15,23 @@ internal sealed class SkySurveyTiles
     private int _pixels;
     private ulong _use;
 
-    internal SkySurveyTiles(string root)
+    internal IReadOnlyList<LocalSkyPhotograph> Photographs { get; } = [];
+
+    internal SkySurveyTiles(string root, string photographs)
+    {
+        if (File.Exists(Path.Combine(photographs, "textures.json")))
+        {
+            try { Photographs = LocalSkyPhotographs.Read(photographs); }
+            catch (Exception error) when (error is IOException or InvalidDataException or UnauthorizedAccessException or System.Text.Json.JsonException)
+            {
+                GD.Print($"Local sky photographs: {error.Message}");
+            }
+        }
+
+        LoadSurveys(root);
+    }
+
+    private void LoadSurveys(string root)
     {
         if (!Directory.Exists(root))
             return;
@@ -37,7 +53,7 @@ internal sealed class SkySurveyTiles
 
     internal LocalSkySurvey? Find(string? id) => id is null ? null : _surveys.GetValueOrDefault(id);
 
-    internal Texture2D? Texture(string path, LocalSkySurvey survey, bool allSky = false)
+    internal Texture2D? Texture(string path, LocalSkySurvey? survey, bool allSky = false)
     {
         if (_tiles.TryGetValue(path, out var cached))
         {
@@ -56,10 +72,12 @@ internal sealed class SkySurveyTiles
                 var bytes = new byte[(int)file.Length];
                 file.ReadExactly(bytes);
                 using var image = new Image();
-                Error status = survey.Extension == "png" ? image.LoadPngFromBuffer(bytes) : image.LoadJpgFromBuffer(bytes);
+                if (survey is null && !ValidPhotographHeader(bytes))
+                    throw new InvalidDataException("A sky photograph has an unsupported PNG header.");
+                Error status = survey is null || survey.Extension == "png" ? image.LoadPngFromBuffer(bytes) : image.LoadJpgFromBuffer(bytes);
                 int width = image.GetWidth(), height = image.GetHeight();
                 if (status != Error.Ok || width is < 2 or > 4096 || height is < 2 or > 4096 ||
-                    (allSky ? !LocalSkySurvey.ValidAllSky(width, height) : width != height || width != survey.TileWidth))
+                    (survey is not null && (allSky ? !LocalSkySurvey.ValidAllSky(width, height) : width != height || width != survey.TileWidth)))
                     throw new InvalidDataException("A sky survey image has unsupported dimensions.");
                 int pixels = width * height;
                 while (_tiles.Count >= MaximumTiles || _pixels + pixels > MaximumPixels)
@@ -83,6 +101,15 @@ internal sealed class SkySurveyTiles
         _missing.Add(path);
         return null;
     }
+
+    private static bool ValidPhotographHeader(ReadOnlySpan<byte> bytes)
+    {
+        if (bytes.Length < 24 || !bytes[12..16].SequenceEqual("IHDR"u8))
+            return false;
+        int width = System.Buffers.Binary.BinaryPrimitives.ReadInt32BigEndian(bytes[16..20]);
+        int height = System.Buffers.Binary.BinaryPrimitives.ReadInt32BigEndian(bytes[20..24]);
+        return width is >= 2 and <= 4096 && height is >= 2 and <= 4096;
+    }
 }
 
 internal partial class SkySurveyCanvas : Control
@@ -99,6 +126,8 @@ internal partial class SkySurveyCanvas : Control
     private readonly SkySurveyTiles _tiles;
     private readonly List<Texture2D> _drawnTextures = [];
     private Frame? _frame;
+    private readonly bool _alwaysAdditive;
+    private readonly CanvasItemMaterial _additive = new() { BlendMode = CanvasItemMaterial.BlendModeEnum.Add };
 
     internal SkySurveyCanvas(SkySurveyTiles tiles, bool additive)
     {
@@ -107,8 +136,9 @@ internal partial class SkySurveyCanvas : Control
         ClipContents = true;
         Visible = false;
         TextureFilter = TextureFilterEnum.Linear;
+        _alwaysAdditive = additive;
         if (additive)
-            Material = new CanvasItemMaterial { BlendMode = CanvasItemMaterial.BlendModeEnum.Add };
+            Material = _additive;
         Resized += QueueRedraw;
     }
 
@@ -118,18 +148,25 @@ internal partial class SkySurveyCanvas : Control
     internal string? SurveyId => _frame?.Survey.Id;
 
     internal bool ShowFrame(string? id, Vector3 forward, Vector3 right, Vector3 up,
-        float tangent, float brightness = 1, bool background = false)
+        float tangent, float brightness = 1, bool background = false, bool photographs = false,
+        double limitingMagnitude = 7.6, double julianDate = 2451545)
     {
         Frame? next = null;
         if (tangent > 0 && brightness > 0 && _tiles.Find(id) is { } survey &&
             _tiles.Texture(survey.AllSkyPath, survey, allSky: true) is { } allSky)
             next = new(survey, allSky, forward, right, up, tangent, brightness, background);
-        if (_frame != next)
+        PhotographFrame? photoFrame = next is null && photographs && tangent > 0 && _tiles.Photographs.Count != 0 ?
+            new(forward, right, up, tangent, limitingMagnitude, julianDate) : null;
+        if (_frame != next || _photographs != photoFrame)
         {
             _frame = next;
-            Visible = next is not null;
+            _photographs = photoFrame;
+            Material = _alwaysAdditive || photoFrame is not null ? _additive : null;
+            Visible = next is not null || photoFrame is not null;
             if (next is null)
                 DetailPatches = OverviewPatches = FinestSourceOrder = 0;
+            if (photoFrame is null)
+                _drawnPhotographs.Clear();
             QueueRedraw();
         }
         return Visible;
@@ -139,7 +176,15 @@ internal partial class SkySurveyCanvas : Control
     {
         _drawnTextures.Clear();
         DetailPatches = OverviewPatches = FinestSourceOrder = 0;
-        if (_frame is not { } frame || Size.X <= 1 || Size.Y <= 1)
+        _drawnPhotographs.Clear();
+        if (Size.X <= 1 || Size.Y <= 1)
+            return;
+        if (_photographs is { } photographs)
+        {
+            DrawPhotographs(photographs);
+            return;
+        }
+        if (_frame is not { } frame)
             return;
         if (frame.Background)
             DrawRect(new Rect2(Vector2.Zero, Size), new Color(.022f, .026f, .043f));

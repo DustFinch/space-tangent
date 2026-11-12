@@ -87,7 +87,8 @@ internal sealed record BrightSkyData(BrightStarCatalogue Catalogue, IReadOnlyLis
         if (missingArtwork > 0)
             GD.Print($"Sky cultures: {missingArtwork} referenced illustrations are absent from the local archive.");
         string surveys = LocalDataPaths.Find("SPACETANGENT_SKY_SURVEYS", "sky/surveys", directory: true);
-        return new(stars, lines.AsReadOnly(), transients, MeteorCatalogue.Read(showers), library, new(surveys));
+        string photographs = LocalDataPaths.Find("SPACETANGENT_SKY_PHOTOGRAPHS", "sky/nebula-images", directory: true);
+        return new(stars, lines.AsReadOnly(), transients, MeteorCatalogue.Read(showers), library, new(surveys, photographs));
     }
 
     internal static Vector3 Equatorial(float raDegrees, float decDegrees)

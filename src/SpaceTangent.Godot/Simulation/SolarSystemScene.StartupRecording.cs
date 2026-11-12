@@ -37,6 +37,11 @@ public partial class SolarSystemScene
             if (_startupArguments.Contains("--startup-scenario", StringComparer.Ordinal) &&
                 !LoadScenario(RequiredArgument("--startup-scenario")))
                 throw new InvalidDataException(_status.Text);
+            if (_startupArguments.Contains("--startup-legacy-settings", StringComparer.Ordinal))
+                ImportStartupSettings(RequiredArgument("--startup-legacy-settings"));
+            if (_startupArguments.Contains("--startup-save-scenario", StringComparer.Ordinal) &&
+                !SaveScenario(RequiredArgument("--startup-save-scenario")))
+                throw new InvalidDataException(_status.Text);
             if (_startupArguments.Contains("--startup-replay", StringComparer.Ordinal) &&
                 !StartReplay(RequiredArgument("--startup-replay")))
                 throw new InvalidDataException(_status.Text);
@@ -71,6 +76,17 @@ public partial class SolarSystemScene
             GD.Print("Startup recording: " + error.Message);
             GetTree().Quit(1);
         }
+    }
+
+    private void ImportStartupSettings(string path)
+    {
+        var session = Session!;
+        var profile = LegacyObserverProfiles.Read(path, session[_active], session.DeltaT);
+        var current = session.CaptureScenario(_active);
+        ObserverView[] views = current.Views.ToArray();
+        views[_active] = profile.Observer;
+        ApplyScenario(current with { Views = Array.AsReadOnly(views), DeltaT = profile.DeltaT });
+        GD.Print("Legacy observer profile applied to the active view.");
     }
 
     private string RequiredArgument(string name)

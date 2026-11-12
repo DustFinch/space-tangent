@@ -103,3 +103,9 @@ An archived `optics-v1.json` is loaded from the local user profile or the path s
 Open a `.stframes` recording with the existing scenario dialog. It restores each observer, camera, epoch and ΔT from the sequence and pauses at the final state. Keep the corresponding add-ons available. Use Escape to leave the replay early.
 
 Pass application arguments after `--`. Use `--startup-scenario <path>` to open a scene, `--startup-movie <seconds>` to record a timed clip, or `--startup-replay <path>` to replay a recording. `--startup-screenshot <path>` saves the opened scene or the final replay frame, and `--startup-exit` exits after the requested work. `--inspect-legacy-recording <path>` reports the frame count, schema and epochs from the archived binary format after checking its record checksums. Original frame geometry is inspected at the recording envelope level. The new player opens observer-state recordings.
+
+### Archived observer settings
+
+Pass `--startup-legacy-settings <settings.json>` after the engine's `--` separator. You can first load a scenario with `--startup-scenario <file.stscene>`, then save the result to a separate file with `--startup-save-scenario <destination.stscene> --startup-exit`.
+
+The import applies ΔT, observer conditions, Earth site coordinates, landscape selection, supported sky layers and reference marks, field of view and optical preferences. It keeps the active observer's camera mode, position, selection and epoch. Other views retain their settings. Keep any optional `optics-v1.json` beside the archived settings for custom optical profiles.

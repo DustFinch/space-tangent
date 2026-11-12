@@ -70,6 +70,34 @@ public partial class WorkspaceInputSmoke
             ScenarioFile.Save(sample, Session.CaptureScenario(view));
         GD.Print("UI: installed original ISS CMOD and 2008 TC3 XYZV, tracked both, and recovered a missing original texture");
 
+        if (System.Environment.GetEnvironmentVariable("SPACETANGENT_MPC_SELECTION") is { Length: > 0 } mpc)
+        {
+            string selection = Path.Combine(local, "original-selection.mpc");
+            File.Copy(mpc, selection);
+            if (!addOns.ButtonPressed)
+                await Click(addOns);
+            await Click(Find<Button>("ReloadAddOns"));
+            await WaitForAddOns("Discovering the new local MPC selection");
+            Require(Session.World.SscBodies.Count == 8, "Six MPC records must be added alongside the original SSC bodies.");
+            await FlyTo("(99942) Apophis", new("ssc/sol/apophis"), 2461200.5);
+            await FlyTo("Halley", new("ssc/sol/1p/halley"), 2474037.0655);
+            var atlas = new ObjectId("ssc/sol/3i/atlas");
+            await FlyTo("3I/ATLAS", atlas, 2460977.9825);
+            Require(_scene.Renderer(view).ImportedBodyNode(atlas) is { Visible: true } &&
+                Session.World.Catalogue.Find(atlas)?.Kind == CatalogueKind.Comet,
+                "The open-orbit comet must be classified and rendered.");
+            if (System.Environment.GetEnvironmentVariable("SPACETANGENT_MPC_SCENE") is { Length: > 0 } mpcScene)
+                ScenarioFile.Save(mpcScene, Session.CaptureScenario(view));
+            File.Delete(selection);
+            if (!addOns.ButtonPressed)
+                await Click(addOns);
+            await Click(Find<Button>("ReloadAddOns"));
+            await WaitForAddOns("Removing the local MPC selection");
+            Require(Session.World.SscBodies.Count == 2 && Session.World.Catalogue.Find(atlas) is null,
+                "Removing the MPC file must invalidate its cached bodies without removing the original SSC objects.");
+            GD.Print("UI: added real MPCORB and CometEls records by reload, flew to Apophis, Halley and 3I/ATLAS, then removed the local selection");
+        }
+
         async Task FlyTo(string name, ObjectId id, double julianDay)
         {
             _scene.Seek(view, JulianInstant.FromJulianDate(julianDay, TimeScale.Tdb));

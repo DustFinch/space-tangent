@@ -51,6 +51,12 @@ The optional `ceres.xyzv`, `vesta.xyzv` and `67p.xyzv` files contain geometric h
 
 Optional maps have the same names as their objects in lowercase, such as `titan.jpg` and `pluto.jpg`. The verified Phobos, Deimos and Vesta renderers use ellipsoid approximations.
 
+### Local MPC selections
+
+Add a file with the `.mpc` extension to the root or `data` directory of a local **SSC body catalogue** source. It can contain original fixed-column [MPCORB asteroid rows](https://docs.minorplanetcenter.net/mpc-ops-docs/orbits/minor-planet-orbit-format/) and [CometEls comet rows](https://docs.minorplanetcenter.net/mpc-ops-docs/orbits/comet-orbit-format/#ephemerides-and-orbital-elements-format). Reload add-ons to discover new files or replace edited records. Search for the name or the readable designation and fly to the result. The osculating elements are propagated as two-body orbits, including open comet trajectories. They approximate the trajectory around the element epoch. Size estimates from H are illustrative.
+
+Select the rows you want to install. The local body sources share a 512-object limit. Malformed rows and duplicate designations within a source are reported in the Godot log. The verified rows include Eros, Apophis, Halley, and three interstellar objects.
+
 ## Surface locations
 
 Supply local `*_locs.ssc` files in `data/surface-locations`, or set `SPACETANGENT_SURFACE_LOCATIONS` to their directory. Search for a location on a loaded body and use **Go to** or **G**. The camera approaches above the site and rotates with its parent. The selected label appears on the visible side. **Ctrl+L** toggles additional labels at the current map scale. Locations require a valid state and rotation for their parent at the selected epoch.

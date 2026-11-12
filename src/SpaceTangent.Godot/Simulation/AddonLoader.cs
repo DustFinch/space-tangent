@@ -212,7 +212,7 @@ internal static class AddonLoader
     private static IReadOnlyList<DecodedSscBody> ReadBodyCatalogue(LocalDataPath location, CancellationToken cancellation)
     {
         string root = location.Resolve();
-        return Array.AsReadOnly(SscBodyCatalogue.Load(root, cancellation).Select(body =>
+        return Array.AsReadOnly(SscBodyCatalogue.LoadWithMpc(root, message => global::Godot.GD.PushWarning(message), cancellation).Select(body =>
         {
             cancellation.ThrowIfCancellationRequested();
             DecodedScienceModel? mesh = body.Mesh is { } file ? Path.GetExtension(file).ToLowerInvariant() switch

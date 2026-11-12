@@ -42,9 +42,15 @@ internal sealed class PlanetRingRendering
         _ring.SetShaderParameter("rings_map", texture);
         globe.MaterialOverride = _surface;
 
+        _rings = new MeshInstance3D { Mesh = RingMesh(inner, outer, _ring), Visible = false, CastShadow = GeometryInstance3D.ShadowCastingSetting.Off };
+        scene.AddChild(_rings);
+    }
+
+    internal static ImmediateMesh RingMesh(float inner, float outer, Material material)
+    {
         var mesh = new ImmediateMesh();
         const int segments = 192;
-        mesh.SurfaceBegin(Mesh.PrimitiveType.TriangleStrip, _ring);
+        mesh.SurfaceBegin(Mesh.PrimitiveType.TriangleStrip, material);
         for (int step = 0; step <= segments; step++)
         {
             float angle = Mathf.Tau * step / segments;
@@ -55,8 +61,7 @@ internal sealed class PlanetRingRendering
             mesh.SurfaceAddVertex(radial * outer);
         }
         mesh.SurfaceEnd();
-        _rings = new MeshInstance3D { Mesh = mesh, Visible = false, CastShadow = GeometryInstance3D.ShadowCastingSetting.Off };
-        scene.AddChild(_rings);
+        return mesh;
     }
 
     internal bool Textured { get; }

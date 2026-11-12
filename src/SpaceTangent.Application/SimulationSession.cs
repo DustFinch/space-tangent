@@ -59,6 +59,7 @@ public sealed class SimulationWorld
         StellarOrigin = ephemeris.Sample(JulianInstant.FromJulianDate(2451545, TimeScale.Tdb)).Sun.PositionKilometers;
         var graph = new WorldGraphBuilder();
         graph.AddSolarSystem(ephemeris);
+        DemoWorlds.AddTo(graph);
         foreach (PlanetDefinition planet in PlanetCatalogue.Planets)
             PlanetEphemerides.AddPlanet(graph, planet, planets);
         foreach (NaturalBodyDefinition body in NaturalBodyCatalogue.Bodies)
@@ -190,7 +191,7 @@ public sealed class SimulationWorld
 
     public double TargetRadiusKilometers(ObjectId id) =>
         FindSurfaceSite(id)?.ScaleKilometers ?? StarRadius(FindStellarTarget(id)) ?? DeepSky.Find(id)?.RadiusKilometers ??
-        Exoplanets.Find(id)?.RadiusKilometers ??
+        Exoplanets.Find(id)?.RadiusKilometers ?? DemoWorlds.Find(id)?.RadiusKilometers ??
         _sscById.GetValueOrDefault(id)?.Definition.RadiusKilometers ??
         _sampledMissions.GetValueOrDefault(id)?.RadiusKilometers ?? NavigationCamera.BodyRadiusKilometers(id);
     private static double? StarRadius(StellarEntry? star) => star is null ? null :

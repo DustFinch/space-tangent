@@ -3,6 +3,7 @@ using SpaceTangent.Contracts;
 using SpaceTangent.Core.Addons;
 using SpaceTangent.Core.Ephemerides;
 using SpaceTangent.Core.Observing;
+using SpaceTangent.Core.World;
 
 namespace SpaceTangent.Application;
 
@@ -23,6 +24,12 @@ public sealed class ObjectCatalogue
         objects.AddRange(PlanetCatalogue.Planets.Select(planet =>
             new CatalogueObject(planet.Id, planet.Name, CatalogueKind.Planet, SolarSystemSample.SunId)));
         objects.Add(new(SolarSystemSample.MoonId, "Moon", CatalogueKind.Moon, SolarSystemSample.EarthId));
+        objects.AddRange(DemoWorlds.Bodies.Select(body => new CatalogueObject(body.Id, body.Name, body.Surface switch
+        {
+            DemoWorldSurface.Star => CatalogueKind.Star,
+            DemoWorldSurface.Barren => CatalogueKind.Moon,
+            _ => CatalogueKind.Planet
+        }, body.Parent) { Aliases = [body.NativeName] }));
         objects.AddRange(NaturalBodyCatalogue.Bodies.Select(body =>
             new CatalogueObject(body.Id, body.Name, body.Kind, body.Parent)));
         objects.AddRange(satellites.Select(satellite =>

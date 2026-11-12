@@ -650,6 +650,7 @@ public partial class SolarSystemScene : Control
             delta = 1.0 / WindowRecording.FramesPerSecond;
         FlyShip(delta);
         bool changed = Session?.Tick(delta) == true;
+        changed |= _demoSurfaces.PublishReady();
         changed |= StepPlugins(delta);
         if (_script is { } script)
         {
@@ -1310,7 +1311,7 @@ public partial class SolarSystemScene : Control
         panel.AddChild(container);
         var viewport = new SubViewport { OwnWorld3D = true, RenderTargetUpdateMode = SubViewport.UpdateMode.Always };
         container.AddChild(viewport);
-        var renderer = new SimulationViewport { GalacticCache = _galacticSky };
+        var renderer = new SimulationViewport { GalacticCache = _galacticSky, DemoSurfaces = _demoSurfaces };
         viewport.AddChild(renderer);
         if (_surfaceTextures is { } textures)
             renderer.SetSurfaceTextures(textures);
@@ -1369,6 +1370,7 @@ public partial class SolarSystemScene : Control
     }
 
     private readonly GalacticTextureCache _galacticSky = new();
+    private readonly DemoSurfaceCache _demoSurfaces = new();
 
     private void ReplaceAssets(ViewControls view)
     {

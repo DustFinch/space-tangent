@@ -183,6 +183,8 @@ internal partial class SimulationViewport
                 Consider(id, body.Node);
         foreach (var (id, disk) in _visibleStars)
             Consider(id, disk);
+        foreach (var (id, demo) in _demoGlobes)
+            Consider(id, demo.Globe);
         foreach (var (id, planet) in _visibleExoplanets)
             Consider(id, planet);
         foreach (var (id, deepSky) in _deepSkyObjects)

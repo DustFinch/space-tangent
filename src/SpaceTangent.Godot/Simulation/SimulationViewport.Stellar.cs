@@ -69,6 +69,7 @@ internal partial class SimulationViewport
         Vector3d eye = pose.AnchorKilometers + new Vector3d(localEye.X, -localEye.Z, localEye.Y) * units;
         DrawDeepSky(world, pose, sky, eye, units, project);
         DrawExoplanets(world, pose, snapshot, units, project);
+        DrawDemoWorlds(pose, snapshot, units, project);
         if (sky.Stars && (_fieldStars.Count != 0 || world.DistantStars is not null) && (eye - world.StellarOrigin).Length > StellarEntry.KilometersPerLightYear * .025)
             DrawSpatialField(eye, snapshot.Epoch, world, pose.Target);
     }
@@ -237,5 +238,6 @@ internal partial class SimulationViewport
         StellarDiskResolved = false;
         HideDeepSky();
         HideExoplanets();
+        HideDemoWorlds();
     }
 }

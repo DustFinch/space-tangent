@@ -109,6 +109,22 @@ public partial class EarthOrbitProbe
             throw new InvalidOperationException($"The artwork changed only {changed} GPU samples.");
         GD.Print($"Sky cultures: {artwork} Western drawings and {changed} GPU samples, Orion and Russian Northern Dipper, separate views survived reload.");
 
+        foreach (var (culture, ra, dec) in new[] { ("aztec", 84d, -1d), ("boorong", 114d, 27d), ("inuit", 297d, 10d) })
+        {
+            var view = View(ra, dec, culture, SkyCultureNames.Native, true);
+            string artPath = Path.Combine(directory, $"sky-culture-{culture}.stscene");
+            ScenarioFile.Save(artPath, selected with { Views = [view, chinese] });
+            if (!scene.LoadScenario(artPath))
+                throw new InvalidOperationException($"Could not open the {culture} culture scenario.");
+            using var illustrated = await Screenshot();
+            var overlay = scene.Renderer(0).SpaceCultureOverlay;
+            if (overlay?.RenderedCulture != culture || overlay.RenderedArtwork == 0 || session[1] != chinese)
+                throw new InvalidOperationException($"The original {culture} artwork did not render in the first view.");
+            if (illustrated.SavePng(Path.ChangeExtension(artPath, ".png")) != Error.Ok)
+                throw new IOException($"Could not capture {culture} artwork.");
+            GD.Print($"Sky culture artwork: {culture}, {overlay.RenderedArtwork} drawings in the first view.");
+        }
+
         ObserverView View(double ra, double dec, string culture, SkyCultureNames names, bool art)
         {
             Vector3 d = BrightSkyData.Equatorial((float)ra, (float)dec);

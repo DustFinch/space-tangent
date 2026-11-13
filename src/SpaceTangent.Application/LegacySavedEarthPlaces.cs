@@ -10,7 +10,7 @@ public static class LegacySavedEarthPlaces
     private static readonly Encoding Utf8 = new UTF8Encoding(false, true);
 
     /// <summary>Appends valid archived sites while retaining existing user entries with the same ID.</summary>
-    public static int Merge(string destination, IReadOnlyList<EarthPlace> archived) => Write(destination, archived, false);
+    public static int Merge(string destination, IReadOnlyList<EarthPlace> archived) => Write(destination, archived);
 
     public static void Save(string destination, string name, EarthSite location)
     {
@@ -20,12 +20,18 @@ public static class LegacySavedEarthPlaces
         double offset = Math.Round(location.LongitudeDegrees / 15);
         var site = EarthPlaceCatalogue.ParseSavedText(FormattableString.Invariant(
             $"{name}\t{location.LatitudeDegrees:R}\t{location.LongitudeDegrees:R}\t{location.HeightKilometers * 1000:R}\t{offset:R}")).Single();
-        Write(destination, [site], true);
+        Write(destination, [site], name);
     }
 
-    private static int Write(string destination, IReadOnlyList<EarthPlace> archived, bool replace)
+    public static bool Remove(string destination, string name)
     {
-        if (archived.Count == 0)
+        name = name.Trim();
+        return name.Length is > 0 and <= 80 && !name.Any(char.IsControl) && Write(destination, [], name) > 0;
+    }
+
+    private static int Write(string destination, IReadOnlyList<EarthPlace> archived, string? replacedName = null)
+    {
+        if (archived.Count == 0 && replacedName is null)
             return 0;
         string target = Path.GetFullPath(destination);
         string directory = Path.GetDirectoryName(target)!;
@@ -42,18 +48,25 @@ public static class LegacySavedEarthPlaces
             using var reader = new StreamReader(file, Utf8);
             previous = reader.ReadToEnd();
         }
-        if (replace)
+        bool removed = false;
+        if (replacedName is not null)
         {
-            var update = archived[0];
-            if (EarthPlaceCatalogue.ParseSavedText(previous).FirstOrDefault(site => site.Id == update.Id) is { } old)
-                archived = [update with { TimeZone = old.TimeZone, FixedOffsetHours = old.FixedOffsetHours }];
-            string targetName = update.Name;
+            if (archived.Count > 0)
+            {
+                var update = archived[0];
+                if (EarthPlaceCatalogue.ParseSavedText(previous).FirstOrDefault(site => site.Id == update.Id) is { } old)
+                    archived = [update with { TimeZone = old.TimeZone, FixedOffsetHours = old.FixedOffsetHours }];
+            }
             using var lines = new StringReader(previous);
             var remaining = new StringBuilder();
             while (lines.ReadLine() is { } line)
             {
-                if (!line.StartsWith('#') && line.Split('\t', 2)[0].Trim().Equals(targetName, StringComparison.OrdinalIgnoreCase))
+                if (!line.TrimStart().StartsWith('#') &&
+                    line.Split('\t', 2)[0].Trim().Equals(replacedName, StringComparison.OrdinalIgnoreCase))
+                {
+                    removed = true;
                     continue;
+                }
                 remaining.AppendLine(line);
             }
             previous = remaining.ToString();
@@ -70,7 +83,7 @@ public static class LegacySavedEarthPlaces
             string text = FormattableString.Invariant($"{site.Name}\t{site.LatitudeDegrees:R}\t{site.LongitudeDegrees:R}\t{site.AltitudeMeters:R}\t{site.FixedOffsetHours.Value:R}");
             added.Add(site.TimeZone.Length == 0 ? text : text + "\t" + site.TimeZone);
         }
-        if (added.Count == 0)
+        if (added.Count == 0 && !removed)
             return 0;
         if (present.Count > 16_384)
             throw new InvalidDataException("The saved Earth place file exceeds 16,384 distinct entries.");
@@ -101,6 +114,6 @@ public static class LegacySavedEarthPlaces
             if (created)
                 File.Delete(temp);
         }
-        return added.Count;
+        return removed && added.Count == 0 ? 1 : added.Count;
     }
 }

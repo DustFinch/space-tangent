@@ -48,6 +48,19 @@ public partial class WorkspaceInputSmoke
             await OpenPlace(saved.EnglishName, saved);
             await Click(Find<Button>("LocationTab"));
             var map = Find<EarthSiteMap>("EarthSiteMap");
+            if (DisplayServer.GetName() != "headless" &&
+                System.Environment.GetEnvironmentVariable("SPACETANGENT_MAP_CAPTURE") is { Length: > 0 } capture)
+            {
+                await ToSignal(RenderingServer.Singleton, RenderingServer.SignalName.FramePostDraw);
+                using Image frame = Tree.Root.GetTexture().GetImage();
+                Vector2 origin = map.GetGlobalRect().Position;
+                Vector2I ocean = (Vector2I)(origin + map.Project(-17, -126));
+                Color water = frame.GetPixel(ocean.X, ocean.Y);
+                Require(water.B > water.R * 1.2f && water.B > water.G * 1.1f,
+                    $"The archive map must show blue Pacific water at its projected coordinates, got {water}.");
+                Require(frame.SavePng(capture) == Error.Ok, "The textured Earth map frame must be saved.");
+                GD.Print($"GPU: archived Earth map Pacific pixel {water}.");
+            }
             Vector2 paranal = map.Project(observatory.LatitudeDegrees, observatory.LongitudeDegrees);
             var screen = map.GetGlobalRect().Position + paranal;
             using (var down = MouseButtonAt(screen, true))
@@ -81,7 +94,26 @@ public partial class WorkspaceInputSmoke
                 "Updating a site by name", 30);
             Require(Session.World.EarthPlaces.Find(saved.Id)?.TimeZone == "Europe/London",
                 "Updating coordinates must preserve the existing time zone.");
-            GD.Print("UI: selected and zoomed to Paranal on the map, saved a new site and updated an existing site by name.");
+            var beforeRemoval = Session.CaptureScenario(0);
+            var removeButton = Find<Button>("RemoveEarthSite");
+            for (Node parent = removeButton.GetParent(); parent is not null; parent = parent.GetParent())
+                if (parent is ScrollContainer scroll)
+                    scroll.EnsureControlVisible(removeButton);
+            Require(Find<LineEdit>("SavedSiteName").Text == saved.Name, "The removal must use the named site just updated.");
+            removeButton.GrabFocus();
+            Require(removeButton.HasFocus(), "The remove button must be keyboard-accessible.");
+            await KeyPress(Key.Space);
+            Require(EarthPlaceCatalogue.ParseSavedText(File.ReadAllText(savedFile)).All(place => place.Id != saved.Id),
+                "Activating the remove button must remove the named site from disk.");
+            await Until(() => Session.World.EarthPlaces.Find(saved.Id) is null, "Reloading the removed saved site", 30);
+            Require(EarthPlaceCatalogue.ParseSavedText(File.ReadAllText(savedFile)).Single().ObserverSite == observatory.ObserverSite,
+                "Removing a site must preserve the other saved site on disk.");
+            Require(!Session.World.Catalogue.Search(saved.Name).Any(), "The removed site must disappear from object search.");
+            Require(Session[0].EarthObserver == beforeRemoval.Views[0].EarthObserver && Session[1] == right &&
+                Session.DeltaT == beforeRemoval.DeltaT && Session[0].Selection != saved.Id &&
+                Session[0].Playing == beforeRemoval.Views[0].Playing && Session[0].Epoch == beforeRemoval.Views[0].Epoch,
+                "Removing the saved place must leave the active ground coordinates, the other view and delta-T intact.");
+            GD.Print("UI: selected and zoomed to Paranal, then saved, updated and removed named observing sites.");
             File.WriteAllText(savedFile, "Home Observatory\t51.5\t-0.125\t30\t0\tEurope/London\n");
             Require(await _scene.ReloadAddOns(), "Restoring the original custom site before migration checks.");
             await OpenPlace(saved.EnglishName, saved);

@@ -20,4 +20,23 @@ public partial class SolarSystemScene
             _status.Text = $"Could not save site. {error.Message}";
         }
     }
+
+    private async Task RemoveEarthSite(string name)
+    {
+        try
+        {
+            var path = AddonLoader.SavedEarthPlacePath();
+            if (!LegacySavedEarthPlaces.Remove(path.Explicit ?? path.User, name))
+            {
+                _status.Text = "No saved site with this name.";
+                return;
+            }
+            if (await ReloadAddOns())
+                _status.Text = $"Removed site \u00b7 {name.Trim()}";
+        }
+        catch (Exception error) when (IsLoadError(error))
+        {
+            _status.Text = $"Could not remove site. {error.Message}";
+        }
+    }
 }

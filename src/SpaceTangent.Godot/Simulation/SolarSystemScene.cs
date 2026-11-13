@@ -297,7 +297,8 @@ public partial class SolarSystemScene : Control
             Session!.SetEarthObserver(_active, camera);
             _status.Text = "";
             SetMode(_active, CameraMode.Surface);
-        }, () => ShowFullMoon(_active), message => _status.Text = message, _earthOrbitTextures?.Day, (name, site) => _ = SaveEarthSite(name, site));
+        }, () => ShowFullMoon(_active), message => _status.Text = message, _earthOrbitTextures?.Day, (name, site) => _ = SaveEarthSite(name, site),
+            name => _ = RemoveEarthSite(name));
         ephemerides.VisibilityChanged += () =>
         {
             if (_views.Count > 0 && ephemerides.IsVisibleInTree())
@@ -601,7 +602,7 @@ public partial class SolarSystemScene : Control
                 _workspace.Open("Search");
                 _objectSearch.Focus();
                 break;
-            case Key.Space:
+            case Key.Space when GetViewport().GuiGetFocusOwner() is not Button:
                 TogglePlaying(_active);
                 break;
             case Key.Escape:

@@ -25,7 +25,8 @@ internal sealed class EarthObserverPanel
     private (DateOnly Date, EarthSite Site, DeltaTModel Model)? _twilightKey;
 
     internal EarthObserverPanel(VBoxContainer location, VBoxContainer ephemerides, bool surfaceAvailable,
-        Action<EarthObserverCamera> apply, Action fullMoon, Action<string> setStatus, Texture2D? mapTexture, Action<string, EarthSite> saveSite)
+        Action<EarthObserverCamera> apply, Action fullMoon, Action<string> setStatus, Texture2D? mapTexture, Action<string, EarthSite> saveSite,
+        Action<string> removeSite)
     {
         _apply = apply;
         _setStatus = setStatus;
@@ -42,21 +43,30 @@ internal sealed class EarthObserverPanel
         });
         location.AddChild(_sites);
         _map = new EarthSiteMap(mapTexture) { Visible = surfaceAvailable };
-        _map.Picked += (place, site) => _apply(_camera with
-        {
-            Site = site,
-            Conditions = place?.Bortle is { } bortle ? new GroundSkyConditions(bortle) : _camera.Conditions
-        });
         location.AddChild(_map);
         var saveRow = new HBoxContainer();
         var siteName = new LineEdit { Name = "SavedSiteName", PlaceholderText = "Site name", MaxLength = 80,
             SizeFlagsHorizontal = Control.SizeFlags.ExpandFill, Editable = surfaceAvailable };
+        _map.Picked += (place, site) =>
+        {
+            if (place is { Kind: 'U' })
+                siteName.Text = place.Name;
+            _apply(_camera with
+            {
+                Site = site,
+                Conditions = place?.Bortle is { } bortle ? new GroundSkyConditions(bortle) : _camera.Conditions
+            });
+        };
         var saveButton = new Button { Name = "SaveEarthSite", Text = "Save site", Disabled = !surfaceAvailable };
         saveButton.Pressed += () => saveSite(siteName.Text, _camera.Site);
         siteName.TextSubmitted += name => saveSite(name, _camera.Site);
         saveRow.AddChild(siteName);
         saveRow.AddChild(saveButton);
+        var removeButton = new Button { Name = "RemoveEarthSite", Text = "Remove saved site", Disabled = !surfaceAvailable };
+        removeButton.TooltipText = "Remove the saved place with this name.";
+        removeButton.Pressed += () => removeSite(siteName.Text);
         location.AddChild(saveRow);
+        location.AddChild(removeButton);
         _latitude = Field(location, "ObserverLatitude", "Latitude (°)", surfaceAvailable);
         _longitude = Field(location, "ObserverLongitude", "Longitude east (°)", surfaceAvailable);
         _height = Field(location, "ObserverHeight", "Height (km)", surfaceAvailable);

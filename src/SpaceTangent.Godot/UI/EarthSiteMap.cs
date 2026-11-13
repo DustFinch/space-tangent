@@ -23,6 +23,7 @@ internal sealed partial class EarthSiteMap : Control
         CustomMinimumSize = new(0, 152);
         ClipContents = true;
         MouseFilter = MouseFilterEnum.Stop;
+        MouseForcePassScrollEvents = false;
     }
 
     internal void Update(EarthPlaceCatalogue places, EarthSite site)

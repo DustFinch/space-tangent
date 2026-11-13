@@ -15,12 +15,17 @@ public readonly record struct RecordedLabel(string Text, Vector3d CameraPosition
 
 public readonly record struct RecordedBodyPoint(string Name, double Magnitude, Vector3d Color, double Fade, bool ReplacesSurface);
 
+public readonly record struct RecordedCometTail(string Name, Vector3d Head, Vector3d Direction, Vector3d Trail,
+    double Length, double Width, double Brightness, Vector3d Color, double ComaRadius);
+
 internal sealed class LegacyFrameOverlays
 {
     private readonly List<IReadOnlyList<Vector3d>> _geometry = [];
     private RecordedOrbit[] _lastOrbits = [];
     private RecordedLabel[] _lastLabels = [];
     private RecordedBodyPoint[] _lastPoints = [];
+    private RecordedCometTail[] _lastTails = [];
+    private IReadOnlyList<RecordedCometTail> _tails = [];
     private IReadOnlyDictionary<string, RecordedBodyPoint> _points =
         new System.Collections.ObjectModel.ReadOnlyDictionary<string, RecordedBodyPoint>(new Dictionary<string, RecordedBodyPoint>());
     private IReadOnlyList<RecordedOrbit> _orbits = [];
@@ -42,7 +47,7 @@ internal sealed class LegacyFrameOverlays
         _geometry.Add(Array.AsReadOnly(points));
     }
 
-    internal (IReadOnlyList<RecordedOrbit>, IReadOnlyList<RecordedLabel>, IReadOnlyDictionary<string, RecordedBodyPoint>, int StellarOffset) Read(ReadOnlySpan<byte> data,
+    internal (IReadOnlyList<RecordedOrbit>, IReadOnlyList<RecordedLabel>, IReadOnlyDictionary<string, RecordedBodyPoint>, IReadOnlyList<RecordedCometTail>, int StellarOffset) Read(ReadOnlySpan<byte> data,
         int offset, int minor, IReadOnlyList<string> strings)
     {
         int stars = Count(data, 100, 256), orbitCount = Count(data, 102, 128);
@@ -117,7 +122,22 @@ internal sealed class LegacyFrameOverlays
             _lastPoints = bodyPoints;
             _points = new System.Collections.ObjectModel.ReadOnlyDictionary<string, RecordedBodyPoint>(byName);
         }
-        return (_orbits, _labels, _points, data.Length - reader.Remaining);
+        var tails = new RecordedCometTail[minor >= 9 ? Count(data, 110, 32) : 0];
+        for (int index = 0; index < tails.Length; index++)
+        {
+            var tail = new RecordedCometTail(reader.Text(strings), reader.Vector(), reader.Vector(), reader.Vector(),
+                reader.Float(), reader.Float(), reader.Unit(), reader.Vector(), reader.Float());
+            if (tail.Length <= 0 || tail.Width <= 0 || tail.ComaRadius < 0 ||
+                Math.Abs(Vector3d.Dot(tail.Direction, tail.Direction) - 1) > 2e-6)
+                throw new InvalidDataException("Invalid archived comet tail geometry.");
+            tails[index] = tail;
+        }
+        if (!tails.AsSpan().SequenceEqual(_lastTails))
+        {
+            Charge(tails.Length);
+            _tails = Array.AsReadOnly(_lastTails = tails);
+        }
+        return (_orbits, _labels, _points, _tails, data.Length - reader.Remaining);
 
         Vector3d Turn(Vector3d value)
         {

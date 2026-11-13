@@ -138,6 +138,7 @@ internal partial class SimulationViewport
         }
 
         DrawArchivedOverlays(scene, scale);
+        DrawArchivedComets(scene.CometTails, scale);
 
         static Vector3 Column(Vector3d value) => new((float)value.X, (float)value.Y, (float)value.Z);
     }
@@ -280,6 +281,7 @@ internal partial class SimulationViewport
         _archivedPointsUsed = 0;
         _archivedPoints.Clear();
         _archivedVisible.Clear();
+        HideArchivedComets();
         _archivedOverlayRoot?.Hide();
         _archivedSymbolCanvas?.Hide();
         ArchivedEarthLimb?.Hide();

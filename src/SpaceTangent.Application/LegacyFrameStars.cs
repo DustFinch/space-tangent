@@ -74,8 +74,6 @@ internal sealed class LegacyFrameStars
 
     internal RecordedStellarView? ReadView(ReadOnlySpan<byte> frame, int offset)
     {
-        int tails = BinaryPrimitives.ReadUInt16LittleEndian(frame[110..]);
-        offset += tails * 68;
         if (offset >= frame.Length || frame[offset] > 1)
             throw new InvalidDataException("Invalid archived lens flag before stellar view.");
         offset += frame[offset] == 0 ? 1 : 58;

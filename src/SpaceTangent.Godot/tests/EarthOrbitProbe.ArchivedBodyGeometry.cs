@@ -9,6 +9,46 @@ namespace SpaceTangent.Godot.Tests;
 
 public partial class EarthOrbitProbe
 {
+    private async Task ExerciseArchivedComets(SolarSystemScene scene, string directory, string recording)
+    {
+        string saved = Path.Combine(directory, "before-archived-comets.stscene");
+        if (!scene.SaveScenario(saved) || !scene.StartReplay(recording))
+            throw new InvalidOperationException("Could not open the original comet recording.");
+        scene.SetProcess(false);
+        try
+        {
+            var renderer = scene.Renderer(0);
+            var tails = renderer.ArchivedGeometry!.CometTails;
+            var dust = tails.Single(tail => tail.Name == "Sol/C 2023 A3 (Tsuchinshan-ATLAS)");
+            var ion = tails.Single(tail => tail.Name == dust.Name + "/ion");
+            if (renderer.ArchivedCometCount != tails.Count || dust.ComaRadius <= 0 ||
+                dust.Trail.Length <= .1 || ion.Trail.Length > .001 || dust.Color == ion.Color)
+                throw new InvalidOperationException("The recording did not restore both distinct tails and the coma.");
+            await ToSignal(RenderingServer.Singleton, RenderingServer.SignalName.FramePostDraw);
+            using var active = renderer.GetViewport().GetTexture().GetImage();
+            renderer.HideArchivedComets();
+            await ToSignal(RenderingServer.Singleton, RenderingServer.SignalName.FramePostDraw);
+            using var bare = renderer.GetViewport().GetTexture().GetImage();
+            int pixels = 0;
+            for (int y = 0; y < active.GetHeight(); y += 2)
+            for (int x = 0; x < active.GetWidth(); x += 2)
+            {
+                Color on = active.GetPixel(x, y), off = bare.GetPixel(x, y);
+                if (Math.Abs(on.R - off.R) + Math.Abs(on.G - off.G) + Math.Abs(on.B - off.B) > .025)
+                    pixels++;
+            }
+            if (pixels < 50 || active.SavePng(Path.Combine(directory, "archived-comet.png")) != Error.Ok)
+                throw new InvalidOperationException($"The recorded comet changed only {pixels} GPU samples.");
+            if (!scene.LoadScenario(saved) || renderer.ArchivedCometCount != 0)
+                throw new InvalidOperationException("The archived comet tails persisted outside replay.");
+            GD.Print($"Archived comet GPU: C/2023 A3 dust and ion tails, coma, {pixels} changed samples.");
+        }
+        finally
+        {
+            scene.SetProcess(true);
+        }
+    }
+
     private async Task ExerciseArchivedRings(SolarSystemScene scene, string directory, string recordings)
     {
         string saved = Path.Combine(directory, "before-archived-rings.stscene");

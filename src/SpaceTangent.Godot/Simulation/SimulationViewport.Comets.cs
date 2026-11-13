@@ -104,7 +104,7 @@ internal partial class SimulationViewport
             _coma.Hide();
         }
 
-        private static ShaderMaterial Material(Shader shader, Vector3 color, bool radial)
+        internal static ShaderMaterial Material(Shader shader, Vector3 color, bool radial)
         {
             var material = new ShaderMaterial { Shader = shader };
             material.SetShaderParameter("tint", color);
@@ -112,7 +112,7 @@ internal partial class SimulationViewport
             return material;
         }
 
-        private static MeshInstance3D MakeNode(Node parent, Mesh mesh, ShaderMaterial material)
+        internal static MeshInstance3D MakeNode(Node parent, Mesh mesh, ShaderMaterial material)
         {
             var node = new MeshInstance3D { Mesh = mesh, MaterialOverride = material, Visible = false,
                 CastShadow = GeometryInstance3D.ShadowCastingSetting.Off };
@@ -120,7 +120,7 @@ internal partial class SimulationViewport
             return node;
         }
 
-        private sealed class CometRibbon
+        internal sealed class CometRibbon
         {
             private const int Segments = 32;
             private readonly Vector3[] _vertices = new Vector3[(Segments + 1) * 2];
@@ -166,16 +166,20 @@ internal partial class SimulationViewport
             internal void Hide() => _node.Hide();
 
             internal void Draw(Vector3d head, Vector3d away, Vector3d trail, double length, double width,
-                float brightness, double units, Vector3 eye, Func<Vector3d, (Vector3 Position, double Scale)> project)
+                float brightness, double units, Vector3 eye, Func<Vector3d, (Vector3 Position, double Scale)> project,
+                Basis? cameraBasis = null)
             {
                 var bounds = new Aabb(project(head).Position, Vector3.Zero);
                 for (int i = 0; i <= Segments; i++)
                 {
                     double along = (double)i / Segments;
                     // Ease the spacing so the root remains resolved when the camera is close to the nucleus.
-                    double sample = along * along;
+                    double sample = cameraBasis.HasValue ? along : along * along;
                     var (center, projection) = project(head + (away + trail * (.25 * sample)) * (length * sample));
-                    Vector3 tangent = ToGodot(away + trail * (.5 * sample), 1);
+                    var direction = away + trail * (.5 * sample);
+                    Vector3 tangent = cameraBasis is { } basis
+                        ? basis * new Vector3((float)direction.X, (float)direction.Y, (float)direction.Z)
+                        : ToGodot(direction, 1);
                     Vector3 side = tangent.Cross(eye - center).Normalized();
                     if (side.LengthSquared() < .5f)
                         side = tangent.Cross(Math.Abs(tangent.Y) > .9f ? Vector3.Right : Vector3.Up).Normalized();

@@ -10,7 +10,7 @@ internal sealed class GalacticTextureCache : IDisposable
 {
     private const int Width = 256, Height = 128;
     private const int Capacity = 18;
-    private readonly Dictionary<Vector3d, (ImageTexture Texture, long Use)> _maps = new();
+    private readonly Dictionary<(Vector3d Center, int Neighbours), (ImageTexture Texture, long Use)> _maps = new();
     private CancellationTokenSource? _bake;
     private GalacticDustGrid? _dust;
     private bool _disposed;
@@ -28,16 +28,17 @@ internal sealed class GalacticTextureCache : IDisposable
         _maps.Clear();
     }
 
-    public (Texture2D? Texture, Vector3d Center) Request(Vector3d position)
+    public (Texture2D? Texture, Vector3d Center) Request(Vector3d position, int neighbours)
     {
         const double scale = 8;
-        Vector3d key = (position - GalacticLight.SunKiloparsecs).Length <= .05 ? GalacticLight.SunKiloparsecs :
+        Vector3d center = (position - GalacticLight.SunKiloparsecs).Length <= .05 ? GalacticLight.SunKiloparsecs :
             new(Math.Round(position.X * scale) / scale, Math.Round(position.Y * scale) / scale,
                 Math.Round(position.Z * scale) / scale);
+        var key = (center, neighbours);
         if (_maps.TryGetValue(key, out var entry))
         {
             _maps[key] = (entry.Texture, ++_use);
-            return (entry.Texture, key);
+            return (entry.Texture, center);
         }
         if (_bake is null && !_disposed)
         {
@@ -45,24 +46,24 @@ internal sealed class GalacticTextureCache : IDisposable
             _bake = pending;
             _ = Bake(key, _dust, pending);
         }
-        return (null, key);
+        return (null, center);
     }
 
-    private async Task Bake(Vector3d center, GalacticDustGrid? dust, CancellationTokenSource pending)
+    private async Task Bake((Vector3d Center, int Neighbours) key, GalacticDustGrid? dust, CancellationTokenSource pending)
     {
         var elapsed = System.Diagnostics.Stopwatch.StartNew();
         try
         {
-            float[] pixels = await Task.Run(() => GalacticLight.Bake(center, Width, Height, map: dust,
-                cancellation: pending.Token), pending.Token);
+            float[] pixels = await Task.Run(() => GalacticLight.Bake(key.Center, Width, Height, map: dust,
+                cancellation: pending.Token, neighbourMask: key.Neighbours), pending.Token);
             if (!pending.IsCancellationRequested && !_disposed)
             {
                 byte[] bytes = MemoryMarshal.AsBytes(pixels.AsSpan()).ToArray();
                 using Image image = Image.CreateFromData(Width, Height, false, Image.Format.Rgbf, bytes);
                 if (_maps.Count >= Capacity)
                     _maps.Remove(_maps.MinBy(entry => entry.Value.Use).Key);
-                _maps[center] = (ImageTexture.CreateFromImage(image), ++_use);
-                GD.Print($"Galactic light map ready at {center} kpc in {elapsed.ElapsedMilliseconds} ms.");
+                _maps[key] = (ImageTexture.CreateFromImage(image), ++_use);
+                GD.Print($"Galactic light map ready at {key.Center} kpc in {elapsed.ElapsedMilliseconds} ms.");
             }
         }
         catch (OperationCanceledException) { }

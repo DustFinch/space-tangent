@@ -80,6 +80,46 @@ public partial class EarthOrbitProbe
             throw new IOException("Could not save the Galactic Center viewed through the ground sky.");
         GD.Print("Galactic light: original extinction grid, independent Sun and external 40 kpc views, Paranal night, reload and layer toggle.");
 
+        ObjectId andromedaId = new("dso/m31");
+        var galaxy = GalacticLight.Neighbours.Single(item => item.Name == "M 31");
+        var nearby = galaxy.CentreKiloparsecs + galaxy.Normal * 120;
+        var face = View(nearby, axes.Transform(galaxy.Normal * -1), axes.Transform(galaxy.Major), 32);
+        var hidden = face with { Sky = sky with { DeepSkyFilter = new DeepSkyVisibility(14, null) } };
+        string neighbourScene = Path.Combine(directory, "nearby-galaxies");
+        ScenarioFile.Save(neighbourScene + ".stscene", new([face, hidden], false, 0, 0, session.DeltaT));
+        if (!scene.LoadScenario(neighbourScene + ".stscene"))
+            throw new InvalidOperationException("Could not open the independent galaxy filters.");
+        deadline = Time.GetTicksMsec() + 30000;
+        while (!scene.Renderer(0).IsVolumetricGalaxy(andromedaId) || !scene.Renderer(1).GalacticSkyVisible)
+        {
+            if (Time.GetTicksMsec() > deadline)
+                throw new TimeoutException("The two filtered galaxy maps did not publish.");
+            await ToSignal(GetTree(), SceneTree.SignalName.ProcessFrame);
+        }
+        if (scene.Renderer(1).DeepSkyVisible(andromedaId) || !await scene.ReloadAddOns() ||
+            session[0] != face || session[1] != hidden || !scene.Renderer(0).IsVolumetricGalaxy(andromedaId))
+            throw new InvalidOperationException("Andromeda or its per-view visibility failed after reload.");
+        await ToSignal(RenderingServer.Singleton, RenderingServer.SignalName.FramePostDraw);
+        using var neighbours = GetViewport().GetTexture().GetImage();
+        double visible = CentreLight(scene.Renderer(0));
+        double filtered = CentreLight(scene.Renderer(1));
+        if (visible <= filtered + .015)
+            throw new InvalidOperationException($"Andromeda did not brighten the visible view ({visible:R} vs {filtered:R}).");
+        if (neighbours.SavePng(neighbourScene + ".png") != Error.Ok)
+            throw new IOException("Could not capture independent galaxy filters.");
+        GD.Print($"Nearby galaxies GPU: Andromeda volume from 120 kpc, independent filter and reload, centre luminance {visible:F3} vs {filtered:F3}.");
+
+        static double CentreLight(SimulationViewport renderer)
+        {
+            using var image = renderer.GetViewport().GetTexture().GetImage();
+            int x = image.GetWidth() / 2, y = image.GetHeight() / 2;
+            double light = 0;
+            for (int row = y - 30; row < y + 30; row += 3)
+            for (int column = x - 30; column < x + 30; column += 3)
+                light += image.GetPixel(column, row).Luminance;
+            return light / 400;
+        }
+
         ObserverView View(Vector3d position, Vector3d forward, Vector3d up, double field)
         {
             Vector3d observer = origin + axes.Transform(position - sun) *

@@ -16,7 +16,7 @@ internal partial class SimulationViewport
     private Shader? _deepSkyShader;
     private QuadMesh? _deepSkyQuad;
 
-    internal bool DeepSkyVisible(ObjectId id) => _deepSkyObjects.GetValueOrDefault(id)?.Visible == true;
+    internal bool DeepSkyVisible(ObjectId id) => IsVolumetricGalaxy(id) || _deepSkyObjects.GetValueOrDefault(id)?.Visible == true;
 
     internal bool DeepSkyLabelVisible(ObjectId id) => _deepSkyObjects.TryGetValue(id, out var mesh) &&
         _deepSkyPool.Any(item => item.Mesh == mesh && item.Label.Visible);
@@ -85,7 +85,10 @@ internal partial class SimulationViewport
                 profile.SetShaderParameter("elliptical", elliptical);
                 profile.SetShaderParameter("concentration", (float)body.KingConcentration);
             }
-            mesh.Show();
+            if (IsVolumetricGalaxy(body.Id))
+                mesh.Hide();
+            else
+                mesh.Show();
             bool labelEnabled = body.Kind switch
             {
                 DeepSkyKind.OpenCluster => sky.OpenClusterLabels ?? true,

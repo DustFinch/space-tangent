@@ -19,6 +19,14 @@ internal partial class SimulationViewport
     private ShaderMaterial? _galacticMaterial;
     private Texture2D? _galacticTexture;
     private bool _hasZodiacalMap;
+    private int _volumetricNeighbours;
+    private static readonly ObjectId[] NearbyGalaxyIds = [new("dso/lmc"), new("dso/smc"), new("dso/m31")];
+
+    internal bool IsVolumetricGalaxy(ObjectId id)
+    {
+        int index = Array.IndexOf(NearbyGalaxyIds, id);
+        return index >= 0 && (_volumetricNeighbours & (1 << index)) != 0;
+    }
 
     private void InstallGalacticSky(CanvasLayer layer, Texture2D? zodiacalMap)
     {
@@ -36,6 +44,8 @@ internal partial class SimulationViewport
 
     private void PrepareGalacticSky(ObserverView observer, WorldSnapshot snapshot, DeltaTModel deltaT)
     {
+        int previousMask = _volumetricNeighbours;
+        _volumetricNeighbours = 0;
         if (_galacticCanvas is null || GalacticCache is not { } cache || !observer.Sky.DeepSky)
         {
             GalacticSkyCenter = null;
@@ -49,17 +59,30 @@ internal partial class SimulationViewport
             var eye = pose.AnchorKilometers + pose.ResolvePlacement(snapshot, deltaT).OffsetKilometers;
             observerPosition = eye - (CatalogueWorld?.StellarOrigin ?? default);
         }
-        var (texture, center) = cache.Request(GalacticLight.Galactocentric(observerPosition / StellarEntry.KilometersPerLightYear));
+        var galactocentric = GalacticLight.Galactocentric(observerPosition / StellarEntry.KilometersPerLightYear);
+        var filter = observer.Sky.DeepSkyFilter ?? DeepSkyVisibility.All;
+        int mask = 0;
+        for (int index = 0; index < NearbyGalaxyIds.Length; index++)
+        {
+            var body = CatalogueWorld?.DeepSky.Find(NearbyGalaxyIds[index]);
+            bool allowed = body is not null ? filter.Allows(body) : (filter.Kinds & 1) != 0 && filter.Catalogues is null;
+            if (allowed && GalacticLight.IsVolumetric(GalacticLight.Neighbours[index], galactocentric))
+                mask |= 1 << index;
+        }
+        var (texture, center) = cache.Request(galactocentric, mask);
         if (texture is not null)
         {
             GalacticSkyCenter = center;
             _galacticTexture = texture;
+            _volumetricNeighbours = mask;
         }
-        else if (GalacticSkyCenter is not { } previous || (previous - center).Length > .5)
+        else if (previousMask != mask || GalacticSkyCenter is not { } previous || (previous - center).Length > .5)
         {
             GalacticSkyCenter = null;
             _galacticTexture = null;
         }
+        else
+            _volumetricNeighbours = previousMask;
         _surface?.SetGalacticSky(_galacticTexture);
     }
 

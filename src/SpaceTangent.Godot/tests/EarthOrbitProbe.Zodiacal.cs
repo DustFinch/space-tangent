@@ -64,6 +64,7 @@ public partial class EarthOrbitProbe
                 orbitLit.SavePng(Path.Combine(directory, "zodiacal-orbit.png")) != Error.Ok)
                 throw new IOException("Could not capture the zodiacal light.");
 
+            path = Path.Combine(directory, "zodiacal-controls.stscene");
             var disabled = sky with { ZodiacalLight = false };
             var toggle = (CheckButton)scene.FindChild("ZodiacalLightLayer", recursive: true, owned: false);
             if (toggle.Disabled || !toggle.ButtonPressed)

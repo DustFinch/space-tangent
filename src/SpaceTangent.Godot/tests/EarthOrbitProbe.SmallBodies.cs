@@ -39,8 +39,8 @@ public partial class EarthOrbitProbe
             throw new InvalidOperationException("The Jupiter moon scene needs the rotational pole.");
         await Capture("jupiter-moons", jupiter, Axis(frame.ToWorld.Z).Normalized(), 5_500_000);
         foreach (NaturalBodyDefinition moon in NaturalBodyCatalogue.Bodies.Where(body => body.Parent == jupiter))
-            if (!scene.Renderer(0).PlanetGlobeTextured(moon.Id))
-                throw new InvalidOperationException($"The Jupiter scene must contain a marker for {moon.Name}.");
+            if (!scene.Renderer(0).PlanetGlobeTextured(moon.Id) && scene.Renderer(0).MoonPoint(moon.Id)?.Visible != true)
+                throw new InvalidOperationException($"The Jupiter scene must contain a resolved disc or photometric point for {moon.Name}.");
 
         foreach (var (name, id, range) in new (string, ObjectId, double)[]
                  { ("titan", new("sol/titan"), 12_000), ("enceladus", new("sol/enceladus"), 1400),

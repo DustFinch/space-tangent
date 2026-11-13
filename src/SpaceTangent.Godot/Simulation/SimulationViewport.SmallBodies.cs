@@ -40,7 +40,7 @@ internal partial class SimulationViewport
         }
     }
 
-    private void DrawSmallBodies(WorldSnapshot snapshot, NavigationCamera pose, double units,
+    private void DrawSmallBodies(WorldSnapshot snapshot, NavigationCamera pose, Vector3d eyeOffset, double units,
         Func<Vector3d, (Vector3 Position, double Scale)> project)
     {
         foreach (NaturalBodyDefinition body in NaturalBodyCatalogue.Bodies)
@@ -49,9 +49,10 @@ internal partial class SimulationViewport
                 continue;
             var (position, scale) = project(state.PositionKilometers);
             float radius = (float)(body.RadiusKilometers * scale / units);
-            // A world-scale observer sees the moons as points and a close observer sees physical sizes.
             bool parentView = pose.Target == body.Parent && _moonLabels.ContainsKey(body.Id);
-            if (radius < .035f && pose.Target != body.Id && !parentView)
+            bool isMoon = body.Kind == CatalogueKind.Moon;
+            bool resolved = !isMoon || DrawMoonPhotometry(body, snapshot, (pose.AnchorKilometers - state.PositionKilometers) + eyeOffset, state.PositionKilometers, position, radius);
+            if (!isMoon && radius < .035f && pose.Target != body.Id)
                 continue;
             Vector3 radii = body.NaifId switch
             {
@@ -61,7 +62,7 @@ internal partial class SimulationViewport
                 2000004 => new(1, 229f / 289, 280f / 289),
                 _ => Vector3.One
             };
-            if (NaturalMoonModel(body.Id) is { } model)
+            if (resolved && NaturalMoonModel(body.Id) is { } model)
             {
                 // The raw model vertices are kilometres in the source Z-up body frame.
                 Basis3d rotation = snapshot.TryOrientation(body.Id, out FrameKinematics frame) ? frame.ToWorld : Basis3d.Identity;
@@ -70,8 +71,8 @@ internal partial class SimulationViewport
                     ToGodot(rotation.Y * size, 1), ToGodot(rotation.Z * size, 1)), position);
                 model.Show();
             }
-            else
-                PlaceWorldGlobe(_planetGlobes[body.Id], snapshot, body.Id, position, radii * (parentView ? Math.Max(.055f, radius) : radius));
+            else if (resolved)
+                PlaceWorldGlobe(_planetGlobes[body.Id], snapshot, body.Id, position, radii * radius);
             if (parentView)
             {
                 Label3D moonLabel = _moonLabels[body.Id];

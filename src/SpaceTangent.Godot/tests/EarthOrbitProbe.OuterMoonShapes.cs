@@ -9,6 +9,91 @@ namespace SpaceTangent.Godot.Tests;
 
 public partial class EarthOrbitProbe
 {
+    private async Task ExerciseMoonPhotometry(SolarSystemScene scene, JulianInstant epoch, string directory)
+    {
+        if (DisplayServer.GetName() == "headless" ||
+            string.IsNullOrEmpty(System.Environment.GetEnvironmentVariable("SPACETANGENT_OUTER_SHAPE_ORACLE")))
+            return;
+        var id = new ObjectId("sol/hyperion");
+        var body = NaturalBodyCatalogue.Find(id)!;
+        var session = scene.Session!;
+        var snapshot = session.World.Graph.Evaluate(epoch);
+        if (!snapshot.TryState(id, out var state))
+            throw new InvalidOperationException("The original Hyperion orbit is required.");
+        Vector3d sun = (snapshot.SolarSystem!.Value.Sun - state).PositionKilometers;
+        Vector3d eye = sun + Vector3d.Cross(sun, new(0, 0, 1)) * .4;
+        eye /= eye.Length;
+        Vector3d up = new Vector3d(0, 0, 1) - eye * eye.Z;
+        up /= up.Length;
+        string path = Path.Combine(directory, "hyperion-point-and-mesh.stscene");
+        ObserverView near = At(body.RadiusKilometers * 4.2);
+        Save([near, near]);
+        await ToSignal(GetTree(), SceneTree.SignalName.ProcessFrame);
+        var renderer = scene.Renderer(0);
+        double focal = renderer.GetViewport().GetVisibleRect().Size.Y / (2 * Math.Tan(49 * Math.PI / 360));
+        ObserverView far = At(body.RadiusKilometers * (1 + focal / .55));
+        ObserverView blend = At(body.RadiusKilometers * (1 + focal / 2.5));
+        Save([blend, near]);
+        if (renderer.MoonPoint(id) is not { Visible: true, MaterialOverride: ShaderMaterial blendMaterial } ||
+            renderer.NaturalMoonModel(id) is not { Visible: true } ||
+            Math.Abs(blendMaterial.GetShaderParameter("fade").AsSingle() - .5f) > .01f)
+            throw new InvalidOperationException("Hyperion must blend its original mesh and magnitude point between one and four pixels.");
+
+        Save([far, near]);
+        if (renderer.MoonPoint(id) is not { Visible: true } point ||
+            renderer.NaturalMoonModel(id) is not { Visible: false } ||
+            scene.Renderer(1).NaturalMoonModel(id) is not { Visible: true } ||
+            scene.Renderer(1).MoonPoint(id)?.Visible == true)
+            throw new InvalidOperationException("Only the distant view should replace the original Hyperion mesh with its point.");
+        if (renderer.PickObject(renderer.GetViewport().GetVisibleRect().Size / 2) != id)
+            throw new InvalidOperationException("The unresolved Hyperion point must remain selectable.");
+        await ToSignal(RenderingServer.Singleton, RenderingServer.SignalName.FramePostDraw);
+        using var shown = renderer.GetViewport().GetTexture().GetImage();
+        Vector2I center = shown.GetSize() / 2;
+        point.Hide();
+        await ToSignal(RenderingServer.Singleton, RenderingServer.SignalName.FramePostDraw);
+        using var clear = renderer.GetViewport().GetTexture().GetImage();
+        point.Show();
+        if (shown.GetPixel(center.X, center.Y).IsEqualApprox(clear.GetPixel(center.X, center.Y)))
+            throw new InvalidOperationException("The unresolved Hyperion point must change the center pixel.");
+        var expected = session.CaptureScenario(0);
+        if (!await scene.ReloadAddOns())
+            throw new InvalidOperationException("Could not reload the original Hyperion data.");
+        for (int index = 0; index < expected.Views.Count; index++)
+        {
+            var restored = scene.Session![index];
+            var original = expected.Views[index];
+            if (restored.Selection != id || restored.Epoch != original.Epoch ||
+                restored.Navigation is not { Tracking: true, Placement: { } actual } ||
+                original.Navigation is not { Placement: { } prior } ||
+                (actual.OffsetKilometers - prior.OffsetKilometers).Length > .001 ||
+                (actual.Forward - prior.Forward).Length > 1e-9 || (actual.Up - prior.Up).Length > 1e-9)
+                throw new InvalidOperationException($"The Hyperion camera in view {index + 1} changed after reload.");
+        }
+        if (scene.Renderer(0).MoonPoint(id)?.Visible != true ||
+            scene.Renderer(1).NaturalMoonModel(id)?.Visible != true)
+            throw new InvalidOperationException("Reloading must preserve the point and the original mesh in their respective views.");
+        await ToSignal(RenderingServer.Singleton, RenderingServer.SignalName.FramePostDraw);
+        using var comparison = GetViewport().GetTexture().GetImage();
+        if (comparison.SavePng(Path.ChangeExtension(path, ".png")) != Error.Ok)
+            throw new IOException("Could not capture the Hyperion point and mesh.");
+        GD.Print("Moon photometry GPU: original Hyperion mesh, 2.5-pixel blend, unresolved point, picking and reload.");
+
+        void Save(ObserverView[] views)
+        {
+            ScenarioFile.Save(path, new(views, false, 0, 0, session.DeltaT));
+            if (!scene.LoadScenario(path))
+                throw new InvalidOperationException("Could not open the Hyperion photometry scenario.");
+        }
+
+        ObserverView At(double distance) => new(epoch, CameraMode.Solar, id, false)
+        {
+            FieldOfViewDegrees = 49,
+            Navigation = new NavigationCamera(state.PositionKilometers, distance, 0, 0, id, true)
+                { Placement = new NavigationPlacement(eye * distance, eye * -1, up) }
+        };
+    }
+
     private async Task ExerciseOuterMoonShapes(SolarSystemScene scene, JulianInstant epoch, string directory)
     {
         if (System.Environment.GetEnvironmentVariable("SPACETANGENT_OUTER_SHAPE_ORACLE") is not { } reference)
@@ -102,7 +187,9 @@ public partial class EarthOrbitProbe
                 mesh.GetSurfaceCount() != 1 ||
                 mesh.SurfaceGetArrayLen(0) != expected.GetProperty("TriangleCount").GetInt32() * 3 ||
                 mesh.SurfaceGetMaterial(0) is not ShaderMaterial material)
-                throw new InvalidOperationException($"{id.Value} did not render the original triangle mesh.");
+                throw new InvalidOperationException($"{id.Value} did not render the original triangle mesh. " +
+                    $"Viewport {scene.Renderer(view).GetViewport().GetVisibleRect().Size}, " +
+                    $"point {scene.Renderer(view).MoonPoint(id)?.Visible}, model {scene.Renderer(view).NaturalMoonModel(id)?.Visible}.");
             Aabb bounds = mesh.GetAabb();
             if (bounds.Position.DistanceTo(Vector(expected.GetProperty("minimum"))) > .001 ||
                 bounds.End.DistanceTo(Vector(expected.GetProperty("maximum"))) > .001)

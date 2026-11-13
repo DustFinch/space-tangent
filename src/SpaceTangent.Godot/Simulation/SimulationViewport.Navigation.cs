@@ -127,7 +127,7 @@ internal partial class SimulationViewport
         _navigationMoonMaterial.SetShaderParameter("sun_from_moon", ToGodot((solar.Sun - solar.Moon).PositionKilometers, 1));
         _navigationMoonMaterial.SetShaderParameter("earth_from_moon", ToGodot((solar.Earth - solar.Moon).PositionKilometers, 1));
         HidePlanetGlobes();
-        DrawPlanetGlobes(snapshot, pose, units, ProjectWithScale);
+        DrawPlanetGlobes(snapshot, pose, placement.OffsetKilometers, units, ProjectWithScale);
         DrawWorldAtmospheres(snapshot, solar.Sun.PositionKilometers);
         DrawStellarObjects(pose, snapshot, sky, units, ProjectWithScale);
         DrawExtrasolarOrbits(pose, snapshot, units, ProjectWithScale);
@@ -218,6 +218,18 @@ internal partial class SimulationViewport
             Consider(id, deepSky);
         if (_compactCompanion is { } companion)
             Consider(SimulationWorld.CygnusCompanionId, companion);
+        foreach (var (id, sprite) in _moonPoints)
+        {
+            if (!sprite.Visible || _navigationCamera.IsPositionBehind(sprite.Position))
+                continue;
+            float depth = (sprite.Position - origin).Dot(direction);
+            if (depth >= _navigationCamera.Near && depth < nearest &&
+                _navigationCamera.UnprojectPosition(sprite.Position).DistanceSquaredTo(point) <= 25)
+            {
+                nearest = depth;
+                result = id;
+            }
+        }
         return result ?? PickCompactObject(point) ?? PickDistantStar(point);
 
         void Consider(ObjectId id, MeshInstance3D node)

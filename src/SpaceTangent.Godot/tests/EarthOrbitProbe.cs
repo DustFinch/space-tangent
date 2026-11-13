@@ -53,6 +53,13 @@ public partial class EarthOrbitProbe : Node
                 return;
             }
             var epoch = JulianInstant.FromJulianDate(2460600.5008, TimeScale.Tdb);
+            if (System.Environment.GetEnvironmentVariable("SPACETANGENT_MOON_PHOTOMETRY_PROBE") == "only")
+            {
+                await ExerciseOuterMoonShapes(scene, epoch, directory);
+                await ExerciseMoonPhotometry(scene, epoch, directory);
+                result = 0;
+                return;
+            }
             if (System.Environment.GetEnvironmentVariable("SPACETANGENT_METEOR_SETTINGS_PROBE") == "only")
             {
                 await ExerciseMeteorRadiants(scene, directory);
@@ -115,6 +122,7 @@ public partial class EarthOrbitProbe : Node
             await ExerciseTileSampling(scene, directory);
             await ExerciseMarsMoonModels(scene, epoch, directory);
             await ExerciseOuterMoonShapes(scene, epoch, directory);
+            await ExerciseMoonPhotometry(scene, epoch, directory);
             await ExerciseCatalogueMoons(scene, epoch, directory);
             await ExerciseDemoWorlds(scene, directory);
             await ExerciseProceduralTerrain(scene, directory);

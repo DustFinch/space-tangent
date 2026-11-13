@@ -47,7 +47,8 @@ internal sealed partial class SurfaceProjection
                 var planet = PlanetCatalogue.Planets[index];
                 if (planet.Id == SolarSystemSample.EarthId || !snapshot.TryState(planet.Id, out var state))
                     continue;
-                var offset = (state - sample.Earth).PositionKilometers - lighting.PositionKilometers;
+                var offset = observer.ApparentPlaces ? ApparentSky.BodyOffset(state, sample.Earth, lighting.PositionKilometers)
+                    : (state - sample.Earth).PositionKilometers - lighting.PositionKilometers;
                 double distance = offset.Length;
                 if (distance <= planet.RadiusKilometers)
                     continue;

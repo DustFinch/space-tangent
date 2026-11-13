@@ -16,7 +16,7 @@ internal sealed class EarthObserverPanel
     private readonly EarthSiteMap _map;
     private readonly OptionButton _sites;
     private readonly LineEdit _latitude, _longitude, _height, _azimuth, _elevation;
-    private readonly CheckButton _horizon, _cardinals;
+    private readonly CheckButton _horizon, _cardinals, _apparentPlaces;
     private readonly Label _coordinates, _twilight;
     private readonly Action<EarthObserverCamera> _apply;
     private readonly Action<string> _setStatus;
@@ -88,6 +88,10 @@ internal sealed class EarthObserverPanel
         _cardinals = new CheckButton { Name = "CardinalPoints", Text = "Cardinal points", Disabled = !surfaceAvailable };
         _cardinals.Toggled += shown => _apply(_camera with { CardinalPoints = shown });
         location.AddChild(_cardinals);
+        _apparentPlaces = new CheckButton { Name = "ApparentPlaces", Text = "Light time and annual aberration",
+            Disabled = !surfaceAvailable };
+        _apparentPlaces.Toggled += enabled => _apply(_camera with { ApparentPlaces = enabled });
+        location.AddChild(_apparentPlaces);
 
         ephemerides.AddChild(SimulatorTheme.Section("Selected object"));
         _coordinates = SimulatorTheme.Detail("");
@@ -119,10 +123,11 @@ internal sealed class EarthObserverPanel
         _map.Update(places, camera.Site);
         _horizon.SetPressedNoSignal(camera.HorizonGrid);
         _cardinals.SetPressedNoSignal(camera.CardinalPoints);
+        _apparentPlaces.SetPressedNoSignal(camera.ApparentPlaces);
         if (!_ephemerides.IsVisibleInTree())
             return;
 
-        _coordinates.Text = "Select an object to see its geometric altitude and azimuth.";
+        _coordinates.Text = "Select an object to see its altitude and azimuth.";
         if (observer.Selection is { } target)
         {
             _coordinates.Text = "The selected object has no horizontal coordinates at this epoch.";
@@ -131,10 +136,18 @@ internal sealed class EarthObserverPanel
                 try
                 {
                     SurfaceLighting light = EarthSurfaceLighting.Sample(solar, camera.Site, model);
-                    var coordinates = brightStars.Find(target) is { } star
-                        ? EarthObserving.HorizontalDirection(light, star.DirectionAt(observer.Epoch))
-                        : snapshot.TryState(target, out CartesianState state)
-                            ? EarthObserving.Horizontal(light, (state - solar.Earth).PositionKilometers) : null;
+                    Vector3d direction = default;
+                    if (brightStars.Find(target) is { } star)
+                    {
+                        direction = star.DirectionAt(observer.Epoch);
+                        if (camera.ApparentPlaces)
+                            direction = ApparentSky.Aberrate(direction, ApparentSky.ObserverBeta(solar.Earth));
+                    }
+                    else if (snapshot.TryState(target, out CartesianState state) && target != SolarSystemSample.EarthId)
+                        direction = camera.ApparentPlaces
+                            ? ApparentSky.BodyOffset(state, solar.Earth, light.PositionKilometers)
+                            : (state - solar.Earth).PositionKilometers - light.PositionKilometers;
+                    var coordinates = EarthObserving.HorizontalDirection(light, direction);
                     if (coordinates is { } horizontal)
                     {
                         string azimuth = horizontal.AzimuthDegrees is { } az

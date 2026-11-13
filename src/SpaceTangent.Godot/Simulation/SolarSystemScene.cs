@@ -443,7 +443,10 @@ public partial class SolarSystemScene : Control
         try
         {
             var lighting = EarthSurfaceLighting.Sample(solar, camera.Site, Session.DeltaT);
-            if (EarthObserving.HorizontalDirection(lighting, star.DirectionAt(observer.Epoch)) is not { } position)
+            var direction = star.DirectionAt(observer.Epoch);
+            if (camera.ApparentPlaces)
+                direction = ApparentSky.Aberrate(direction, ApparentSky.ObserverBeta(solar.Earth));
+            if (EarthObserving.HorizontalDirection(lighting, direction) is not { } position)
                 return;
             Session.SetEarthObserver(_active, camera with
             {

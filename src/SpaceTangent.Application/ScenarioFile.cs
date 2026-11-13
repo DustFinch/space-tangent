@@ -18,7 +18,7 @@ public sealed record SimulationScenario(IReadOnlyList<ObserverView> Views, bool 
 /// <summary>Persists observer settings with exact TDB epochs and stable catalog IDs.</summary>
 public static class ScenarioFile
 {
-    private const int Version = 40;
+    private const int Version = 41;
     internal const int MaximumBytes = 32 * 1024;
     private static readonly JsonSerializerOptions Json = new()
     {
@@ -63,7 +63,8 @@ public static class ScenarioFile
             throw new InvalidDataException("The scenario has an invalid camera sensitivity.");
         var document = new Document
         {
-            Version = scenario.Views.Any(view => view.Sky.ZodiacalLight) ? 40 :
+            Version = scenario.Views.Any(view => view.EarthObserver?.ApparentPlaces == true) ? 41 :
+                scenario.Views.Any(view => view.Sky.ZodiacalLight) ? 40 :
                 scenario.Views.Any(view => view.Sky.PointerCoordinates) ? 39 :
                 scenario.Views.Any(view => view.EarthObserver?.PlanetScale is not null) ? 38 :
                 scenario.Views.Any(view => view.EarthObserver?.MoonScale is not null) ? 37 :
@@ -200,7 +201,8 @@ public static class ScenarioFile
                     (document.Version < 13 && earth.LandscapeId is not null) || (document.Version < 23 && earth.HideLandscapeFog) ||
                     (document.Version < 36 && earth.EquatorialMount) ||
                     (document.Version < 37 && earth.MoonScale is not null) ||
-                    (document.Version < 38 && earth.PlanetScale is not null)))
+                    (document.Version < 38 && earth.PlanetScale is not null) ||
+                    (document.Version < 41 && earth.ApparentPlaces)))
                 throw new InvalidDataException("The scenario has an invalid Earth observer camera.");
             if (data.Sky is { PointerCoordinates: true } && document.Version < 39)
                 throw new InvalidDataException("Pointer coordinates require scenario version 39.");

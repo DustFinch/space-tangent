@@ -11,7 +11,8 @@ internal partial class BrightSkyOverlay : Control
     internal readonly record struct SkyFrame(JulianInstant Epoch, SkyLayerSettings Layers, ObjectId? Selection,
         Vector3 Forward, Vector3 Right, Vector3 Up, float TangentHalfField, float StarVisibility = 1,
         Vector3? Horizon = null, Vector3? Moon = null, float MoonRadius = 0, bool ShowCatalogue = true,
-        GroundSkyConditions? Conditions = null, EarthSite Site = default, double? OpticalLimit = null, Vector3d ObserverFromSun = default);
+        GroundSkyConditions? Conditions = null, EarthSite Site = default, double? OpticalLimit = null,
+        Vector3d ObserverFromSun = default, Vector3d ObserverBeta = default);
 
     private static readonly (Vector3 From, Vector3 To)[] Grid = MakeGrid().ToArray();
     private static readonly (Vector3 From, Vector3 To)[] EclipticLine = Enumerable.Range(0, 360)
@@ -106,6 +107,7 @@ internal partial class BrightSkyOverlay : Control
         magnitude = (float)visualMagnitude;
         scintillation = 1;
         point = default;
+        direction = ApparentSky.Aberrate(direction, _frame.ObserverBeta);
         if (_frame.Conditions is { } air && _frame.Horizon is { } zenith)
             direction = air.RefractDirection(direction, new(zenith.X, zenith.Y, zenith.Z), _frame.Site);
         Vector3 seen = Convert(direction);

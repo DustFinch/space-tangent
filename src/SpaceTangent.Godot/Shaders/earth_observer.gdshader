@@ -21,6 +21,7 @@ uniform vec3 camera_up;
 uniform vec3 earth_to_sun;
 uniform vec3 earth_to_moon;
 uniform vec3 moon_seen;
+uniform float moon_seen_distance = 0.0;
 uniform float sky_glow = 0.0;
 uniform float earth_angle;
 uniform float earth_radius;
@@ -203,7 +204,7 @@ void fragment() {
         background = planet_discs(ray, background);
     }
     if (!ground && dot(moon_seen, site_up) > 0.0) {
-        background = lunar_disc(ray, moon_dir, length(moon_delta), background);
+        background = lunar_disc(ray, moon_dir, moon_seen_distance > 0.0 ? moon_seen_distance : length(moon_delta), background);
     }
 
     if (!ground && satellite_flare_count > 0) {

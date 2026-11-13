@@ -4,6 +4,7 @@ using SpaceTangent.Application;
 using SpaceTangent.Contracts;
 using SpaceTangent.Core.Addons;
 using SpaceTangent.Core.Observing;
+using SpaceTangent.Core.Ephemerides;
 using SpaceTangent.Core.Time;
 
 namespace SpaceTangent.Godot.Simulation;
@@ -16,13 +17,14 @@ internal sealed partial class SurfaceProjection
     private LocalTleSatellite[] _flareSatellites = [];
 
     private void DrawSatelliteFlares(SimulationWorld? world, SurfaceLighting lighting, EarthObserverCamera observer,
-        JulianInstant epoch, DeltaTModel model, Vector3 forward, VisualOptics? optics)
+        SolarSystemSample solar, DeltaTModel model, Vector3 forward, VisualOptics? optics)
     {
         if (!ReferenceEquals(world, _flareWorld))
         {
             _flareWorld = world;
             _flareSatellites = world?.LocalSatellites.Where(ObservationEventSearch.HasFlarePanels).ToArray() ?? [];
         }
+        var epoch = solar.Epoch;
         int count = 0;
         double daylight = Math.Clamp((lighting.SolarAltitudeRadians / Degrees + 6) / 12, 0, 1);
         double limit = Math.Min(1 - daylight * 5, optics?.LimitingMagnitude() ?? observer.Conditions?.LimitingMagnitude() ?? 6.5);
@@ -32,7 +34,9 @@ internal sealed partial class SurfaceProjection
                 ObservationEventSearch.EvaluateSatelliteFlare(lighting, state, epoch) is not { } flare ||
                 flare.Magnitude > limit)
                 continue;
-            var offset = state.PositionKilometers - lighting.PositionKilometers;
+            var offset = observer.ApparentPlaces
+                ? ApparentSky.BodyOffset(state + solar.Earth, solar.Earth, lighting.PositionKilometers)
+                : state.PositionKilometers - lighting.PositionKilometers;
             var direction = offset / offset.Length;
             var apparent = observer.Conditions?.RefractDirection(direction, lighting.EastNorthUp.Z, observer.Site) ?? direction;
             Vector3 ray = Convert(apparent);

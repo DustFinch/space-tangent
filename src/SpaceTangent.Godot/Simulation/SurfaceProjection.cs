@@ -120,12 +120,17 @@ internal sealed partial class SurfaceProjection
             return false;
         }
 
+        Vector3d observerBeta = observer.ApparentPlaces ? ApparentSky.ObserverBeta(sample.Earth) : default;
+        Vector3d TargetOffset(CartesianState state) => observer.ApparentPlaces
+            ? ApparentSky.BodyOffset(state, sample.Earth, lighting.PositionKilometers)
+            : (state - sample.Earth).PositionKilometers - lighting.PositionKilometers;
+
         if (optics is { HoldSelection: true } && selection is { } target && world is not null)
         {
             var horizontalAtTarget = world.BrightStars.Find(target) is { } star
-                ? EarthObserving.HorizontalDirection(lighting, star.DirectionAt(sample.Epoch))
+                ? EarthObserving.HorizontalDirection(lighting, ApparentSky.Aberrate(star.DirectionAt(sample.Epoch), observerBeta))
                 : snapshot is not null && world.TryNavigationState(target, snapshot, out var state, model)
-                    ? EarthObserving.Horizontal(lighting, (state - sample.Earth).PositionKilometers) : null;
+                    ? EarthObserving.HorizontalDirection(lighting, TargetOffset(state)) : null;
             if (horizontalAtTarget is { } point)
                 observer = observer with
                 {
@@ -174,15 +179,16 @@ internal sealed partial class SurfaceProjection
             ZodiacalGlow.Configure(_material, sky.DeepSky && sky.ZodiacalLight && SurveyCanvas?.HasSurvey != true,
                 lighting.EarthToSun - lighting.PositionKilometers, darkness);
         }
-        DrawSatelliteFlares(world, lighting, observer, sample.Epoch, model, forward, optics);
+        DrawSatelliteFlares(world, lighting, observer, sample, model, forward, optics);
         DrawPlanets(snapshot, sample, lighting, observer, trueAngularScale || optics is not null,
             forward, right, cameraUp);
         _material.SetShaderParameter("earth_to_sun", Convert(lighting.EarthToSun));
         _material.SetShaderParameter("earth_to_moon", Convert(lighting.EarthToMoon));
-        var moonOffset = lighting.EarthToMoon - lighting.PositionKilometers;
+        var moonOffset = TargetOffset(sample.Moon);
         Vector3d moon = moonOffset / moonOffset.Length;
         var moonSeen = observer.Conditions?.RefractDirection(moon, lighting.EastNorthUp.Z, observer.Site) ?? moon;
         _material.SetShaderParameter("moon_seen", Convert(moonSeen));
+        _material.SetShaderParameter("moon_seen_distance", (float)moonOffset.Length);
         _material.SetShaderParameter("sky_glow", (float)(sky.HideAtmospheres ? 0 : observer.Conditions?.ZenithGlow() ?? 0));
         EclipseRendering.SetEarthShadow(_material, lighting, godotAxes: false);
         _material.SetShaderParameter("earth_angle", (float)lighting.EarthRotationRadians);
@@ -200,7 +206,7 @@ internal sealed partial class SurfaceProjection
             float moonRadius = MathF.Asin(MathF.Min(moonDiskScale * (float)(EarthSurfaceLighting.MoonRadiusKilometers / moonOffset.Length), .1f));
             _sky.ShowFrame(new(sample.Epoch, sky, selection, forward, right, cameraUp, _tanHalfField,
                 sky.HideAtmospheres ? 1 : 1 - Mathf.SmoothStep(-12, -4, solarAltitude), up, Convert(moonSeen), moonRadius,
-                Conditions: observer.Conditions, Site: observer.Site, OpticalLimit: optics?.LimitingMagnitude()));
+                Conditions: observer.Conditions, Site: observer.Site, OpticalLimit: optics?.LimitingMagnitude(), ObserverBeta: observerBeta));
         }
         else
             _sky?.Hide();

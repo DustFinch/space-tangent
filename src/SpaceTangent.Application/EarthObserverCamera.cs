@@ -26,6 +26,8 @@ public readonly record struct EarthObserverCamera(EarthSite Site, double Azimuth
     public double? MoonScale { get; init; }
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public double? PlanetScale { get; init; }
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingDefault)]
+    public bool ApparentPlaces { get; init; }
 
     // Coordinates in the site's east, north and up basis.
     [JsonIgnore]

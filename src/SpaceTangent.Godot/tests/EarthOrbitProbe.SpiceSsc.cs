@@ -20,6 +20,9 @@ public partial class EarthOrbitProbe
         string fixture = Directory.CreateDirectory(Path.Combine(directory, "SSC Cassini")).FullName;
         string bodies = Directory.CreateDirectory(Path.Combine(fixture, "body catalogue")).FullName;
         string kernels = Directory.CreateDirectory(Path.Combine(fixture, "pointing kernels")).FullName;
+        bool jsonKernels = System.Environment.GetEnvironmentVariable("SPACETANGENT_SPICE_SSC_JSON_KERNELS") == "1";
+        const string missionRoot = "SPACETANGENT_SAMPLED_MISSIONS_ROOT";
+        string? originalMissions = System.Environment.GetEnvironmentVariable(missionRoot);
         const string spk = "040615AP_SK_04167_04186.bsp", ck = "04182_04183pa_soi_itl.bc";
         const string frame = "cas_v43.tf", clock = "cas00172.tsc", mesh = "cassini.3ds";
         foreach (string file in new[] { spk, mesh })
@@ -33,15 +36,24 @@ public partial class EarthOrbitProbe
         int end = source.LastIndexOf('}');
         source = source.Insert(end, "} ]");
         File.WriteAllText(Path.Combine(bodies, "cassini.ssc"), source);
-        File.WriteAllText(Path.Combine(kernels, "pack.json"), """
+        if (jsonKernels)
+            File.WriteAllText(Path.Combine(kernels, "pointing.json"), """
+                {"version":"1.0","spiceKernels":["cas_v43.tf","cas00172.tsc","04182_04183pa_soi_itl.bc"]}
+                """);
+        else
+            File.WriteAllText(Path.Combine(kernels, "pack.json"), """
             {"formatVersion":19,"spiceLoads":[{"policy":"furnish",
                 "files":["cas_v43.tf","cas00172.tsc","04182_04183pa_soi_itl.bc"]}]}
             """);
         var bodySource = new LocalAddonSource(Guid.NewGuid(), LocalAddonKind.BodyCatalog, bodies, false, true);
         var kernelSource = new LocalAddonSource(Guid.NewGuid(), LocalAddonKind.BodyCatalog, kernels, false, true);
-        var configured = original.SetSource(bodySource, true).SetSource(kernelSource, true);
+        var configured = original.SetSource(bodySource, true);
+        if (!jsonKernels)
+            configured = configured.SetSource(kernelSource, true);
         try
         {
+            if (jsonKernels)
+                System.Environment.SetEnvironmentVariable(missionRoot, kernels);
             if (!await scene.ReloadAddOns(configured))
                 throw new InvalidOperationException("Cassini SSC could not load its separately installed SPICE pointing kernels.");
             var session = scene.Session!;
@@ -74,7 +86,8 @@ public partial class EarthOrbitProbe
             using var image = GetViewport().GetTexture().GetImage();
             if (image.SavePng(Path.ChangeExtension(path, ".png")) != Error.Ok)
                 throw new IOException("Could not capture Cassini SSC.");
-            GD.Print("SSC Timeline SPICE GPU: two epochs retained original Cassini 3DS, SPK states and CK pointing with kernels in a second installed pack. A missing CK rolled back.");
+            string sourceKind = jsonKernels ? "mission JSON" : "an installed SSC pack";
+            GD.Print($"SSC Timeline SPICE GPU: two epochs retained original Cassini 3DS, SPK states and CK pointing with kernels from {sourceKind}. A missing CK rolled back.");
 
             ObserverView View(JulianInstant epoch)
             {
@@ -101,6 +114,8 @@ public partial class EarthOrbitProbe
         }
         finally
         {
+            if (jsonKernels)
+                System.Environment.SetEnvironmentVariable(missionRoot, originalMissions);
             if (!await scene.ReloadAddOns(original) || !scene.LoadScenario(prior))
                 throw new InvalidOperationException("Could not restore the original installation after the Cassini SSC probe.");
         }

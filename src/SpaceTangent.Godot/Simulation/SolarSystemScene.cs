@@ -1616,7 +1616,7 @@ public partial class SolarSystemScene : Control
             controls.Renderer.DrawShip(ship, view.Navigation);
             controls.Renderer.SetScriptNotice(session.Notice(index));
             controls.Renderer.DrawScriptMarkers(view, snapshot, session.Markers(index), session.DeltaT);
-            controls.Renderer.SetMissionAnnotations(_addOns?.Decoded.SampledMissions.Value.Annotations ?? [], session[index].Epoch);
+            controls.Renderer.SetMissionAnnotations(_addOns?.Decoded.SampledMissions.Annotations ?? [], session[index].Epoch);
             controls.Renderer.DrawReferenceMarks(view, session.ReferenceGeometry(index, snapshot));
             controls.Measurements.Update(controls.Renderer, view, snapshot, session.World, session.DeltaT);
             controls.Epoch.Text = FormattableString.Invariant($"View {index + 1}   JD {view.Epoch.ToJulianDate():F6} TDB");

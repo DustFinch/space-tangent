@@ -57,7 +57,7 @@ public partial class SolarSystemScene
 
     private void RefreshMissionViewpoints()
     {
-        IReadOnlyList<MissionViewpoint> items = _addOns?.Decoded.SampledMissions.Value.Viewpoints ?? [];
+        IReadOnlyList<MissionViewpoint> items = _addOns?.Decoded.SampledMissions.Viewpoints ?? [];
         if (ReferenceEquals(items, _viewpointItems))
             return;
         _viewpointItems = items;

@@ -20,7 +20,8 @@ internal static partial class AddonLoader
         IReadOnlyList<SpiceSensor> Sensors, SaturnSurface? Surface);
     internal sealed record DecodedTimeline(SscSampledSpacecraft Track, DecodedScienceModel Model, HuygensMission? Probe,
         DecodedScienceModel? ProbeModel);
-    internal sealed record SscInstallation(LocalDataPath[] Paths, AddonDependencies Dependencies, IReadOnlyList<DecodedSscBody> Bodies);
+    internal sealed record SscInstallation(LocalDataPath[] Paths, LocalDataPath MissionsPath, AddonDependencies Dependencies,
+        IReadOnlyList<DecodedSscBody> Bodies, DecodedMissionContent Missions);
     internal sealed record DecodedSscBody(SscBodyDefinition Body, DecodedScienceModel? Geometry, byte[]? Surface, byte[]? RingMap);
     internal sealed record DecodedSampledMission(SampledMission Track,
         IReadOnlyDictionary<string, DecodedScienceModel> Meshes, IReadOnlyDictionary<string, byte[]> Textures, IReadOnlyDictionary<string, byte[]> Tiles);
@@ -51,7 +52,7 @@ internal static partial class AddonLoader
         PlanetEphemerides Planets, Cached<DecodedBodyTerrain>? MarsTerrain, Cached<StellarCatalogue> Stellar,
         Cached<StellarCatalogue?> StellarArchive, Cached<StellarImport> StellarDefinitions,
         SscInstallation BodyCatalogues, Cached<IReadOnlyList<SscSurfaceLocation>> Locations, Cached<DecodedDeepSky> DeepSky, Cached<ExoplanetCatalogue> Exoplanets,
-        Cached<DecodedMissionContent> SampledMissions, Cached<IReadOnlyList<LocalTleSatellite>> LocalSatellites, string SatelliteUpdates,
+        DecodedMissionContent SampledMissions, Cached<IReadOnlyList<LocalTleSatellite>> LocalSatellites, string SatelliteUpdates,
         Cached<EarthPlaceCatalogue> EarthPlaces, LocalDataPath SavedEarthPlacesPath, bool AllowAddonLua,
         IReadOnlyDictionary<ObjectId, PreparedMissionObservation> Observations, Cached<GalacticDustGrid?> GalacticDust, Cached<DistantStarIndex?> DistantStars)
     {
@@ -129,8 +130,11 @@ internal static partial class AddonLoader
             var satellites = science.Select(path => Cached<IReadOnlyList<DecodedSatellite>>.Load(
                 previous?.Science.FirstOrDefault(source => source.Path == path), path,
                 "Science satellites", ReadScience, cancellation)).ToArray();
-            var bodies = LoadBodyCatalogues(bodySources, previous?.AllowAddonLua == allowAddonLua ? previous.BodyCatalogues : null,
-                allowAddonLua, cancellation);
+            bool sameScience = previous is not null && previous.Science.SequenceEqual(satellites);
+            var bodies = LoadBodyCatalogues(bodySources, missionsPath,
+                sameScience && previous?.AllowAddonLua == allowAddonLua ? previous.BodyCatalogues : null,
+                satellites.SelectMany(source => source.Value).Select(item => item.Track).ToArray(), allowAddonLua, cancellation);
+            var missions = bodies.Missions;
             var spice = Read(previous?.Mission, mission, "SPICE mission", ReadMission);
             var sampled = Read(previous?.Timeline, timeline, "Sampled timeline", ReadTimeline);
             var relief = Read(previous?.Terrain, terrain, "Lunar terrain", ReadTerrain);
@@ -182,10 +186,7 @@ internal static partial class AddonLoader
                     string file = path.Resolve();
                     return AddonDependencies.FileExists(file) ? ExoplanetCatalogue.Load(file, token) : ExoplanetCatalogue.Empty;
                 }, cancellation);
-            bool sameScience = previous is not null && previous.Science.SequenceEqual(satellites);
-            var missions = Cached<DecodedMissionContent>.Load(sameScience ? previous?.SampledMissions : null, missionsPath,
-                "Sampled mission catalogues", (path, token) => ReadSampledMissions(path, token,
-                    satellites.SelectMany(source => source.Value).Select(item => item.Track).ToArray()), cancellation);
+
             var tle = Cached<IReadOnlyList<LocalTleSatellite>>.Load(
                 previous?.SatelliteUpdates == tleUpdates ? previous.LocalSatellites : null, tlePath,
                 "Local TLE groups", (path, token) => LocalTleCatalogue.LoadSources([path.Resolve(), tleUpdates],
@@ -231,8 +232,8 @@ internal static partial class AddonLoader
                 }
                 var world = AddonDiagnostics.Read(AddonStage.World, null, () => new SimulationWorld(ephemeris, tracks,
                     spice?.Value?.Track, sampled?.Value?.Track, sampled?.Value?.Probe, relief?.Value?.Frame, brightStars, planets, marsTerrain is not null, definitions.Value.Catalogue,
-                    bodies.Bodies.Select(body => body.Body), locations.Value, deepSky.Value.Index, exoplanets.Value, missions.Value.Tracks.Select(mission => mission.Track), tle.Value, earthPlaces.Value, distantStars.Value));
-                var observations = PrepareObservations(world, missions.Value.Tracks, cancellation);
+                    bodies.Bodies.Select(body => body.Body), locations.Value, deepSky.Value.Index, exoplanets.Value, missions.Tracks.Select(mission => mission.Track), tle.Value, earthPlaces.Value, distantStars.Value));
+                var observations = PrepareObservations(world, missions.Tracks, cancellation);
                 var decoded = new DecodedAddOns(world, sameScience ? previous!.Science : satellites, spice, sampled, relief, planets, marsTerrain, stellar, archive, definitions, bodies, locations, deepSky, exoplanets, missions, tle, tleUpdates, earthPlaces, savedEarthPlacesPath, allowAddonLua, observations, galacticDust, distantStars);
                 openedDistantStars = null;
                 return decoded;
@@ -361,7 +362,7 @@ internal static partial class AddonLoader
         });
         var textures = new Dictionary<string, global::Godot.Texture2D>(StringComparer.Ordinal);
         var swarmResources = new Dictionary<string, (global::Godot.ArrayMesh Mesh, global::Godot.Texture2D Data)>(StringComparer.OrdinalIgnoreCase);
-        var missions = decoded.SampledMissions.Value.Tracks.Select(item =>
+        var missions = decoded.SampledMissions.Tracks.Select(item =>
         {
             var track = item.Track;
             if (track.Observation is null && ReferenceEquals(decoded.SampledMissions, previous?.Decoded.SampledMissions) &&
@@ -397,12 +398,32 @@ internal static partial class AddonLoader
         return Array.AsReadOnly(bodies.Concat(missions).ToArray());
     }
 
-    private static DecodedMissionContent ReadSampledMissions(LocalDataPath location, CancellationToken cancellation,
-        IReadOnlyList<ScienceSatellite> science)
+    private static (IReadOnlyList<DecodedSscBody> Bodies, DecodedMissionContent Missions) ReadMissionCatalogues(
+        IEnumerable<string> bodyRoots, LocalDataPath location, IReadOnlyList<ScienceSatellite> science,
+        bool allowLua, CancellationToken cancellation)
     {
         string root = location.Resolve();
-        if (!AddonDependencies.DirectoryExists(root))
-            return new([], [], []);
+        string[] catalogues = AddonDependencies.DirectoryExists(root) ? FindMissionCatalogues(root) : [];
+        var imported = SscBodyCatalogue.LoadWithMissions(bodyRoots, catalogues, root, Resolve,
+            message => global::Godot.GD.Print("SSC bodies: " + message),
+            message => global::Godot.GD.Print("Sampled mission: " + message), cancellation,
+            allowLua ? new LuaCatalogueFactories() : null);
+        return (DecodeBodyCatalogues(imported.Bodies, cancellation), DecodeSampledMissions(root, imported.Missions, cancellation));
+
+        ObjectId? Resolve(string name)
+        {
+            if (name.Equals("Sun", StringComparison.OrdinalIgnoreCase) || name.Equals("Sol", StringComparison.OrdinalIgnoreCase))
+                return SolarSystemSample.SunId;
+            if (name.Equals("Moon", StringComparison.OrdinalIgnoreCase))
+                return SolarSystemSample.MoonId;
+            return PlanetCatalogue.Planets.FirstOrDefault(planet => planet.Name.Equals(name, StringComparison.OrdinalIgnoreCase))?.Id ??
+                NaturalBodyCatalogue.Bodies.FirstOrDefault(body => body.Name.Equals(name, StringComparison.OrdinalIgnoreCase))?.Id ??
+                science.FirstOrDefault(track => track.Name.Equals(name, StringComparison.OrdinalIgnoreCase))?.Id;
+        }
+    }
+
+    private static string[] FindMissionCatalogues(string root)
+    {
         var catalogues = AddonDependencies.ListFiles(root, "*.json");
         string directory = Path.Combine(root, "catalog");
         if (AddonDependencies.DirectoryExists(directory))
@@ -420,12 +441,16 @@ internal static partial class AddonLoader
         }
         if (catalogues.Length > 64)
             throw new InvalidDataException("The sampled mission directory may contain at most 64 catalogues.");
+        return catalogues.Order(StringComparer.Ordinal).ToArray();
+    }
+
+    private static DecodedMissionContent DecodeSampledMissions(string root, SampledMissionContent content,
+        CancellationToken cancellation)
+    {
         var tracks = new List<DecodedSampledMission>();
         var textureCache = new Dictionary<string, byte[]>(StringComparer.Ordinal);
         var tileCache = new Dictionary<string, byte[]>(StringComparer.Ordinal);
         int textureBytes = 0, tileBytes = 0;
-        var content = SampledMissionCatalog.LoadContent(catalogues.Order(StringComparer.Ordinal), root, Resolve,
-            message => global::Godot.GD.Print("Sampled mission: " + message), cancellation);
         foreach (SampledMission mission in content.Missions)
         {
             cancellation.ThrowIfCancellationRequested();
@@ -436,48 +461,34 @@ internal static partial class AddonLoader
                 ReadMissionTiles(mission, tileCache, ref tileBytes, cancellation)));
         }
         return new(tracks.AsReadOnly(), content.Annotations, content.Viewpoints);
+    }
 
-        ObjectId? Resolve(string name)
+    private static SscInstallation LoadBodyCatalogues(LocalDataPath[] paths, LocalDataPath missionsPath, SscInstallation? previous,
+        IReadOnlyList<ScienceSatellite> science, bool allowLua, CancellationToken cancellation)
+    {
+        if (previous is not null && previous.MissionsPath == missionsPath && previous.Paths.SequenceEqual(paths) &&
+            previous.Dependencies.IsCurrent(cancellation))
+            return previous;
+        try
         {
-            if (name.Equals("Sun", StringComparison.OrdinalIgnoreCase) || name.Equals("Sol", StringComparison.OrdinalIgnoreCase))
-                return SolarSystemSample.SunId;
-            if (name.Equals("Moon", StringComparison.OrdinalIgnoreCase))
-                return SolarSystemSample.MoonId;
-            return PlanetCatalogue.Planets.FirstOrDefault(planet => planet.Name.Equals(name, StringComparison.OrdinalIgnoreCase))?.Id ??
-                NaturalBodyCatalogue.Bodies.FirstOrDefault(body => body.Name.Equals(name, StringComparison.OrdinalIgnoreCase))?.Id ??
-                science.FirstOrDefault(track => track.Name.Equals(name, StringComparison.OrdinalIgnoreCase))?.Id;
+            var (content, dependencies) = AddonDependencies.Capture(
+                () => ReadMissionCatalogues(paths.Select(path => path.Resolve()), missionsPath, science, allowLua, cancellation),
+                cancellation);
+            return new SscInstallation(paths, missionsPath, dependencies, content.Bodies, content.Missions);
+        }
+        catch (Exception error) when (AddonDiagnostics.Annotate(error, AddonStage.Catalog, source: "Mission catalogues"))
+        {
+            throw;
         }
     }
 
-    private static SscInstallation LoadBodyCatalogues(LocalDataPath[] paths, SscInstallation? previous,
-        bool allowLua, CancellationToken cancellation)
+    private static IReadOnlyList<DecodedSscBody> DecodeBodyCatalogues(IReadOnlyList<SscBodyDefinition> bodies,
+        CancellationToken cancellation)
     {
-        if (previous is not null && previous.Paths.SequenceEqual(paths) && previous.Dependencies.IsCurrent(cancellation))
-            return previous;
-        return AddonDiagnostics.Read(AddonStage.Catalog, null, () =>
-        {
-            try
-            {
-                var (bodies, dependencies) = AddonDependencies.Capture(
-                    () => ReadBodyCatalogues(paths.Select(path => path.Resolve()), cancellation, allowLua), cancellation);
-                return new SscInstallation(paths, dependencies, bodies);
-            }
-            catch (Exception error) when (AddonDiagnostics.Annotate(error, AddonStage.Catalog, source: "SSC body catalogue"))
-            {
-                throw;
-            }
-        });
-    }
-
-    private static IReadOnlyList<DecodedSscBody> ReadBodyCatalogues(IEnumerable<string> roots,
-        CancellationToken cancellation, bool allowLua)
-    {
-        var scripts = allowLua ? new LuaCatalogueFactories() : null;
         var decodedMeshes = new Dictionary<(string File, string Root, bool Native), DecodedScienceModel>();
         var decodedSurfaces = new Dictionary<string, byte[]>(StringComparer.Ordinal);
         int textureBytes = 0;
-        return Array.AsReadOnly(SscBodyCatalogue.LoadSources(roots, message => global::Godot.GD.Print("SSC bodies: " + message),
-            cancellation, scripts).Select(body =>
+        return Array.AsReadOnly(bodies.Select(body =>
         {
             cancellation.ThrowIfCancellationRequested();
             DecodedScienceModel? mesh = null;

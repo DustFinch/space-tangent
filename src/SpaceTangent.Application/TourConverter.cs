@@ -20,7 +20,7 @@ public static partial class TourConverter
         """\s+|#[^\r\n]*|"(?:\\.|[^"\\])*"|[{}\[\]]|[^\s{}\[\]"#]+""",
         RegexOptions.CultureInvariant, TimeSpan.FromSeconds(1));
 
-    private sealed record Command(string Name, Dictionary<string, string> Fields)
+    private sealed record Command(string Name, int Line, Dictionary<string, string> Fields)
     {
         internal string Get(string key) => Fields.TryGetValue(key, out var value) ? value :
             throw new InvalidDataException($"The {Name} command needs {key}.");
@@ -45,11 +45,11 @@ public static partial class TourConverter
             return ConvertLuaTour(input);
         if (!extension.Equals(".cel", StringComparison.OrdinalIgnoreCase))
             throw new NotSupportedException("Choose a CEL or CELX tour.");
-        var words = Tokenize(input);
+        var words = Tokenize(input, out var lines);
         if (words.Count >= 2 && words[0] == "{" &&
             words[1].ToLowerInvariant() is "name" or "target" or "description" or "distance" or "distanceunits")
             return ConvertGuide(words);
-        Command[] commands = Parse(words);
+        Command[] commands = Parse(words, lines);
         var unapplied = new SortedSet<string>(StringComparer.Ordinal);
         double wait = commands.Where(command => command.Name is "wait" or "orbit" or "rotate" or "changedistance")
             .Sum(command => Duration(command.Number("duration", command.Name == "wait" ? 0 : 1)));
@@ -76,6 +76,7 @@ public static partial class TourConverter
         int converted = 0;
         foreach (Command command in commands)
         {
+            void Report(string message) => unapplied.Add($"line {command.Line}: {message}");
             switch (command.Name)
             {
                 case "print":
@@ -102,7 +103,7 @@ public static partial class TourConverter
                     lua.AppendLine($"st.play({Quote(command.Fields.GetValueOrDefault("filename") ?? "")}, " +
                         $"{Number(command.Number("volume", 1))}, {Number(command.Number("channel"))}, {loop})");
                     foreach (string field in new[] { "pan", "nopause" }.Where(command.Fields.ContainsKey))
-                        unapplied.Add("play " + field);
+                        Report("play " + field);
                     break;
                 case "cls":
                     lua.AppendLine("st.notice(\"\", 0)");
@@ -118,7 +119,7 @@ public static partial class TourConverter
                     lua.AppendLine($"if selected then st.legacylonglat({FlightTime(command)}, {Number(command.Number("distance", 5))}, " +
                         $"{Vector(command, "up", "0 1 0")}, {Number(command.Number("longitude"))}, {Number(command.Number("latitude"))}) end");
                     if (command.Fields.ContainsKey("upframe"))
-                        unapplied.Add("gotolonglat upframe");
+                        Report("gotolonglat upframe");
                     break;
                 case "gotoloc" when command.Fields.ContainsKey("position"):
                     lua.AppendLine($"if selected then st.legacyrelativepose({FlightTime(command)}, {Vector(command, "position", "")}, " +
@@ -169,7 +170,7 @@ public static partial class TourConverter
                     lua.AppendLine(orbit ? $"if selected then {turn} end" : turn);
                     break;
                 default:
-                    unapplied.Add(command.Name);
+                    Report(command.Name);
                     continue;
             }
             converted++;
@@ -182,20 +183,34 @@ public static partial class TourConverter
         {
             if (!command.Fields.TryGetValue(enabled ? "set" : "clear", out string? flags))
                 return;
-            foreach (string flag in flags.Split('|', StringSplitOptions.RemoveEmptyEntries))
+            foreach (string flag in flags.Split('|', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
             {
-                string? layer = (command.Name, flag) switch
+                string? layer = (command.Name, flag.ToLowerInvariant()) switch
                 {
                     ("renderflags", "stars") => "stars",
                     ("renderflags", "constellations") => "constellations",
                     ("renderflags", "galaxies") => "deep",
-                    ("labels", "stars") => "labels",
+                    ("renderflags", "orbits") => "orbits",
+                    ("renderflags", "cloudmaps") => "clouds",
+                    ("renderflags", "atmospheres") => "atmospheres",
+                    ("renderflags", "comettails") => "comettails",
+                    ("renderflags", "boundaries") => "boundaries",
+                    ("renderflags", "grid") => "grid",
+                    ("renderflags", "eclipticgrid") => "eclipticgrid",
+                    ("renderflags", "galacticgrid") => "galacticgrid",
+                    ("renderflags", "ecliptic") => "ecliptic",
+                    ("renderflags", "markers") => "markers",
+                    ("labels", "stars" or "planets" or "moons" or "dwarfplanets") => "labels",
+                    ("labels", "minorplanets" or "asteroids" or "comets" or "spacecraft" or "minormoons") => "minorlabels",
+                    ("labels", "locations") => "places",
+                    ("labels", "openclusters") => "clusterlabels",
+                    ("labels", "nebulae") => "nebulalabels",
                     _ => null
                 };
                 if (layer is not null)
                     lua.AppendLine($"st.sky({Quote(layer)}, {(enabled ? "true" : "false")})");
                 else
-                    unapplied.Add(command.Name + " " + flag);
+                    unapplied.Add($"line {command.Line}: {command.Name} {flag}");
             }
         }
 
@@ -242,24 +257,31 @@ public static partial class TourConverter
         return new(lua, 1, Array.Empty<string>());
     }
 
-    private static List<string> Tokenize(string input)
+    private static List<string> Tokenize(string input, out List<int> lines)
     {
         var words = new List<string>();
-        int offset = 0;
+        lines = [];
+        int offset = 0, line = 1;
         foreach (Match match in Tokens.Matches(input))
         {
             if (match.Index != offset)
                 throw new InvalidDataException("The tour contains an invalid token.");
             offset += match.Length;
             if (!char.IsWhiteSpace(match.Value[0]) && match.Value[0] != '#')
+            {
                 words.Add(match.Value);
+                lines.Add(line);
+            }
+            foreach (char character in match.ValueSpan)
+                if (character == '\n')
+                    line++;
         }
         if (offset != input.Length)
             throw new InvalidDataException("The tour contains a truncated token.");
         return words;
     }
 
-    private static Command[] Parse(IReadOnlyList<string> words)
+    private static Command[] Parse(IReadOnlyList<string> words, IReadOnlyList<int> lines)
     {
         int at = 0;
         Expect("{");
@@ -268,6 +290,7 @@ public static partial class TourConverter
         {
             if (commands.Count == 256)
                 throw new InvalidDataException("The tour contains too many commands.");
+            int line = lines[at];
             string command = Take();
             Expect("{");
             var fields = new Dictionary<string, string>(StringComparer.Ordinal);
@@ -289,7 +312,7 @@ public static partial class TourConverter
                     throw new InvalidDataException("A tour field is repeated.");
             }
             Expect("}");
-            commands.Add(new(command, fields));
+            commands.Add(new(command, line, fields));
         }
         Expect("}");
         if (at != words.Count)

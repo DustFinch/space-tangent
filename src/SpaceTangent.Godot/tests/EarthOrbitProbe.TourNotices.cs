@@ -9,7 +9,7 @@ public partial class EarthOrbitProbe
 {
     private async Task ExerciseTourNotices(SolarSystemScene scene, string directory)
     {
-        if (System.Environment.GetEnvironmentVariable("SPACETANGENT_TOUR_NOTICE_PROBE") != "1")
+        if (System.Environment.GetEnvironmentVariable("SPACETANGENT_TOUR_NOTICE_PROBE") is not ("1" or "only"))
             return;
         string root = System.Environment.GetEnvironmentVariable("SPACETANGENT_TOUR_SOURCES")!;
         string script = Path.Combine(directory, "demo-localized.lua");
@@ -27,7 +27,8 @@ public partial class EarthOrbitProbe
         await ToSignal(RenderingServer.Singleton, RenderingServer.SignalName.FramePostDraw);
         var renderer = scene.Renderer(0);
         if (renderer.VisibleScriptNotice is not { } text || !text.StartsWith("Знакомство", StringComparison.Ordinal) ||
-            scene.Renderer(1).VisibleScriptNotice is not null || session[1] != right)
+            scene.Renderer(1).VisibleScriptNotice is not null || session[1] != right ||
+            !session[0].Sky.HideClouds || !session[0].Sky.HideOrbits)
             throw new InvalidOperationException("Only the left observer should draw the opening of the localized tour.");
         using var with = renderer.GetViewport().GetTexture().GetImage();
         using var full = GetViewport().GetTexture().GetImage();

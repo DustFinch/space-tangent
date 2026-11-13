@@ -111,6 +111,8 @@ public sealed partial class LuaSessionScript
 
     private DynValue SetTourSky(string layer, bool enabled)
     {
+        if (layer == "markers")
+            return Change(() => _session.SetScriptMarkersVisible(View, enabled));
         SkyLayerSettings sky = _session[View].Sky;
         sky = layer switch
         {
@@ -118,6 +120,19 @@ public sealed partial class LuaSessionScript
             "labels" => sky with { Labels = enabled },
             "constellations" => sky with { Constellations = enabled },
             "deep" => sky with { DeepSky = enabled },
+            "orbits" => sky with { HideOrbits = !enabled },
+            "clouds" => sky with { HideClouds = !enabled },
+            "atmospheres" => sky with { HideAtmospheres = !enabled },
+            "comettails" => sky with { HideCometTails = !enabled },
+            "boundaries" => sky with { ConstellationBoundaries = enabled },
+            "grid" => sky with { EquatorialGrid = enabled },
+            "eclipticgrid" => sky with { EclipticGrid = enabled },
+            "galacticgrid" => sky with { GalacticGrid = enabled },
+            "ecliptic" => sky with { EclipticLine = enabled },
+            "minorlabels" => sky with { MinorBodyLabels = enabled },
+            "places" => sky with { SurfacePlaces = enabled },
+            "clusterlabels" => sky with { OpenClusterLabels = enabled },
+            "nebulalabels" => sky with { NebulaLabels = enabled },
             _ => throw new ScriptRuntimeException("Unknown tour sky layer.")
         };
         return Change(() => _session.SetSkyLayers(View, sky));

@@ -105,6 +105,64 @@ public sealed class NativeTourGeometryTests
         }
     }
 
+    [TourArchiveFact]
+    public void OriginalDemoAppliesCloudAndOrbitFlagsAndReportsRemainingLines()
+    {
+        string root = Environment.GetEnvironmentVariable("SPACETANGENT_TOUR_SOURCES")!;
+        var world = new SimulationWorld(De440Ephemeris.Load(Environment.GetEnvironmentVariable("SPACETANGENT_DE440")!), []);
+        var epoch = JulianInstant.FromJulianDate(2451545, TimeScale.Tdb);
+        var folder = Directory.CreateTempSubdirectory("st-tour-flags-");
+        try
+        {
+            foreach (string name in new[] { "demo.cel", "demo_ru.cel" })
+            {
+                string source = Path.Combine(root, name);
+                var conversion = TourConverter.ConvertFile(source);
+                var lines = File.ReadAllLines(source);
+                int render = Array.FindIndex(lines, line => line.Contains("renderflags { set", StringComparison.Ordinal)) + 1;
+                Assert.Contains($"line {render}: renderflags planets", conversion.Unapplied);
+                Assert.DoesNotContain(conversion.Unapplied, note => note.EndsWith("renderflags cloudmaps", StringComparison.Ordinal) ||
+                    note.EndsWith("renderflags orbits", StringComparison.Ordinal));
+                string lua = Path.Combine(folder.FullName, name + ".lua");
+                File.WriteAllText(lua, conversion.Lua);
+                var session = new SimulationSession(world, epoch, DeltaTModel.MorrisonStephenson2004);
+                session.OpenSpaceView(0);
+                var other = session[0] with { Epoch = epoch.AddSeconds(1), Playing = false };
+                session.RestoreScenario(new([session[0], other], false, 0, 0, session.DeltaT));
+                var script = LuaSessionScript.Load(lua, session, 0, false, _ => { });
+                script.Step(0);
+                Assert.True(session[0].Sky.HideClouds);
+                Assert.True(session[0].Sky.HideOrbits);
+                Assert.Equal(other, session[1]);
+
+                // Execute the original toggles separately so the assertions do not depend on flight timings.
+                var flags = Regex.Matches(string.Join('\n', lines), @"renderflags\s*\{[^}]*\}")
+                    .Select(match => match.Value).Where(command => command.Contains("orbits", StringComparison.Ordinal) ||
+                        command.Contains("cloudmaps", StringComparison.Ordinal)).ToArray();
+                Assert.Equal(4, flags.Length);
+                foreach (string command in flags.Skip(1))
+                {
+                    string fixture = Path.Combine(folder.FullName, "flag.cel");
+                    File.WriteAllText(fixture, "{ " + command + " }");
+                    File.WriteAllText(lua, TourConverter.ConvertFile(fixture).Lua);
+                    var step = LuaSessionScript.Load(lua, session, 0, false, _ => { });
+                    step.Step(0);
+                    Assert.True(step.Finished);
+                    Assert.Null(step.Error);
+                    if (command.Contains("cloudmaps", StringComparison.Ordinal))
+                        Assert.False(session[0].Sky.HideClouds);
+                    if (command.Contains("orbits", StringComparison.Ordinal))
+                        Assert.Equal(command.Contains("clear", StringComparison.Ordinal), session[0].Sky.HideOrbits);
+                    Assert.Equal(other, session[1]);
+                }
+            }
+        }
+        finally
+        {
+            folder.Delete(recursive: true);
+        }
+    }
+
     private sealed class TourArchiveFactAttribute : FactAttribute
     {
         public TourArchiveFactAttribute()

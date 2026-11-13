@@ -59,6 +59,12 @@ public partial class EarthOrbitProbe : Node
                 result = 0;
                 return;
             }
+            if (System.Environment.GetEnvironmentVariable("SPACETANGENT_SATURN_ATMOSPHERE_PROBE") == "only")
+            {
+                await ExerciseSaturnRingAtmosphere(scene, epoch, directory);
+                result = 0;
+                return;
+            }
             if (System.Environment.GetEnvironmentVariable("SPACETANGENT_ECLIPSE_PROBE") == "only")
             {
                 await ExerciseEclipses(scene, directory);
@@ -158,6 +164,7 @@ public partial class EarthOrbitProbe : Node
             await ExerciseEclipses(scene, directory);
             await ExerciseTitanEclipse(scene, directory);
             await ExercisePlanets(scene, epoch, directory);
+            await ExerciseSaturnRingAtmosphere(scene, epoch, directory);
             await ExerciseTileSampling(scene, directory);
             await ExerciseMarsMoonModels(scene, epoch, directory);
             await ExerciseOuterMoonShapes(scene, epoch, directory);

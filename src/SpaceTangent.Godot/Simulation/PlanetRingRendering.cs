@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
 using Godot;
+using SpaceTangent.Application;
 using SpaceTangent.Contracts;
 using SpaceTangent.Core.Observing;
 
@@ -19,6 +20,7 @@ internal sealed class PlanetRingRendering
 
     private readonly MeshInstance3D _globe;
     private readonly MeshInstance3D _rings;
+    internal MeshInstance3D? Atmosphere { get; }
     private readonly ShaderMaterial _surface, _ring;
 
     internal PlanetRingRendering(Node3D scene, MeshInstance3D globe, PlanetRingProfile profile, Texture2D texture,
@@ -44,6 +46,23 @@ internal sealed class PlanetRingRendering
 
         _rings = new MeshInstance3D { Mesh = RingMesh(inner, outer, _ring), Visible = false, CastShadow = GeometryInstance3D.ShadowCastingSetting.Off };
         scene.AddChild(_rings);
+        if (profile.Id == PlanetCatalogue.SaturnId)
+        {
+            float shellRatio = 1 + (float)(34 * -Math.Log(.000125) / radiusKilometers);
+            var air = new ShaderMaterial { Shader = GD.Load<Shader>("res://Shaders/saturn_ringed_limb.gdshader") };
+            air.SetShaderParameter("radius_km", (float)radiusKilometers);
+            air.SetShaderParameter("shell_ratio", shellRatio);
+            air.SetShaderParameter("rings_map", texture);
+            air.SetShaderParameter("ring_inner", inner);
+            air.SetShaderParameter("ring_outer", outer);
+            Atmosphere = new()
+            {
+                Mesh = globe.Mesh, Scale = Vector3.One * shellRatio,
+                MaterialOverride = air, Visible = false,
+                CastShadow = GeometryInstance3D.ShadowCastingSetting.Off
+            };
+            globe.AddChild(Atmosphere);
+        }
     }
 
     internal static ImmediateMesh RingMesh(float inner, float outer, Material material)
@@ -66,7 +85,11 @@ internal sealed class PlanetRingRendering
 
     internal bool Textured { get; }
     internal bool Visible => _rings.Visible;
-    internal void Hide() => _rings.Hide();
+    internal void Hide()
+    {
+        _rings.Hide();
+        Atmosphere?.Hide();
+    }
 
     internal void Update(Vector3 sunDirection, double sunDistanceKilometers, bool bodyFixed)
     {
@@ -78,6 +101,16 @@ internal sealed class PlanetRingRendering
         _surface.SetShaderParameter("sun_in_body", light);
         _surface.SetShaderParameter("polar_ratio", pole);
         _surface.SetShaderParameter("cast_ring_shadows", visible);
+        if (Atmosphere is { MaterialOverride: ShaderMaterial air } shell)
+        {
+            shell.Visible = visible;
+            if (visible)
+            {
+                air.SetShaderParameter("sun_in_body", light);
+                air.SetShaderParameter("polar_ratio", pole);
+                air.SetShaderParameter("cast_ring_shadows", true);
+            }
+        }
         if (!visible)
             return;
         _ring.SetShaderParameter("sun_in_body", light);

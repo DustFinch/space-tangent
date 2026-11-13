@@ -3,15 +3,11 @@ shader_type spatial;
 render_mode unshaded;
 
 uniform sampler2D surface_map : source_color, filter_linear_mipmap, repeat_enable;
-uniform sampler2D rings_map : filter_linear_mipmap, repeat_disable;
+#include "res://Shaders/ring_shadow.gdshaderinc"
 uniform vec4 surface_color : source_color = vec4(1.0);
 uniform bool has_surface_map;
 uniform float prime_meridian_offset;
-uniform bool cast_ring_shadows;
-uniform float ring_inner;
-uniform float ring_outer;
 uniform float polar_ratio = 0.902;
-uniform vec3 sun_in_body;
 varying vec3 globe_direction;
 
 void vertex() {
@@ -23,15 +19,7 @@ void fragment() {
     vec3 point = unit * vec3(1.0, polar_ratio, 1.0);
     vec3 normal = normalize(unit / vec3(1.0, polar_ratio, 1.0));
     float incidence = max(dot(normal, sun_in_body), 0.0);
-    float visibility = 1.0;
-    if (cast_ring_shadows && incidence > 0.0 && abs(sun_in_body.y) > 0.00001) {
-        float along = -point.y / sun_in_body.y;
-        float radius = length(point.xz + sun_in_body.xz * along);
-        if (along > 0.0 && radius >= ring_inner && radius <= ring_outer) {
-            float u = (radius - ring_inner) / (ring_outer - ring_inner);
-            visibility = 1.0 - 0.9 * texture(rings_map, vec2(u, 0.5)).a;
-        }
-    }
+    float visibility = incidence > 0.0 ? ring_visibility(point, false) : 1.0;
     vec3 color = has_surface_map ? texture(surface_map, UV + vec2(prime_meridian_offset, 0.0)).rgb : surface_color.rgb;
     float intensity = 0.035 + 0.965 * incidence * visibility;
     ALBEDO = color * (OUTPUT_IS_SRGB ? pow(intensity, 1.0 / 2.2) : intensity);

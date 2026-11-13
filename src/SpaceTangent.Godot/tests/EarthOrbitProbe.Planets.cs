@@ -9,6 +9,73 @@ namespace SpaceTangent.Godot.Tests;
 
 public partial class EarthOrbitProbe
 {
+    private async Task ExerciseSaturnRingAtmosphere(SolarSystemScene scene, JulianInstant epoch, string directory)
+    {
+        if (DisplayServer.GetName() == "headless")
+            return;
+        var session = scene.Session!;
+        var id = PlanetCatalogue.SaturnId;
+        var snapshot = session.World.Graph.Evaluate(epoch);
+        if (snapshot.SolarSystem is not { } solar || !snapshot.TryState(id, out var saturn) ||
+            !snapshot.TryOrientation(id, out var orientation))
+            throw new InvalidOperationException("The ring atmosphere probe needs the original Saturn ephemeris.");
+        Vector3d sunward = (solar.Sun - saturn).PositionKilometers;
+        sunward /= sunward.Length;
+        Vector3d pole = orientation.ToWorld.Z;
+        double solarLatitude = Vector3d.Dot(sunward, pole);
+        Vector3d outward = Vector3d.Cross(sunward, pole);
+        outward /= outward.Length;
+        outward += sunward * .35 - pole * Math.Sign(solarLatitude) * .18;
+        outward /= outward.Length;
+        Vector3d north = pole - outward * Vector3d.Dot(pole, outward);
+        const double range = 157000;
+        var pose = new NavigationCamera(saturn.PositionKilometers, range, 0, 0, id, true)
+            { Placement = new(outward * range, outward * -1, north / north.Length) };
+        var view = new ObserverView(epoch, CameraMode.Solar, id, false) { Navigation = pose };
+        string path = Path.Combine(directory, "saturn-ring-atmosphere.stscene");
+        ScenarioFile.Save(path, new([view], false, 0, 0, session.DeltaT));
+        if (!scene.LoadScenario(path))
+            throw new InvalidOperationException("Could not load the Saturn atmosphere scene.");
+        var renderer = scene.Renderer(0);
+        if (renderer.RingedAtmosphere(id) is not { Visible: true, MaterialOverride: ShaderMaterial material })
+            throw new InvalidOperationException("The Saturn limb must receive the original ring opacity map.");
+
+        using var shadowed = await Frame();
+        try
+        {
+            material.SetShaderParameter("cast_ring_shadows", false);
+            using var unshadowed = await Frame();
+            int darker = 0;
+            double peak = 0;
+            for (int y = 0; y < shadowed.GetHeight(); y++)
+            for (int x = 0; x < shadowed.GetWidth(); x++)
+            {
+                var a = shadowed.GetPixel(x, y);
+                var b = unshadowed.GetPixel(x, y);
+                double change = b.B - a.B;
+                if (change > .008)
+                    darker++;
+                peak = Math.Max(peak, change);
+            }
+            GD.Print(FormattableString.Invariant($"Saturn ring atmosphere GPU: {darker} darker pixels, peak blue difference {peak:F5}."));
+            if (darker < 30 || peak < .015)
+                throw new InvalidOperationException("The original rings must cast a measurable shadow on the Saturn limb.");
+            if (shadowed.SavePng(Path.ChangeExtension(path, ".png")) != Error.Ok)
+                throw new IOException("Could not save the shadowed Saturn limb.");
+        }
+        finally
+        {
+            material.SetShaderParameter("cast_ring_shadows", true);
+        }
+
+        async Task<Image> Frame()
+        {
+            await ToSignal(GetTree(), SceneTree.SignalName.ProcessFrame);
+            await ToSignal(RenderingServer.Singleton, RenderingServer.SignalName.FramePostDraw);
+            return renderer.GetViewport().GetTexture().GetImage();
+        }
+    }
+
     private async Task ExercisePlanets(SolarSystemScene scene, JulianInstant epoch, string directory)
     {
         var world = scene.Session!.World;

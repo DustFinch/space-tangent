@@ -25,6 +25,7 @@ internal partial class SimulationViewport
     internal bool ShowPlanetOrbits { get; set; } = true;
     internal int PlanetOrbitCount => _planetPaths.GetSurfaceCount();
     internal bool PlanetRingsVisible(ObjectId id) => _planetRings.GetValueOrDefault(id)?.Visible == true;
+    internal MeshInstance3D? RingedAtmosphere(ObjectId id) => _planetRings.GetValueOrDefault(id)?.Atmosphere;
     internal bool PlanetGlobeTextured(ObjectId id) => _planetGlobes.TryGetValue(id, out var mesh) && mesh.Visible &&
         (mesh.MaterialOverride is StandardMaterial3D { AlbedoTexture: not null } ||
             mesh.Mesh is ArrayMesh model && model.GetSurfaceCount() > 0 &&

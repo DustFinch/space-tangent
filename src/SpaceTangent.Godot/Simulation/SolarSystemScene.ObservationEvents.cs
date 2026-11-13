@@ -62,6 +62,17 @@ public partial class SolarSystemScene
         var session = Session!;
         session.SetPlaying(_active, false);
         session.SelectObject(_active, next.Event.Target);
+        if (session[_active] is { Mode: CameraMode.Surface, Navigation: null } &&
+            next.Event.FlareDirection is { } direction)
+        {
+            var site = session[_active].EarthObserver ?? EarthObserverCamera.Moscow;
+            session.SetEarthObserver(_active, site with
+            {
+                AzimuthDegrees = direction.AzimuthDegrees ?? site.AzimuthDegrees,
+                ElevationDegrees = Math.Clamp(site.Conditions?.ApparentAltitude(direction.AltitudeDegrees, site.Site) ??
+                    direction.AltitudeDegrees, -90, 90)
+            });
+        }
         Seek(_active, next.Event.Epoch);
         _status.Text = next.Event.Description;
     }

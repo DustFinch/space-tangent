@@ -31,6 +31,8 @@ uniform vec3 site_east;
 uniform bool show_horizon_grid = false;
 uniform bool show_clouds = true;
 uniform bool lunar_cloud_light = true;
+uniform int satellite_flare_count = 0;
+uniform vec4 satellite_flares[8];
 
 float cloud_hash(vec3 lattice) {
     lattice = fract(lattice * 0.3183099 + vec3(0.13, 0.27, 0.41));
@@ -116,6 +118,15 @@ void fragment() {
     }
     if (!ground && dot(moon_seen, site_up) > 0.0) {
         background = lunar_disc(ray, moon_dir, length(moon_delta), background);
+    }
+
+    if (!ground && satellite_flare_count > 0) {
+        float width = max(length(dFdx(ray)), length(dFdy(ray)));
+        for (int index = 0; index < satellite_flare_count; index++) {
+            vec4 flare = satellite_flares[index];
+            float radius = length(ray - flare.xyz) / max(width, 0.000001);
+            background += vec3(flare.w * exp(-0.35 * radius * radius));
+        }
     }
 
     vec2 view_column = vec2(0.0);

@@ -40,6 +40,41 @@ public partial class WorkspaceInputSmoke
                 Session.DeltaT == DeltaTModel.MorrisonStephenson2004,
                 "Seeking the eclipse must preserve the observer site, independent Jason-1 camera and ΔT.");
             GD.Print(FormattableString.Invariant($"UI: searched and opened the April 2024 eclipse with the other view unchanged; peak offset {seconds:F1} s from the published reference"));
+            if (System.Environment.GetEnvironmentVariable("SPACETANGENT_IRIDIUM_ROOT") is { Length: > 0 } iridium)
+            {
+                const string tleVariable = "SPACETANGENT_TLE_ROOT";
+                string? previousRoot = System.Environment.GetEnvironmentVariable(tleVariable);
+                try
+                {
+                    System.Environment.SetEnvironmentVariable(tleVariable, iridium);
+                    Require(await _scene.ReloadAddOns(null), "Loading the historical satellite catalogue.");
+                    var historical = left with
+                    {
+                        Epoch = JulianInstant.FromJulianDate(2457547.0 + 68.184 / 86400, TimeScale.Tdb),
+                        Selection = null,
+                        EarthObserver = EarthObserverCamera.Moscow
+                    };
+                    ScenarioFile.Save(path, new([historical, right], false, 0, 0, DeltaTModel.MorrisonStephenson2004));
+                    Require(_scene.LoadScenario(path), "The historical observation must open.");
+                    GetViewport().GuiGetFocusOwner()?.ReleaseFocus();
+                    await KeyPress(Key.E, ctrl: true);
+                    await Until(() => status.Text.Contains(" flare · magnitude ", StringComparison.Ordinal),
+                        "Finding an antenna reflection in the original TLE catalogue", 30);
+                    await KeyPress(Key.E, ctrl: true, shift: true);
+                    Require(Session[0].Epoch.CompareTo(historical.Epoch) > 0 &&
+                        Session[0].Selection?.Value.StartsWith("norad/", StringComparison.Ordinal) == true &&
+                        Session[0].EarthObserver is { } focused && focused.Site == EarthObserverCamera.Moscow.Site &&
+                        focused.AzimuthDegrees != EarthObserverCamera.Moscow.AzimuthDegrees &&
+                        Session[1] == right && Session.DeltaT == DeltaTModel.MorrisonStephenson2004,
+                        "Seeking a flare must center the ground camera and preserve the other view and time model.");
+                    GD.Print("UI: found a historical Iridium flare in the full group, jumped to its peak and centered it.");
+                }
+                finally
+                {
+                    System.Environment.SetEnvironmentVariable(tleVariable, previousRoot);
+                    Require(await _scene.ReloadAddOns(null), "Restoring the earlier TLE catalogue.");
+                }
+            }
         }
         finally
         {

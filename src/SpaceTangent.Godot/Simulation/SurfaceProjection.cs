@@ -133,6 +133,7 @@ internal sealed partial class SurfaceProjection
         _material.SetShaderParameter("camera_up", cameraUp);
         DrawSurvey(sky, forward, right, cameraUp, sample.Epoch.ToJulianDate(),
             optics?.LimitingMagnitude() ?? observer.Conditions?.LimitingMagnitude() ?? 6.5);
+        DrawSatelliteFlares(world, lighting, observer, sample.Epoch, model, forward, optics);
         _material.SetShaderParameter("earth_to_sun", Convert(lighting.EarthToSun));
         _material.SetShaderParameter("earth_to_moon", Convert(lighting.EarthToMoon));
         var moonOffset = lighting.EarthToMoon - lighting.PositionKilometers;

@@ -31,6 +31,11 @@ public sealed class HistoricalSatelliteEventTests
         Assert.Equal(expected.Id, found.Target);
         Assert.Equal(expected.Flare.Peak, found.Epoch);
         Assert.Contains("flare", found.Description, StringComparison.Ordinal);
+        var firstInGroup = ObserverEventFinder.Next(world, observer with { Selection = null }, model);
+        Assert.NotNull(firstInGroup);
+        Assert.Equal(expected.Id, firstInGroup.Target);
+        Assert.Equal(expected.Flare.Peak, firstInGroup.Epoch);
+        Assert.Equal(expected.Flare.Horizontal, firstInGroup.FlareDirection);
     }
 
     private sealed class HistoricalTleFactAttribute : FactAttribute

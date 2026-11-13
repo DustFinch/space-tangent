@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
 using System.Text.Json;
 using Godot;
+using SpaceTangent.Application;
 using SpaceTangent.Contracts;
 using SpaceTangent.Core.Observing;
 using SpaceTangent.Core.Time;
@@ -95,6 +96,9 @@ public partial class MoonLightingProbe : Node
                 horizonSkyError
             }, new JsonSerializerOptions { WriteIndented = true }));
 
+            if (System.Environment.GetEnvironmentVariable("SPACETANGENT_IRIDIUM_GPU") == "1")
+                await ExerciseHistoricalFlare(scene, renderer, output);
+
             GD.Print("SpaceTangent full Moon cloud rendering probe passed");
             GetTree().Quit();
         }
@@ -102,6 +106,41 @@ public partial class MoonLightingProbe : Node
         {
             GD.PushError(error.ToString());
             GetTree().Quit(1);
+        }
+    }
+
+    private async Task ExerciseHistoricalFlare(SolarSystemScene scene, SimulationViewport renderer, string output)
+    {
+        var session = scene.Session!;
+        var world = session.World;
+        var site = EarthObserverCamera.Moscow;
+        var start = JulianInstant.FromJulianDate(2457547.0 + 68.184 / 86400, TimeScale.Tdb);
+        var end = start.AddSeconds(2 * JulianInstant.SecondsPerDay);
+        var flares = world.LocalSatellites.SelectMany(satellite => ObservationEventSearch.FindSatelliteFlares(
+            world.Ephemeris, satellite, site.Site, session.DeltaT, start, end)).ToArray();
+        var flare = flares.Where(item => item.SunAltitudeDegrees < -6).MinBy(item => item.Magnitude);
+        Require(flare.Magnitude < -2 && flare.Horizontal.AltitudeDegrees > 0, "Expected a bright archived night flare.");
+        renderer.SetSurfacePitch(flare.Horizontal.AltitudeDegrees);
+        session.SetEarthObserver(0, site with
+        {
+            AzimuthDegrees = flare.Horizontal.AzimuthDegrees ?? site.AzimuthDegrees,
+            ElevationDegrees = flare.Horizontal.AltitudeDegrees
+        });
+        scene.Seek(0, flare.Peak);
+        using Image peak = await Capture(renderer, output, "historical-flare", false, false);
+        scene.Seek(0, flare.Peak.AddSeconds(60));
+        using Image faded = await Capture(renderer, output, "historical-flare-faded", false, false);
+        float centerPeak = BrightestCenter(peak), centerFaded = BrightestCenter(faded);
+        Require(centerPeak - centerFaded > .10f, $"The reflection did not fade in the rendered sky ({centerPeak:F3}, {centerFaded:F3}).");
+        GD.Print(FormattableString.Invariant($"GPU: historical flare magnitude {flare.Magnitude:F2}, peak {flare.Peak.ToJulianDate():F9}, center {centerPeak:F3} vs {centerFaded:F3} after 60 s."));
+
+        static float BrightestCenter(Image image)
+        {
+            float brightest = 0;
+            for (int y = image.GetHeight() / 2 - 3; y <= image.GetHeight() / 2 + 3; y++)
+            for (int x = image.GetWidth() / 2 - 3; x <= image.GetWidth() / 2 + 3; x++)
+                brightest = Math.Max(brightest, image.GetPixel(x, y).R);
+            return brightest;
         }
     }
 

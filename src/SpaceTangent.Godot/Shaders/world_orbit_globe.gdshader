@@ -34,5 +34,10 @@ void fragment() {
     if (draw_air) {
         world_orbit_air(air_eye * ground_radius_km, normalize(air_surface - air_eye), transmission, radiance);
     }
-    ALBEDO = air_display_color(surface * (0.013 + 0.94 * sun), transmission, radiance);
+    vec3 illumination = vec3(sun);
+    if (draw_air && venus_scattering) {
+        vec3 point = normalize(air_surface) * ground_radius_km;
+        illumination = sun * exp(-venus_extinction(venus_columns(point, light_in_body))) + venus_diffuse(point, sun);
+    }
+    ALBEDO = air_display_color(surface * (0.013 + 0.94 * illumination), transmission, radiance);
 }

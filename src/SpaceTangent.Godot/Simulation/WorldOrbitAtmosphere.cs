@@ -15,6 +15,7 @@ internal sealed class WorldOrbitAtmosphere
     private readonly MeshInstance3D? _clouds;
     private readonly ShaderMaterial? _cloudMaterial;
     private const float VenusCloudHeight = 65;
+    private static readonly float VenusAtmosphereHeight = -10f * MathF.Log(.000125f);
     private const double VenusCloudDegreesPerDay = 90;
     internal BodyTileTextures? Tiles { get; }
 
@@ -36,7 +37,7 @@ internal sealed class WorldOrbitAtmosphere
             return;
 
         _limb = new ShaderMaterial { Shader = GD.Load<Shader>("res://Shaders/world_orbit_limb.gdshader") };
-        float shellHeight = lookup?.HeightKilometers ?? (venusScattering ? 200 : 105);
+        float shellHeight = lookup?.HeightKilometers ?? (venusScattering ? VenusAtmosphereHeight : 105);
         float groundRadius = lookup?.RadiusKilometers ?? radius;
         foreach (ShaderMaterial material in new[] { _ground, _limb })
         {

@@ -147,6 +147,8 @@ internal partial class SkySurveyCanvas : Control
     internal int FinestSourceOrder { get; private set; }
     internal string? SurveyId => _frame?.Survey.Id;
 
+    internal bool HasSurvey => _frame is not null;
+
     internal bool ShowFrame(string? id, Vector3 forward, Vector3 right, Vector3 up,
         float tangent, float brightness = 1, bool background = false, bool photographs = false,
         double limitingMagnitude = 7.6, double julianDate = 2451545)

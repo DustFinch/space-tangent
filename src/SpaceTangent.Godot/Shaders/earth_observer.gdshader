@@ -4,6 +4,7 @@ render_mode unshaded;
 
 #include "res://Shaders/earth_atmosphere.gdshaderinc"
 #include "res://Shaders/galactic_background.gdshaderinc"
+#include "res://Shaders/zodiacal_glow.gdshaderinc"
 
 uniform bool show_galactic_sky = false;
 uniform bool show_survey = false;
@@ -190,6 +191,9 @@ void fragment() {
         float dark = show_atmosphere ? 1.0 - smoothstep(-0.208, -0.087, dot(sun_dir, site_up)) : 1.0;
         float contrast = dark / (1.0 + 64.0 * sky_glow);
         background += galactic_radiance(ray) * contrast;
+    }
+    if (!ground && show_zodiacal_light) {
+        background += zodiacal_radiance(ray);
     }
     if (!ground && show_survey) {
         float dark = show_atmosphere ? 1.0 - smoothstep(-0.208, -0.087, dot(sun_dir, site_up)) : 1.0;

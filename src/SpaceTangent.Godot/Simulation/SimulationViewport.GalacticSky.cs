@@ -17,13 +17,17 @@ internal partial class SimulationViewport
     private ColorRect? _galacticCanvas;
     private ShaderMaterial? _galacticMaterial;
     private Texture2D? _galacticTexture;
+    private bool _hasZodiacalMap;
 
-    private void InstallGalacticSky(CanvasLayer layer)
+    private void InstallGalacticSky(CanvasLayer layer, Texture2D? zodiacalMap)
     {
         if (DisplayServer.GetName() == "headless")
             return;
         _galacticMaterial = new ShaderMaterial { Shader = GD.Load<Shader>("res://Shaders/galactic_background.gdshader") };
         ConfigureGalacticAxes(_galacticMaterial);
+        _hasZodiacalMap = zodiacalMap is not null;
+        if (zodiacalMap is not null)
+            _galacticMaterial.SetShaderParameter("zodiacal_map", zodiacalMap);
         _galacticCanvas = new() { Visible = false, Material = _galacticMaterial, MouseFilter = Control.MouseFilterEnum.Ignore };
         layer.AddChild(_galacticCanvas);
         _galacticCanvas.SetAnchorsAndOffsetsPreset(Control.LayoutPreset.FullRect);
@@ -58,16 +62,30 @@ internal partial class SimulationViewport
         _surface?.SetGalacticSky(_galacticTexture);
     }
 
-    private void DrawGalacticSky(bool orbital, Camera3D? camera, float tangent)
+    private void DrawGalacticSky(bool orbital, Camera3D? camera, float tangent, ObserverView observer,
+        WorldSnapshot snapshot, DeltaTModel deltaT, bool survey)
     {
         if (_galacticCanvas is null)
             return;
-        _galacticCanvas.Visible = orbital && _galacticTexture is not null && camera is not null;
+        var material = _galacticMaterial!;
+        bool galactic = _galacticTexture is not null;
+        bool zodiacal = false;
+        if (_hasZodiacalMap && orbital && camera?.Projection == Camera3D.ProjectionType.Perspective &&
+            observer.Navigation is { } pose && snapshot.SolarSystem is { } solar)
+        {
+            Vector3d sun = (solar.Sun.PositionKilometers - pose.AnchorKilometers) -
+                pose.ResolvePlacement(snapshot, deltaT).OffsetKilometers;
+            zodiacal = ZodiacalGlow.Configure(material, observer.Sky.DeepSky && observer.Sky.ZodiacalLight && !survey, sun);
+        }
+        else if (_hasZodiacalMap)
+            material.SetShaderParameter("show_zodiacal_light", false);
+        _galacticCanvas.Visible = orbital && (galactic || zodiacal) && camera is not null;
         if (!_galacticCanvas.Visible)
             return;
-        var material = _galacticMaterial!;
         Basis basis = camera!.GlobalBasis;
-        material.SetShaderParameter("galactic_image", _galacticTexture!);
+        material.SetShaderParameter("show_galactic_image", galactic);
+        if (_galacticTexture is not null)
+            material.SetShaderParameter("galactic_image", _galacticTexture);
         material.SetShaderParameter("camera_forward", Equatorial(-basis.Z));
         material.SetShaderParameter("camera_right", Equatorial(basis.X));
         material.SetShaderParameter("camera_up", Equatorial(basis.Y));

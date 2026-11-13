@@ -11,6 +11,7 @@ internal sealed record BrightSkyData(BrightStarCatalogue Catalogue, IReadOnlyLis
 {
     internal IReadOnlyList<(Vector3 From, Vector3 To)> Boundaries => BoundaryMap?.Segments ?? [];
     internal SkyBoundaryMap? BoundaryMap { get; init; }
+    internal Texture2D? ZodiacalMap { get; init; }
     internal IReadOnlyDictionary<ObjectId, double> SatelliteMagnitudes { get; init; } = new Dictionary<ObjectId, double>();
 
     private readonly Dictionary<string, Texture2D?> _artTextures = new(StringComparer.Ordinal);
@@ -97,6 +98,7 @@ internal sealed record BrightSkyData(BrightStarCatalogue Catalogue, IReadOnlyLis
         return new(stars, lines.AsReadOnly(), transients, MeteorCatalogue.Read(showers), library, new(surveys, photographs))
         {
             BoundaryMap = LoadBoundaries(),
+            ZodiacalMap = ZodiacalGlow.LoadMap(),
             SatelliteMagnitudes = LoadSatelliteMagnitudes()
         };
     }

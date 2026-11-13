@@ -26,7 +26,7 @@ internal partial class SimulationViewport
         _satelliteMagnitudes = data.SatelliteMagnitudes;
         var layer = new CanvasLayer { Layer = -1 };
         AddChild(layer);
-        InstallGalacticSky(layer);
+        InstallGalacticSky(layer, data.ZodiacalMap);
         SpaceSurveyCanvas = new(data.Surveys, additive: true);
         layer.AddChild(SpaceSurveyCanvas);
         SpaceSurveyCanvas.SetAnchorsAndOffsetsPreset(Control.LayoutPreset.FullRect);
@@ -54,13 +54,14 @@ internal partial class SimulationViewport
             float tangent = camera is null ? 0 : MathF.Tan(Mathf.DegToRad(camera.Fov / 2));
             if (camera?.KeepAspect == Camera3D.KeepAspectEnum.Width && _spaceSky.Size.X > 0)
                 tangent *= _spaceSky.Size.Y / _spaceSky.Size.X;
-            DrawGalacticSky(orbital, camera, tangent);
+
             Basis orientation = camera?.GlobalBasis ?? Basis.Identity;
             bool survey = SpaceSurveyCanvas!.ShowFrame(orbital && !CompactLensVisible ? observer.Sky.SurveyId : null,
                 Icrs(-orientation.Z), Icrs(orientation.X), Icrs(orientation.Y), tangent,
-                (float)observer.Sky.EffectiveSurveyBrightness, !GalacticSkyVisible,
+                (float)observer.Sky.EffectiveSurveyBrightness, _galacticTexture is null,
                 photographs: orbital && !CompactLensVisible && observer.Sky.DeepSky && observer.Sky.SurveyId is null,
                 julianDate: observer.Epoch.ToJulianDate());
+            DrawGalacticSky(orbital, camera, tangent, observer, snapshot, deltaT, SpaceSurveyCanvas.HasSurvey);
             bool culture = observer.Sky.ConstellationArt ||
                 (observer.Sky.Constellations && observer.Sky.CultureId is not null);
             bool render = (catalogue || culture || observer.Sky.HasAlternateGrids || observer.Sky.ConstellationBoundaries ||

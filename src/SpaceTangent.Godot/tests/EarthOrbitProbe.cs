@@ -122,6 +122,12 @@ public partial class EarthOrbitProbe : Node
                 result = 0;
                 return;
             }
+            if (System.Environment.GetEnvironmentVariable("SPACETANGENT_ZODIACAL_PROBE") == "only")
+            {
+                await ExerciseZodiacalLight(scene, directory);
+                result = 0;
+                return;
+            }
             if (System.Environment.GetEnvironmentVariable("SPACETANGENT_POINTER_COORDINATES_PROBE") == "only")
             {
                 await ExercisePointerCoordinates(scene, directory);

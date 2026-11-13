@@ -20,6 +20,7 @@ internal sealed partial class SurfaceProjection
     private readonly Label[] _cardinals;
     private BrightSkyOverlay? _sky;
     private Texture2D? _galacticImage;
+    private bool _hasZodiacalMap;
     internal bool GalacticSkyVisible => _galacticImage is not null && _surface.Visible;
     private MeteorOverlay? _meteors;
 
@@ -53,6 +54,9 @@ internal sealed partial class SurfaceProjection
     internal void SetSkyData(BrightSkyData data)
     {
         _surveySources = data.Surveys;
+        _hasZodiacalMap = data.ZodiacalMap is not null;
+        if (data.ZodiacalMap is { } map)
+            _material.SetShaderParameter("zodiacal_map", map);
         _sky = new();
         _sky.Configure(data, fillBackground: false);
         _surface.AddChild(_sky);
@@ -161,6 +165,15 @@ internal sealed partial class SurfaceProjection
         _material.SetShaderParameter("camera_up", cameraUp);
         DrawSurvey(sky, forward, right, cameraUp, sample.Epoch.ToJulianDate(),
             optics?.LimitingMagnitude() ?? observer.Conditions?.LimitingMagnitude() ?? 6.5);
+        if (_hasZodiacalMap)
+        {
+            float solarAltitude = (float)(lighting.SolarAltitudeRadians / Degrees);
+            float darkness = sky.HideAtmospheres ? 1 : 1 - Mathf.SmoothStep(-12, -4, solarAltitude);
+            float limitingMagnitude = (float)(observer.Conditions?.LimitingMagnitude() ?? 6.5);
+            darkness *= Math.Clamp((limitingMagnitude - 5.5f) / 1.5f, 0, 1);
+            ZodiacalGlow.Configure(_material, sky.DeepSky && sky.ZodiacalLight && SurveyCanvas?.HasSurvey != true,
+                lighting.EarthToSun - lighting.PositionKilometers, darkness);
+        }
         DrawSatelliteFlares(world, lighting, observer, sample.Epoch, model, forward, optics);
         DrawPlanets(snapshot, sample, lighting, observer, trueAngularScale || optics is not null,
             forward, right, cameraUp);

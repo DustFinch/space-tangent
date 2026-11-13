@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
 using Godot;
 using System.Globalization;
+using SpaceTangent.Contracts;
 using SpaceTangent.Core.Observing;
 using System.Text.Json;
 
@@ -9,6 +10,7 @@ namespace SpaceTangent.Godot.Simulation;
 internal sealed record BrightSkyData(BrightStarCatalogue Catalogue, IReadOnlyList<(Vector3 From, Vector3 To)> Figures, TransientStarCatalogue Transients, MeteorCatalogue Meteors, SkyCultureLibrary Cultures, SkySurveyTiles Surveys)
 {
     internal IReadOnlyList<(Vector3 From, Vector3 To)> Boundaries { get; init; } = [];
+    internal IReadOnlyDictionary<ObjectId, double> SatelliteMagnitudes { get; init; } = new Dictionary<ObjectId, double>();
 
     private readonly Dictionary<string, Texture2D?> _artTextures = new(StringComparer.Ordinal);
     private const int MaximumArtTextures = 128;
@@ -93,8 +95,40 @@ internal sealed record BrightSkyData(BrightStarCatalogue Catalogue, IReadOnlyLis
         string photographs = LocalDataPaths.Find("SPACETANGENT_SKY_PHOTOGRAPHS", "sky/nebula-images", directory: true);
         return new(stars, lines.AsReadOnly(), transients, MeteorCatalogue.Read(showers), library, new(surveys, photographs))
         {
-            Boundaries = LoadBoundaries()
+            Boundaries = LoadBoundaries(),
+            SatelliteMagnitudes = LoadSatelliteMagnitudes()
         };
+    }
+
+    private static IReadOnlyDictionary<ObjectId, double> LoadSatelliteMagnitudes()
+    {
+        var table = new Dictionary<ObjectId, double>();
+        string path = LocalDataPaths.Find("SPACETANGENT_SATELLITE_MAGNITUDES", "sky/satellite-magnitudes.txt");
+        if (!File.Exists(path))
+            return table;
+        try
+        {
+            using var source = File.OpenRead(path);
+            if (source.Length > 1024 * 1024)
+                throw new InvalidDataException("The catalogue exceeds its size limit.");
+            using var reader = new StreamReader(source);
+            while (reader.ReadLine() is { } line)
+            {
+                string[] fields = line.Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries);
+                if (fields.Length >= 2 &&
+                    int.TryParse(fields[0], NumberStyles.None, CultureInfo.InvariantCulture, out int number) && number > 0 &&
+                    double.TryParse(fields[1], NumberStyles.Float, CultureInfo.InvariantCulture, out double magnitude) &&
+                    double.IsFinite(magnitude))
+                    table[new ObjectId($"norad/{number}")] = magnitude;
+            }
+            GD.Print($"Satellite magnitudes loaded: {table.Count} records.");
+        }
+        catch (Exception error) when (error is IOException or InvalidDataException or UnauthorizedAccessException)
+        {
+            GD.Print($"Satellite magnitudes: {error.Message}");
+            table.Clear();
+        }
+        return table;
     }
 
     private static IReadOnlyList<(Vector3, Vector3)> LoadBoundaries()

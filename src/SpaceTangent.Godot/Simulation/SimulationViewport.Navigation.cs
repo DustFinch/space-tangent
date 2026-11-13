@@ -135,7 +135,7 @@ internal partial class SimulationViewport
         DrawExtrasolarOrbits(pose, snapshot, units, ProjectWithScale);
         DrawCompactObjects(snapshot, sky, units, ProjectWithScale);
         DrawImportedBodies(snapshot, pose, placement.OffsetKilometers, units, ProjectWithScale);
-        DrawLocalSatellite(snapshot, pose, units, ProjectWithScale);
+        DrawLocalSatellite(snapshot, pose, placement.OffsetKilometers, units, ProjectWithScale);
         HideComets();
         DrawComets(snapshot, solar.Sun, units, ProjectWithScale);
 
@@ -150,10 +150,15 @@ internal partial class SimulationViewport
             if (!snapshot.TryState(asset.Track.Id, out var state) || !snapshot.TryOrientation(asset.Track.Id, out var orientation))
                 continue;
             double radius = NavigationCamera.BodyRadiusKilometers(asset.Track.Id);
-            if (radius / pose.RangeKilometers < .0002 && pose.Target != asset.Track.Id)
+            var satelliteId = asset.Track.Id;
+            if (!_satelliteMagnitudes.ContainsKey(satelliteId) && radius / pose.RangeKilometers < .0002 && pose.Target != satelliteId)
                 continue;
             Vector3 position = Project(state.PositionKilometers, out double scale);
-            float modelScale = (float)(radius / units * scale) * asset.MarkerScale / 9;
+            float projectedRadius = (float)(radius / units * scale);
+            Vector3d towardEye = (pose.AnchorKilometers - state.PositionKilometers) + placement.OffsetKilometers;
+            if (!DrawSatellitePoint(satelliteId, snapshot, state.PositionKilometers, towardEye, radius, position, projectedRadius))
+                continue;
+            float modelScale = projectedRadius * asset.MarkerScale / 9;
             if (modelScale < 1e-7f)
                 continue;
             Basis3d body = orientation.ToWorld, mesh = asset.Track.MeshToOrientedBody;

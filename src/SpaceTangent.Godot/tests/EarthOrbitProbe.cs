@@ -53,6 +53,12 @@ public partial class EarthOrbitProbe : Node
                 return;
             }
             var epoch = JulianInstant.FromJulianDate(2460600.5008, TimeScale.Tdb);
+            if (System.Environment.GetEnvironmentVariable("SPACETANGENT_TLE_PHOTOMETRY_PROBE") == "only")
+            {
+                await ExerciseTlePhotometry(scene, directory);
+                result = 0;
+                return;
+            }
             if (System.Environment.GetEnvironmentVariable("SPACETANGENT_EXTRASOLAR_PHOTOMETRY_PROBE") == "only")
             {
                 await ExerciseExtrasolarSsc(scene, directory);

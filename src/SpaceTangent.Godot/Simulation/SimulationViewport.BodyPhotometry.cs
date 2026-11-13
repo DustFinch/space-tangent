@@ -10,6 +10,7 @@ namespace SpaceTangent.Godot.Simulation;
 
 internal partial class SimulationViewport
 {
+    private const double PointPixels = 1, PointBlendPixels = 4, FaintestPointMagnitude = 7.8;
     private readonly Dictionary<ObjectId, MeshInstance3D> _bodyPoints = new();
     private ArrayMesh? _bodyPointMesh;
     private Shader? _bodyPointShader;
@@ -21,20 +22,14 @@ internal partial class SimulationViewport
     {
         const double au = 149_597_870.7;
         const double sunMagnitudeAtAu = -26.74;
-        const double pointPixels = 1, blendPixels = 4, faintestMagnitude = 7.8;
 
         double range = towardEye.Length;
         double altitude = range - radius;
         if (altitude <= 0 || snapshot.SolarSystem is not { } solar)
             return true;
 
-        float height = GetViewport().GetVisibleRect().Size.Y;
-        // New split views can draw before their container has assigned a viewport size.
-        if (height < 32)
-            return true;
-        double focalPixels = height / (2 * Math.Tan(Math.PI * _navigationCamera.Fov / 360));
-        double disc = focalPixels * radius / altitude;
-        if (disc >= blendPixels)
+        double disc = ProjectedBodyPixels(radius, altitude);
+        if (disc >= PointBlendPixels)
             return true;
 
         Vector3d eyeDirection = towardEye / range;
@@ -56,18 +51,8 @@ internal partial class SimulationViewport
             return true;
 
         double magnitude = sunMagnitudeAtAu - 2.5 * Math.Log10(flux);
-        if (magnitude < faintestMagnitude)
-        {
-            MeshInstance3D point = GetBodyPoint(id);
-            var material = (ShaderMaterial)point.MaterialOverride;
-            material.SetShaderParameter("magnitude", (float)magnitude);
-            material.SetShaderParameter("point_color", new Vector3(tint.R, tint.G, tint.B));
-            material.SetShaderParameter("fade", (float)Math.Min(1, (blendPixels - disc) / (blendPixels - pointPixels)));
-            Vector3 toCamera = _navigationCamera.Position - position;
-            point.Position = position + toCamera.Normalized() * Math.Min(toCamera.Length() * .9f, 1.01f * projectedRadius);
-            point.Show();
-        }
-        return disc >= pointPixels;
+        ShowBodyPoint(id, tint, position, projectedRadius, disc, magnitude);
+        return disc >= PointPixels;
 
         double ReflectedFlux(Vector3d towardSun, double luminosity, ObjectId lightId)
         {
@@ -91,6 +76,28 @@ internal partial class SimulationViewport
             double ratio = radius / sunRange * (au / range);
             return albedo * phase * ratio * ratio * luminosity;
         }
+    }
+
+    private double ProjectedBodyPixels(double radius, double altitude)
+    {
+        float height = GetViewport().GetVisibleRect().Size.Y;
+        // A new split view can draw before its container assigns the viewport size.
+        return height < 32 || altitude <= 0 ? double.PositiveInfinity :
+            height * radius / (2 * altitude * Math.Tan(Math.PI * _navigationCamera.Fov / 360));
+    }
+
+    private void ShowBodyPoint(ObjectId id, Color tint, Vector3 position, float projectedRadius, double disc, double magnitude)
+    {
+        if (!(magnitude < FaintestPointMagnitude))
+            return;
+        MeshInstance3D point = GetBodyPoint(id);
+        var material = (ShaderMaterial)point.MaterialOverride;
+        material.SetShaderParameter("magnitude", (float)magnitude);
+        material.SetShaderParameter("point_color", new Vector3(tint.R, tint.G, tint.B));
+        material.SetShaderParameter("fade", (float)Math.Min(1, (PointBlendPixels - disc) / (PointBlendPixels - PointPixels)));
+        Vector3 toCamera = _navigationCamera.Position - position;
+        point.Position = position + toCamera.Normalized() * Math.Min(toCamera.Length() * .9f, 1.01f * projectedRadius);
+        point.Show();
     }
 
     private MeshInstance3D GetBodyPoint(ObjectId id)

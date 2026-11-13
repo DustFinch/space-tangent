@@ -23,6 +23,7 @@ internal partial class SimulationViewport
     internal void SetSkyData(BrightSkyData data)
     {
         _compactSky = data;
+        _satelliteMagnitudes = data.SatelliteMagnitudes;
         var layer = new CanvasLayer { Layer = -1 };
         AddChild(layer);
         InstallGalacticSky(layer);

@@ -322,11 +322,12 @@ internal partial class SimulationViewport
         _missionSensorRendering?.Finish();
     }
 
+    private IReadOnlyDictionary<ObjectId, double> _satelliteMagnitudes = new Dictionary<ObjectId, double>();
     private MeshInstance3D? _localSatelliteMarker;
     private ObjectId? _localSatelliteId;
     internal bool LocalSatelliteVisible(ObjectId id) => _localSatelliteId == id && _localSatelliteMarker is { Visible: true };
 
-    private void DrawLocalSatellite(WorldSnapshot snapshot, NavigationCamera pose, double units,
+    private void DrawLocalSatellite(WorldSnapshot snapshot, NavigationCamera pose, Vector3d eyeOffset, double units,
         Func<Vector3d, (Vector3 Position, double Scale)> project)
     {
         _localSatelliteMarker?.Hide();
@@ -335,11 +336,42 @@ internal partial class SimulationViewport
             CatalogueWorld?.FindLocalSatellite(id) is null || !snapshot.TryState(id, out var state))
             return;
         var (position, projection) = project(state.PositionKilometers);
+        double radius = NavigationCamera.BodyRadiusKilometers(id);
+        float projectedRadius = (float)(radius * projection / units);
+        Vector3d towardEye = (pose.AnchorKilometers - state.PositionKilometers) + eyeOffset;
+        if (!DrawSatellitePoint(id, snapshot, state.PositionKilometers, towardEye, radius, position, projectedRadius))
+            return;
         _localSatelliteMarker ??= CreateNavigationSphere(new(.8f, .8f, .8f));
         _localSatelliteMarker.Position = position;
-        _localSatelliteMarker.Scale = Vector3.One * (float)(NavigationCamera.BodyRadiusKilometers(id) * projection / units);
+        _localSatelliteMarker.Scale = Vector3.One * projectedRadius;
         _localSatelliteId = id;
         _localSatelliteMarker.Show();
+    }
+
+    private bool DrawSatellitePoint(ObjectId id, WorldSnapshot snapshot, Vector3d center, Vector3d towardEye,
+        double radius, Vector3 position, float projectedRadius)
+    {
+        if (!_satelliteMagnitudes.TryGetValue(id, out double standard) || snapshot.SolarSystem is not { } solar)
+            return true;
+        double distance = towardEye.Length;
+        double disc = ProjectedBodyPixels(radius, distance - radius);
+        if (disc >= PointBlendPixels)
+            return true;
+        Vector3d sunward = solar.Sun.PositionKilometers - center;
+        if (sunward.Length <= 0)
+            return disc >= PointPixels;
+        sunward /= sunward.Length;
+        Vector3d fromEarth = center - solar.Earth.PositionKilometers;
+        double along = Vector3d.Dot(fromEarth, sunward);
+        bool eclipsed = along < 0 && (fromEarth - sunward * along).Length < EarthSurfaceLighting.EarthRadiusKilometers;
+        if (!eclipsed)
+        {
+            double cosine = Vector3d.Dot(towardEye / distance, sunward);
+            double illuminated = Math.Max(1e-6, (1 + cosine) / 2);
+            double magnitude = standard + 5 * Math.Log10(distance / 1000) - 2.5 * Math.Log10(2 * illuminated);
+            ShowBodyPoint(id, new(.8f, .8f, .8f), position, projectedRadius, disc, magnitude);
+        }
+        return disc >= PointPixels;
     }
 
     private void HideImportedBodies()

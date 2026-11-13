@@ -8,17 +8,17 @@ internal sealed class LocalAddonsPanel
 {
     private readonly VBoxContainer _rows;
     private readonly OptionButton _kind;
-    private readonly Button _browse, _reload;
+    private readonly Button _browse, _reload, _updateSatellites;
     private readonly FileDialog _directory, _mission;
     private readonly Func<Task<bool>> _reloadAction;
     private readonly Func<LocalAddonKind, bool, Task> _setDefault;
     private readonly Func<LocalAddonSource, bool, Task> _setSource;
     private readonly List<CheckButton> _switches = [];
-    private bool _busy;
+    private bool _busy, _updatingSatellites;
 
     internal LocalAddonsPanel(Control owner, Container page, Func<Task<bool>> reload,
         Func<LocalAddonKind, string, Task> add, Func<LocalAddonKind, bool, Task> setDefault,
-        Func<LocalAddonSource, bool, Task> setSource)
+        Func<LocalAddonSource, bool, Task> setSource, Func<Task> updateSatellites)
     {
         _reloadAction = reload;
         _setDefault = setDefault;
@@ -46,6 +46,20 @@ internal sealed class LocalAddonsPanel
         _reload = new Button { Name = "ReloadAddOns", Text = "Reload add-ons" };
         _reload.Pressed += async () => await _reloadAction();
         page.AddChild(_reload);
+        _updateSatellites = new Button { Name = "UpdateSatelliteGroups", Text = "Update satellite groups" };
+        _updateSatellites.Pressed += async () =>
+        {
+            _updatingSatellites = true;
+            SetBusy(_busy);
+            try { await updateSatellites(); }
+            finally
+            {
+                _updatingSatellites = false;
+                if (GodotObject.IsInstanceValid(_updateSatellites))
+                    SetBusy(_busy);
+            }
+        };
+        page.AddChild(_updateSatellites);
         _rows = new VBoxContainer { Name = "LocalAddonSources" };
         _rows.AddThemeConstantOverride("separation", 9);
         page.AddChild(_rows);
@@ -54,9 +68,10 @@ internal sealed class LocalAddonsPanel
     internal void SetBusy(bool busy)
     {
         _busy = busy;
-        _kind.Disabled = _browse.Disabled = _reload.Disabled = busy;
+        bool disabled = busy || _updatingSatellites;
+        _kind.Disabled = _browse.Disabled = _reload.Disabled = _updateSatellites.Disabled = disabled;
         foreach (CheckButton toggle in _switches)
-            toggle.Disabled = busy;
+            toggle.Disabled = disabled;
     }
 
     internal void ShowSources(LocalAddonSettings settings, LocalAddonSettingsFile file, AddonLoader.DecodedAddOns? loaded)
@@ -94,7 +109,7 @@ internal sealed class LocalAddonsPanel
     {
         var row = new VBoxContainer();
         _rows.AddChild(row);
-        var toggle = new CheckButton { Name = name, Text = title, ButtonPressed = enabled, Disabled = _busy,
+        var toggle = new CheckButton { Name = name, Text = title, ButtonPressed = enabled, Disabled = _busy || _updatingSatellites,
             ClipText = true, TooltipText = path };
         row.AddChild(toggle);
         _switches.Add(toggle);

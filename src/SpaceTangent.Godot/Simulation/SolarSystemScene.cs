@@ -315,7 +315,7 @@ public partial class SolarSystemScene : Control
         addOns.AddChild(_dataSummary);
         _localAddonPanel = new(this, addOns, ReloadAddOns, InstallLocalAddon,
             (kind, enabled) => ReloadAddOns(_localAddons.SetDefault(kind, enabled)),
-            (source, enabled) => ReloadAddOns(_localAddons.SetSource(source, enabled)));
+            (source, enabled) => ReloadAddOns(_localAddons.SetSource(source, enabled)), UpdateSatelliteGroups);
         _localAddonPanel.ShowSources(_localAddons, _localAddonFile, _addOns?.Decoded);
         var scripts = _workspace.AddPage("Scripts", "Observer scripts");
         scripts.AddChild(SimulatorTheme.Section("Observer scripts"));
@@ -633,6 +633,7 @@ public partial class SolarSystemScene : Control
         _addOns?.Decoded.DistantStars.Value?.Dispose();
         _eventSearch?.Cancel();
         _landscapeLifetime.Cancel();
+        _satelliteUpdate?.Cancel();
         DisconnectCapture();
         DisablePlugins(updateMenu: false);
         _script?.Stop();

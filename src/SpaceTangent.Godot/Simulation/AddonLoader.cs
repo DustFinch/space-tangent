@@ -51,7 +51,7 @@ internal static partial class AddonLoader
         PlanetEphemerides Planets, Cached<DecodedBodyTerrain>? MarsTerrain, Cached<StellarCatalogue> Stellar,
         Cached<StellarCatalogue?> StellarArchive, Cached<StellarImport> StellarDefinitions,
         SscInstallation BodyCatalogues, Cached<IReadOnlyList<SscSurfaceLocation>> Locations, Cached<DecodedDeepSky> DeepSky, Cached<ExoplanetCatalogue> Exoplanets,
-        Cached<DecodedMissionContent> SampledMissions, Cached<IReadOnlyList<LocalTleSatellite>> LocalSatellites,
+        Cached<DecodedMissionContent> SampledMissions, Cached<IReadOnlyList<LocalTleSatellite>> LocalSatellites, string SatelliteUpdates,
         Cached<EarthPlaceCatalogue> EarthPlaces, LocalDataPath SavedEarthPlacesPath, bool AllowAddonLua,
         IReadOnlyDictionary<ObjectId, PreparedMissionObservation> Observations, Cached<GalacticDustGrid?> GalacticDust, Cached<DistantStarIndex?> DistantStars)
     {
@@ -75,6 +75,12 @@ internal static partial class AddonLoader
         LocalAddonKind.BodyCatalog => LocalDataPaths.Candidates("SPACETANGENT_SSC_ADDON_ROOT", "ssc-bodies", directory: true),
         _ => throw new ArgumentOutOfRangeException(nameof(kind))
     };
+
+    internal static string SatelliteUpdatesPath()
+    {
+        var path = LocalDataPaths.Candidates("SPACETANGENT_TLE_UPDATES", "satellite-updates", directory: true);
+        return path.Explicit ?? path.User;
+    }
 
     internal static LocalDataPath SavedEarthPlacePath() =>
         LocalDataPaths.Candidates("SPACETANGENT_SAVED_EARTH_PLACES", "saved-sites.tsv");
@@ -115,6 +121,7 @@ internal static partial class AddonLoader
         var dustPath = LocalDataPaths.Candidates("SPACETANGENT_DUST_GRID", "sky/dust-vergely2022.bin");
         var missionsPath = LocalDataPaths.Candidates("SPACETANGENT_SAMPLED_MISSIONS_ROOT", "sampled-missions", directory: true);
         var tlePath = LocalDataPaths.Candidates("SPACETANGENT_TLE_ROOT", "satellites", directory: true);
+        string tleUpdates = SatelliteUpdatesPath();
         var earthPlacesPath = LocalDataPaths.Candidates("SPACETANGENT_EARTH_PLACES", "sites.txt");
         var savedEarthPlacesPath = SavedEarthPlacePath();
         return Task.Run(() =>
@@ -179,8 +186,9 @@ internal static partial class AddonLoader
             var missions = Cached<DecodedMissionContent>.Load(sameScience ? previous?.SampledMissions : null, missionsPath,
                 "Sampled mission catalogues", (path, token) => ReadSampledMissions(path, token,
                     satellites.SelectMany(source => source.Value).Select(item => item.Track).ToArray()), cancellation);
-            var tle = Cached<IReadOnlyList<LocalTleSatellite>>.Load(previous?.LocalSatellites, tlePath,
-                "Local TLE groups", (path, token) => LocalTleCatalogue.Load(path.Resolve(),
+            var tle = Cached<IReadOnlyList<LocalTleSatellite>>.Load(
+                previous?.SatelliteUpdates == tleUpdates ? previous.LocalSatellites : null, tlePath,
+                "Local TLE groups", (path, token) => LocalTleCatalogue.LoadSources([path.Resolve(), tleUpdates],
                     message => global::Godot.GD.Print("Local TLE: " + message), token), cancellation);
             var earthPlaces = Cached<EarthPlaceCatalogue>.Load(
                 previous?.SavedEarthPlacesPath == savedEarthPlacesPath ? previous?.EarthPlaces : null,
@@ -225,7 +233,7 @@ internal static partial class AddonLoader
                     spice?.Value?.Track, sampled?.Value?.Track, sampled?.Value?.Probe, relief?.Value?.Frame, brightStars, planets, marsTerrain is not null, definitions.Value.Catalogue,
                     bodies.Bodies.Select(body => body.Body), locations.Value, deepSky.Value.Index, exoplanets.Value, missions.Value.Tracks.Select(mission => mission.Track), tle.Value, earthPlaces.Value, distantStars.Value));
                 var observations = PrepareObservations(world, missions.Value.Tracks, cancellation);
-                var decoded = new DecodedAddOns(world, sameScience ? previous!.Science : satellites, spice, sampled, relief, planets, marsTerrain, stellar, archive, definitions, bodies, locations, deepSky, exoplanets, missions, tle, earthPlaces, savedEarthPlacesPath, allowAddonLua, observations, galacticDust, distantStars);
+                var decoded = new DecodedAddOns(world, sameScience ? previous!.Science : satellites, spice, sampled, relief, planets, marsTerrain, stellar, archive, definitions, bodies, locations, deepSky, exoplanets, missions, tle, tleUpdates, earthPlaces, savedEarthPlacesPath, allowAddonLua, observations, galacticDust, distantStars);
                 openedDistantStars = null;
                 return decoded;
             }

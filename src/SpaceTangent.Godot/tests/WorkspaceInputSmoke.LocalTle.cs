@@ -15,6 +15,10 @@ public partial class WorkspaceInputSmoke
         const string variable = "SPACETANGENT_TLE_ROOT";
         string? priorRoot = System.Environment.GetEnvironmentVariable(variable);
         System.Environment.SetEnvironmentVariable(variable, local);
+        const string updatesVariable = "SPACETANGENT_TLE_UPDATES";
+        string? priorUpdates = System.Environment.GetEnvironmentVariable(updatesVariable);
+        string updates = Path.Combine(directory, "Satellite updates");
+        System.Environment.SetEnvironmentVariable(updatesVariable, updates);
         string restore = Path.Combine(directory, "before-tle.stscene");
         ScenarioFile.Save(restore, Session.CaptureScenario(0));
         var id = new ObjectId("norad/26407");
@@ -46,6 +50,13 @@ public partial class WorkspaceInputSmoke
             await Click(Find<Button>("AdvanceHour0"));
             Require(Session[0].Navigation!.Value.AnchorKilometers != eye, "The camera must track the changing GPS state.");
             var accepted = Session.CaptureScenario(0);
+            Directory.CreateDirectory(updates);
+            File.Copy(Path.Combine(local, "gps-ops.txt"), Path.Combine(updates, "verified-gps.tle"));
+            await Reload("Merging the user satellite cache");
+            Require(Session.World.LocalSatellites.Count == 243 &&
+                Session.World.Catalogue.Search("verified-gps").Count == 32,
+                "Reload must merge the satellite cache with all installed groups.");
+            RequireScenario(accepted, Session.CaptureScenario(0), "Merging validated satellite updates");
             var world = Session.World;
             string file = Path.Combine(local, "gps-ops.txt");
             byte[] originalBytes = File.ReadAllBytes(file);
@@ -77,6 +88,7 @@ public partial class WorkspaceInputSmoke
         finally
         {
             System.Environment.SetEnvironmentVariable(variable, priorRoot);
+            System.Environment.SetEnvironmentVariable(updatesVariable, priorUpdates);
         }
         await Reload("Restoring the supplied satellite root");
         Require(_scene.LoadScenario(restore), "The earlier workspace must reopen after testing the TLE catalogue.");

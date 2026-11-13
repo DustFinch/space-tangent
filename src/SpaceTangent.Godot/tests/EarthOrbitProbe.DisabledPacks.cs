@@ -1,4 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
+using System.Security.Cryptography;
+using System.Text;
 using Godot;
 using SpaceTangent.Application;
 using SpaceTangent.Contracts;
@@ -44,5 +46,73 @@ public partial class EarthOrbitProbe
         if (session.World.Catalogue.Find(comet) is null || file.Load().DisabledPacks.Length != 0)
             throw new InvalidOperationException("Clearing the archived list must restore the comet pack.");
         GD.Print("Legacy disabled packs: original comet manifest ID, Halley removed and restored, panel and profile re-enable, other sources and ΔT preserved.");
+        if (System.Environment.GetEnvironmentVariable("SPACETANGENT_LEGACY_SECOND_PACK_PROBE") is { Length: > 0 } asteroidRoot)
+            await ExerciseSameNamedPacks(scene, directory, file, packRoot, asteroidRoot, scenario.DeltaT);
+    }
+
+    private static async Task ExerciseSameNamedPacks(SolarSystemScene scene, string directory, LocalAddonSettingsFile file,
+        string cometRoot, string asteroidRoot, SpaceTangent.Core.Time.DeltaTModel deltaT)
+    {
+        string first = CopyPack(cometRoot, "comets");
+        string second = CopyPack(asteroidRoot, "asteroids");
+        var session = scene.Session!;
+        var original = file.Load();
+        var settings = original with { Sources = [] };
+        foreach (string root in new[] { first, second })
+            settings = settings.SetSource(file.FindOrCreate(settings, LocalAddonKind.BodyCatalog, root), true);
+        if (!await scene.ReloadAddOns(settings))
+            throw new InvalidOperationException("The original comet and asteroid packs could not be loaded together.");
+        var comet = session.World.Catalogue.Objects.Single(body => body.Kind == CatalogueKind.Comet &&
+            body.Name.Contains("Halley", StringComparison.OrdinalIgnoreCase)).Id;
+        var asteroid = session.World.Catalogue.Objects.Single(body => body.Kind == CatalogueKind.Asteroid &&
+            body.Name.Contains("Pallas", StringComparison.OrdinalIgnoreCase)).Id;
+        string legacyPath = Path.GetFullPath(first).Replace('\\', '/');
+        if (OperatingSystem.IsWindows())
+            legacyPath = legacyPath.ToUpperInvariant();
+        string fingerprint = Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(legacyPath + "\0"))).ToLowerInvariant();
+        string key = "addon-root:" + fingerprint;
+        string profile = Path.Combine(directory, "archived-same-named-packs.json");
+        File.WriteAllText(profile, System.Text.Json.JsonSerializer.Serialize(new { Site = new { }, DisabledPacks = key }));
+        await scene.ImportStartupSettings(profile);
+        if (session.World.Catalogue.Find(comet) is not null || session.World.Catalogue.Find(asteroid) is null ||
+            !file.Load().DisabledPacks.SequenceEqual([key]) || session.DeltaT != deltaT)
+            throw new InvalidOperationException("The legacy path switch must affect only the matching source.");
+
+        string manifest = Path.Combine(first, "pack.json");
+        string backup = manifest + ".bak";
+        File.Move(manifest, backup);
+        try
+        {
+            File.WriteAllText(manifest, "{ invalid pack");
+            if (!await scene.ReloadAddOns() || session.World.Catalogue.Find(comet) is not null ||
+                session.World.Catalogue.Find(asteroid) is null)
+                throw new InvalidOperationException("Reload must skip the corrupt disabled pack.");
+            var published = session.World;
+            var enabled = file.Load() with { DisabledPacks = [] };
+            if (await scene.ReloadAddOns(enabled) || !ReferenceEquals(session.World, published) ||
+                !file.Load().DisabledPacks.SequenceEqual([key]) || session.World.Catalogue.Find(asteroid) is null)
+                throw new InvalidOperationException("A failed re-enable must preserve the published world and saved switches.");
+        }
+        finally
+        {
+            File.Move(backup, manifest, overwrite: true);
+        }
+        if (!await scene.ReloadAddOns(file.Load() with { DisabledPacks = [] }) ||
+            session.World.Catalogue.Find(comet) is null || session.World.Catalogue.Find(asteroid) is null)
+            throw new InvalidOperationException("Restoring the source must make both real packs available again.");
+        GD.Print("Same-named packs: legacy path key isolated Halley from Pallas, malformed re-enable rolled back, both restored.");
+
+        string CopyPack(string root, string owner)
+        {
+            string destination = Path.Combine(directory, owner, "same-name");
+            Directory.CreateDirectory(destination);
+            foreach (string path in Directory.EnumerateFiles(root, "*", SearchOption.AllDirectories))
+            {
+                string copy = Path.Combine(destination, Path.GetRelativePath(root, path));
+                Directory.CreateDirectory(Path.GetDirectoryName(copy)!);
+                File.Copy(path, copy, overwrite: true);
+            }
+            return destination;
+        }
     }
 }

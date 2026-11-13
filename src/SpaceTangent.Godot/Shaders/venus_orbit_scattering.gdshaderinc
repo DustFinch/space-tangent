@@ -92,8 +92,9 @@ void venus_air(vec3 eye, vec3 ray, float solid_radius, out vec3 transmission, ou
     float bottom = ground_radius_km + venus_cloud_bottom;
     float shadow_width = 0.5 * (shell_radius + ground_radius_km) * sqrt(2.0 * venus_rayleigh_height / ground_radius_km);
     float cosine = dot(ray, light_in_body);
-    vec4 phase = vec4(0.1875 * (1.0 + cosine * cosine), venus_phase(cosine, 0.7),
-        venus_phase(cosine, 0.75), venus_phase(cosine, 0.5));
+    // Cornette-Shanks parameters for mean cosines 0.7, 0.75, and 0.5.
+    vec4 phase = vec4(0.1875 * (1.0 + cosine * cosine), venus_phase(cosine, 0.63706852),
+        venus_phase(cosine, 0.69178581), venus_phase(cosine, 0.43553118));
     bool inside = length(eye) < shell_radius;
     vec3 depth = vec3(0.0);
     radiance = vec3(0.0);

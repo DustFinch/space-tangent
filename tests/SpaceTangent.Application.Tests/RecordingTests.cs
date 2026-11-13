@@ -145,6 +145,8 @@ public sealed class RecordingTests
         var frame = Assert.IsType<RecordedSceneGeometry>(replay.CurrentGeometry);
         Assert.Equal(66, frame.Orbits.Count);
         Assert.Equal(115, frame.Labels.Count);
+        var planet = Assert.Single(frame.Bodies, body => body.Name == "Sol/Earth");
+        Assert.InRange((planet.AtmosphereRadius - planet.Radius) * frame.KilometersPerUnit, 71.8, 72.0);
         Assert.Contains(frame.Labels, label => label.Text == "Альтаир");
         var earth = Assert.Single(frame.Orbits, orbit => orbit.Name == "Sol/Earth");
         Assert.True(earth.Points.Count > 32);

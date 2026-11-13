@@ -9,7 +9,7 @@ namespace SpaceTangent.Application;
 
 public readonly record struct RecordedBodyGeometry(string Name, ObjectId? Id, Vector3d CameraPosition, double Radius,
     double PolarScale, Basis3d CameraBasis, Vector3d LightDirection,
-    Vector3d LightColor, Vector3d SecondLightDirection, Vector3d SecondLightColor);
+    Vector3d LightColor, Vector3d SecondLightDirection, Vector3d SecondLightColor, double AtmosphereRadius);
 
 public sealed record RecordedSceneGeometry(double KilometersPerUnit, IReadOnlyList<RecordedBodyGeometry> Bodies)
 {
@@ -132,8 +132,11 @@ public sealed class LegacyCameraSequence : IObserverReplay
                 Vector3d secondColor = minor >= 5 ? ReadLightColor(body[117..]) : default;
                 if (!secondDirection.IsFinite)
                     throw new InvalidDataException("Invalid archived secondary light direction.");
+                double atmosphereRadius = Single(body[60..]);
+                if (!double.IsFinite(atmosphereRadius) || atmosphereRadius != 0 && atmosphereRadius < radius)
+                    throw new InvalidDataException("Invalid archived atmosphere radius.");
                 geometry[index] = new(strings[(int)id], key, position, radius, polarScale, basis,
-                    light, lightColor, secondDirection, secondColor);
+                    light, lightColor, secondDirection, secondColor, atmosphereRadius);
             }
             var (orbits, labels) = overlays.Read(data, cursor, minor, strings);
             if (previousGeometry is null || previousGeometry.KilometersPerUnit != scale ||

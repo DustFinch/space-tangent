@@ -14,6 +14,7 @@ internal partial class SimulationViewport
     private Shader? _archivedBodyShader;
     private Texture2D? _archivedMoonMap;
     private EarthOrbitTextures? _archivedEarthMaps;
+    internal MeshInstance3D? ArchivedEarthLimb { get; private set; }
     private int _archivedUsed;
 
     internal RecordedSceneGeometry? ArchivedGeometry { get; set; }
@@ -100,11 +101,42 @@ internal partial class SimulationViewport
             material.SetShaderParameter("camera_secondary_light", Column(body.SecondLightDirection));
             material.SetShaderParameter("secondary_light_color", Column(body.SecondLightColor));
             node.Show();
+            if (id == SolarSystemSample.EarthId && body.AtmosphereRadius > body.Radius && body.LightDirection.Length > 0)
+                DrawArchivedEarthLimb(node, body, scene.KilometersPerUnit, camera * Column(body.LightDirection));
         }
 
         DrawArchivedOverlays(scene, scale);
 
         static Vector3 Column(Vector3d value) => new((float)value.X, (float)value.Y, (float)value.Z);
+    }
+
+    private void DrawArchivedEarthLimb(MeshInstance3D surface, RecordedBodyGeometry body, double kilometersPerUnit,
+        Vector3 light)
+    {
+        double ground = body.Radius * kilometersPerUnit;
+        double height = (body.AtmosphereRadius - body.Radius) * kilometersPerUnit;
+        if (!float.IsFinite((float)ground) || !float.IsFinite((float)height) ||
+            surface.Basis.Determinant() == 0)
+            return;
+
+        if (ArchivedEarthLimb is null)
+        {
+            ArchivedEarthLimb = new()
+            {
+                Mesh = _archivedSphere,
+                MaterialOverride = new ShaderMaterial { Shader = GD.Load<Shader>("res://Shaders/earth_limb.gdshader") },
+                CastShadow = GeometryInstance3D.ShadowCastingSetting.Off
+            };
+            AddChild(ArchivedEarthLimb);
+        }
+
+        var material = (ShaderMaterial)ArchivedEarthLimb.MaterialOverride;
+        material.SetShaderParameter("earth_radius_km", (float)ground);
+        material.SetShaderParameter("shell_height_override_km", (float)height);
+        material.SetShaderParameter("sun_direction", (surface.Basis.Orthonormalized().Inverse() * light).Normalized());
+        ArchivedEarthLimb.Transform = new(surface.Basis.Scaled(Vector3.One * (float)(body.AtmosphereRadius / body.Radius)),
+            surface.Position);
+        ArchivedEarthLimb.Show();
     }
 
     private void HideArchivedBodies()
@@ -115,5 +147,6 @@ internal partial class SimulationViewport
         _archivedVisible.Clear();
         _archivedOverlayRoot?.Hide();
         _archivedSymbolCanvas?.Hide();
+        ArchivedEarthLimb?.Hide();
     }
 }

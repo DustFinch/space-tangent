@@ -6,6 +6,8 @@ render_mode unshaded, blend_add, cull_front, depth_draw_never;
 #include "res://Shaders/earth_orbit_geometry.gdshaderinc"
 #include "res://Shaders/atmosphere_lookup.gdshaderinc"
 
+uniform float shell_height_override_km = 0.0;
+
 varying vec3 model_surface;
 varying flat vec3 model_eye;
 
@@ -15,7 +17,9 @@ void vertex() {
 }
 
 void fragment() {
-    float shell_radius = earth_radius_km + (use_atmosphere_lookup ? air_lookup_height_km : AIR_TOP_KM);
+    float height = shell_height_override_km > 0.0 ? shell_height_override_km :
+        (use_atmosphere_lookup ? air_lookup_height_km : AIR_TOP_KM);
+    float shell_radius = earth_radius_km + height;
     vec3 eye = model_eye * shell_radius;
     vec3 ray = normalize(model_surface - model_eye);
     vec2 ground = earth_intersections(eye, ray, earth_radius_km);

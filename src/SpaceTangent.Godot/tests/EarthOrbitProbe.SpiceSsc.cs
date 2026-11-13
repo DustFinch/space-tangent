@@ -21,6 +21,7 @@ public partial class EarthOrbitProbe
         string bodies = Directory.CreateDirectory(Path.Combine(fixture, "body catalogue")).FullName;
         string kernels = Directory.CreateDirectory(Path.Combine(fixture, "pointing kernels")).FullName;
         bool jsonKernels = System.Environment.GetEnvironmentVariable("SPACETANGENT_SPICE_SSC_JSON_KERNELS") == "1";
+        string? dedicatedInput = System.Environment.GetEnvironmentVariable("SPACETANGENT_SPICE_SSC_DEDICATED");
         const string missionRoot = "SPACETANGENT_SAMPLED_MISSIONS_ROOT";
         string? originalMissions = System.Environment.GetEnvironmentVariable(missionRoot);
         const string spk = "040615AP_SK_04167_04186.bsp", ck = "04182_04183pa_soi_itl.bc";
@@ -36,7 +37,17 @@ public partial class EarthOrbitProbe
         int end = source.LastIndexOf('}');
         source = source.Insert(end, "} ]");
         File.WriteAllText(Path.Combine(bodies, "cassini.ssc"), source);
-        if (jsonKernels)
+        if (dedicatedInput is { Length: > 0 })
+        {
+            foreach (string file in new[] { "cassini.json", mesh, "cas_iss_v10.ti", spk, "soi.tm" })
+                File.Copy(Path.Combine(dedicatedInput, file), Path.Combine(kernels, file), overwrite: true);
+            string meta = Path.Combine(kernels, "soi.tm");
+            // Keep the test's CK/FK/SCLK and use the original mission's metakernel declaration.
+            if (File.ReadAllText(meta).Contains("naif0012.tls", StringComparison.Ordinal) &&
+                System.Environment.GetEnvironmentVariable("SPACETANGENT_SPK_ARCHIVE") is { } archive)
+                File.Copy(Path.Combine(archive, "naif0012.tls"), Path.Combine(kernels, "naif0012.tls"), overwrite: true);
+        }
+        else if (jsonKernels)
             File.WriteAllText(Path.Combine(kernels, "pointing.json"), """
                 {"version":"1.0","spiceKernels":["cas_v43.tf","cas00172.tsc","04182_04183pa_soi_itl.bc"]}
                 """);
@@ -48,7 +59,12 @@ public partial class EarthOrbitProbe
         var bodySource = new LocalAddonSource(Guid.NewGuid(), LocalAddonKind.BodyCatalog, bodies, false, true);
         var kernelSource = new LocalAddonSource(Guid.NewGuid(), LocalAddonKind.BodyCatalog, kernels, false, true);
         var configured = original.SetSource(bodySource, true);
-        if (!jsonKernels)
+        if (dedicatedInput is { Length: > 0 })
+        {
+            kernelSource = new(Guid.NewGuid(), LocalAddonKind.Mission, Path.Combine(kernels, "cassini.json"), false, true);
+            configured = configured.SetSource(kernelSource, true);
+        }
+        else if (!jsonKernels)
             configured = configured.SetSource(kernelSource, true);
         try
         {
@@ -57,6 +73,8 @@ public partial class EarthOrbitProbe
             if (!await scene.ReloadAddOns(configured))
                 throw new InvalidOperationException("Cassini SSC could not load its separately installed SPICE pointing kernels.");
             var session = scene.Session!;
+            if (dedicatedInput is { Length: > 0 } && session.World.MissionId is null)
+                throw new InvalidOperationException("The dedicated mission preview was not installed.");
             var track = new ObjectId("ssc/sol/saturn/cassini-ssc");
             var reference = SscSpiceCatalog.Load(originalCatalogue, input).Single();
             var epochs = new[] { JulianInstant.FromTdbSeconds(141917558.4203589), JulianInstant.FromTdbSeconds(141918830.41202343) };
@@ -86,7 +104,8 @@ public partial class EarthOrbitProbe
             using var image = GetViewport().GetTexture().GetImage();
             if (image.SavePng(Path.ChangeExtension(path, ".png")) != Error.Ok)
                 throw new IOException("Could not capture Cassini SSC.");
-            string sourceKind = jsonKernels ? "mission JSON" : "an installed SSC pack";
+            string sourceKind = dedicatedInput is { Length: > 0 } ? "the dedicated mission" :
+                jsonKernels ? "mission JSON" : "an installed SSC pack";
             GD.Print($"SSC Timeline SPICE GPU: two epochs retained original Cassini 3DS, SPK states and CK pointing with kernels from {sourceKind}. A missing CK rolled back.");
 
             ObserverView View(JulianInstant epoch)

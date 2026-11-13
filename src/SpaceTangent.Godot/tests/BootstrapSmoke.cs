@@ -25,6 +25,19 @@ public partial class BootstrapSmoke : Node
                 Require(startup.Elapsed.TotalSeconds < 20, "World initialization timed out.");
                 await ToSignal(GetTree(), SceneTree.SignalName.ProcessFrame);
             }
+            if (System.Environment.GetEnvironmentVariable("SPACETANGENT_CASSINI_RADIATOR_SMOKE") == "1")
+            {
+                Require(scene.Session?.World.MissionId == new ObjectId("naif/-82"), "Cassini radiator mission must load.");
+                scene.SetMode(0, CameraMode.Mission);
+                var frusta = scene.Renderer(0).MissionFrusta.Mesh;
+                Require(frusta is ArrayMesh rims && rims.GetSurfaceCount() == 2 &&
+                    rims.SurfaceGetArrayLen(0) == 128 && rims.SurfaceGetArrayLen(1) == 128,
+                    "Both original Cassini radiator rims must publish 32 boundary rays.");
+                GD.Print("Cassini radiator smoke passed: two circular frusta with 32 boundary rays each.");
+                GetTree().Quit();
+                return;
+            }
+
             if (!string.IsNullOrWhiteSpace(System.Environment.GetEnvironmentVariable("SPACETANGENT_DE440")))
             {
                 CheckWorkspacePanels(scene);

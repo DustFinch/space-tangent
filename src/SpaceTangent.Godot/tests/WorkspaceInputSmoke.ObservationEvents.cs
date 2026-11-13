@@ -48,6 +48,8 @@ public partial class WorkspaceInputSmoke
                 {
                     System.Environment.SetEnvironmentVariable(tleVariable, iridium);
                     Require(await _scene.ReloadAddOns(null), "Loading the historical satellite catalogue.");
+                    Require(Session.World.LocalSatellites.Any(SpaceTangent.Core.Observing.ObservationEventSearch.HasFlarePanels),
+                        "The historical TLE source must supply first-generation Iridium spacecraft.");
                     var historical = left with
                     {
                         Epoch = JulianInstant.FromJulianDate(2457547.0 + 68.184 / 86400, TimeScale.Tdb),
@@ -58,8 +60,12 @@ public partial class WorkspaceInputSmoke
                     Require(_scene.LoadScenario(path), "The historical observation must open.");
                     GetViewport().GuiGetFocusOwner()?.ReleaseFocus();
                     await KeyPress(Key.E, ctrl: true);
-                    await Until(() => status.Text.Contains(" flare · magnitude ", StringComparison.Ordinal),
-                        "Finding an antenna reflection in the original TLE catalogue", 30);
+                    Require(status.Text.StartsWith("Searching observation events", StringComparison.Ordinal),
+                        $"Historical search did not start: {status.Text}");
+                    await Until(() => !status.Text.StartsWith("Searching observation events", StringComparison.Ordinal),
+                        "Finding an antenna reflection in the original TLE catalogue", 60);
+                    Require(status.Text.Contains(" flare · magnitude ", StringComparison.Ordinal),
+                        $"Expected a historical flare: {status.Text}");
                     await KeyPress(Key.E, ctrl: true, shift: true);
                     Require(Session[0].Epoch.CompareTo(historical.Epoch) > 0 &&
                         Session[0].Selection?.Value.StartsWith("norad/", StringComparison.Ordinal) == true &&

@@ -124,6 +124,39 @@ public partial class BootstrapSmoke
                 Math.Abs(Math.IEEERemainder(turned.AzimuthRadians - free.AzimuthRadians, Math.Tau) + .12 * freeScale * sensitivity) < 1e-12,
             "A free drag must use its own field of view and sensitivity without translating the eye or the second view.");
 
+        var beforeInertia = session.CaptureScenario(0);
+        session.RestoreScenario(beforeInertia with { Views = [session[0] with { CameraInertia = true }, lunar] });
+        using var press = new InputEventMouseButton { Pressed = true, ButtonIndex = MouseButton.Right };
+        using var release = new InputEventMouseButton { ButtonIndex = MouseButton.Right };
+        using var coast = new InputEventMouseMotion
+        {
+            ButtonMask = MouseButtonMask.Right, Relative = new(20, 0), Velocity = new(200, 0)
+        };
+        viewport.EmitSignal(Control.SignalName.GuiInput, press);
+        viewport.EmitSignal(Control.SignalName.GuiInput, coast);
+        viewport.EmitSignal(Control.SignalName.GuiInput, release);
+        var released = session[0].Navigation!.Value;
+        scene._Process(.05);
+        var firstCoast = session[0].Navigation!.Value;
+        scene._Process(.05);
+        var secondCoast = session[0].Navigation!.Value;
+        double firstTurn = released.AzimuthRadians - firstCoast.AzimuthRadians;
+        double secondTurn = firstCoast.AzimuthRadians - secondCoast.AzimuthRadians;
+        Require(firstTurn > 0 && Math.Abs(secondTurn / firstTurn - Math.Exp(-.05 / .3)) < 1e-5 &&
+                released.AnchorKilometers == secondCoast.AnchorKilometers && session[1] == lunar,
+            "A released camera drag must coast with the archived decay without moving either eye.");
+        using var zoom = new InputEventMouseButton { Pressed = true, ButtonIndex = MouseButton.WheelUp };
+        viewport.EmitSignal(Control.SignalName.GuiInput, zoom);
+        Require(session[0].Navigation!.Value.RangeKilometers == secondCoast.RangeKilometers,
+            "An inertial wheel notch must start a push instead of jumping the range.");
+        scene._Process(.05);
+        double zoomed = session[0].Navigation!.Value.RangeKilometers;
+        Require(Math.Abs(zoomed / secondCoast.RangeKilometers - Math.Pow(.85, 1 - Math.Exp(-.05 / .3))) < 1e-12 &&
+                session[1] == lunar, "The wheel push must use the archived exponential range and leave the other view intact.");
+        scene._Notification((int)Node.NotificationApplicationFocusOut);
+        scene._Process(.05);
+        Require(session[0].Navigation!.Value.RangeKilometers == zoomed, "Focus loss must clear the pending wheel push.");
+        session.RestoreScenario(beforeInertia);
         session.SetFieldOfView(0, priorField);
         JulianInstant beforeJason = session[0].Epoch;
         Select("26997");

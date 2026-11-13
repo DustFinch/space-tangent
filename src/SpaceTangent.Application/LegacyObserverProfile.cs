@@ -135,6 +135,7 @@ public static class LegacyObserverProfiles
         {
             EarthObserver = camera.IsValid() ? camera : current.EarthObserver,
             Sky = sky, ReferenceMarks = marks, FieldOfViewDegrees = field, Optics = optics, AutoOrbit = autoOrbit,
+            CameraInertia = Flag(root, "Inertia") ?? current.CameraInertia,
             MouseSensitivity = sensitivity is { } value && ObserverView.ValidMouseSensitivity(value)
                 ? (value == 1 ? null : value) : current.MouseSensitivity
         };

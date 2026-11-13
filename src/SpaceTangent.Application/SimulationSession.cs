@@ -32,6 +32,7 @@ public readonly record struct ObserverView(JulianInstant Epoch, CameraMode Mode,
     public double? FieldOfViewDegrees { get; init; }
     public CameraAutoOrbit? AutoOrbit { get; init; }
     public double? MouseSensitivity { get; init; }
+    public bool CameraInertia { get; init; }
     public static bool ValidMouseSensitivity(double value) => value is >= .25 and <= 4;
     public double? PlaybackRate { get; init; }
     public bool LightTimeDelayed { get; init; }

@@ -21,6 +21,9 @@ public partial class SolarSystemScene : Control
     {
         internal WorldSnapshot? Snapshot { get; set; }
         internal ProjectionScale? Perspective { get; set; }
+        internal bool DraggingCamera { get; set; }
+        internal Vector2 CameraDragVelocity { get; set; }
+        internal double CameraDollyRate { get; set; }
     }
 
     private readonly List<ViewControls> _views = [];
@@ -647,7 +650,11 @@ public partial class SolarSystemScene : Control
     public override void _Notification(int what)
     {
         if (what == NotificationApplicationFocusOut)
+        {
             _shipKeys.Clear();
+            foreach (var view in _views)
+                ClearCameraInertia(view);
+        }
     }
 
     public override void _Process(double delta)
@@ -658,6 +665,8 @@ public partial class SolarSystemScene : Control
             delta = 1.0 / WindowRecording.FramesPerSecond;
         FlyShip(delta);
         bool changed = Session?.Tick(delta) == true;
+        if (Session is not null)
+            changed |= StepCameraInertia(delta);
         changed |= _demoSurfaces.PublishReady();
         foreach (var view in _views)
             changed |= view.Renderer.PublishDemoTerrain();
@@ -715,6 +724,7 @@ public partial class SolarSystemScene : Control
     internal void SetMode(int view, CameraMode mode)
     {
         _active = view;
+        ClearCameraInertia(_views[view]);
         Session!.SetMode(view, mode);
         Refresh();
     }
@@ -1175,6 +1185,8 @@ public partial class SolarSystemScene : Control
         ObserverLayout previousLayout = Session!.Layout;
         ViewSplit previousDirection = Session.SplitLayout;
         Session.RestoreScenario(scenario);
+        foreach (var view in _views)
+            ClearCameraInertia(view);
         ResetPerspectiveScale();
         if (_script is not null)
             StopScript();
@@ -1398,7 +1410,14 @@ public partial class SolarSystemScene : Control
     {
         if (input is InputEventMouseButton { Pressed: true })
             ActivateView(view);
-        var measurements = _views[view].Measurements;
+        var controls = _views[view];
+        if (input is InputEventMouseButton { ButtonIndex: MouseButton.Right } right)
+        {
+            controls.DraggingCamera = right.Pressed;
+            if (right.Pressed)
+                controls.CameraDragVelocity = Vector2.Zero;
+        }
+        var measurements = controls.Measurements;
         if (measurements.HandleAngleInput(input))
         {
             if (measurements.AngleDegrees is { } angle)
@@ -1418,7 +1437,7 @@ public partial class SolarSystemScene : Control
             InputEventMouseButton { Pressed: true, ButtonIndex: MouseButton.WheelUp or MouseButton.WheelDown } wheel =>
                 AdjustWheel(view, wheel),
             InputEventMouseMotion motion when (motion.ButtonMask & MouseButtonMask.Right) != 0 =>
-                AdjustDrag(view, motion.Relative),
+                ApplyCameraMotion(view, motion),
             _ => false
         };
         if (adjusted)
@@ -1426,6 +1445,56 @@ public partial class SolarSystemScene : Control
             GetViewport().SetInputAsHandled();
             Refresh();
         }
+    }
+
+    private const double CameraInertiaSeconds = .3;
+
+    private bool ApplyCameraMotion(int view, InputEventMouseMotion motion)
+    {
+        var controls = _views[view];
+        bool moved = AdjustDrag(view, motion.Relative);
+        if (moved && controls.DraggingCamera && Session![view].CameraInertia && !Session.InShip(view) &&
+            motion.Velocity.IsFinite())
+            controls.CameraDragVelocity = controls.CameraDragVelocity.Lerp(motion.Velocity.LimitLength(4000), .5f);
+        return moved;
+    }
+
+    private bool StepCameraInertia(double elapsed)
+    {
+        if (!(elapsed > 0))
+            return false;
+        double decay = Math.Exp(-Math.Min(elapsed, .1) / CameraInertiaSeconds);
+        double integrated = CameraInertiaSeconds * (1 - decay);
+        bool changed = false;
+        var session = Session!;
+        for (int index = 0; index < _views.Count; index++)
+        {
+            var controls = _views[index];
+            if (!session[index].CameraInertia || session.IsFlying(index) || session.InShip(index))
+            {
+                controls.CameraDragVelocity = Vector2.Zero;
+                controls.CameraDollyRate = 0;
+                continue;
+            }
+            if (!controls.DraggingCamera && controls.CameraDragVelocity.LengthSquared() > 1)
+            {
+                changed |= AdjustDrag(index, controls.CameraDragVelocity * (float)integrated);
+                controls.CameraDragVelocity *= (float)decay;
+            }
+            if (Math.Abs(controls.CameraDollyRate) > .001)
+            {
+                changed |= session.AdjustCamera(index, 0, 0, Math.Exp(controls.CameraDollyRate * integrated));
+                controls.CameraDollyRate *= decay;
+            }
+        }
+        return changed;
+    }
+
+    private static void ClearCameraInertia(ViewControls controls)
+    {
+        controls.DraggingCamera = false;
+        controls.CameraDragVelocity = Vector2.Zero;
+        controls.CameraDollyRate = 0;
     }
 
     private bool AdjustDrag(int view, Vector2 pixels)
@@ -1470,6 +1539,14 @@ public partial class SolarSystemScene : Control
             return true;
         }
 
+        if (observer.CameraInertia && observer.Navigation is not null && !session.InShip(view))
+        {
+            session.CancelFlight(view);
+            var controls = _views[view];
+            controls.CameraDollyRate = Math.Clamp(controls.CameraDollyRate +
+                (inward ? 1 : -1) * Math.Log(.85) / CameraInertiaSeconds, -20, 20);
+            return true;
+        }
         return session.AdjustCamera(view, 0, 0, inward ? .8 : 1.25);
     }
 
@@ -1658,7 +1735,8 @@ public partial class SolarSystemScene : Control
             ViewControls controls = _views[index];
             var snapshot = session.World.Graph.Evaluate(session[index].Epoch);
             session.UpdateCamera(index, snapshot, elapsed);
-            session.UpdateAutoOrbit(index, snapshot, elapsed);
+            if (!controls.DraggingCamera)
+                session.UpdateAutoOrbit(index, snapshot, elapsed);
             session.UpdateShip(index, snapshot, elapsed);
             ShipView? ship = session.Ship(index);
             ObserverView view = session[index];

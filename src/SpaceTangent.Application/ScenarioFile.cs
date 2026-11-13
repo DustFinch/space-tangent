@@ -17,7 +17,7 @@ public sealed record SimulationScenario(IReadOnlyList<ObserverView> Views, bool 
 /// <summary>Persists observer settings with exact TDB epochs and stable catalog IDs.</summary>
 public static class ScenarioFile
 {
-    private const int Version = 21;
+    private const int Version = 22;
     internal const int MaximumBytes = 32 * 1024;
     private static readonly JsonSerializerOptions Json = new()
     {
@@ -62,7 +62,8 @@ public static class ScenarioFile
             throw new InvalidDataException("The scenario has an invalid camera sensitivity.");
         var document = new Document
         {
-            Version = scenario.Views.Any(view => view.MouseSensitivity is not null) ? 21 :
+            Version = scenario.Views.Any(view => view.CameraInertia) ? 22 :
+                scenario.Views.Any(view => view.MouseSensitivity is not null) ? 21 :
                 scenario.Views.Any(view => view.AutoOrbit is not null) ? 20 :
                 scenario.Views.Any(view => view.Navigation?.Placement?.CatalogueFrame is not null) ? 19 :
                 scenario.Views.Any(view => view.Optics?.Finders is not null) ? 18 :
@@ -93,6 +94,7 @@ public static class ScenarioFile
                 FieldOfViewDegrees = view.FieldOfViewDegrees,
                 AutoOrbit = view.AutoOrbit,
                 MouseSensitivity = view.MouseSensitivity,
+                CameraInertia = view.CameraInertia,
                 PlaybackRate = view.PlaybackRate,
                 Navigation = view.Navigation is { } pose ? Camera.From(pose) : null,
                 EarthObserver = view.EarthObserver,
@@ -206,12 +208,15 @@ public static class ScenarioFile
                 throw new InvalidDataException("The scenario has an invalid or unsupported camera orbit period.");
             if (data.MouseSensitivity is { } sensitivity && (document.Version < 21 || !ObserverView.ValidMouseSensitivity(sensitivity)))
                 throw new InvalidDataException("The scenario has an invalid or unsupported camera sensitivity.");
+            if (data.CameraInertia && document.Version < 22)
+                throw new InvalidDataException("Camera inertia requires scenario version 22.");
             views[i] = new(epoch, data.Camera, selection, data.Playing)
             {
                 Terrain = data.Terrain,
                 FieldOfViewDegrees = data.FieldOfViewDegrees,
                 AutoOrbit = data.AutoOrbit,
                 MouseSensitivity = data.MouseSensitivity,
+                CameraInertia = data.CameraInertia,
                 PlaybackRate = data.PlaybackRate,
                 Navigation = navigation,
                 EarthObserver = data.EarthObserver,
@@ -254,6 +259,8 @@ public static class ScenarioFile
         public CameraAutoOrbit? AutoOrbit { get; init; }
         [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
         public double? MouseSensitivity { get; init; }
+        [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingDefault)]
+        public bool CameraInertia { get; init; }
         [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
         public double? PlaybackRate { get; init; }
         [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]

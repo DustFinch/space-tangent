@@ -34,6 +34,7 @@ public sealed class LegacyObserverProfileTests
         Assert.Equal(DeltaTModel.MorrisonStephenson2004, result.DeltaT);
         Assert.Equal(50, observer.FieldOfViewDegrees);
         Assert.Equal(new CameraAutoOrbit(120, false), observer.AutoOrbit);
+        Assert.True(observer.CameraInertia);
         Assert.True(observer.Sky.Stars && observer.Sky.DeepSky && observer.Sky.Labels && observer.Sky.Meteors);
         Assert.False(observer.Sky.EquatorialGrid || observer.Sky.Constellations);
         var camera = Assert.IsType<EarthObserverCamera>(observer.EarthObserver);
@@ -148,6 +149,28 @@ public sealed class LegacyObserverProfileTests
             Assert.Equal(2.5, LegacyObserverProfiles.Read(path, profile.Observer, profile.DeltaT).Observer.MouseSensitivity);
             File.WriteAllText(path, """{"DeltaT":"MorrisonStephenson2004","MouseSensitivity":1}""");
             Assert.Null(LegacyObserverProfiles.Read(path, profile.Observer, profile.DeltaT).Observer.MouseSensitivity);
+        }
+        finally { File.Delete(path); }
+    }
+
+    [Fact]
+    public void ArchivedCameraInertiaRoundTripsForOnlyOneView()
+    {
+        string path = Path.GetTempFileName();
+        try
+        {
+            File.WriteAllText(path, """{"DeltaT":"MorrisonStephenson2004","Inertia":true}""");
+            var view = new ObserverView(new(2451545, 0, TimeScale.Tdb), CameraMode.Solar, null, false);
+            var profile = LegacyObserverProfiles.Read(path, view, DeltaTModel.EspenakMeeus2006);
+            Assert.True(profile.Observer.CameraInertia);
+            var scene = new SimulationScenario([profile.Observer, view], false, 0, 0, profile.DeltaT);
+            ScenarioFile.Save(path, scene);
+            Assert.Equal(scene.Views, ScenarioFile.Load(path).Views);
+            var json = System.Text.Json.Nodes.JsonNode.Parse(File.ReadAllText(path))!.AsObject();
+            Assert.Equal(22, json["version"]!.GetValue<int>());
+            json["version"] = 21;
+            File.WriteAllText(path, json.ToJsonString());
+            Assert.Throws<InvalidDataException>(() => ScenarioFile.Load(path));
         }
         finally { File.Delete(path); }
     }

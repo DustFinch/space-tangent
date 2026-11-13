@@ -200,7 +200,7 @@ internal partial class SimulationViewport
         if (_localSatelliteId is { } tracked && _localSatelliteMarker is { } marker)
             Consider(tracked, marker);
         foreach (var (id, body) in _importedNodes)
-            if (body.Asset.Observation is null)
+            if (body.Asset.Observation is null && body.Asset.Geometry?.Any(span => span.VectorOverlay is not null) != true)
                 Consider(id, body.Node);
         foreach (var (id, disk) in _visibleStars)
             Consider(id, disk);

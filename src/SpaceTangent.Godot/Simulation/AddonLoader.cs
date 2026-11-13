@@ -361,6 +361,7 @@ internal static partial class AddonLoader
                         emitter.TexturePath is { } image ? textures[image] : null)).ToArray())
                 {
                     Axes = shape.Axes,
+                    VectorOverlay = shape.VectorOverlay,
                     EllipsoidRadiiKilometers = shape.EllipsoidRadiiKilometers,
                     GlobeMaterial = shape.GlobeTexturePath is { } map ? new global::Godot.StandardMaterial3D
                     {

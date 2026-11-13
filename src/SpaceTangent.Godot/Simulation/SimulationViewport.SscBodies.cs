@@ -21,6 +21,7 @@ internal sealed record PreparedMissionGeometry(JulianInstant Start, JulianInstan
     IReadOnlyList<PreparedParticleEmitter>? Particles)
 {
     internal MissionAxesStyle? Axes { get; init; }
+    internal MissionVectorStyle? VectorOverlay { get; init; }
     internal Vector3d? EllipsoidRadiiKilometers { get; init; }
     internal StandardMaterial3D? GlobeMaterial { get; init; }
 }
@@ -61,6 +62,9 @@ internal partial class SimulationViewport
         }
         _importedNodes.Clear();
         _missionObservations.Clear();
+        foreach (var mesh in _missionVectorMeshes.Values)
+            mesh.Dispose();
+        _missionVectorMeshes.Clear();
         foreach (PreparedImportedBody asset in assets)
         {
             var color = asset.Color;
@@ -127,6 +131,11 @@ internal partial class SimulationViewport
                 }
                 if (active is null)
                     continue;
+                if (active.VectorOverlay is { } overlay)
+                {
+                    DrawMissionVector(node, overlay, state, snapshot, frame.ToWorld, position, projection / units);
+                    continue;
+                }
                 if (active.Axes is { } axes)
                 {
                     DrawMissionAxes(node, axes, snapshot, frame.ToWorld, position, projection / units);

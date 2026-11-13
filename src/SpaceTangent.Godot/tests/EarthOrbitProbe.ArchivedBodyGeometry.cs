@@ -115,6 +115,55 @@ public partial class EarthOrbitProbe
         }
     }
 
+    private async Task ExerciseArchivedGround(SolarSystemScene scene, string directory, string recording)
+    {
+        scene.SetProcess(false);
+        string saved = Path.Combine(directory, "before-archived-ground.stscene");
+        if (!scene.SaveScenario(saved) || !scene.StartReplay(recording))
+            throw new InvalidOperationException("Could not open the original ground observer recording.");
+        var renderer = scene.Renderer(0);
+        var geometry = renderer.ArchivedGeometry!;
+        if (geometry.StellarView?.Ground is not { } ground || renderer.ArchivedStarCount < 100_000)
+            throw new InvalidOperationException("The original ground observer settings or star field are absent.");
+        var earth = geometry.Bodies.Single(body => body.Id == SolarSystemSample.EarthId);
+        var camera = renderer.NavigationCameraNode;
+        var field = renderer.GetNode<MeshInstance3D>("ArchivedStarBackground");
+        var stars = (ShaderMaterial)field.MaterialOverride;
+        if (Math.Abs(camera.Fov - 60) > .01f || earth.CameraPosition.Length is < .99 or > 1.01 ||
+            stars.GetShaderParameter("refraction").AsSingle() != ground.Refraction ||
+            stars.GetShaderParameter("twinkle").AsSingle() != ground.Twinkle ||
+            renderer.ArchivedGroundGlow is not { Visible: true } glow ||
+            ((ShaderMaterial)glow.MaterialOverride).GetShaderParameter("zenith_glow").AsSingle() != ground.Glow)
+            throw new InvalidOperationException($"The original ground camera or optical profile was not restored. Sun: {geometry.SunPosition}.");
+
+        await ToSignal(RenderingServer.Singleton, RenderingServer.SignalName.FramePostDraw);
+        using var image = renderer.GetViewport().GetTexture().GetImage();
+        glow.Hide();
+        await ToSignal(RenderingServer.Singleton, RenderingServer.SignalName.FramePostDraw);
+        using var noGlow = renderer.GetViewport().GetTexture().GetImage();
+        int sky = 0, groundPixels = 0;
+        var zenith = new Vector3((float)ground.Zenith.X, (float)ground.Zenith.Y, (float)ground.Zenith.Z);
+        Basis inverse = camera.GlobalBasis.Inverse();
+        for (int y = 0; y < image.GetHeight(); y += 4)
+        for (int x = 0; x < image.GetWidth(); x += 4)
+        {
+            float elevation = (inverse * camera.ProjectRayNormal(new(x, y))).Dot(zenith);
+            float change = image.GetPixel(x, y).Luminance - noGlow.GetPixel(x, y).Luminance;
+            if (elevation > .01f && change > .02f)
+                sky++;
+            else if (elevation < -.07f && Math.Abs(change) < .001f)
+                groundPixels++;
+        }
+        if (image.SavePng(Path.Combine(directory, "night-replay.png")) != Error.Ok ||
+            noGlow.SavePng(Path.Combine(directory, "night-replay-no-glow.png")) != Error.Ok ||
+            sky < 100 || groundPixels < 100)
+            throw new InvalidOperationException($"Archived sky glow changed {sky} sky samples and left {groundPixels} below the horizon unchanged.");
+        glow.Show();
+        if (!scene.LoadScenario(saved) || renderer.ArchivedStarCount != 0 || glow.Visible)
+            throw new InvalidOperationException("The archived sky persisted outside replay.");
+        GD.Print($"Archived ground observer GPU: refraction {ground.Refraction:F5}, twinkle {ground.Twinkle:F2}, glow {ground.Glow:F5}, {sky} lit sky samples, {groundPixels} unchanged below horizon.");
+    }
+
     private async Task ExerciseArchivedLens(SolarSystemScene scene, string directory, string recording)
     {
         string saved = Path.Combine(directory, "before-archived-lens.stscene");

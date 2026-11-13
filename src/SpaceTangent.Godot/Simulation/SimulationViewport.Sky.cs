@@ -51,6 +51,7 @@ internal partial class SimulationViewport
         bool available = DrawScene(observer, snapshot, deltaT);
         DrawArchivedStars(ArchivedGeometry?.StellarView, observer.Epoch.ToJulianDate());
         DrawArchivedStarPoints(ArchivedGeometry?.StarPoints);
+        DrawArchivedGroundGlow(ArchivedGeometry);
         if (_spaceSky is not null)
         {
             bool localSky = observer.Sky.Stars || observer.Sky.Labels || observer.Sky.EquatorialGrid || observer.Sky.Constellations;

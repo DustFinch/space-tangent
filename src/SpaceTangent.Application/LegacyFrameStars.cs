@@ -93,7 +93,12 @@ internal sealed class LegacyFrameStars
             if (data.Length < start + 40)
                 throw new InvalidDataException("Truncated archived ground stellar view.");
             var air = data[start..];
-            ground = new(Vector(air), Float(air[12..]), Float(air[16..]), Float(air[20..]), Vector(air[24..]), Float(air[36..]));
+            var profile = new RecordedGroundStars(Vector(air), Float(air[12..]), Float(air[16..]), Float(air[20..]),
+                Vector(air[24..]), Float(air[36..]));
+            if (Math.Abs(profile.Zenith.Length - 1) > .001 || profile.Refraction < 0 || profile.Twinkle < 0 ||
+                profile.Glow < 0 || profile.Beta.Length >= 1)
+                throw new InvalidDataException("Invalid archived ground stellar view.");
+            ground = profile;
             start += 40;
         }
         var positions = data[start..];

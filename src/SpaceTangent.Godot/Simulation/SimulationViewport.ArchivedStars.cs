@@ -14,8 +14,49 @@ internal partial class SimulationViewport
     internal int ArchivedStarCount => _archivedStarBackground?.Visible == true
         ? (_archivedBackgroundSource?.Count ?? 0) + (_archivedMovingSource?.Count ?? 0) : 0;
 
-    private MeshInstance3D? _archivedStarPoints;
+    private MeshInstance3D? _archivedStarPoints, _archivedGroundGlow;
+    internal MeshInstance3D? ArchivedGroundGlow => _archivedGroundGlow;
     private IReadOnlyList<RecordedStarPoint>? _archivedStarPointSource;
+
+    private void DrawArchivedGroundGlow(RecordedSceneGeometry? frame)
+    {
+        if (frame?.StellarView?.Ground is not { Glow: > 0 } ground || DisplayServer.GetName() == "headless")
+        {
+            _archivedGroundGlow?.Hide();
+            return;
+        }
+
+        Vector3d sun = frame.SunPosition;
+        double altitude = sun.Length > 0 ? Vector3d.Dot(sun / sun.Length, ground.Zenith) : -1;
+        float darkness = 1 - Mathf.SmoothStep(-.208f, -.087f, (float)altitude);
+        if (darkness <= 0)
+        {
+            _archivedGroundGlow?.Hide();
+            return;
+        }
+
+        if (_archivedGroundGlow is null)
+        {
+            _archivedGroundGlow = new MeshInstance3D
+            {
+                Name = "ArchivedGroundGlow",
+                Mesh = new SphereMesh { Radius = 1, Height = 2, RadialSegments = 48, Rings = 24 },
+                MaterialOverride = new ShaderMaterial
+                {
+                    Shader = GD.Load<Shader>("res://Shaders/archived_ground_glow.gdshader"),
+                    RenderPriority = 1
+                },
+                CastShadow = GeometryInstance3D.ShadowCastingSetting.Off
+            };
+            AddChild(_archivedGroundGlow);
+        }
+        _archivedGroundGlow.Transform = _navigationCamera.Transform;
+        var material = (ShaderMaterial)_archivedGroundGlow.MaterialOverride;
+        material.SetShaderParameter("zenith", new Vector3((float)ground.Zenith.X, (float)ground.Zenith.Y, (float)ground.Zenith.Z));
+        material.SetShaderParameter("zenith_glow", ground.Glow);
+        material.SetShaderParameter("darkness", darkness);
+        _archivedGroundGlow.Show();
+    }
 
     private void DrawArchivedStarPoints(IReadOnlyList<RecordedStarPoint>? points)
     {

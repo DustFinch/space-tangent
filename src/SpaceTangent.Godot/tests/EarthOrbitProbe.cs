@@ -76,6 +76,12 @@ public partial class EarthOrbitProbe : Node
                 result = 0;
                 return;
             }
+            if (System.Environment.GetEnvironmentVariable("SPACETANGENT_ARCHIVED_GROUND_GPU") is { Length: > 0 } groundRecording)
+            {
+                await ExerciseArchivedGround(scene, directory, groundRecording);
+                result = 0;
+                return;
+            }
             if (System.Environment.GetEnvironmentVariable("SPACETANGENT_ARCHIVED_LENS_GPU") is { Length: > 0 } lensRecording)
             {
                 await ExerciseArchivedLens(scene, directory, lensRecording);

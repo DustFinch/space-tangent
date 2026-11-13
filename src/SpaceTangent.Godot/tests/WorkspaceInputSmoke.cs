@@ -319,25 +319,9 @@ public partial class WorkspaceInputSmoke : Node
             await ToSignal(Tree, SceneTree.SignalName.ProcessFrame);
         float upperBefore = upper.Size.Y, lowerBefore = lower.Size.Y;
         double siblingField = Session[0].EffectiveFieldOfView;
-        var dragger = divider.GetDragAreaControls().Single();
-        Window root = Tree.Root;
-        Vector2 point = root.GetScreenTransform().AffineInverse() * (dragger.GetScreenTransform() * (dragger.Size / 2));
-        Vector2 movement = new(0, 32);
-        using var enter = new InputEventMouseMotion { Position = point, GlobalPosition = point };
-        root.PushInput(enter, inLocalCoords: true);
-        using var down = MouseButtonAt(point, true);
-        root.PushInput(down, inLocalCoords: true);
-        using var drag = new InputEventMouseMotion
-        {
-            Position = point + movement, GlobalPosition = point + movement, Relative = movement, ButtonMask = MouseButtonMask.Left
-        };
-        root.PushInput(drag, inLocalCoords: true);
-        using var up = MouseButtonAt(point + movement, false);
-        root.PushInput(up, inLocalCoords: true);
-        await ToSignal(Tree, SceneTree.SignalName.ProcessFrame);
-        await ToSignal(Tree, SceneTree.SignalName.ProcessFrame);
+        await DragDivider(32);
         Require(Session.Layout.Second!.FirstShare > .5, "Moving the nested divider must update the saved split ratio.");
-        int dpi = root.CurrentScreen >= 0 ? DisplayServer.ScreenGetDpi(root.CurrentScreen) : 0;
+        int dpi = Tree.Root.CurrentScreen >= 0 ? DisplayServer.ScreenGetDpi(Tree.Root.CurrentScreen) : 0;
         double Expected(double initial, float oldHeight, float newHeight) => initial *
             PerspectiveViewScale.ScreenAngleDegrees(newHeight, dpi) / PerspectiveViewScale.ScreenAngleDegrees(oldHeight, dpi);
         await Until(() => upper.Size.Y > upperBefore && lower.Size.Y < lowerBefore &&
@@ -346,6 +330,73 @@ public partial class WorkspaceInputSmoke : Node
             "Preserving each observer's physical magnification through divider drag");
         Require(Session[0].EffectiveFieldOfView == siblingField, "A separate branch must keep its own field.");
         GD.Print("UI: changed the real divider and preserved both physical zoom factors and the third field");
+
+        double savedUpperField = Session[1].EffectiveFieldOfView;
+        float savedUpperHeight = upper.Size.Y;
+        string zoomScript = Path.Combine(directory, "nested-zoom.celx");
+        var transient = RunZoom("""
+            local views = celestia:getobservers()
+            assert(#views == 3 and views[3]:isvalid())
+            views[2]:setfov(math.rad(26), false)
+            assert(math.abs(math.deg(views[2]:getfov()) - 26) < 1e-10)
+            """);
+        Require(transient.Error is null && Math.Abs(Session[1].EffectiveFieldOfView - 26) < 1e-9,
+            $"Transient CELX field must take effect immediately. {transient.Error}");
+        for (int frame = 0; frame < 3; frame++)
+            await ToSignal(Tree, SceneTree.SignalName.ProcessFrame);
+        await DragDivider(-16);
+        await Until(() => upper.Size.Y < savedUpperHeight &&
+            Math.Abs(Session[1].EffectiveFieldOfView - Expected(savedUpperField, savedUpperHeight, upper.Size.Y)) < 1e-9,
+            "Retaining the stored physical zoom after setfov(false)");
+
+        var synchronized = RunZoom("""
+            local views = celestia:getobservers()
+            views[2]:setfov(math.rad(31), false)
+            views[3]:setfov(math.rad(22))
+            assert(math.abs(math.deg(views[2]:getfov()) - 31) < 1e-10)
+            """);
+        Require(synchronized.Error is null, $"Synchronizing physical zoom from CELX. {synchronized.Error}");
+        for (int frame = 0; frame < 3; frame++)
+            await ToSignal(Tree, SceneTree.SignalName.ProcessFrame);
+        float committedUpper = upper.Size.Y, committedLower = lower.Size.Y;
+        await DragDivider(12);
+        await Until(() => upper.Size.Y > committedUpper &&
+            Math.Abs(Session[1].EffectiveFieldOfView - Expected(31, committedUpper, upper.Size.Y)) < 1e-9 &&
+            Math.Abs(Session[2].EffectiveFieldOfView - Expected(22, committedLower, lower.Size.Y)) < 1e-9,
+            "Keeping both distinct committed zoom factors after setfov with default syncZoom");
+        Require(Session[0].EffectiveFieldOfView == siblingField, "Syncing the zoom baselines must preserve the sibling field.");
+        GD.Print("UI: CELX syncZoom false retained the old baseline, while the default stored independent zoom for all three views.");
+
+        LuaSessionScript RunZoom(string source)
+        {
+            File.WriteAllText(zoomScript, source);
+            var script = LuaSessionScript.Load(zoomScript, Session, 0, hasSurface: true, _ => { });
+            for (int frame = 0; !script.Finished && frame < 100; frame++)
+                script.Step(0);
+            Require(script.Finished, "The observer zoom script must finish.");
+            return script;
+        }
+
+        async Task DragDivider(float pixels)
+        {
+            var dragger = divider.GetDragAreaControls().Single();
+            Window root = Tree.Root;
+            Vector2 point = root.GetScreenTransform().AffineInverse() * (dragger.GetScreenTransform() * (dragger.Size / 2));
+            Vector2 movement = new(0, pixels);
+            using var enter = new InputEventMouseMotion { Position = point, GlobalPosition = point };
+            root.PushInput(enter, inLocalCoords: true);
+            using var down = MouseButtonAt(point, true);
+            root.PushInput(down, inLocalCoords: true);
+            using var drag = new InputEventMouseMotion
+            {
+                Position = point + movement, GlobalPosition = point + movement, Relative = movement, ButtonMask = MouseButtonMask.Left
+            };
+            root.PushInput(drag, inLocalCoords: true);
+            using var up = MouseButtonAt(point + movement, false);
+            root.PushInput(up, inLocalCoords: true);
+            await ToSignal(Tree, SceneTree.SignalName.ProcessFrame);
+            await ToSignal(Tree, SceneTree.SignalName.ProcessFrame);
+        }
 
         await Click(Find<Button>("TimeTab"));
         await Click(Find<CheckButton>("SyncViewTime"));

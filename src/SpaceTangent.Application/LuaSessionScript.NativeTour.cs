@@ -10,7 +10,7 @@ public sealed partial class LuaSessionScript
     private readonly Dictionary<ObjectId, DynValue> _luaObjects = new();
     private SimulationWorld? _treeWorld;
     private ILookup<ObjectId, CatalogueObject>? _solarChildren;
-    private DynValue? _nativeObserver;
+    private readonly Dictionary<int, DynValue> _nativeObservers = [];
     private (SimulationWorld World, WorldSnapshot Snapshot)? _nativeSnapshot;
 
     private void BindNativeObjects(Table api)
@@ -20,22 +20,60 @@ public sealed partial class LuaSessionScript
         Bind(api, "celxprint", (_, arguments) => PrintNotice(arguments, native: true));
     }
 
-    private void BindNativeObserver(Table upstream)
+    private void BindNativeObserver(Table upstream, bool plugin)
     {
-        Bind(upstream, "getobserver", (_, _) => _nativeObserver ??= MakeNativeObserver());
+        Bind(upstream, "getobserver", (_, _) => NativeObserver(View, plugin));
+        Bind(upstream, "getobservers", (_, _) =>
+        {
+            var observers = new Table(_vm);
+            if (plugin)
+                observers[1] = NativeObserver(View, plugin);
+            else
+                for (int view = 0; view < _session.ViewCount; view++)
+                    observers[view + 1] = NativeObserver(view, plugin);
+            return DynValue.NewTable(observers);
+        });
         BindNativeQueries(upstream);
         BindNativeMarkers(upstream);
     }
 
-    private DynValue MakeNativeObserver()
+    private DynValue NativeObserver(int view, bool plugin)
+    {
+        int identity = _session.ViewIdentity(view);
+        if (!_nativeObservers.TryGetValue(identity, out var observer))
+        {
+            foreach (int removed in _nativeObservers.Keys.Where(id => _session.IndexOfView(id) < 0).ToArray())
+                _nativeObservers.Remove(removed);
+            _nativeObservers.Add(identity, observer = MakeNativeObserver(identity, plugin));
+        }
+        return observer;
+    }
+
+    private DynValue MakeNativeObserver(int identity, bool plugin)
     {
         var observer = new Table(_vm);
+        int Index() => _session.IndexOfView(identity) is >= 0 and var index ? index :
+            throw new ScriptRuntimeException("Observer has been deleted.");
+        Bind(observer, "isvalid", (_, _) => DynValue.NewBoolean(_session.IndexOfView(identity) >= 0));
+        Bind(observer, "getfov", (_, _) => DynValue.NewNumber(_session[Index()].EffectiveFieldOfView * Math.PI / 180));
+        Bind(observer, "setfov", (_, arguments) =>
+        {
+            int view = Index();
+            var args = arguments.SkipMethodCall();
+            if (args[0].CastToNumber() is not { } radians)
+                throw new ScriptRuntimeException("Expected a field angle.");
+            bool synchronize = args[1].IsNil() || Boolean(args[1]);
+            double degrees = radians * 180 / Math.PI;
+            return ObserverView.ValidFieldOfView(degrees)
+                ? Change(() => _session.SetScriptFieldOfView(view, degrees, synchronize, synchronizeOtherViews: !plugin))
+                : DynValue.Nil;
+        });
         Bind(observer, "follow", (_, arguments) => Change(() =>
         {
             ObjectId id = LuaObjectId(arguments.SkipMethodCall()[0]);
-            _session.SelectObject(View, id);
-            if (_session[View].Navigation is not { Tracking: true } current || current.Target != id)
-                _session.ToggleTracking(View, NativeSnapshot());
+            _session.SelectObject(Index(), id);
+            if (_session[Index()].Navigation is not { Tracking: true } current || current.Target != id)
+                _session.ToggleTracking(Index(), NativeSnapshot(Index()));
         }));
         Bind(observer, "gotoobject", (_, arguments) =>
         {
@@ -45,8 +83,8 @@ public sealed partial class LuaSessionScript
                 throw new ScriptRuntimeException("Observer flight duration is outside its supported range.");
             return Change(() =>
             {
-                _session.SelectObject(View, LuaObjectId(args[0]));
-                _session.GoToSelection(View, duration, null, NativeSnapshot());
+                _session.SelectObject(Index(), LuaObjectId(args[0]));
+                _session.GoToSelection(Index(), duration, null, NativeSnapshot(Index()));
             });
         });
         Bind(observer, "gotodistance", (_, arguments) =>
@@ -58,12 +96,12 @@ public sealed partial class LuaSessionScript
                 throw new ScriptRuntimeException("Observer flight distance or duration is out of range.");
             return Change(() =>
             {
-                _session.SelectObject(View, target);
-                _session.GoToSelection(View, duration, range, NativeSnapshot());
+                _session.SelectObject(Index(), target);
+                _session.GoToSelection(Index(), duration, range, NativeSnapshot(Index()));
             });
         });
-        Bind(observer, "travelling", (_, _) => DynValue.NewBoolean(_session.IsFlying(View)));
-        Bind(observer, "getposition", (_, _) => Position(_session.ScriptObserverEye(View, NativeSnapshot())));
+        Bind(observer, "travelling", (_, _) => DynValue.NewBoolean(_session.IsFlying(Index())));
+        Bind(observer, "getposition", (_, _) => Position(_session.ScriptObserverEye(Index(), NativeSnapshot(Index()))));
         return DynValue.NewTable(observer);
     }
 
@@ -110,10 +148,10 @@ public sealed partial class LuaSessionScript
         return DynValue.NewTable(children);
     }
 
-    private WorldSnapshot NativeSnapshot()
+    private WorldSnapshot NativeSnapshot(int? observer = null)
     {
         SimulationWorld world = _session.World;
-        JulianInstant epoch = _session[View].Epoch;
+        JulianInstant epoch = _session[observer ?? View].Epoch;
         if (_nativeSnapshot is { } recent && ReferenceEquals(recent.World, world) && recent.Snapshot.Epoch == epoch)
             return recent.Snapshot;
         WorldSnapshot snapshot = world.Graph.Evaluate(epoch);

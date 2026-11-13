@@ -218,6 +218,7 @@ public sealed partial class SimulationSession
     private int _clockOwner;
     private readonly List<int> _viewIds = [0];
     private int _nextViewId = 1;
+    private readonly Dictionary<int, bool> _scriptedZoomChanges = [];
 
     public SimulationSession(SimulationWorld world, JulianInstant initialEpoch, DeltaTModel deltaT)
     {
@@ -305,6 +306,7 @@ public sealed partial class SimulationSession
         _scriptNotices.Clear();
         _scriptMarkers.Clear();
         _viewIds.Clear();
+        _scriptedZoomChanges.Clear();
         foreach (ObserverView view in views)
         {
             _flights.Add(null);
@@ -349,6 +351,24 @@ public sealed partial class SimulationSession
             throw new ArgumentOutOfRangeException(nameof(field));
         _views[view] = _views[view] with { FieldOfViewDegrees = field };
     }
+
+    internal void SetScriptFieldOfView(int view, double degrees, bool synchronizeZoom, bool synchronizeOtherViews)
+    {
+        SetFieldOfView(view, degrees);
+        if (synchronizeZoom && synchronizeOtherViews)
+        {
+            foreach (int identity in _viewIds)
+                _scriptedZoomChanges[identity] = true;
+        }
+        else if (synchronizeZoom)
+            _scriptedZoomChanges[ViewIdentity(view)] = true;
+        else
+            _scriptedZoomChanges.TryAdd(ViewIdentity(view), false);
+    }
+
+    /// <summary>Consumes a script request to keep or reset the view's stored zoom. Null means no request.</summary>
+    public bool? TakeScriptedZoomChange(int view) =>
+        _scriptedZoomChanges.Remove(ViewIdentity(view), out bool synchronize) ? synchronize : null;
 
     public void Split()
     {
@@ -395,6 +415,7 @@ public sealed partial class SimulationSession
         _ships.Remove(ViewIdentity(view));
         ClearScriptNotice(view);
         _scriptMarkers.Remove(_viewIds[view]);
+        _scriptedZoomChanges.Remove(ViewIdentity(view));
         _viewIds.RemoveAt(view);
         Layout = Layout.Remove(view)!;
         if (Layout.View is null)

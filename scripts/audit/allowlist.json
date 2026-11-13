@@ -28,5 +28,20 @@
     "path": "src/SpaceTangent.Godot/SkyData/ATTRIBUTION.txt",
     "sha256": "5e4379500b7a3d22079fcf3f1c90e7e00271e717f8939f658fe02fefe8a9f10c",
     "reason": "Upstream meteor catalogue provenance and attribution."
+  },
+  {
+    "path": "src/SpaceTangent.Godot/tests/WorkspaceInputSmoke.cs",
+    "sha256": "0d6c904b6bea01ba1d2da27e8ad1fe2f6738b073dde4acd87661def0a383d7f6",
+    "reason": "Exercises the exact upstream Lua observer API global name."
+  },
+  {
+    "path": "src/SpaceTangent.Godot/tests/WorkspaceInputSmoke.Plugins.cs",
+    "sha256": "696d16735f3137df01f23e9a6631f21f3e05201fdf05141dab5b0ba6953b35cf",
+    "reason": "Exercises the exact upstream Lua observer API global name."
+  },
+  {
+    "path": "src/SpaceTangent.Godot/tests/WorkspaceInputSmoke.Plugins.cs",
+    "sha256": "3689cc5bbe8ec5a0e62a4cbef23281b7d89caede0b3f5a7dc64faa4e931e125e",
+    "reason": "Exercises the exact upstream Lua observer API global name."
   }
 ]

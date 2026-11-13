@@ -44,6 +44,10 @@ public partial class WorkspaceInputSmoke
             File.WriteAllText(Path.Combine(root, "helper.lua"), "return {hours = 1}");
             File.WriteAllText(Path.Combine(root, "main.lua"), """
                 local settings = require("helper")
+                local observers = celestia:getobservers()
+                assert(#observers == 1 and observers[1] == celestia:getobserver())
+                observers[1]:setfov(math.rad(42))
+                assert(math.abs(math.deg(observers[1]:getfov()) - 42) < 1e-10)
                 plugin.command("step", "Step one hour", function()
                     st.wait(0.2)
                     st.settime(st.gettime() + settings.hours / 24)
@@ -64,6 +68,8 @@ public partial class WorkspaceInputSmoke
             var local = _scene.OpenPlugin(Path.Combine(root, "plugin.json")) ??
                 throw new InvalidOperationException("Could not load the local compatibility fixture.");
             await Until(() => local.Commands.Any() && !local.HasJobs, "Initializing the local plugin");
+            Require(local.Error is null && Math.Abs(Session[0].EffectiveFieldOfView - 42) < 1e-9 && Session[1] == other,
+                $"The plugin must have zoom access only to its own observer. {local.Error}");
             Require(local.Convert(".hours", "one hour", "step.hours") == "st.log('local importer')",
                 "The registered plugin importer must run and validate returned Lua.");
             var epoch = Session[0].Epoch;

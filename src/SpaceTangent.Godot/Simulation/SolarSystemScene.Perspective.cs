@@ -34,7 +34,10 @@ public partial class SolarSystemScene
             double field = observer.EffectiveFieldOfView;
             double angle = PerspectiveViewScale.ScreenAngleDegrees(height, _projectionDpi);
             ProjectionScale? previous = view.Perspective;
-            if (reset || previous is not { } prior || prior.Mode != observer.Mode || prior.Field != field)
+            bool? scripted = session.TakeScriptedZoomChange(index);
+            if (scripted == false && previous is { } stored && stored.Mode == observer.Mode && !reset)
+                view.Perspective = previous = stored with { Field = field };
+            if (reset || scripted == true || previous is not { } prior || prior.Mode != observer.Mode || prior.Field != field)
             {
                 view.Perspective = new(angle, field, angle / field, observer.Mode);
                 continue;

@@ -32,7 +32,7 @@ public sealed partial class LuaSessionScript
         internal string? Error, LastNotice;
     }
 
-    private LuaSessionScript(string source, string name, SimulationSession session, int view, bool hasSurface, Action<string> log)
+    private LuaSessionScript(string source, string name, SimulationSession session, int view, bool hasSurface, Action<string> log, bool plugin = false)
     {
         _session = session;
         _viewIdentity = session.ViewIdentity(view);
@@ -73,7 +73,7 @@ public sealed partial class LuaSessionScript
         Bind(upstream, "flash", (_, arguments) => PrintNotice(arguments.SkipMethodCall(), native: true));
         Bind(upstream, "settime", (context, arguments) => SetTime(context, arguments.SkipMethodCall()));
         Bind(upstream, "gettime", (_, _) => DynValue.NewNumber(_session[View].Epoch.ToJulianDate()));
-        BindNativeObserver(upstream);
+        BindNativeObserver(upstream, plugin);
         script.Globals.Set("celestia", DynValue.NewTable(upstream));
 
         _foreground = NewInvocation(script.LoadString(source, codeFriendlyName: name));
@@ -85,7 +85,7 @@ public sealed partial class LuaSessionScript
 
     internal static LuaSessionScript PluginRuntime(SimulationSession session, int view, bool hasSurface, Action<string> log)
     {
-        var runtime = new LuaSessionScript("", "plugin", session, view, hasSurface, log);
+        var runtime = new LuaSessionScript("", "plugin", session, view, hasSurface, log, plugin: true);
         runtime.Stop();
         return runtime;
     }

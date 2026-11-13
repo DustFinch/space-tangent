@@ -18,5 +18,6 @@ public enum SkyMarkings
     ArchaeoLines = 1024,
     NavigationalStars = 2048,
     Pulsars = 4096,
-    Quasars = 8192
+    Quasars = 8192,
+    SelectedBodyPath = 16384
 }

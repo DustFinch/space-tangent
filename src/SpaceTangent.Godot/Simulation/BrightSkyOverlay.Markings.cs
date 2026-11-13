@@ -34,6 +34,8 @@ internal partial class BrightSkyOverlay
         Vector3? pole = CelestialPoleOfDate.Direction(_frame.Epoch) is { } datePole ? Convert(datePole) : null;
         DrawDateMarkings(marks, pole);
         DrawCatalogueMarkings(marks);
+        if (_frame.BodyPath is { } path)
+            DrawBodyPath(path.FirstDay, path.Directions);
         if (_frame.SiteAxes is not { } axes)
             return;
         Vector3 zenith = Convert(axes.Z);
@@ -55,6 +57,34 @@ internal partial class BrightSkyOverlay
         {
             MarkPoint(zenith, "Zenith");
             MarkPoint(-zenith, "Nadir");
+        }
+    }
+
+    private void DrawBodyPath(double firstDay, Vector3?[] directions)
+    {
+        Color color = new(1, .8f, .45f, .8f);
+        var visible = new Rect2(Vector2.Zero, Size).Grow(24);
+        Vector2? previous = null;
+        for (int day = 0; day < directions.Length; day++)
+        {
+            if (directions[day] is not { } direction || !Project(direction, out var point, clipHorizon: false))
+            {
+                previous = null;
+                continue;
+            }
+            if (previous is { } start && (point - start).LengthSquared() < 4e6f &&
+                new Rect2(start, Vector2.Zero).Expand(point).Grow(1).Intersects(visible))
+                DrawLine(start, point, color, 1.5f, true);
+            previous = point;
+            if (day % 10 != 0 || !visible.HasPoint(point))
+                continue;
+            DrawCircle(point, day == 60 ? 3.5f : 2, color, antialiased: true);
+            if (day % 30 == 0 && firstDay + day - 2440587.5 is >= -719162 and <= 2932896)
+            {
+                var date = DateTime.UnixEpoch.AddDays(firstDay + day - 2440587.5);
+                DrawString(ThemeDB.FallbackFont, point + new Vector2(6, 14),
+                    date.ToString("dd.MM", System.Globalization.CultureInfo.InvariantCulture), fontSize: 11, modulate: color);
+            }
         }
     }
 

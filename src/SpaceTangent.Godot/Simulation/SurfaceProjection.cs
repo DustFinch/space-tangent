@@ -237,7 +237,9 @@ internal sealed partial class SurfaceProjection
         {
             _sky.ShowFrame(new(sample.Epoch, sky, selection, forward, right, cameraUp, _tanHalfField,
                 starDarkness, up, Convert(moonSeen), moonRadius,
-                Conditions: observer.Conditions, Site: observer.Site, OpticalLimit: optics?.LimitingMagnitude(), ObserverBeta: observerBeta, SiteAxes: lighting.EastNorthUp));
+                Conditions: observer.Conditions, Site: observer.Site, OpticalLimit: optics?.LimitingMagnitude(), ObserverBeta: observerBeta, SiteAxes: lighting.EastNorthUp,
+                BodyPath: sky.Markings.HasFlag(SkyMarkings.SelectedBodyPath) && selection is { } targetBody && world is not null
+                    ? BodyPath(world, targetBody, sample.Epoch, model) : null));
         }
         else
             _sky?.Hide();

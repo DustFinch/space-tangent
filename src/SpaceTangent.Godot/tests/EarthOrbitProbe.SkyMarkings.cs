@@ -9,6 +9,58 @@ namespace SpaceTangent.Godot.Tests;
 
 public partial class EarthOrbitProbe
 {
+    private async Task ExerciseBodyPath(SolarSystemScene scene, string directory, JulianInstant epoch)
+    {
+        var session = scene.Session!;
+        var site = session.World.EarthPlaces.Places.Single(place => place.EnglishName == "Paranal Observatory").ObserverSite;
+        var solar = session.World.Graph.Evaluate(epoch).SolarSystem!.Value;
+        var light = SpaceTangent.Core.Observing.EarthSurfaceLighting.Sample(solar, site, session.DeltaT);
+        var moon = SpaceTangent.Core.Ephemerides.SolarSystemSample.MoonId;
+        var horizontal = SpaceTangent.Core.Observing.EarthObserving.HorizontalDirection(light, light.EarthToMoon)!.Value;
+        var first = new ObserverView(epoch, CameraMode.Surface, moon, false)
+        {
+            EarthObserver = new(site, horizontal.AzimuthDegrees!.Value, horizontal.AltitudeDegrees),
+            FieldOfViewDegrees = 75
+        };
+        string profile = Path.Combine(directory, "archived-body-path.json");
+        File.WriteAllText(profile, """{"Site":{},"SkyMarks":16384}""");
+        var marked = first with { Sky = LegacyObserverProfiles.Read(profile, first, session.DeltaT).Observer.Sky };
+        string path = Path.Combine(directory, "paranal-moon-path.stscene");
+        ScenarioFile.Save(path, new([marked, first], false, 0, 0, session.DeltaT));
+        if (!scene.LoadScenario(path) || !await scene.ReloadAddOns() ||
+            session[0].Sky.Markings != SkyMarkings.SelectedBodyPath || session[1] != first)
+            throw new InvalidOperationException("The archived path flag and the second observer must survive reload.");
+
+        await Frames();
+        using var enabled = scene.Renderer(0).GetViewport().GetTexture().GetImage();
+        var menu = ((MenuButton)scene.FindChild("SkyMarkings", recursive: true, owned: false)).GetPopup();
+        menu.EmitSignal(PopupMenu.SignalName.IdPressed, (long)SkyMarkings.SelectedBodyPath);
+        await Frames();
+        using var disabled = scene.Renderer(0).GetViewport().GetTexture().GetImage();
+        int gold = 0;
+        for (int y = 0; y < enabled.GetHeight(); y++)
+            for (int x = 0; x < enabled.GetWidth(); x++)
+            {
+                Color pixel = enabled.GetPixel(x, y);
+                if (pixel.R > disabled.GetPixel(x, y).R + .13f && pixel.R > pixel.B + .2f)
+                    gold++;
+            }
+        if (gold < 150 || session[0].Sky.Markings != SkyMarkings.None || session[1] != first)
+            throw new InvalidOperationException($"The selected Moon path must affect only the active view ({gold} pixels).");
+        if (enabled.SavePng(Path.ChangeExtension(path, ".png")) != Error.Ok)
+            throw new IOException("Could not save the Moon path.");
+        GD.Print($"Selected body path GPU: Paranal, archived Moon flag, {gold} gold pixels after reload and independent toggle.");
+
+        async Task Frames()
+        {
+            for (int frame = 0; frame < 4; frame++)
+            {
+                await ToSignal(GetTree(), SceneTree.SignalName.ProcessFrame);
+                await ToSignal(RenderingServer.Singleton, RenderingServer.SignalName.FramePostDraw);
+            }
+        }
+    }
+
     private async Task ExerciseCatalogueMarkings(SolarSystemScene scene, string directory, JulianInstant epoch)
     {
         var pulsars = SkyMarkerCatalogue.Load("SPACETANGENT_PULSARS", "sky/pulsars.txt", true);
@@ -131,7 +183,10 @@ public partial class EarthOrbitProbe
         menu.EmitSignal(PopupMenu.SignalName.IdPressed, (long)SkyMarkings.Meridian);
         if (session[0].Sky.Markings != (expected & ~SkyMarkings.Meridian) || session[1].Sky.Markings != SkyMarkings.None)
             throw new InvalidOperationException("The markings menu must affect only the active view.");
-        await ExerciseCatalogueMarkings(scene, directory, epoch);
+        if (System.Environment.GetEnvironmentVariable("SPACETANGENT_BODY_PATH_PROBE") == "1")
+            await ExerciseBodyPath(scene, directory, epoch);
+        else
+            await ExerciseCatalogueMarkings(scene, directory, epoch);
         GD.Print($"Sky markings GPU: Paranal, twelve archived flags and independent views, {vertical}/{horizontal} bright horizon-circle samples after reload.");
     }
 }

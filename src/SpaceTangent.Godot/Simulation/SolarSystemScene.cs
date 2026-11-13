@@ -328,7 +328,8 @@ public partial class SolarSystemScene : Control
             (SkyMarkings.Colures, "Colures"), (SkyMarkings.Poles, "Celestial, ecliptic and galactic poles"),
             (SkyMarkings.EquinoxesAndSolstices, "Equinoxes and solstices"), (SkyMarkings.ArchaeoLines, "Archaeoastronomy lines"),
             (SkyMarkings.NavigationalStars, "Navigational stars"), (SkyMarkings.Pulsars, "Pulsars"),
-            (SkyMarkings.Quasars, "Quasars"), (SkyMarkings.Meridian, "Local meridian"),
+            (SkyMarkings.Quasars, "Quasars"), (SkyMarkings.SelectedBodyPath, "Selected body path"),
+            (SkyMarkings.Meridian, "Local meridian"),
             (SkyMarkings.PrimeVertical, "Prime vertical"), (SkyMarkings.PrecessionCircles, "Precession circles"),
             (SkyMarkings.CircumpolarCircles, "Circumpolar circles"), (SkyMarkings.ZenithAndNadir, "Zenith and nadir")
         })

@@ -12,7 +12,8 @@ internal partial class BrightSkyOverlay : Control
         Vector3 Forward, Vector3 Right, Vector3 Up, float TangentHalfField, float StarVisibility = 1,
         Vector3? Horizon = null, Vector3? Moon = null, float MoonRadius = 0, bool ShowCatalogue = true,
         GroundSkyConditions? Conditions = null, EarthSite Site = default, double? OpticalLimit = null,
-        Vector3d ObserverFromSun = default, Vector3d ObserverBeta = default, Basis3d? SiteAxes = null);
+        Vector3d ObserverFromSun = default, Vector3d ObserverBeta = default, Basis3d? SiteAxes = null,
+        (double FirstDay, Vector3?[] Directions)? BodyPath = null);
 
     private static readonly (Vector3 From, Vector3 To)[] Grid = MakeGrid().ToArray();
     private static readonly (Vector3 From, Vector3 To)[] EclipticLine = Enumerable.Range(0, 360)

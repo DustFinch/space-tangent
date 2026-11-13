@@ -44,8 +44,10 @@ public readonly record struct SkyLayerSettings(bool Stars, bool Labels, bool Equ
     internal const SkyMarkings GeometricalMarkings = OriginalMarkings | SkyMarkings.EquatorOfDate |
         SkyMarkings.Colures | SkyMarkings.Poles | SkyMarkings.EquinoxesAndSolstices | SkyMarkings.ArchaeoLines;
 
-    internal const SkyMarkings SupportedMarkings = GeometricalMarkings | SkyMarkings.NavigationalStars |
+    internal const SkyMarkings CatalogueMarkings = GeometricalMarkings | SkyMarkings.NavigationalStars |
         SkyMarkings.Pulsars | SkyMarkings.Quasars;
+
+    internal const SkyMarkings SupportedMarkings = CatalogueMarkings | SkyMarkings.SelectedBodyPath;
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingDefault)]
     public bool HideOrbits { get; init; }
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingDefault)]

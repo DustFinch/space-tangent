@@ -18,7 +18,7 @@ public sealed record SimulationScenario(IReadOnlyList<ObserverView> Views, bool 
 /// <summary>Persists observer settings with exact TDB epochs and stable catalog IDs.</summary>
 public static class ScenarioFile
 {
-    private const int Version = 46;
+    private const int Version = 47;
     internal const int MaximumBytes = 32 * 1024;
     private static readonly JsonSerializerOptions Json = new()
     {
@@ -63,7 +63,8 @@ public static class ScenarioFile
             throw new InvalidDataException("The scenario has an invalid camera sensitivity.");
         var document = new Document
         {
-            Version = scenario.Views.Any(view => (view.Sky.Markings & ~SkyLayerSettings.GeometricalMarkings) != 0) ? 46 :
+            Version = scenario.Views.Any(view => view.Sky.Markings.HasFlag(SkyMarkings.SelectedBodyPath)) ? 47 :
+                scenario.Views.Any(view => (view.Sky.Markings & ~SkyLayerSettings.GeometricalMarkings) != 0) ? 46 :
                 scenario.Views.Any(view => (view.Sky.Markings & ~SkyLayerSettings.OriginalMarkings) != 0) ? 45 :
                 scenario.Views.Any(view => view.Sky.Markings != SkyMarkings.None) ? 44 :
                 scenario.Views.Any(view => view.Sky.SmallBodies.HasValue) ? 43 :
@@ -225,6 +226,8 @@ public static class ScenarioFile
                 throw new InvalidDataException("Cinematic black holes require scenario version 30.");
             if (data.Sky is { HasBodyLayerSettings: true } && document.Version < 29)
                 throw new InvalidDataException("Body layer preferences require scenario version 29.");
+            if (document.Version < 47 && data.Sky is { } pathSky && pathSky.Markings.HasFlag(SkyMarkings.SelectedBodyPath))
+                throw new InvalidDataException("The selected body path requires scenario version 47.");
             if (document.Version < 46 && data.Sky is { } catalogueSky &&
                 (catalogueSky.Markings & ~SkyLayerSettings.GeometricalMarkings) != 0)
                 throw new InvalidDataException("Catalogue sky markings require scenario version 46.");

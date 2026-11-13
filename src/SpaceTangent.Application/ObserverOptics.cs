@@ -35,7 +35,15 @@ public sealed class ObserverOpticsLibrary
         Eyepieces = Array.AsReadOnly(eyepieces);
     }
 
-    public static ObserverOpticsLibrary Load(string path)
+    internal static ObserverOpticsLibrary LoadArchived(string path)
+    {
+        try { return Load(path, preserveIndices: true); }
+        catch (JsonException) { return new(BuiltInTubes, BuiltInEyepieces); }
+    }
+
+    public static ObserverOpticsLibrary Load(string path) => Load(path, preserveIndices: false);
+
+    private static ObserverOpticsLibrary Load(string path, bool preserveIndices)
     {
         if (!File.Exists(path))
             return new(BuiltInTubes, BuiltInEyepieces);
@@ -43,8 +51,12 @@ public sealed class ObserverOpticsLibrary
         if (stream.Length > 64 * 1024)
             throw new InvalidDataException("The optics profile exceeds its size limit.");
         var settings = JsonSerializer.Deserialize<UserOptics>(stream);
-        return new([.. BuiltInTubes, .. (settings?.Telescopes ?? []).OfType<OpticalTube>().Where(item => item.IsValid()).Distinct()],
-            [.. BuiltInEyepieces, .. (settings?.Eyepieces ?? []).OfType<OpticalEyepiece>().Where(item => item.IsValid()).Distinct()]);
+        var tubes = (settings?.Telescopes ?? []).OfType<OpticalTube>().Where(item => item.IsValid());
+        var eyepieces = (settings?.Eyepieces ?? []).OfType<OpticalEyepiece>().Where(item => item.IsValid());
+
+        // The archived settings store indices into these lists, including duplicate entries.
+        return new([.. BuiltInTubes, .. (preserveIndices ? tubes : tubes.Distinct())],
+            [.. BuiltInEyepieces, .. (preserveIndices ? eyepieces : eyepieces.Distinct())]);
     }
 
     public OpticalTube Next(OpticalTube tube) => Next(Tubes, tube);

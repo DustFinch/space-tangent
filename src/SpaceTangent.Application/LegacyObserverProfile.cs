@@ -80,21 +80,33 @@ public static class LegacyObserverProfiles
         double? field = Number(root, "FieldOfViewDegrees") is { } degrees && ObserverView.ValidFieldOfView(degrees)
             ? degrees : current.FieldOfViewDegrees;
         var optics = current.Optics;
-        if (Integer(root, "Telescope") is { } tube && Integer(root, "Eyepiece") is { } lens)
+        int? tube = Integer(root, "Telescope"), lens = Integer(root, "Eyepiece");
+        int? barlow = Integer(root, "Barlow");
+        double? seeing = Number(root, "Seeing");
+        bool? inverted = Flag(root, "InvertEyepiece"), hold = Flag(root, "HoldInEyepiece");
+        if (tube.HasValue || lens.HasValue || barlow is >= 0 and <= 2 || seeing is >= 0 and <= 10 ||
+            inverted.HasValue || hold.HasValue)
         {
-            var library = ObserverOpticsLibrary.Load(Path.Combine(Path.GetDirectoryName(Path.GetFullPath(file))!, "optics-v1.json"));
-            var defaults = ObserverOpticsLibrary.Default;
-            var profile = defaults with
+            var profile = optics?.Profile ?? ObserverOpticsLibrary.Default;
+            if (tube.HasValue || lens.HasValue)
             {
-                Tube = tube >= 0 && tube < library.Tubes.Count ? library.Tubes[tube] : defaults.Tube,
-                Eyepiece = lens >= 0 && lens < library.Eyepieces.Count ? library.Eyepieces[lens] : defaults.Eyepiece,
-                Barlow = Integer(root, "Barlow") is >= 0 and <= 2 and var multiplier ? multiplier + 1 : defaults.Barlow,
-                SeeingArcseconds = Number(root, "Seeing") is >= 0 and <= 10 and var seeing ? seeing : defaults.SeeingArcseconds,
-                Inverted = Flag(root, "InvertEyepiece") ?? defaults.Inverted,
-                HoldSelection = Flag(root, "HoldInEyepiece") ?? defaults.HoldSelection
+                string directory = Path.GetDirectoryName(Path.GetFullPath(file))!;
+                var library = ObserverOpticsLibrary.LoadArchived(Path.Combine(directory, "optics-v1.json"));
+                profile = profile with
+                {
+                    Tube = tube is >= 0 && tube < library.Tubes.Count ? library.Tubes[tube.Value] : profile.Tube,
+                    Eyepiece = lens is >= 0 && lens < library.Eyepieces.Count ? library.Eyepieces[lens.Value] : profile.Eyepiece
+                };
+            }
+            profile = profile with
+            {
+                Barlow = barlow is >= 0 and <= 2 ? barlow.Value + 1 : profile.Barlow,
+                SeeingArcseconds = seeing is >= 0 and <= 10 ? seeing.Value : profile.SeeingArcseconds,
+                Inverted = inverted ?? profile.Inverted,
+                HoldSelection = hold ?? profile.HoldSelection
             };
             if (profile.IsValid())
-                optics = new(profile, false) { Finders = optics?.Finders };
+                optics = optics is null ? new(profile, false) : optics with { Profile = profile };
         }
         bool? telrad = Flag(root, "Telrad"), circle = Flag(root, "FinderCircle");
         int? sensor = Integer(root, "Camera");

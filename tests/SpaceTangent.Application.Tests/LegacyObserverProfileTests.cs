@@ -52,6 +52,53 @@ public sealed class LegacyObserverProfileTests
         Assert.Equal(original, File.ReadAllBytes(path));
     }
 
+    [Fact]
+    public void ArchivedOpticsIndicesCountDuplicatesAndAcceptPartialSettings()
+    {
+        var directory = Directory.CreateTempSubdirectory("st-optics-");
+        try
+        {
+            string path = Path.Combine(directory.FullName, "settings-v1.json");
+            string library = Path.Combine(directory.FullName, "optics-v1.json");
+            File.WriteAllText(library, """
+                {
+                  "Telescopes": [
+                    {"Name":"First","Kind":"Reflector","ApertureMillimeters":100,"FocalMillimeters":800},
+                    {"Name":"First","Kind":"Reflector","ApertureMillimeters":100,"FocalMillimeters":800},
+                    {"Name":"Last","Kind":"Refractor","ApertureMillimeters":110,"FocalMillimeters":990}
+                  ],
+                  "Eyepieces": [
+                    {"Name":"First lens","FocalMillimeters":20,"ApparentFieldDegrees":65},
+                    {"Name":"First lens","FocalMillimeters":20,"ApparentFieldDegrees":65},
+                    {"Name":"Last lens","FocalMillimeters":18,"ApparentFieldDegrees":68}
+                  ]
+                }
+                """);
+            File.WriteAllText(path, """{"DeltaT":"MorrisonStephenson2004","Telescope":5,"Eyepiece":6,"Barlow":2}""");
+            var view = new ObserverView(new(2451545, 0, TimeScale.Tdb), CameraMode.Surface, null, false);
+            var initial = LegacyObserverProfiles.Read(path, view, DeltaTModel.EspenakMeeus2006);
+            Assert.Equal("Last", initial.Observer.Optics!.Profile.Tube.Name);
+            Assert.Equal("Last lens", initial.Observer.Optics.Profile.Eyepiece.Name);
+            Assert.Equal(165, initial.Observer.Optics.Profile.Magnification());
+            Assert.False(initial.Observer.Optics.Active);
+            Assert.Equal(5, ObserverOpticsLibrary.Load(library).Tubes.Count);
+
+            var active = initial.Observer with { Optics = initial.Observer.Optics with { Active = true } };
+            File.WriteAllText(path, """{"DeltaT":"MorrisonStephenson2004","Seeing":3.5,"InvertEyepiece":false}""");
+            var modified = LegacyObserverProfiles.Read(path, active, initial.DeltaT).Observer;
+            Assert.Equal(active.Optics with { Profile = active.Optics.Profile with { SeeingArcseconds = 3.5, Inverted = false } },
+                modified.Optics);
+
+            File.WriteAllText(library, "{");
+            File.WriteAllText(path, """{"DeltaT":"MorrisonStephenson2004","Telescope":1}""");
+            var restored = LegacyObserverProfiles.Read(path, modified, initial.DeltaT).Observer;
+            Assert.Equal("Refractor 80/480", restored.Optics!.Profile.Tube.Name);
+            Assert.Equal("Last lens", restored.Optics.Profile.Eyepiece.Name);
+            Assert.True(restored.Optics.Active);
+        }
+        finally { directory.Delete(recursive: true); }
+    }
+
     private sealed class ArchiveSettingsFactAttribute : FactAttribute
     {
         public ArchiveSettingsFactAttribute()

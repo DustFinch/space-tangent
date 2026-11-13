@@ -38,6 +38,42 @@ public partial class EarthOrbitProbe
                 throw new IOException("Could not capture the original outer moon shapes.");
         }
 
+        if (System.Environment.GetEnvironmentVariable("SPACETANGENT_HYPERION_SPIN") is { } spinReference)
+        {
+            using var spin = JsonDocument.Parse(File.ReadAllText(spinReference));
+            var hyperion = source.Single(entry => entry.GetProperty("name").GetString() == "hyperion");
+            var first = spin.RootElement[2];
+            var second = spin.RootElement[3];
+            var left = Observer(hyperion, Instant(first));
+            var right = Observer(hyperion, Instant(second));
+            string path = Path.Combine(directory, "hyperion-spin.stscene");
+            ScenarioFile.Save(path, new([left, right], false, 0, 0, session.DeltaT));
+            if (!scene.LoadScenario(path) || !await scene.ReloadAddOns() || session[0] != left || session[1] != right)
+                throw new InvalidOperationException("The two Hyperion epochs or cameras changed after reloading.");
+            CheckSpin(0, first);
+            CheckSpin(1, second);
+            await ToSignal(GetTree(), SceneTree.SignalName.ProcessFrame);
+            await ToSignal(RenderingServer.Singleton, RenderingServer.SignalName.FramePostDraw);
+            using var image = GetViewport().GetTexture().GetImage();
+            if (image.SavePng(Path.ChangeExtension(path, ".png")) != Error.Ok)
+                throw new IOException("Could not capture the two Hyperion orientations.");
+            GD.Print("Hyperion GPU: original mesh axes match the archived precession in both views after reload.");
+
+            static JulianInstant Instant(JsonElement row) => JulianInstant.FromJulianDate(row[0].GetDouble(), TimeScale.Tdb);
+
+            void CheckSpin(int view, JsonElement row)
+            {
+                if (scene.Renderer(view).NaturalMoonModel(new("sol/hyperion")) is not { Visible: true } model)
+                    throw new InvalidOperationException("The original Hyperion mesh is missing.");
+                var basis = model.Transform.Basis;
+                if (basis.X.Normalized().DistanceTo(Axis(1)) > 1e-5f ||
+                    basis.Y.Normalized().DistanceTo(Axis(4)) > 1e-5f ||
+                    basis.Z.Normalized().DistanceTo(Axis(7)) > 1e-5f)
+                    throw new InvalidOperationException("The rendered Hyperion axes differ from the archive.");
+                Vector3 Axis(int index) => new(row[index].GetSingle(), row[index + 2].GetSingle(), -row[index + 1].GetSingle());
+            }
+        }
+
         ObserverView Observer(JsonElement entry, JulianInstant instant)
         {
             string name = entry.GetProperty("name").GetString()!;

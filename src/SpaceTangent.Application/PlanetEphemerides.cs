@@ -126,7 +126,9 @@ public sealed class PlanetEphemerides
                     ? state : body.Id == NaturalBodyCatalogue.PlutoId ? default(CartesianState) : null, barycenter);
             }
         }
-        if (body.NaifId == NaturalBodyCatalogue.PhoebeNaifId)
+        if (body.NaifId == NaturalBodyCatalogue.HyperionNaifId)
+            graph.AddOrientation(body.Id, epoch => HyperionSpin(epoch));
+        else if (body.NaifId == NaturalBodyCatalogue.PhoebeNaifId)
             graph.AddOrientation(body.Id, epoch => CatalogueSpin(epoch, .3864022083333333, 12.2, 86.9, 125.56));
         else if (body.NaifId == NaturalBodyCatalogue.ProteusNaifId)
             graph.AddOrientation(body.Id, epoch => CatalogueSpin(epoch, 1.12231477, 47.57, 29.21, 93.42));
@@ -138,6 +140,20 @@ public sealed class PlanetEphemerides
 
     private const double Degrees = Math.PI / 180;
     private static readonly Basis3d EclipticToEquatorial = SpinAxes(23.4392911, 0, 0);
+
+    private static FrameKinematics HyperionSpin(JulianInstant epoch)
+    {
+        // The legacy catalogue models the observed tumbling with a precessing approximation.
+        const int referenceDay = 2453639;
+        const double spinDays = 5, precessionDays = 320;
+        double days = (epoch.Day - referenceDay) + epoch.NanosecondsOfDay / (double)JulianInstant.NanosecondsPerDay;
+        double tilt = (float)(33.4 / 180 * Math.PI) / Degrees;
+        double node = (float)(45.1 / 180 * Math.PI) / Degrees - 360 * Math.IEEERemainder(days, precessionDays) / precessionDays;
+        double meridian = 180 + (float)(115.0 / 180 * Math.PI) / Degrees + 360 * Math.IEEERemainder(days, spinDays) / spinDays;
+        Basis3d frame = SpinAxes(tilt, node, meridian);
+        var precession = new Vector3d(0, 0, -Math.Tau / (precessionDays * JulianInstant.SecondsPerDay));
+        return new(frame, precession + frame.Z * (Math.Tau / (spinDays * JulianInstant.SecondsPerDay)));
+    }
 
     private static FrameKinematics CatalogueSpin(JulianInstant epoch, double periodDays,
         double tilt, double node, double longitude, bool ecliptic = false)

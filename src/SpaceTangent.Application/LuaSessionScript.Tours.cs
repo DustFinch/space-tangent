@@ -35,7 +35,7 @@ public sealed partial class LuaSessionScript
             ObjectId? direct = query.All(character => char.IsAsciiLetterOrDigit(character) || character is '/' or '-' or '_') &&
                 query.Length != 0 ? new ObjectId(query) : null;
             var catalogue = _session.World.Catalogue;
-            id = direct is { } key && catalogue.Find(key) is not null ? key : SceneLink.ResolveObject(query, catalogue);
+            id = direct is { } key && catalogue.Find(key) is not null ? key : ResolveTourTarget(query, catalogue);
         }
         catch (InvalidDataException)
         {
@@ -58,6 +58,15 @@ public sealed partial class LuaSessionScript
         _session.SelectObject(View, id);
         _changed = true;
         return DynValue.True;
+    }
+
+    private static ObjectId ResolveTourTarget(string query, ObjectCatalogue catalogue)
+    {
+        try { return SceneLink.ResolveObject(query, catalogue); }
+        catch (InvalidDataException) when (query.Equals("Alpha Centauri", StringComparison.OrdinalIgnoreCase))
+        {
+            return SceneLink.ResolveObject("ALF Cen", catalogue);
+        }
     }
 
     private DynValue TourTargets(Script script)

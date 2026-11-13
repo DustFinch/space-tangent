@@ -3,6 +3,7 @@ using Godot;
 using SpaceTangent.Application;
 using SpaceTangent.Contracts;
 using SpaceTangent.Core.Ephemerides;
+using SpaceTangent.Godot.Simulation;
 
 namespace SpaceTangent.Godot.Tests;
 
@@ -69,7 +70,33 @@ public partial class WorkspaceInputSmoke
             "The original guide must retain its eleven stops and convert AU distances to kilometres.");
         string guidePath = Path.Combine(directory, "guide.lua");
         File.WriteAllText(guidePath, guide.Lua);
-        var (guideTargets, _) = RunToEnd(guidePath);
+        var settingsFile = new LocalAddonSettingsFile();
+        LocalAddonSettings previousAddOns = settingsFile.Load();
+        string? guideBodies = System.Environment.GetEnvironmentVariable("SPACETANGENT_GUIDE_BODIES");
+        HashSet<ObjectId> guideTargets;
+        try
+        {
+            if (guideBodies is not null)
+            {
+                var guideSource = settingsFile.FindOrCreate(previousAddOns, LocalAddonKind.BodyCatalog, guideBodies);
+                Require(await _scene.ReloadAddOns(previousAddOns.SetSource(guideSource, true)),
+                    "Loading the original asteroid and comet catalogues for the guide.");
+            }
+            (guideTargets, _) = RunToEnd(guidePath);
+            if (guideBodies is not null)
+                Require(new[] { "Eros", "Ida", "Borrelly" }.All(name =>
+                        guideTargets.Any(id => Session.World.Catalogue.Find(id)?.Aliases.Contains(name, StringComparer.OrdinalIgnoreCase) == true)),
+                    "The guide must visit Eros, Ida and Borrelly when their original catalogues are loaded.");
+            if (guideBodies is not null && System.Environment.GetEnvironmentVariable("SPACETANGENT_STC_ROOT") is { Length: > 0 })
+                Require(guideTargets.Count == 11, "The full original guide must visit all eleven destinations.");
+        }
+        finally
+        {
+            if (guideBodies is not null)
+            {
+                Require(await _scene.ReloadAddOns(previousAddOns), "Restoring the body catalogue after the guide.");
+            }
+        }
         Require(guideTargets.Contains(new("sol/jupiter")) && guideTargets.Contains(new("sol/pluto")),
             "The original guide must complete and visit Jupiter and Pluto.");
         GD.Print($"UI: converted the original eleven-stop guide and visited {guideTargets.Count} loaded targets.");

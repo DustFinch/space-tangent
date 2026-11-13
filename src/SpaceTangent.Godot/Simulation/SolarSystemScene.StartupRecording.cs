@@ -52,9 +52,16 @@ public partial class SolarSystemScene
                 throw new InvalidDataException(_status.Text);
             if (_startupArguments.Contains("--startup-screenshot", StringComparer.Ordinal))
             {
-                while (Replaying)
-                    await ToSignal(GetTree(), SceneTree.SignalName.ProcessFrame);
-                if (!QueueScreenshot(RequiredArgument("--startup-screenshot")))
+                string screenshot = RequiredArgument("--startup-screenshot");
+                if (Replaying)
+                {
+                    if (!_captureConnected)
+                        throw new InvalidDataException("A rendered viewport is needed for a screenshot.");
+                    _replayFinalScreenshot = Path.GetFullPath(screenshot);
+                    while (Replaying)
+                        await ToSignal(GetTree(), SceneTree.SignalName.ProcessFrame);
+                }
+                else if (!QueueScreenshot(screenshot))
                     throw new InvalidDataException(_status.Text);
             }
             if (_startupArguments.Contains("--startup-movie", StringComparer.Ordinal))

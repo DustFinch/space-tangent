@@ -10,7 +10,8 @@ public partial class SolarSystemScene
     private WindowRecording? _movie;
     private int _moviePreviousFps;
     private int? _movieFrameLimit;
-    private string? _screenshotPath;
+    private string? _screenshotPath, _replayFinalScreenshot;
+    private bool _replayEndReached;
     private IObserverReplay? _replay;
     private FileStream? _replayFile;
     private double _replayRemainder;
@@ -196,6 +197,12 @@ public partial class SolarSystemScene
     {
         if (_replay is not { } replay)
             return false;
+        if (_replayEndReached)
+        {
+            if (_screenshotPath is null)
+                CompleteReplay(replay.FrameCount);
+            return true;
+        }
         _replayRemainder += delta;
         double period = 1.0 / replay.FramesPerSecond;
         if (_replayRemainder < period)
@@ -205,23 +212,34 @@ public partial class SolarSystemScene
         {
             if (replay.ReadNext() is { } frame)
                 ApplyScenario(frame);
-            else
+            else if (_replayFinalScreenshot is { } output)
             {
-                CloseReplay();
-                for (int index = 0; index < Session!.ViewCount; index++)
-                    Session.SetPlaying(index, false);
-                Refresh();
-                _status.Text = $"Replay complete · {replay.FrameCount} frames";
-                GD.Print(_status.Text);
+                // Keep the final archive geometry alive until FramePostDraw has saved it.
+                _replayEndReached = true;
+                if (!QueueScreenshot(output))
+                    throw new InvalidDataException(_status.Text);
             }
+            else
+                CompleteReplay(replay.FrameCount);
         }
         catch (Exception error) when (IsLoadError(error))
         {
             _captureFailed = true;
             CloseReplay();
             _status.Text = "Could not advance observer replay. " + error.Message;
+            GD.Print(_status.Text);
         }
         return true;
+    }
+
+    private void CompleteReplay(int frames)
+    {
+        CloseReplay();
+        for (int index = 0; index < Session!.ViewCount; index++)
+            Session.SetPlaying(index, false);
+        Refresh();
+        _status.Text = $"Replay complete · {frames} frames";
+        GD.Print(_status.Text);
     }
 
     private void CloseReplay()
@@ -230,6 +248,8 @@ public partial class SolarSystemScene
         _replayFile?.Dispose();
         _replay = null;
         _replayFile = null;
+        _replayFinalScreenshot = null;
+        _replayEndReached = false;
     }
 
     private static string CaptureStem()

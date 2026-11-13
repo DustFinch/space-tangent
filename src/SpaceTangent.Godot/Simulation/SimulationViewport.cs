@@ -277,7 +277,7 @@ internal partial class SimulationViewport : Node3D
                 return false;
             Vector3d sun = (sample.Sun - sample.Moon).PositionKilometers;
             return _terrain.Draw(observer.Terrain ?? LunarTerrainCamera.Globe, moonFrame.ToWorld.Transpose().Transform(sun),
-                (float)EclipseRendering.MoonSunFraction(sample));
+                (float)EclipseRendering.MoonSunFraction(sample), showRelief: !observer.Sky.HideTerrain);
         }
 
         if (observer.Mode == CameraMode.MarsTerrain)
@@ -287,7 +287,8 @@ internal partial class SimulationViewport : Node3D
                 !snapshot.TryState(PlanetCatalogue.MarsId, out CartesianState mars))
                 return false;
             Vector3d sun = (sample.Sun - mars).PositionKilometers;
-            return _marsTerrain.Draw(new(-133.8, 18.65, 950), frame.ToWorld.Transpose().Transform(sun));
+            return _marsTerrain.Draw(new(-133.8, 18.65, 950), frame.ToWorld.Transpose().Transform(sun),
+                showRelief: !observer.Sky.HideTerrain);
         }
 
         bool solar = observer.Mode is CameraMode.Solar or CameraMode.SolarOuter;

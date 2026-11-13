@@ -2,6 +2,7 @@
 using Godot;
 using SpaceTangent.Application;
 using SpaceTangent.Contracts;
+using SpaceTangent.Core.Ephemerides;
 using SpaceTangent.Core.Time;
 using SpaceTangent.Core.World;
 using SpaceTangent.Godot.Simulation;
@@ -124,6 +125,72 @@ public partial class EarthOrbitProbe
 
         GD.Print(FormattableString.Invariant(
             $"Procedural terrain: Shift+G, {highClearance:F3}/{nearClearance:F3} km, LOD {high}/{near}, {highPixels}/{nearPixels}/{obliquePixels} lit samples including oblique; two epochs and Delta T restored."));
+
+        string profile = Path.Combine(directory, "archived-terrain-settings.json");
+        File.WriteAllText(profile, """{"DeltaT":"MorrisonStephenson2004","Terrain":false}""");
+        var withoutTerrain = LegacyObserverProfiles.Read(profile, close, deltaT).Observer;
+        var disabled = close with { Sky = withoutTerrain.Sky };
+        string disabledPath = Path.Combine(directory, "procedural-terrain-hidden.stscene");
+        ScenarioFile.Save(disabledPath, new([disabled, second], false, 0, 0, deltaT));
+        if (!scene.LoadScenario(disabledPath) || !await scene.ReloadAddOns() ||
+            session[0] != disabled || session[1] != second ||
+            scene.Renderer(0).DemoTerrainLevel(target) >= 0 || !scene.Renderer(0).DemoWorldVisible(target))
+            throw new InvalidOperationException("The archived Terrain preference must preserve the globe and both camera poses.");
+        await Capture("procedural-terrain-hidden", requireLit: false);
+        GD.Print("Terrain settings GPU: original Aridus globe remains visible without its terrain after reload.");
+
+        if (scene.Renderer(0).Terrain is not null && scene.Renderer(1).MarsTerrain is not null)
+        {
+            var moon = new ObserverView(epoch, CameraMode.LunarTerrain, null, false) { Terrain = LunarTerrainCamera.Copernicus };
+            var marsEpoch = Enumerable.Range(0, 25).Select(hour => epoch.AddSeconds(3600 * hour)).MaxBy(at =>
+            {
+                var snapshot = session.World.Graph.Evaluate(at);
+                snapshot.TryState(PlanetCatalogue.MarsId, out var state);
+                snapshot.TryOrientation(PlanetCatalogue.MarsId, out var orientation);
+                var sun = orientation.ToWorld.Transpose().Transform((snapshot.SolarSystem!.Value.Sun - state).PositionKilometers);
+                double latitude = 18.65 * Math.PI / 180, longitude = -133.8 * Math.PI / 180;
+                var olympus = new Vector3d(Math.Cos(latitude) * Math.Cos(longitude),
+                    Math.Cos(latitude) * Math.Sin(longitude), Math.Sin(latitude));
+                // Avoid both the night side and a flat overhead illumination for this contrast check.
+                return -Math.Abs(Vector3d.Dot(sun / sun.Length, olympus) - .55);
+            });
+            var mars = new ObserverView(marsEpoch, CameraMode.MarsTerrain, null, false);
+            string terrainPath = Path.Combine(directory, "lunar-mars-relief.stscene");
+            ScenarioFile.Save(terrainPath, new([moon, mars], false, 0, 0, deltaT));
+            if (!scene.LoadScenario(terrainPath))
+                throw new InvalidOperationException("Could not open the original lunar and Mars terrain.");
+            using var relief = await Frame();
+            string smoothPath = Path.Combine(directory, "lunar-mars-smooth.stscene");
+            ScenarioFile.Save(smoothPath, new([moon with { Sky = disabled.Sky }, mars with { Sky = disabled.Sky }], false, 0, 0, deltaT));
+            if (!scene.LoadScenario(smoothPath) || scene.Renderer(0).Terrain?.Visible != true ||
+                scene.Renderer(1).MarsTerrain?.Visible != true)
+                throw new InvalidOperationException("The flat lunar and Mars views must keep their surfaces.");
+            using var smooth = await Frame();
+            int leftChanges = 0, rightChanges = 0;
+            for (int y = 120; y < smooth.GetHeight() - 40; y += 4)
+            for (int x = smooth.GetWidth() / 4; x < 4 * smooth.GetWidth() / 5; x += 4)
+            {
+                if (Math.Abs(relief.GetPixel(x, y).R - smooth.GetPixel(x, y).R) <= .015)
+                    continue;
+                if (x < smooth.GetWidth() / 2)
+                    leftChanges++;
+                else
+                    rightChanges++;
+            }
+            if (relief.SavePng(Path.ChangeExtension(terrainPath, ".png")) != Error.Ok ||
+                smooth.SavePng(Path.ChangeExtension(smoothPath, ".png")) != Error.Ok)
+                throw new IOException("Could not save the terrain comparison frames.");
+            if (leftChanges < 30 || rightChanges < 30)
+                throw new InvalidOperationException($"Relief toggle must affect both surfaces. Changed samples {leftChanges}/{rightChanges}.");
+            GD.Print($"Terrain settings GPU: original lunar and Mars maps, {leftChanges}/{rightChanges} changed samples with identical cameras.");
+
+            async Task<Image> Frame()
+            {
+                await ToSignal(GetTree(), SceneTree.SignalName.ProcessFrame);
+                await ToSignal(RenderingServer.Singleton, RenderingServer.SignalName.FramePostDraw);
+                return GetViewport().GetTexture().GetImage();
+            }
+        }
 
         double Clearance(NavigationCamera pose)
         {

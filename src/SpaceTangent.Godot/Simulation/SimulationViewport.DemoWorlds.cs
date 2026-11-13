@@ -103,7 +103,7 @@ internal partial class SimulationViewport
             SetLight("first", 0);
             SetLight("second", 1);
             bool terrainVisible = false;
-            if (nearTarget &&
+            if (!sky.HideTerrain && nearTarget &&
                 DemoWorlds.CreateSurface(body) is { HasSurface: true } surface)
             {
                 var placement = pose.ResolvePlacement(snapshot);

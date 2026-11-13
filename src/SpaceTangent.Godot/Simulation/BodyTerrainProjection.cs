@@ -93,7 +93,7 @@ internal sealed class BodyTerrainProjection
     internal void FitCamera(Vector2 size) =>
         _camera.KeepAspect = size.X >= size.Y ? Camera3D.KeepAspectEnum.Width : Camera3D.KeepAspectEnum.Height;
 
-    internal bool Draw(LunarTerrainCamera view, Vector3d lightBody, float sunFraction = 1)
+    internal bool Draw(LunarTerrainCamera view, Vector3d lightBody, float sunFraction = 1, bool showRelief = true)
     {
         if (_asset is not { } asset)
             return false;
@@ -124,6 +124,7 @@ internal sealed class BodyTerrainProjection
         SunDirection = ToGodot(lightBody).Normalized();
         _material.SetShaderParameter("sun_direction", SunDirection);
         _material.SetShaderParameter("sun_fraction", sunFraction);
+        _material.SetShaderParameter("show_relief", showRelief);
         if (!_camera.Current)
             _camera.MakeCurrent();
         _mesh.Show();

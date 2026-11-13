@@ -112,7 +112,7 @@ internal sealed class DemoTerrainRendering(Node owner, ProceduralTerrain terrain
     private static readonly string[] MaterialParameters =
     [
         "albedo_map", "normal_map", "cloud_map", "emission_map", "rings_map", "fallback_color", "has_maps",
-        "has_clouds", "has_emission", "has_rings", "cloud_height", "ring_inner", "ring_outer",
+        "has_clouds", "has_emission", "has_rings", "draw_air", "cloud_height", "ring_inner", "ring_outer",
         "first_direction", "first_irradiance", "second_direction", "second_irradiance", "demo_radius",
         "demo_air_top", "demo_rayleigh", "demo_absorption", "demo_mie_albedo", "demo_mie", "demo_mie_g",
         "demo_rayleigh_height", "demo_mie_height"

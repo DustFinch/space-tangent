@@ -54,14 +54,19 @@ public sealed record InstalledSscBody(ObjectId Id, ObjectId Parent, SscBodyDefin
         foreach (var (id, definition) in bodies)
         {
             ObjectId parent = Resolve(definition.Parent);
-            graph.AddTrajectory(id, definition.Sample, Resolve(definition.Center));
-            if (definition.SampleRotation is { } rotation)
-                graph.AddOrientation(id, rotation);
-            else if (definition.Orientation is { } orientation)
-                graph.AddTwoVectorOrientation(id, orientation.Primary.Axis, Direction(orientation.Primary),
-                    orientation.Secondary.Axis, Direction(orientation.Secondary));
+            if (definition.BindTimeline is { } timeline)
+                graph.AddSampledMission(timeline(id, Resolve));
             else
-                graph.AddOrientation(id, _ => new(Basis3d.Identity, default(Vector3d)));
+            {
+                graph.AddTrajectory(id, definition.Sample, Resolve(definition.Center));
+                if (definition.SampleRotation is { } rotation)
+                    graph.AddOrientation(id, rotation);
+                else if (definition.Orientation is { } orientation)
+                    graph.AddTwoVectorOrientation(id, orientation.Primary.Axis, Direction(orientation.Primary),
+                        orientation.Secondary.Axis, Direction(orientation.Secondary));
+                else
+                    graph.AddOrientation(id, _ => new(Basis3d.Identity, default(Vector3d)));
+            }
             installed.Add(new(id, parent, definition));
         }
         return installed.AsReadOnly();

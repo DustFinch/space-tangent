@@ -7,7 +7,7 @@ using SpaceTangent.Core.Addons;
 
 namespace SpaceTangent.Application.Assets;
 
-/// <summary>Decodes static, untextured 3DS triangle meshes with diffuse materials.</summary>
+/// <summary>Decodes static 3DS triangle meshes with local diffuse materials.</summary>
 public static class StudioMeshDecoder
 {
     private const int MaximumFileBytes = 32 * 1024 * 1024;
@@ -16,14 +16,17 @@ public static class StudioMeshDecoder
     private static readonly DecodedMaterial DefaultMaterial = new(new(.8, .8, .8), 1, null);
 
     private readonly record struct Triangle(int A, int B, int C);
-    private sealed record Part(Vector3d[] Vertices, Triangle[] Faces, string[] Materials);
-    private sealed record Surface(List<Vector3d> Points, List<Vector3d> Normals);
+    private sealed record Part(Vector3d[] Vertices, Triangle[] Faces, string[] Materials, float[]? Uvs);
+    private sealed record Surface(List<Vector3d> Points, List<Vector3d> Normals, List<float> Uvs);
     private delegate void ChunkVisitor(ushort id, ReadOnlySpan<byte> data);
 
     public static DecodedScienceModel Decode(string path, CancellationToken cancellation = default, bool centerOnBounds = false) =>
-        AddonDiagnostics.Read(AddonStage.Mesh, path, () => DecodeCore(path, cancellation, centerOnBounds));
+        Decode(Path.GetDirectoryName(Path.GetFullPath(path))!, path, cancellation, centerOnBounds);
 
-    private static DecodedScienceModel DecodeCore(string path, CancellationToken cancellation, bool centerOnBounds)
+    public static DecodedScienceModel Decode(string root, string path, CancellationToken cancellation = default, bool centerOnBounds = false) =>
+        AddonDiagnostics.Read(AddonStage.Mesh, path, () => DecodeCore(root, path, cancellation, centerOnBounds));
+
+    private static DecodedScienceModel DecodeCore(string root, string path, CancellationToken cancellation, bool centerOnBounds)
     {
         using FileStream stream = AddonDependencies.OpenRead(path, MaximumFileBytes);
         if (stream.Length is < 6 or > MaximumFileBytes)
@@ -70,6 +73,8 @@ public static class StudioMeshDecoder
             throw new InvalidDataException("3DS file has no usable triangle geometry.");
 
         var result = new List<DecodedSurface>(surfaces.Count);
+        var textures = new Dictionary<string, ReadOnlyMemory<byte>>(StringComparer.Ordinal);
+        long textureBytes = 0;
         Vector3d center = centerOnBounds ? (min + max) * .5 : default;
         foreach (var (name, surface) in surfaces)
         {
@@ -80,11 +85,22 @@ public static class StudioMeshDecoder
                 for (int i = 0; i < points.Length; i++)
                     points[i] -= center;
             }
-            result.Add(new(points, surface.Normals.ToArray(), new float[points.Length * 2],
-                materials.GetValueOrDefault(name) ?? DefaultMaterial));
+            var material = materials.GetValueOrDefault(name) ?? DefaultMaterial;
+            if (material.Texture is { } texture && !textures.ContainsKey(texture))
+            {
+                string image = SscBodyCatalogue.ResolveTexture(root, path, texture);
+                using var pixels = AddonDependencies.OpenRead(image, 16 * 1024 * 1024);
+                textureBytes += pixels.Length;
+                if (textureBytes > 64 * 1024 * 1024)
+                    throw new InvalidDataException("3DS textures exceed 64 MiB.");
+                byte[] encoded = new byte[(int)pixels.Length];
+                pixels.ReadExactly(encoded);
+                ModelTextureFormats.Validate(texture, encoded);
+                textures.Add(texture, encoded);
+            }
+            result.Add(new(points, surface.Normals.ToArray(), surface.Uvs.ToArray(), material));
         }
-        return new(result.AsReadOnly(), new ReadOnlyDictionary<string, ReadOnlyMemory<byte>>(
-            new Dictionary<string, ReadOnlyMemory<byte>>()), diameter);
+        return new(result.AsReadOnly(), new ReadOnlyDictionary<string, ReadOnlyMemory<byte>>(textures), diameter);
 
         void AddPart(Part part)
         {
@@ -107,16 +123,18 @@ public static class StudioMeshDecoder
                 {
                     if (surfaces.Count >= MaximumSurfaces)
                         throw new InvalidDataException("3DS file exceeds the supported material surface count.");
-                    surfaces.Add(name, surface = new([], []));
+                    surfaces.Add(name, surface = new([], [], []));
                 }
-                Append(first);
-                Append(second);
-                Append(third);
+                Append(first, a);
+                Append(second, b);
+                Append(third, c);
 
-                void Append(Vector3d point)
+                void Append(Vector3d point, int vertex)
                 {
                     surface.Points.Add(point);
                     surface.Normals.Add(normal);
+                    surface.Uvs.Add(part.Uvs is { } uv ? uv[vertex * 2] : 0);
+                    surface.Uvs.Add(part.Uvs is { } uvValues ? uvValues[vertex * 2 + 1] : 0);
                     min = new(Math.Min(min.X, point.X), Math.Min(min.Y, point.Y), Math.Min(min.Z, point.Z));
                     max = new(Math.Max(max.X, point.X), Math.Max(max.Y, point.Y), Math.Max(max.Z, point.Z));
                 }
@@ -129,6 +147,7 @@ public static class StudioMeshDecoder
         Vector3d[]? vertices = null;
         Triangle[]? faces = null;
         string[]? materials = null;
+        float[]? uvs = null;
         ReadChunks(bytes, (id, data) =>
         {
             if (id == 0x4110)
@@ -141,6 +160,20 @@ public static class StudioMeshDecoder
                 vertices = new Vector3d[count];
                 for (int index = 0; index < count; index++)
                     vertices[index] = ReadVector(data[(2 + index * 12)..]);
+            }
+            else if (id == 0x4140)
+            {
+                int count = ReadU16(data);
+                if (uvs is not null || data.Length != 2 + count * 8)
+                    throw new InvalidDataException("Invalid or repeated 3DS UV list.");
+                uvs = new float[count * 2];
+                for (int index = 0; index < uvs.Length; index++)
+                {
+                    float value = BinaryPrimitives.ReadSingleLittleEndian(data[(2 + index * 4)..]);
+                    if (!float.IsFinite(value))
+                        throw new InvalidDataException("Non-finite 3DS UV coordinate.");
+                    uvs[index] = index % 2 == 0 ? value : 1 - value;
+                }
             }
             else if (id == 0x4120)
             {
@@ -165,8 +198,9 @@ public static class StudioMeshDecoder
                 materials = groups;
             }
         });
-        return new(vertices ?? throw new InvalidDataException("Missing 3DS vertex list."),
-            faces ?? throw new InvalidDataException("Missing 3DS face list."), materials!);
+        if (vertices is null || faces is null)
+            throw new InvalidDataException("3DS mesh needs vertex and face lists.");
+        return new(vertices, faces, materials!, uvs?.Length == vertices.Length * 2 ? uvs : null);
     }
 
     private static void AssignMaterial(ReadOnlySpan<byte> group, string[] assignments)
@@ -190,6 +224,7 @@ public static class StudioMeshDecoder
         string? name = null;
         Vector3d color = DefaultMaterial.Color;
         double opacity = 1;
+        string? texture = null;
         ReadChunks(data, (kind, bytes) =>
         {
             switch (kind)
@@ -217,13 +252,18 @@ public static class StudioMeshDecoder
                     });
                     break;
                 case 0xa200:
-                    throw new NotSupportedException("3DS texture maps are not supported.");
+                    ReadChunks(bytes, (id, value) =>
+                    {
+                        if (id == 0xa300)
+                            texture = ReadName(value, out _);
+                    });
+                    break;
             }
         });
         if (name is null || color.X is < 0 or > 1 || color.Y is < 0 or > 1 || color.Z is < 0 or > 1 ||
             !double.IsFinite(opacity) || opacity is < 0 or > 1)
             throw new InvalidDataException("Invalid 3DS material.");
-        return (name, new(color, opacity, null));
+        return (name, new(color, opacity, texture));
     }
 
     private static Vector3d ReadVector(ReadOnlySpan<byte> data)

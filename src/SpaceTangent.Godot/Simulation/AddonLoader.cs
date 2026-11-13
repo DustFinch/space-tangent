@@ -490,7 +490,7 @@ internal static partial class AddonLoader
             ".obj" => ScienceModelDecoder.Decode(file, cancellation),
             ".cmod" => nativeBody ? CmodMeshDecoder.DecodeNativeBody(root, file, cancellation) : CmodMeshDecoder.Decode(root, file, cancellation),
             ".cms" => DisplacedSphereDecoder.Decode(file, cancellation),
-            ".3ds" => StudioMeshDecoder.Decode(file, cancellation),
+            ".3ds" => StudioMeshDecoder.Decode(root, file, cancellation),
             ".glb" or ".gltf" => PackedModelDecoder.Decode(root, file, cancellation),
             _ => throw new NotSupportedException("The add-on mesh needs OBJ, CMOD, CMS, 3DS, glTF or GLB.")
         };

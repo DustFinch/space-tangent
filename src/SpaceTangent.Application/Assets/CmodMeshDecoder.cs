@@ -62,23 +62,30 @@ public static partial class CmodMeshDecoder
         long textureBytes = 0;
         foreach (var (material, surface) in surfaces)
         {
-            foreach (string name in new[] { material.Texture, material.NormalTexture }.OfType<string>())
-            {
-                if (textures.ContainsKey(name))
-                    continue;
-                string texture = SscBodyCatalogue.ResolveTexture(root, path, name);
-                using FileStream pixels = AddonDependencies.OpenRead(texture, 16 * 1024 * 1024);
-                textureBytes += pixels.Length;
-                if (pixels.Length is < 24 or > 16 * 1024 * 1024 || textureBytes > 64 * 1024 * 1024)
-                    throw new InvalidDataException("CMOD diffuse textures exceed the supported size.");
-                var bytes = new byte[(int)pixels.Length];
-                pixels.ReadExactly(bytes);
-                ModelTextureFormats.Validate(name, bytes);
-                textures.Add(name, bytes);
-            }
-            decoded.Add(new(surface.Positions.ToArray(), surface.Normals.ToArray(), surface.Uvs.ToArray(), material));
+            var resolved = material with { Texture = ReadTexture(material.Texture), NormalTexture = ReadTexture(material.NormalTexture) };
+            decoded.Add(new(surface.Positions.ToArray(), surface.Normals.ToArray(), surface.Uvs.ToArray(), resolved));
         }
         return new(decoded.AsReadOnly(), textures, diameter);
+
+        string? ReadTexture(string? name)
+        {
+            if (name is null)
+                return null;
+            string texture = SscBodyCatalogue.ResolveTexture(root, path, name);
+            string key = name.EndsWith(".*", StringComparison.Ordinal)
+                ? name[..^1] + Path.GetExtension(texture)[1..] : name;
+            if (textures.ContainsKey(key))
+                return key;
+            using FileStream pixels = AddonDependencies.OpenRead(texture, 16 * 1024 * 1024);
+            textureBytes += pixels.Length;
+            if (pixels.Length is < 24 or > 16 * 1024 * 1024 || textureBytes > 64 * 1024 * 1024)
+                throw new InvalidDataException("CMOD textures exceed the supported size.");
+            var bytes = new byte[(int)pixels.Length];
+            pixels.ReadExactly(bytes);
+            ModelTextureFormats.Validate(key, bytes);
+            textures.Add(key, bytes);
+            return key;
+        }
 
         DecodedMaterial ReadMaterial()
         {

@@ -47,6 +47,10 @@ public partial class EarthOrbitProbe
             await CheckPair("moon-and-mars-spacecraft",
                 View("ssc/sol/earth/moon/apollo-11", 2440423.0, .042),
                 View("ssc/sol/mars/mars-odyssey", 2452623.5, .061));
+            if (System.Environment.GetEnvironmentVariable("SPACETANGENT_GALILEO_GPU") == "1")
+                await CheckPair("galileo-and-probe",
+                    View("ssc/sol/jupiter/galileo", 2450083.500708, .058),
+                    View("ssc/sol/jupiter/galileo/galileo-probe", 2450059.417375, .006));
 
             ObserverView View(string path, double day, double range)
             {
@@ -79,6 +83,14 @@ public partial class EarthOrbitProbe
                         mesh.GetSurfaceCount() == 0)
                         throw new InvalidOperationException($"The original model for {id.Value} is not visible.");
                     GD.Print($"Standard spacecraft GPU: {id.Value}, {mesh.GetSurfaceCount()} material surfaces.");
+                    if (id.Value.Contains("/galileo", StringComparison.Ordinal))
+                    {
+                        int textured = Enumerable.Range(0, mesh.GetSurfaceCount()).Count(index =>
+                            mesh.SurfaceGetMaterial(index) is StandardMaterial3D { AlbedoTexture: not null });
+                        if (textured == 0)
+                            throw new InvalidOperationException($"No original material texture for {id.Value}.");
+                        GD.Print($"Galileo GPU: {id.Value}, {textured} textured surfaces.");
+                    }
                     if (id.Value == "ssc/sol/earth/mir")
                         CheckMirBounds(node, second.Navigation!.Value.RangeKilometers);
                 }

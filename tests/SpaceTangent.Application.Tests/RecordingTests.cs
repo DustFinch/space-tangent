@@ -162,6 +162,38 @@ public sealed class RecordingTests
         Assert.Same(earth.Points, next.Points);
     }
 
+    [RecordedStarPointsFact]
+    [Trait("Category", "ExternalData")]
+    public void ReadsDiscreteStarsFromTheOriginalRecorderAndClearsThemOnTheNextFrame()
+    {
+        using var file = File.OpenRead(Environment.GetEnvironmentVariable("SPACETANGENT_LEGACY_STAR_POINTS")!);
+        var world = new SimulationWorld(De440Ephemeris.Load(Environment.GetEnvironmentVariable("SPACETANGENT_DE440")!), []);
+        using var replay = new LegacyCameraSequence(file, world, DeltaTModel.MorrisonStephenson2004);
+        Assert.Equal(3, replay.FrameCount);
+        Assert.NotNull(replay.ReadNext());
+        var frame = Assert.IsType<RecordedSceneGeometry>(replay.CurrentGeometry);
+        Assert.Null(frame.StellarView);
+        Assert.Collection(frame.StarPoints,
+            star => Assert.Equal(new RecordedStarPoint("HIP 12", new(-.06f, .04f, -.9973966f), .8f), star),
+            star => Assert.Equal(new RecordedStarPoint("HIP 42", new(.06f, -.04f, -.9973966f), .35f), star),
+            star => Assert.Equal(new RecordedStarPoint("HIP 68", new(0, 0, -1), 1), star));
+        Assert.NotNull(replay.ReadNext());
+        Assert.Same(frame.StarPoints, replay.CurrentGeometry!.StarPoints);
+        Assert.NotNull(replay.ReadNext());
+        Assert.Empty(replay.CurrentGeometry!.StarPoints);
+        Assert.Null(replay.ReadNext());
+    }
+
+    private sealed class RecordedStarPointsFactAttribute : FactAttribute
+    {
+        public RecordedStarPointsFactAttribute()
+        {
+            if (string.IsNullOrWhiteSpace(Environment.GetEnvironmentVariable("SPACETANGENT_LEGACY_STAR_POINTS")) ||
+                string.IsNullOrWhiteSpace(Environment.GetEnvironmentVariable("SPACETANGENT_DE440")))
+                Skip = "Set the legacy recorder's discrete-star fixture and the ephemeris.";
+        }
+    }
+
     private sealed class ArchiveFactAttribute : FactAttribute
     {
         public ArchiveFactAttribute(bool orbits = false)

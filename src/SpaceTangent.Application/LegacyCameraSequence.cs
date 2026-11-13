@@ -21,6 +21,7 @@ public sealed record RecordedSceneGeometry(double KilometersPerUnit, IReadOnlyLi
 {
     public IReadOnlyList<RecordedOrbit> Orbits { get; init; } = [];
     public IReadOnlyList<RecordedLabel> Labels { get; init; } = [];
+    public IReadOnlyList<RecordedStarPoint> StarPoints { get; init; } = [];
     public RecordedStellarView? StellarView { get; init; }
     public IReadOnlyList<RecordedCometTail> CometTails { get; init; } = [];
     public IReadOnlyList<RecordedShadow> Shadows { get; init; } = [];
@@ -163,7 +164,7 @@ public sealed class LegacyCameraSequence : IObserverReplay
                     SecondLightAngularRadius = secondLightRadius
                 };
             }
-            var (orbits, labels, points, tails, shadows, stellarOffset) = overlays.Read(data, cursor, minor, strings);
+            var (starPoints, orbits, labels, points, tails, shadows, stellarOffset) = overlays.Read(data, cursor, minor, strings);
             var sunPosition = Vector(data[81..]);
             double sunRadius = Single(data[93..]);
             if (!sunPosition.IsFinite || !double.IsFinite(sunRadius) || sunRadius < 0)
@@ -172,7 +173,7 @@ public sealed class LegacyCameraSequence : IObserverReplay
             if (previousGeometry is null || previousGeometry.KilometersPerUnit != scale ||
                 !geometry.AsSpan().SequenceEqual(previousBodies) ||
                 !ReferenceEquals(orbits, previousGeometry.Orbits) || !ReferenceEquals(labels, previousGeometry.Labels) || previousGeometry.StellarView != stellarView ||
-                !ReferenceEquals(points, previousGeometry.BodyPoints) || !ReferenceEquals(tails, previousGeometry.CometTails) ||
+                !ReferenceEquals(starPoints, previousGeometry.StarPoints) || !ReferenceEquals(points, previousGeometry.BodyPoints) || !ReferenceEquals(tails, previousGeometry.CometTails) ||
                 !ReferenceEquals(shadows, previousGeometry.Shadows) || previousGeometry.SunPosition != sunPosition ||
                 previousGeometry.SunRadius != sunRadius)
             {
@@ -184,7 +185,7 @@ public sealed class LegacyCameraSequence : IObserverReplay
                     ? previousGeometry.Bodies : Array.AsReadOnly(geometry);
                 previousGeometry = new(scale, savedBodies)
                 {
-                    Orbits = orbits, Labels = labels, StellarView = stellarView, BodyPoints = points, CometTails = tails,
+                    Orbits = orbits, Labels = labels, StarPoints = starPoints, StellarView = stellarView, BodyPoints = points, CometTails = tails,
                     Shadows = shadows, SunPosition = sunPosition, SunRadius = sunRadius
                 };
                 previousBodies = geometry;

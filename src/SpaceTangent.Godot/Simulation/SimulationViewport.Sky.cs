@@ -45,11 +45,12 @@ internal partial class SimulationViewport
         if (ArchivedGeometry is not null)
             observer = observer with
             {
-                Sky = observer.Sky with { Labels = false, Stars = ArchivedGeometry.StellarView is null && observer.Sky.Stars }
+                Sky = observer.Sky with { Labels = false, Stars = ArchivedGeometry is { StellarView: null, StarPoints.Count: 0 } && observer.Sky.Stars }
             };
         PrepareGalacticSky(observer, snapshot, deltaT);
         bool available = DrawScene(observer, snapshot, deltaT);
         DrawArchivedStars(ArchivedGeometry?.StellarView, observer.Epoch.ToJulianDate());
+        DrawArchivedStarPoints(ArchivedGeometry?.StarPoints);
         if (_spaceSky is not null)
         {
             bool localSky = observer.Sky.Stars || observer.Sky.Labels || observer.Sky.EquatorialGrid || observer.Sky.Constellations;

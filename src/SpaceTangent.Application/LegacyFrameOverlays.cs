@@ -13,6 +13,8 @@ public sealed record RecordedOrbit(string Name, IReadOnlyList<Vector3d> Points, 
 public readonly record struct RecordedLabel(string Text, Vector3d CameraPosition, int Kind,
     double Opacity, Vector3d? Color, double MarkerRadians);
 
+public readonly record struct RecordedStarPoint(string Name, Vector3d CameraDirection, double Brightness);
+
 public readonly record struct RecordedBodyPoint(string Name, double Magnitude, Vector3d Color, double Fade, bool ReplacesSurface);
 
 public readonly record struct RecordedCometTail(string Name, Vector3d Head, Vector3d Direction, Vector3d Trail,
@@ -23,6 +25,8 @@ public readonly record struct RecordedShadow(string Receiver, Vector3d Center, d
 internal sealed class LegacyFrameOverlays
 {
     private readonly List<IReadOnlyList<Vector3d>> _geometry = [];
+    private RecordedStarPoint[] _lastStarPoints = [];
+    private IReadOnlyList<RecordedStarPoint> _starPoints = [];
     private RecordedOrbit[] _lastOrbits = [];
     private RecordedLabel[] _lastLabels = [];
     private RecordedBodyPoint[] _lastPoints = [];
@@ -51,13 +55,27 @@ internal sealed class LegacyFrameOverlays
         _geometry.Add(Array.AsReadOnly(points));
     }
 
-    internal (IReadOnlyList<RecordedOrbit>, IReadOnlyList<RecordedLabel>, IReadOnlyDictionary<string, RecordedBodyPoint>, IReadOnlyList<RecordedCometTail>, IReadOnlyList<RecordedShadow>, int StellarOffset) Read(ReadOnlySpan<byte> data,
+    internal (IReadOnlyList<RecordedStarPoint>, IReadOnlyList<RecordedOrbit>, IReadOnlyList<RecordedLabel>, IReadOnlyDictionary<string, RecordedBodyPoint>, IReadOnlyList<RecordedCometTail>, IReadOnlyList<RecordedShadow>, int StellarOffset) Read(ReadOnlySpan<byte> data,
         int offset, int minor, IReadOnlyList<string> strings)
     {
         int stars = Count(data, 100, 256), orbitCount = Count(data, 102, 128);
         int shadows = Count(data, 104, 768), points = Count(data, 106, 192), labelCount = Count(data, 108, 256);
         var reader = new Reader(data[offset..]);
-        reader.Skip(stars * 20);
+        var starPoints = new RecordedStarPoint[stars];
+        for (int index = 0; index < starPoints.Length; index++)
+        {
+            string name = reader.Text(strings);
+            Vector3d direction = reader.Vector();
+            double brightness = reader.Unit();
+            if (Math.Abs(Vector3d.Dot(direction, direction) - 1) > 2e-6)
+                throw new InvalidDataException("Invalid archived star direction.");
+            starPoints[index] = new(name, direction, brightness);
+        }
+        if (!starPoints.AsSpan().SequenceEqual(_lastStarPoints))
+        {
+            Charge(starPoints.Length);
+            _starPoints = Array.AsReadOnly(_lastStarPoints = starPoints);
+        }
         var rotation = new Reader(data[65..81]);
         Vector3d imaginary = rotation.Vector();
         double real = rotation.Float();
@@ -153,7 +171,7 @@ internal sealed class LegacyFrameOverlays
             Charge(tails.Length);
             _tails = Array.AsReadOnly(_lastTails = tails);
         }
-        return (_orbits, _labels, _points, _tails, _shadows, data.Length - reader.Remaining);
+        return (_starPoints, _orbits, _labels, _points, _tails, _shadows, data.Length - reader.Remaining);
 
         Vector3d Turn(Vector3d value)
         {
@@ -165,7 +183,7 @@ internal sealed class LegacyFrameOverlays
     private void Charge(int entries)
     {
         if ((_retained += entries) > 1_000_000)
-            throw new InvalidDataException("Archived replay exceeds the orbit and label budget.");
+            throw new InvalidDataException("Archived replay exceeds the overlay budget.");
     }
 
     private static int Count(ReadOnlySpan<byte> data, int offset, int maximum)
@@ -188,7 +206,6 @@ internal sealed class LegacyFrameOverlays
         }
 
         internal int Remaining => _remaining.Length;
-        internal void Skip(int count) => _ = Take(count);
         internal byte Byte() => Take(1)[0];
         internal uint U32() => BinaryPrimitives.ReadUInt32LittleEndian(Take(4));
         internal double Float()

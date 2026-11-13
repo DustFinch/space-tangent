@@ -136,6 +136,12 @@ public partial class EarthOrbitProbe : Node
                 result = 0;
                 return;
             }
+            if (System.Environment.GetEnvironmentVariable("SPACETANGENT_ARCHIVED_STAR_POINTS_GPU") is { Length: > 0 } starPointsRecording)
+            {
+                await ExerciseArchivedStarPoints(scene, directory, starPointsRecording);
+                result = 0;
+                return;
+            }
             if (System.Environment.GetEnvironmentVariable("SPACETANGENT_ARCHIVED_BODY_GPU") == "only")
             {
                 await ExerciseArchivedBodyGeometry(scene, directory);

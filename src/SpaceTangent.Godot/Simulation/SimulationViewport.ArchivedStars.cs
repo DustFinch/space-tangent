@@ -14,6 +14,47 @@ internal partial class SimulationViewport
     internal int ArchivedStarCount => _archivedStarBackground?.Visible == true
         ? (_archivedBackgroundSource?.Count ?? 0) + (_archivedMovingSource?.Count ?? 0) : 0;
 
+    private MeshInstance3D? _archivedStarPoints;
+    private IReadOnlyList<RecordedStarPoint>? _archivedStarPointSource;
+
+    private void DrawArchivedStarPoints(IReadOnlyList<RecordedStarPoint>? points)
+    {
+        if (points is not { Count: > 0 } || DisplayServer.GetName() == "headless")
+        {
+            if (_archivedStarPoints is { } hidden)
+            {
+                hidden.Hide();
+                hidden.Mesh = null;
+            }
+            _archivedStarPointSource = null;
+            return;
+        }
+
+        var node = _archivedStarPoints ??= CreateArchivedStarNode("ArchivedStarPoints", "archived_star_points");
+        if (!ReferenceEquals(points, _archivedStarPointSource))
+        {
+            using var mesh = new SurfaceTool();
+            mesh.Begin(Mesh.PrimitiveType.Triangles);
+            ReadOnlySpan<Vector2> corners = [new(0, 0), new(0, 1), new(1, 1), new(0, 0), new(1, 1), new(1, 0)];
+            foreach (var point in points)
+            {
+                var direction = point.CameraDirection;
+                Vector3 center = new((float)direction.X, (float)direction.Y, (float)direction.Z);
+                foreach (var uv in corners)
+                {
+                    mesh.SetColor(new(.8f, .88f, 1f, (float)point.Brightness));
+                    mesh.SetUV(uv);
+                    // The saved sky used a 0.18-unit quad at 100 units from the camera.
+                    mesh.AddVertex(center + new Vector3(uv.X - .5f, uv.Y - .5f, 0) * .0018f);
+                }
+            }
+            node.Mesh = mesh.Commit();
+            _archivedStarPointSource = points;
+        }
+        node.Transform = _navigationCamera.Transform;
+        node.Show();
+    }
+
     private void DrawArchivedStars(RecordedStellarView? view, double julianDate)
     {
         if (view is null || DisplayServer.GetName() == "headless")
@@ -83,11 +124,11 @@ internal partial class SimulationViewport
         _archivedMovingPositions = default;
     }
 
-    private MeshInstance3D CreateArchivedStarNode(string name)
+    private MeshInstance3D CreateArchivedStarNode(string name, string shader = "archived_stars")
     {
         var mesh = new MeshInstance3D
         {
-            MaterialOverride = new ShaderMaterial { Shader = GD.Load<Shader>("res://Shaders/archived_stars.gdshader"), RenderPriority = -10 },
+            MaterialOverride = new ShaderMaterial { Shader = GD.Load<Shader>($"res://Shaders/{shader}.gdshader"), RenderPriority = -10 },
             Name = name,
             CustomAabb = new Aabb(-Vector3.One * 2, Vector3.One * 4),
             CastShadow = GeometryInstance3D.ShadowCastingSetting.Off

@@ -320,6 +320,44 @@ public partial class EarthOrbitProbe
         }
     }
 
+    private async Task ExerciseArchivedStarPoints(SolarSystemScene scene, string directory, string recording)
+    {
+        scene.SetProcess(false);
+        string saved = Path.Combine(directory, "before-archived-star-points.stscene");
+        if (!scene.SaveScenario(saved) || !scene.StartReplay(recording))
+            throw new InvalidOperationException("Could not open the recorded discrete stars.");
+        var renderer = scene.Renderer(0);
+        var geometry = renderer.ArchivedGeometry!;
+        var node = renderer.GetNode<MeshInstance3D>("ArchivedStarPoints");
+        if (!node.Visible || geometry.StarPoints.Count != 3)
+            throw new InvalidOperationException("The recording did not restore three discrete stars.");
+        await ToSignal(RenderingServer.Singleton, RenderingServer.SignalName.FramePostDraw);
+        using var withStars = renderer.GetViewport().GetTexture().GetImage();
+        node.Hide();
+        await ToSignal(RenderingServer.Singleton, RenderingServer.SignalName.FramePostDraw);
+        using var withoutStars = renderer.GetViewport().GetTexture().GetImage();
+        var camera = renderer.NavigationCameraNode;
+        var contrasts = new List<float>();
+        foreach (var star in geometry.StarPoints)
+        {
+            var direction = star.CameraDirection;
+            var position = camera.UnprojectPosition(camera.ToGlobal(
+                new Vector3((float)direction.X, (float)direction.Y, (float)direction.Z) * 100));
+            float contrast = 0;
+            for (int y = (int)position.Y - 2; y <= (int)position.Y + 2; y++)
+            for (int x = (int)position.X - 2; x <= (int)position.X + 2; x++)
+                contrast = Math.Max(contrast, withStars.GetPixel(x, y).Luminance - withoutStars.GetPixel(x, y).Luminance);
+            contrasts.Add(contrast);
+        }
+        if (contrasts[0] <= contrasts[1] + .1f || contrasts[1] < .1f || contrasts[2] > .01f ||
+            withStars.SavePng(Path.Combine(directory, "archived-star-points.png")) != Error.Ok)
+            throw new InvalidOperationException($"Incorrect brightness or occlusion of recorded stars: {string.Join(", ", contrasts)}.");
+        node.Show();
+        if (!scene.LoadScenario(saved) || node.Visible || node.Mesh is not null)
+            throw new InvalidOperationException("Discrete star geometry survived leaving the replay.");
+        GD.Print($"Archived discrete stars GPU: two visible points and one behind the Moon. Contrast: {string.Join(", ", contrasts)}.");
+    }
+
     private async Task ExerciseArchivedBodyGeometry(SolarSystemScene scene, string directory)
     {
         if (System.Environment.GetEnvironmentVariable("SPACETANGENT_ARCHIVED_BODY_GPU") is not ("1" or "only"))

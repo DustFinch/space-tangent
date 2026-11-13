@@ -119,3 +119,5 @@ The startup option `--startup-legacy-settings <path>` can also read archived sav
 Use `--startup-telrad` for the 0.5°, 2°, and 4° rings, and `--startup-camera 1` through `4` for APS-C, full frame, ASI533, and ASI2600. Use sensor index `0` to clear the camera frame. These options apply to the active view. The sensor footprint uses the selected telescope focal length and Barlow. An active eyepiece hides its own finder overlays. The observatory uses the physical lunar diameter when either a finder or eyepiece is active.
 
 Scenario version 18 stores each view's settings. Importing an archived observer profile also restores its Telrad, camera frame and eyepiece-circle settings.
+
+The Location panel shows the Earth map when the surface view is available. Use the wheel to zoom and drag to pan. Click a catalogue marker or a point on the map to move the active observer. Enter a name and choose **Save site** to add it to the saved list. Saving again under the same name updates its coordinates and keeps the stored time zone.

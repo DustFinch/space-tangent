@@ -10,7 +10,20 @@ public static class LegacySavedEarthPlaces
     private static readonly Encoding Utf8 = new UTF8Encoding(false, true);
 
     /// <summary>Appends valid archived sites while retaining existing user entries with the same ID.</summary>
-    public static int Merge(string destination, IReadOnlyList<EarthPlace> archived)
+    public static int Merge(string destination, IReadOnlyList<EarthPlace> archived) => Write(destination, archived, false);
+
+    public static void Save(string destination, string name, EarthSite location)
+    {
+        name = name.Trim();
+        if (name.Length is 0 or > 80 || name.Any(char.IsControl) || !location.IsValid() || location.HeightKilometers > 100)
+            throw new InvalidDataException("A saved site needs a name and valid Earth coordinates.");
+        double offset = Math.Round(location.LongitudeDegrees / 15);
+        var site = EarthPlaceCatalogue.ParseSavedText(FormattableString.Invariant(
+            $"{name}\t{location.LatitudeDegrees:R}\t{location.LongitudeDegrees:R}\t{location.HeightKilometers * 1000:R}\t{offset:R}")).Single();
+        Write(destination, [site], true);
+    }
+
+    private static int Write(string destination, IReadOnlyList<EarthPlace> archived, bool replace)
     {
         if (archived.Count == 0)
             return 0;
@@ -28,6 +41,22 @@ public static class LegacySavedEarthPlaces
                 throw new InvalidDataException("The saved Earth place file exceeds 4 MiB.");
             using var reader = new StreamReader(file, Utf8);
             previous = reader.ReadToEnd();
+        }
+        if (replace)
+        {
+            var update = archived[0];
+            if (EarthPlaceCatalogue.ParseSavedText(previous).FirstOrDefault(site => site.Id == update.Id) is { } old)
+                archived = [update with { TimeZone = old.TimeZone, FixedOffsetHours = old.FixedOffsetHours }];
+            string targetName = update.Name;
+            using var lines = new StringReader(previous);
+            var remaining = new StringBuilder();
+            while (lines.ReadLine() is { } line)
+            {
+                if (!line.StartsWith('#') && line.Split('\t', 2)[0].Trim().Equals(targetName, StringComparison.OrdinalIgnoreCase))
+                    continue;
+                remaining.AppendLine(line);
+            }
+            previous = remaining.ToString();
         }
         var present = EarthPlaceCatalogue.ParseSavedText(previous).Select(site => site.Id).ToHashSet();
         var added = new List<string>();

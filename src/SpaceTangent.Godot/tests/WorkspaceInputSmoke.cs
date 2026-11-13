@@ -49,6 +49,13 @@ public partial class WorkspaceInputSmoke : Node
                 "DE440 and the original Jason-1 add-on must load.");
             Tree.Root.NotifyMouseEntered();
 
+            if (System.Environment.GetEnvironmentVariable("SPACETANGENT_EARTH_PLACES_SMOKE_ONLY") == "1")
+            {
+                await ExerciseEarthPlaces(scratch.FullName);
+                exitCode = 0;
+                return;
+            }
+
             if (System.Environment.GetEnvironmentVariable("SPACETANGENT_MEDIA_SMOKE_ONLY") == "1")
             {
                 var view = Session[0] with { Playing = false };

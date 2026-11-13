@@ -3,6 +3,7 @@ using System.Text.Json.Nodes;
 using Godot;
 using SpaceTangent.Application;
 using SpaceTangent.Core.Observing;
+using SpaceTangent.Godot.UI;
 
 namespace SpaceTangent.Godot.Tests;
 
@@ -45,6 +46,45 @@ public partial class WorkspaceInputSmoke
             await Reload("Discovering the archived custom site file");
             var saved = Session.World.EarthPlaces.Places.Single(place => place.Name == "Home Observatory");
             await OpenPlace(saved.EnglishName, saved);
+            await Click(Find<Button>("LocationTab"));
+            var map = Find<EarthSiteMap>("EarthSiteMap");
+            Vector2 paranal = map.Project(observatory.LatitudeDegrees, observatory.LongitudeDegrees);
+            var screen = map.GetGlobalRect().Position + paranal;
+            using (var down = MouseButtonAt(screen, true))
+                Tree.Root.PushInput(down, inLocalCoords: true);
+            using (var up = MouseButtonAt(screen, false))
+                Tree.Root.PushInput(up, inLocalCoords: true);
+            await ToSignal(Tree, SceneTree.SignalName.ProcessFrame);
+            Require(Session[0].EarthObserver?.Site == observatory.ObserverSite && Session[1] == right,
+                "Clicking Paranal on the map must apply the original coordinates to only the active view.");
+            await FillField("SavedSiteName", "Параналь · карта");
+            await Click(Find<Button>("SaveEarthSite"));
+            await Until(() => Session.World.EarthPlaces.Places.Any(place => place.Name == "Параналь · карта"),
+                "Reloading the site saved from the map", 30);
+            Require(EarthPlaceCatalogue.ParseSavedText(File.ReadAllText(savedFile)).Any(place =>
+                place.Name == "Параналь · карта" && place.ObserverSite == observatory.ObserverSite),
+                "The named site must survive reading the saved TSV from disk.");
+            Vector2 firstScale = map.Project(0, 30) - map.Project(0, 0);
+            Vector2 center = map.GetGlobalRect().GetCenter();
+            using (var wheel = new InputEventMouseButton { Position = center, GlobalPosition = center, Pressed = true,
+                       ButtonIndex = MouseButton.WheelUp })
+                Tree.Root.PushInput(wheel, inLocalCoords: true);
+            await ToSignal(Tree, SceneTree.SignalName.ProcessFrame);
+            Require((map.Project(0, 30) - map.Project(0, 0)).Length() > firstScale.Length() &&
+                Session[0].EarthObserver?.Site == observatory.ObserverSite, "Zooming the map must leave the ground observer at Paranal.");
+            Find<LineEdit>("SavedSiteName").GrabFocus();
+            await KeyPress(Key.A, ctrl: true);
+            await TypeText(saved.Name);
+            Require(Find<LineEdit>("SavedSiteName").Text == saved.Name, "The name field must accept the site being updated.");
+            await KeyPress(Key.Enter);
+            await Until(() => Session.World.EarthPlaces.Find(saved.Id)?.ObserverSite == observatory.ObserverSite,
+                "Updating a site by name", 30);
+            Require(Session.World.EarthPlaces.Find(saved.Id)?.TimeZone == "Europe/London",
+                "Updating coordinates must preserve the existing time zone.");
+            GD.Print("UI: selected and zoomed to Paranal on the map, saved a new site and updated an existing site by name.");
+            File.WriteAllText(savedFile, "Home Observatory\t51.5\t-0.125\t30\t0\tEurope/London\n");
+            Require(await _scene.ReloadAddOns(), "Restoring the original custom site before migration checks.");
+            await OpenPlace(saved.EnglishName, saved);
             var accepted = Session.CaptureScenario(0);
             ScenarioFile.Save(path, accepted);
             RequireScenario(accepted, ScenarioFile.Load(path), "Saving a named local observing site");
@@ -84,9 +124,11 @@ public partial class WorkspaceInputSmoke
 
         async Task OpenPlace(string query, EarthPlace place)
         {
-            var search = Find<Button>("SearchTab");
-            if (!search.ButtonPressed)
-                await Click(search);
+            if (!Find<LineEdit>("ObjectQuery").IsVisibleInTree())
+            {
+                Tree.Root.GuiGetFocusOwner()?.ReleaseFocus();
+                await KeyPress(Key.Enter);
+            }
             await FillField("ObjectQuery", query);
             await Click(Result(place.Id));
             await Click(Find<Button>("GoToObject"));
@@ -97,7 +139,7 @@ public partial class WorkspaceInputSmoke
         async Task Reload(string caption)
         {
             var addOns = Find<Button>("AddOnsTab");
-            if (!addOns.ButtonPressed)
+            if (!Find<Button>("ReloadAddOns").IsVisibleInTree())
                 await Click(addOns);
             await Click(Find<Button>("ReloadAddOns"));
             await WaitForAddOns(caption);

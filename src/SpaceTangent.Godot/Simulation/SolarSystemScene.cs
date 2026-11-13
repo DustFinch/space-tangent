@@ -297,7 +297,7 @@ public partial class SolarSystemScene : Control
             Session!.SetEarthObserver(_active, camera);
             _status.Text = "";
             SetMode(_active, CameraMode.Surface);
-        }, () => ShowFullMoon(_active), message => _status.Text = message);
+        }, () => ShowFullMoon(_active), message => _status.Text = message, _earthOrbitTextures?.Day, (name, site) => _ = SaveEarthSite(name, site));
         ephemerides.VisibilityChanged += () =>
         {
             if (_views.Count > 0 && ephemerides.IsVisibleInTree())
@@ -1543,7 +1543,7 @@ public partial class SolarSystemScene : Control
         _calendarTime.Text = CivilTimeLabel(active.Epoch, Session!.DeltaT);
         _playFromPanel.Text = active.Playing ? "Pause" : "Play";
         _earthObserver.Update(_active, active, _views[_active].Snapshot, Session.World.Ephemeris, Session.DeltaT,
-            Session.World.BrightStars, CurrentObserverNight());
+            Session.World.BrightStars, CurrentObserverNight(), Session.World.EarthPlaces);
         _stars.SetPressedNoSignal(active.Sky.Stars);
         _starLabels.SetPressedNoSignal(active.Sky.Labels);
         _equatorialGrid.SetPressedNoSignal(active.Sky.EquatorialGrid);

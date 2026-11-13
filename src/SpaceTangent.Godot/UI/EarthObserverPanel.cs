@@ -13,6 +13,7 @@ namespace SpaceTangent.Godot.UI;
 internal sealed class EarthObserverPanel
 {
     private readonly Control _ephemerides;
+    private readonly EarthSiteMap _map;
     private readonly OptionButton _sites;
     private readonly LineEdit _latitude, _longitude, _height, _azimuth, _elevation;
     private readonly CheckButton _horizon, _cardinals;
@@ -24,7 +25,7 @@ internal sealed class EarthObserverPanel
     private (DateOnly Date, EarthSite Site, DeltaTModel Model)? _twilightKey;
 
     internal EarthObserverPanel(VBoxContainer location, VBoxContainer ephemerides, bool surfaceAvailable,
-        Action<EarthObserverCamera> apply, Action fullMoon, Action<string> setStatus)
+        Action<EarthObserverCamera> apply, Action fullMoon, Action<string> setStatus, Texture2D? mapTexture, Action<string, EarthSite> saveSite)
     {
         _apply = apply;
         _setStatus = setStatus;
@@ -40,6 +41,22 @@ internal sealed class EarthObserverPanel
             Site = index == 1 ? EarthObserverCamera.Moscow.Site : EarthObserverCamera.Tromso.Site
         });
         location.AddChild(_sites);
+        _map = new EarthSiteMap(mapTexture) { Visible = surfaceAvailable };
+        _map.Picked += (place, site) => _apply(_camera with
+        {
+            Site = site,
+            Conditions = place?.Bortle is { } bortle ? new GroundSkyConditions(bortle) : _camera.Conditions
+        });
+        location.AddChild(_map);
+        var saveRow = new HBoxContainer();
+        var siteName = new LineEdit { Name = "SavedSiteName", PlaceholderText = "Site name", MaxLength = 80,
+            SizeFlagsHorizontal = Control.SizeFlags.ExpandFill, Editable = surfaceAvailable };
+        var saveButton = new Button { Name = "SaveEarthSite", Text = "Save site", Disabled = !surfaceAvailable };
+        saveButton.Pressed += () => saveSite(siteName.Text, _camera.Site);
+        siteName.TextSubmitted += name => saveSite(name, _camera.Site);
+        saveRow.AddChild(siteName);
+        saveRow.AddChild(saveButton);
+        location.AddChild(saveRow);
         _latitude = Field(location, "ObserverLatitude", "Latitude (°)", surfaceAvailable);
         _longitude = Field(location, "ObserverLongitude", "Longitude east (°)", surfaceAvailable);
         _height = Field(location, "ObserverHeight", "Height (km)", surfaceAvailable);
@@ -73,7 +90,7 @@ internal sealed class EarthObserverPanel
     }
 
     internal void Update(int view, ObserverView observer, WorldSnapshot? snapshot, ISolarSystemEphemeris ephemeris,
-        DeltaTModel model, BrightStarCatalogue brightStars, ObserverNight? night)
+        DeltaTModel model, BrightStarCatalogue brightStars, ObserverNight? night, EarthPlaceCatalogue places)
     {
         EarthObserverCamera camera = observer.EarthObserver ?? EarthObserverCamera.Moscow;
         if (_view != view || camera.Site != _camera.Site || camera.AzimuthDegrees != _camera.AzimuthDegrees ||
@@ -89,6 +106,7 @@ internal sealed class EarthObserverPanel
             _elevation.Text = Format(camera.ElevationDegrees);
         }
         _camera = camera;
+        _map.Update(places, camera.Site);
         _horizon.SetPressedNoSignal(camera.HorizonGrid);
         _cardinals.SetPressedNoSignal(camera.CardinalPoints);
         if (!_ephemerides.IsVisibleInTree())

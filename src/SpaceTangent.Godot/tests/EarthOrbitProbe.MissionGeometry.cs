@@ -8,6 +8,44 @@ namespace SpaceTangent.Godot.Tests;
 
 public partial class EarthOrbitProbe
 {
+    private async Task ExerciseCompoundMission(SolarSystemScene scene, string directory)
+    {
+        var session = scene.Session!;
+        var enceladus = new ObjectId("mission/enceladus");
+        var beacon = new ObjectId("mission/combinationbeacon");
+        var epoch = JulianInstant.FromJulianDate(2453187.625, TimeScale.Tdb);
+        var snapshot = session.World.Graph.Evaluate(epoch);
+        if (!snapshot.TryState(beacon, out var state))
+            throw new InvalidOperationException("The archived weighted orbit was not installed.");
+
+        var pose = new NavigationCamera(state.PositionKilometers, 250, .48, .14, beacon, true);
+        var observer = new ObserverView(epoch, CameraMode.Solar, beacon, false) { Navigation = pose };
+        string path = Path.Combine(directory, "saturn-compound-orbit.stscene");
+        ScenarioFile.Save(path, new([observer], false, 0, 0, session.DeltaT));
+        if (!scene.LoadScenario(path))
+            throw new InvalidOperationException("The archived weighted-orbit view did not open.");
+        Check();
+        if (!await scene.ReloadAddOns() || session[0] != observer)
+            throw new InvalidOperationException("Reloading the archived pack lost the mission view.");
+        Check();
+
+        await ToSignal(GetTree(), SceneTree.SignalName.ProcessFrame);
+        await ToSignal(RenderingServer.Singleton, RenderingServer.SignalName.FramePostDraw);
+        using var image = GetViewport().GetTexture().GetImage();
+        if (image.SavePng(Path.ChangeExtension(path, ".png")) != Error.Ok)
+            throw new IOException("Could not capture the archived weighted-orbit view.");
+        GD.Print("Archived Saturn pack: three polynomial orbits and weighted beacon active after reloading.");
+
+        void Check()
+        {
+            var current = session.World.Graph.Evaluate(epoch);
+            if (!current.TryState(enceladus, out var center) || !current.TryState(beacon, out var combined) ||
+                !current.TryState(new("mission/dione"), out _) || !current.TryState(new("mission/phoebe"), out _) ||
+                ((combined - center).PositionKilometers - new Vector3d(1980, -40, -60)).Length > 2e-6)
+                throw new InvalidOperationException("The archived Saturn states or weighted relative position differ.");
+        }
+    }
+
     private async Task ExerciseMissionGeometry(SolarSystemScene scene, string directory)
     {
 

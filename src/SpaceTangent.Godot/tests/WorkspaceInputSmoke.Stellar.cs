@@ -7,6 +7,62 @@ namespace SpaceTangent.Godot.Tests;
 
 public partial class WorkspaceInputSmoke
 {
+    private async Task ExerciseSameNameClusters(string directory, string originalRoot)
+    {
+        const string variable = "SPACETANGENT_DSC_ROOT";
+        var matches = Session.World.DeepSky.Objects.Where(body => body.Designation == "FSR 1735").ToArray();
+        Require(matches.Length == 2, "The original catalogue must contain both FSR 1735 entries.");
+        var original = Session.CaptureScenario(1);
+        var views = original.Views.Select((view, index) =>
+        {
+            var body = matches[index];
+            var outward = new Vector3d(0, 0, 1);
+            double range = body.RadiusKilometers * 4;
+            return view with
+            {
+                Selection = body.Id,
+                Sky = view.Sky with { DeepSky = true },
+                Navigation = new NavigationCamera(body.PositionKilometers + Session.World.StellarOrigin, range, 0, 0, null, false)
+                    { Placement = new NavigationPlacement(outward * range, outward * -1, new(0, 1, 0)) }
+            };
+        }).ToArray();
+        var scenario = original with { Views = views };
+        string fixture = Path.Combine(directory, "same-name-clusters.stscene");
+        ScenarioFile.Save(fixture, scenario);
+        Require(_scene.LoadScenario(fixture), "The two same-name cluster cameras must load.");
+        for (int index = 0; index < matches.Length; index++)
+            Require(_scene.Renderer(index).DeepSkyVisible(matches[index].Id), "Each original cluster must render.");
+
+        views[0] = views[0] with { Sky = views[0].Sky with { DeepSky = false } };
+        ScenarioFile.Save(fixture, scenario);
+        Require(_scene.LoadScenario(fixture), "The independent deep-sky filters must load.");
+
+        string reversed = Path.Combine(directory, "Reordered DSC");
+        Directory.CreateDirectory(reversed);
+        File.Copy(Path.Combine(originalRoot, "openclusters.dsc"), Path.Combine(reversed, "01-open.dsc"));
+        File.Copy(Path.Combine(originalRoot, "globulars.dsc"), Path.Combine(reversed, "02-globular.dsc"));
+        try
+        {
+            System.Environment.SetEnvironmentVariable(variable, reversed);
+            Require(await _scene.ReloadAddOns(), "The original DSC files must load in reversed order.");
+            RequireScenario(scenario, Session.CaptureScenario(1), "Reloading both FSR 1735 cameras");
+            foreach (var body in matches)
+                Require(Session.World.DeepSky.Find(body.Id)?.PositionKilometers == body.PositionKilometers,
+                    "Each saved identifier must resolve to its original cluster.");
+            Require(!_scene.Renderer(0).DeepSkyVisible(matches[0].Id) &&
+                _scene.Renderer(1).DeepSkyVisible(matches[1].Id), "The deep-sky filter must stay independent after reload.");
+        }
+        finally
+        {
+            System.Environment.SetEnvironmentVariable(variable, originalRoot);
+        }
+
+        Require(await _scene.ReloadAddOns(), "The full original DSC catalogue must be restored.");
+        ScenarioFile.Save(fixture, original);
+        Require(_scene.LoadScenario(fixture), "The previous observers must be restored.");
+        GD.Print("UI: both original FSR 1735 entries retained their saved camera and position after catalogue reorder, with independent filters.");
+    }
+
     private async Task ExerciseSpatialSky(string directory)
     {
         await FlyTo(0, "Proxima Centauri", new("hip/70890"));
@@ -32,7 +88,7 @@ public partial class WorkspaceInputSmoke
             "Advancing time must resume tracking the catalogue position.");
         GD.Print("UI: flew to Proxima Centauri and Andromeda, then saved and restored the two interstellar cameras exactly");
 
-        if (System.Environment.GetEnvironmentVariable("SPACETANGENT_DSC_ROOT") is { Length: > 0 })
+        if (System.Environment.GetEnvironmentVariable("SPACETANGENT_DSC_ROOT") is { Length: > 0 } dscRoot)
         {
             Require(Session.World.DeepSky.Objects.Count == 17_610, "All original DSC objects and the built-in nebula must be available.");
             var m13 = new ObjectId("dso/m13");
@@ -46,6 +102,7 @@ public partial class WorkspaceInputSmoke
             Require(await _scene.ReloadAddOns(), "The original DSC catalogues must reload.");
             RequireScenario(accepted, Session.CaptureScenario(1), "Reloading the original globular cluster");
             GD.Print("UI: installed all 17,609 original DSC records, searched by NGC 6205, flew to and picked M13, and reloaded the two views");
+            await ExerciseSameNameClusters(directory, dscRoot);
         }
 
         if (System.Environment.GetEnvironmentVariable("SPACETANGENT_STELLAR_ARCHIVE") is { Length: > 0 })

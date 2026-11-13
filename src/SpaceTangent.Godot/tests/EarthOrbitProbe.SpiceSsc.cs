@@ -29,7 +29,9 @@ public partial class EarthOrbitProbe
         string originalCatalogue = Path.Combine(input, "cassini.ssc");
         string source = File.ReadAllText(originalCatalogue)
             .Replace($"\"{spk}\" \"{frame}\" \"{clock}\" \"{ck}\"", $"\"{spk}\"", StringComparison.Ordinal)
-            .Replace("Radius 0.006", "Radius 0.006 OrbitFrame { EclipticJ2000 {} }", StringComparison.Ordinal);
+            .Replace("SpiceOrbit {", "Timeline [ { OrbitFrame { EclipticJ2000 {} } SpiceOrbit {", StringComparison.Ordinal);
+        int end = source.LastIndexOf('}');
+        source = source.Insert(end, "} ]");
         File.WriteAllText(Path.Combine(bodies, "cassini.ssc"), source);
         File.WriteAllText(Path.Combine(kernels, "pack.json"), """
             {"formatVersion":19,"spiceLoads":[{"policy":"furnish",
@@ -72,7 +74,7 @@ public partial class EarthOrbitProbe
             using var image = GetViewport().GetTexture().GetImage();
             if (image.SavePng(Path.ChangeExtension(path, ".png")) != Error.Ok)
                 throw new IOException("Could not capture Cassini SSC.");
-            GD.Print("SSC SPICE GPU: two epochs retained original Cassini 3DS, SPK states and CK pointing with kernels in a second installed pack. A missing CK rolled back.");
+            GD.Print("SSC Timeline SPICE GPU: two epochs retained original Cassini 3DS, SPK states and CK pointing with kernels in a second installed pack. A missing CK rolled back.");
 
             ObserverView View(JulianInstant epoch)
             {

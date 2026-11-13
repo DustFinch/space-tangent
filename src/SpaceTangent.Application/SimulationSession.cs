@@ -63,8 +63,12 @@ public sealed partial class SimulationWorld
         AddCompactObjects(graph);
         foreach (PlanetDefinition planet in PlanetCatalogue.Planets)
             PlanetEphemerides.AddPlanet(graph, planet, planets);
+        var bodyDefinitions = (bodyCatalog ?? []).ToArray();
+        var replacedMinorPlanets = bodyDefinitions.Select(InstalledSscBody.FindBuiltInMinorPlanet)
+            .OfType<NaturalBodyDefinition>().Select(body => body.Id).ToHashSet();
         foreach (NaturalBodyDefinition body in NaturalBodyCatalogue.Bodies)
-            PlanetEphemerides.AddNaturalBody(graph, body, planets);
+            if (!replacedMinorPlanets.Contains(body.Id))
+                PlanetEphemerides.AddNaturalBody(graph, body, planets);
         _localSatellites = (localSatellites ?? []).ToDictionary(satellite => satellite.Id);
         var scienceIds = Satellites.Select(satellite => satellite.Id).ToHashSet();
         foreach (LocalTleSatellite local in _localSatellites.Values)
@@ -99,7 +103,7 @@ public sealed partial class SimulationWorld
         }
         else
             PlanetEphemerides.AddMoonFrame(graph, planets);
-        SscBodies = InstalledSscBody.Install(graph, bodyCatalog ?? [], Stellar, Exoplanets, BrightStars, StellarOrigin);
+        SscBodies = InstalledSscBody.Install(graph, bodyDefinitions, Stellar, Exoplanets, BrightStars, StellarOrigin);
         _sscById = SscBodies.ToDictionary(body => body.Id);
         _sampledMissions = (sampledMissions ?? []).ToDictionary(mission => mission.Id);
         foreach (var imported in _sampledMissions.Values)

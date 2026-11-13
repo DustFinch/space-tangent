@@ -23,6 +23,17 @@ public sealed record InstalledSscBody(ObjectId Id, ObjectId Parent, SscBodyDefin
         _ => CatalogueKind.Asteroid
     };
 
+    internal static NaturalBodyDefinition? FindBuiltInMinorPlanet(SscBodyDefinition definition)
+    {
+        if (!definition.Parent.Equals("Sol", StringComparison.OrdinalIgnoreCase))
+            return null;
+        return NaturalBodyCatalogue.Bodies.FirstOrDefault(body =>
+            body.NaifId is > 2_000_000 and < 3_000_000 &&
+            (definition.Name.Equals(body.Name, StringComparison.OrdinalIgnoreCase) ||
+                definition.Name.Equals(FormattableString.Invariant($"{body.NaifId - 2_000_000} {body.Name}"),
+                    StringComparison.OrdinalIgnoreCase)));
+    }
+
     internal static IReadOnlyList<InstalledSscBody> Install(WorldGraphBuilder graph, IEnumerable<SscBodyDefinition> definitions, StellarCatalogue stars, ExoplanetCatalogue exoplanets, BrightStarCatalogue brightStars, Vector3d stellarOrigin)
     {
         if (definitions.TryGetNonEnumeratedCount(out int count) && count == 0)
@@ -76,11 +87,11 @@ public sealed record InstalledSscBody(ObjectId Id, ObjectId Parent, SscBodyDefin
             if (bodies.Count == 512)
                 throw new InvalidDataException("The enabled SSC sources contain more than 512 bodies.");
             string parent = Normalize(body.Parent);
-            var id = new ObjectId("ssc/" + Slug(parent) + "/" + Slug(body.Name));
+            var id = FindBuiltInMinorPlanet(body)?.Id ?? new ObjectId("ssc/" + Slug(parent) + "/" + Slug(body.Name));
             if (!ids.Add(id))
                 throw new InvalidDataException($"Duplicate SSC object identifier for {parent}/{body.Name}.");
             foreach (string name in body.Names.Split(':').Distinct(StringComparer.OrdinalIgnoreCase))
-                if (!paths.TryAdd(parent + "/" + name, id))
+                if (!paths.TryAdd(parent + "/" + name, id) && paths[parent + "/" + name] != id)
                     throw new InvalidDataException($"Duplicate SSC path {parent}/{name}.");
             string hostName = parent.Split('/')[0];
             if (stellarPaths.TryGetValue(hostName, out var star))

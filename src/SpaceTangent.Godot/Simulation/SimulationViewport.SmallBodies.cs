@@ -45,7 +45,7 @@ internal partial class SimulationViewport
     {
         foreach (NaturalBodyDefinition body in NaturalBodyCatalogue.Bodies)
         {
-            if (!snapshot.TryState(body.Id, out CartesianState state))
+            if (_importedNodes.ContainsKey(body.Id) || !snapshot.TryState(body.Id, out CartesianState state))
                 continue;
             var (position, scale) = project(state.PositionKilometers);
             float radius = (float)(body.RadiusKilometers * scale / units);

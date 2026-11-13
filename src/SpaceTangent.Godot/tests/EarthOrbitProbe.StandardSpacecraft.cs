@@ -75,6 +75,19 @@ public partial class EarthOrbitProbe
                     View("ssc/sol/1i-oumuamua", 2458000.5, .5));
             }
 
+            if (System.Environment.GetEnvironmentVariable("SPACETANGENT_ASTEROIDS_SSC") is { Length: > 0 } asteroids)
+            {
+                System.Environment.SetEnvironmentVariable(input, asteroids);
+                if (!await scene.ReloadAddOns())
+                    throw new InvalidOperationException($"The original asteroid catalogue failed to load: {scene.LastAddonDiagnostic}.");
+                var vesta = session.World.SscBodies.Single(body => body.Id.Value == "sol/vesta");
+                if (vesta.Definition.Name != "4 Vesta")
+                    throw new InvalidOperationException("The original Vesta did not retain its built-in identity.");
+                await CheckPair("dimorphos-dart",
+                    View("ssc/sol/65803-didymos/dimorphos", 2459849.45, .35),
+                    View("ssc/sol/65803-didymos/dimorphos", 2459849.49, .35));
+            }
+
             ObserverView View(string path, double day, double range)
             {
                 var id = new ObjectId(path);
@@ -114,11 +127,13 @@ public partial class EarthOrbitProbe
                             throw new InvalidOperationException($"No original material texture for {id.Value}.");
                         GD.Print($"Galileo GPU: {id.Value}, {textured} textured surfaces.");
                     }
-                    if (name is "halley-and-apophis" or "oumuamua-and-borisov" or "atlas-and-oumuamua")
+                    if (name is "halley-and-apophis" or "oumuamua-and-borisov" or "atlas-and-oumuamua" or "dimorphos-dart")
                     {
                         if (node.MaterialOverride is not StandardMaterial3D { AlbedoTexture: not null } &&
-                            !Enumerable.Range(0, mesh.GetSurfaceCount()).Any(index =>
-                                mesh.SurfaceGetMaterial(index) is StandardMaterial3D { AlbedoTexture: not null }))
+                            !Enumerable.Range(0, mesh.GetSurfaceCount()).Select(mesh.SurfaceGetMaterial).Any(material =>
+                                material is StandardMaterial3D { AlbedoTexture: not null } ||
+                                material is ShaderMaterial lit && lit.GetShaderParameter("has_diffuse").AsBool() &&
+                                    lit.GetShaderParameter("diffuse_texture").AsGodotObject() is Texture2D))
                             throw new InvalidOperationException($"No original surface map for {id.Value}.");
                         GD.Print($"Original SSC GPU: {id.Value}, original textured model in {name}.");
                     }

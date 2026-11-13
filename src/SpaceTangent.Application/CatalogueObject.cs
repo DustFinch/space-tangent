@@ -30,7 +30,8 @@ public sealed class ObjectCatalogue
             DemoWorldSurface.Barren => CatalogueKind.Moon,
             _ => CatalogueKind.Planet
         }, body.Parent) { Aliases = [body.NativeName] }));
-        objects.AddRange(NaturalBodyCatalogue.Bodies.Select(body =>
+        var importedIds = sscBodies.Select(body => body.Id).ToHashSet();
+        objects.AddRange(NaturalBodyCatalogue.Bodies.Where(body => !importedIds.Contains(body.Id)).Select(body =>
             new CatalogueObject(body.Id, body.Name, body.Kind, body.Parent)));
         objects.AddRange(BlackHoleCatalogue.Default.Entries.Select(hole =>
             new CatalogueObject(hole.Id, hole.Name, CatalogueKind.BlackHole) { Aliases = hole.Aliases }));

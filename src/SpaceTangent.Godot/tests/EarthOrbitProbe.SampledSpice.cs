@@ -11,7 +11,7 @@ public partial class EarthOrbitProbe
 {
     private async Task ExerciseSampledSpice(SolarSystemScene scene, string directory)
     {
-        if (System.Environment.GetEnvironmentVariable("SPACETANGENT_SAMPLED_SPICE_PROBE") != "1")
+        if (System.Environment.GetEnvironmentVariable("SPACETANGENT_SAMPLED_SPICE_PROBE") is not ("1" or "only"))
             return;
         var session = scene.Session!;
         var epoch = SimulationSession.MissionPreview;

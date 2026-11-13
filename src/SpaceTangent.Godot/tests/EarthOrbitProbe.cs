@@ -46,6 +46,12 @@ public partial class EarthOrbitProbe : Node
                 result = 0;
                 return;
             }
+            if (System.Environment.GetEnvironmentVariable("SPACETANGENT_SAMPLED_SPICE_PROBE") == "only")
+            {
+                await ExerciseSampledSpice(scene, directory);
+                result = 0;
+                return;
+            }
             if (System.Environment.GetEnvironmentVariable("SPACETANGENT_CAPTURE_PACKED_CASSINI") == "1")
             {
                 await ExercisePackedCassini(scene, directory);

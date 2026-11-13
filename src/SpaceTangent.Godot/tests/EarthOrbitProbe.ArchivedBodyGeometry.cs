@@ -115,6 +115,60 @@ public partial class EarthOrbitProbe
         }
     }
 
+    private async Task ExerciseArchivedRingShadow(SolarSystemScene scene, string directory, string recording)
+    {
+        string saved = Path.Combine(directory, "before-archived-ring-shadow.stscene");
+        scene.SetProcess(false);
+        if (!scene.SaveScenario(saved) || !scene.StartReplay(recording))
+            throw new InvalidOperationException("Could not open the original satellite shadow recording.");
+        var renderer = scene.Renderer(0);
+        var frame = renderer.ArchivedGeometry!;
+        var saturn = frame.Bodies.Single(body => body.Id == PlanetCatalogue.SaturnId);
+        var shadow = frame.Shadows.Single(item => item.Receiver == saturn.Name &&
+            item.Radius * frame.KilometersPerUnit is > 538 and < 539);
+        var rings = renderer.ArchivedRings(PlanetCatalogue.SaturnId);
+        if (rings is not { Visible: true, MaterialOverride: ShaderMaterial material })
+            throw new InvalidOperationException("The original ring receiver was not visible.");
+        int occluders = frame.Shadows.Count(item => item.Receiver == saturn.Name);
+        if (material.GetShaderParameter("archived_shadow_count").AsInt32() != occluders)
+            throw new InvalidOperationException("The original occluders were not bound to the rings.");
+
+        var normal = saturn.CameraBasis.Y;
+        var toSun = frame.SunPosition - saturn.CameraPosition;
+        var light = toSun / toSun.Length;
+        var fromCenter = shadow.Center - saturn.CameraPosition;
+        double along = Vector3d.Dot(fromCenter, normal) / Vector3d.Dot(light, normal);
+        var intersection = fromCenter - light * along;
+        if (along <= 0 || intersection.Length <= saturn.RingInnerRadius || intersection.Length >= saturn.RingOuterRadius)
+            throw new InvalidOperationException("Dione's recorded shadow axis missed the annulus.");
+        var target = saturn.CameraPosition + intersection;
+        var camera = renderer.NavigationCameraNode;
+        Vector2 pixel = camera.UnprojectPosition(camera.ToGlobal(new Vector3((float)target.X, (float)target.Y, (float)target.Z).Normalized() * 20));
+
+        await ToSignal(RenderingServer.Singleton, RenderingServer.SignalName.FramePostDraw);
+        using var shadowed = renderer.GetViewport().GetTexture().GetImage();
+        material.SetShaderParameter("archived_shadow_count", 0);
+        await ToSignal(RenderingServer.Singleton, RenderingServer.SignalName.FramePostDraw);
+        using var lit = renderer.GetViewport().GetTexture().GetImage();
+        int changed = 0;
+        float contrast = 0;
+        for (int y = Math.Max(0, (int)pixel.Y - 20); y < Math.Min(lit.GetHeight(), (int)pixel.Y + 21); y++)
+        for (int x = Math.Max(0, (int)pixel.X - 20); x < Math.Min(lit.GetWidth(), (int)pixel.X + 21); x++)
+        {
+            float difference = lit.GetPixel(x, y).Luminance - shadowed.GetPixel(x, y).Luminance;
+            if (difference > .015f)
+                changed++;
+            contrast = Math.Max(contrast, difference);
+        }
+        if (shadowed.SavePng(Path.Combine(directory, "dione-ring-shadow.png")) != Error.Ok ||
+            lit.SavePng(Path.Combine(directory, "dione-ring-shadow-control.png")) != Error.Ok ||
+            changed < 3 || contrast < .025f)
+            throw new InvalidOperationException($"Dione's recorded shadow changed {changed} pixels near {pixel}, contrast {contrast:F4}.");
+        if (!scene.LoadScenario(saved) || rings.Visible)
+            throw new InvalidOperationException("The recorded rings persisted outside replay.");
+        GD.Print($"Original Dione ring shadow GPU: {occluders} occluders, {changed} darkened pixels near {pixel}, contrast {contrast:F4}.");
+    }
+
     private async Task ExerciseArchivedRings(SolarSystemScene scene, string directory, string recordings)
     {
         string saved = Path.Combine(directory, "before-archived-rings.stscene");

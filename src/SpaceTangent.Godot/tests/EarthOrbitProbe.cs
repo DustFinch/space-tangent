@@ -154,6 +154,12 @@ public partial class EarthOrbitProbe : Node
                 result = 0;
                 return;
             }
+            if (System.Environment.GetEnvironmentVariable("SPACETANGENT_ARCHIVED_RING_SHADOW") is { Length: > 0 } ringShadowRecording)
+            {
+                await ExerciseArchivedRingShadow(scene, directory, ringShadowRecording);
+                result = 0;
+                return;
+            }
             if (System.Environment.GetEnvironmentVariable("SPACETANGENT_ARCHIVED_RINGS") is { Length: > 0 } ringRecordings)
             {
                 await ExerciseArchivedRings(scene, directory, ringRecordings);

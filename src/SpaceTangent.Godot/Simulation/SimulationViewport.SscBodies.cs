@@ -370,8 +370,7 @@ internal partial class SimulationViewport
         foreach (var satellite in world.LocalSatellites)
         {
             bool selected = satellite.Id == selection || satellite.Id == pose.Target;
-            bool starlink = satellite.Name.StartsWith("STARLINK-", StringComparison.OrdinalIgnoreCase) ||
-                satellite.Aliases.Contains("starlink", StringComparer.OrdinalIgnoreCase);
+            bool starlink = StarlinkPhotometry.IsMember(satellite);
             bool visible = starlink ? sky.Starlink ?? !sky.HideSatellites : !sky.HideSatellites;
             if (selected || visible)
                 DrawSatellite(satellite, selected, frustum);

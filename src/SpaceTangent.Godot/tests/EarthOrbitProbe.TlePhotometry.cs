@@ -4,6 +4,7 @@ using SpaceTangent.Application;
 using SpaceTangent.Contracts;
 using SpaceTangent.Core.Ephemerides;
 using SpaceTangent.Core.Observing;
+using SpaceTangent.Core.Time;
 using SpaceTangent.Godot.Simulation;
 
 namespace SpaceTangent.Godot.Tests;
@@ -77,6 +78,8 @@ public partial class EarthOrbitProbe
             throw new InvalidOperationException("An explicitly selected Starlink satellite must remain visible.");
         GD.Print($"Starlink settings GPU: {archivedVisible} visible with Satellites disabled, independent flags after reload and selected satellite preserved.");
 
+        await ExerciseGroundStarlink(scene, directory, epoch);
+
         int CheckPoints()
         {
             int shown = group.Count(satellite => scene.Renderer(0).BodyPoint(satellite.Id)?.Visible == true);
@@ -102,6 +105,79 @@ public partial class EarthOrbitProbe
                 },
                 Sky = new SkyLayerSettings(false, false, false, false) { HideSatellites = hidden }
             };
+        }
+    }
+
+    private async Task ExerciseGroundStarlink(SolarSystemScene scene, string directory, JulianInstant epoch)
+    {
+        var session = scene.Session!;
+        var site = session.World.EarthPlaces.Places.Single(place => place.EnglishName == "Paranal Observatory").ObserverSite;
+        var sky = new SkyLayerSettings(false, false, false, false)
+        {
+            Starlink = true, HideSatellites = true, HideClouds = true
+        };
+        string path = Path.Combine(directory, "paranal-starlink.stscene");
+        // Near evening or morning twilight satellites can still be sunlit above the dark site.
+        for (int step = 0; step < 48; step++)
+        {
+            var instant = epoch.AddSeconds(step * 1800);
+            var solar = session.World.Graph.Evaluate(instant).SolarSystem!.Value;
+            var lighting = EarthSurfaceLighting.Sample(solar, site, session.DeltaT);
+            if (lighting.SolarAltitudeRadians is < -.38 or > -.19)
+                continue;
+            var azimuth = EarthObserving.Horizontal(lighting, lighting.EarthToSun)?.AzimuthDegrees ?? 0;
+            var enabled = new ObserverView(instant, CameraMode.Surface, null, false)
+            {
+                EarthObserver = new(site, azimuth, 40) { Conditions = new(1, Refraction: false) },
+                Sky = sky,
+                FieldOfViewDegrees = 75
+            };
+            var disabled = enabled with { Sky = sky with { Starlink = false } };
+            ScenarioFile.Save(path, new([enabled, disabled], false, 0, 0, session.DeltaT));
+            if (!scene.LoadScenario(path))
+                throw new InvalidOperationException("Could not open the ground Starlink scene.");
+            await Frame();
+            int before = scene.Renderer(0).GroundStarlinkPoints;
+            if (before < 3)
+                continue;
+            if (scene.Renderer(1).GroundStarlinkPoints != 0 || !await scene.ReloadAddOns())
+                throw new InvalidOperationException("Starlink leaked into the other ground view or add-on reload failed.");
+            await Frame();
+            if (scene.Renderer(0).GroundStarlinkPoints != before || scene.Renderer(1).GroundStarlinkPoints != 0 ||
+                session[0].Sky != enabled.Sky || session[1].Sky != disabled.Sky)
+                throw new InvalidOperationException("The ground Starlink settings or visible count changed on reload.");
+            using var lit = scene.Renderer(0).GetViewport().GetTexture().GetImage();
+            var toggle = (CheckButton)scene.FindChild("StarlinkLayer", recursive: true, owned: false);
+            toggle.ButtonPressed = false;
+            await Frame();
+            using var dark = scene.Renderer(0).GetViewport().GetTexture().GetImage();
+            int brighter = 0;
+            for (int y = 0; y < lit.GetHeight(); y++)
+                for (int x = 0; x < lit.GetWidth(); x++)
+                    if (lit.GetPixel(x, y).R > dark.GetPixel(x, y).R + .02f)
+                        brighter++;
+            if (brighter < before || scene.Renderer(0).GroundStarlinkPoints != 0)
+                throw new InvalidOperationException($"The ground shader did not render the Starlink points ({brighter} changed pixels).");
+            if (lit.SavePng(Path.ChangeExtension(path, ".png")) != Error.Ok)
+                throw new IOException("Could not capture the original Starlink catalogue at Paranal.");
+
+            var sun = lighting.EarthToSun / lighting.EarthToSun.Length;
+            if (StarlinkPhotometry.Magnitude(sun * -7000, lighting.PositionKilometers, sun, 5.5) is not null ||
+                StarlinkPhotometry.Magnitude(sun * 7000, sun * 8000, sun, 5.5) is not { } full ||
+                Math.Abs(full - (5.5 - 2.5 * Math.Log10(2))) > 1e-8)
+                throw new InvalidOperationException("Starlink brightness must follow phase and Earth shadow.");
+            GD.Print($"Ground Starlink GPU: Paranal, {before} visible satellites, {brighter} brighter pixels, independent reload and Earth shadow.");
+            return;
+        }
+        throw new InvalidOperationException("The archived catalogue did not yield a twilight Starlink field at Paranal.");
+
+        async Task Frame()
+        {
+            for (int index = 0; index < 3; index++)
+            {
+                await ToSignal(GetTree(), SceneTree.SignalName.ProcessFrame);
+                await ToSignal(RenderingServer.Singleton, RenderingServer.SignalName.FramePostDraw);
+            }
         }
     }
 

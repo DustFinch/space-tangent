@@ -14,6 +14,7 @@ internal partial class SimulationViewport
     internal bool GalacticSkyVisible => _galacticCanvas is { Visible: true };
     internal Vector3d? GalacticSkyCenter { get; private set; }
     internal bool GroundGalacticSkyVisible => _surface?.GalacticSkyVisible == true;
+    internal int GroundStarlinkPoints => _surface?.GroundStarlinkPoints ?? 0;
     private ColorRect? _galacticCanvas;
     private ShaderMaterial? _galacticMaterial;
     private Texture2D? _galacticTexture;

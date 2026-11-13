@@ -7,6 +7,8 @@ render_mode unshaded;
 #include "res://Shaders/zodiacal_glow.gdshaderinc"
 
 uniform bool show_galactic_sky = false;
+uniform bool show_starlink = false;
+uniform sampler2D starlink_view : filter_nearest;
 uniform bool show_survey = false;
 uniform sampler2D survey_view : filter_linear, repeat_disable;
 uniform float survey_brightness = 1.0;
@@ -205,6 +207,10 @@ void fragment() {
     }
     if (!ground && dot(moon_seen, site_up) > 0.0) {
         background = lunar_disc(ray, moon_dir, moon_seen_distance > 0.0 ? moon_seen_distance : length(moon_delta), background);
+    }
+
+    if (!ground && show_starlink) {
+        background += texture(starlink_view, UV).rgb;
     }
 
     if (!ground && satellite_flare_count > 0) {

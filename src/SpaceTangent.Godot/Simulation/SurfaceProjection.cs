@@ -21,6 +21,11 @@ internal sealed partial class SurfaceProjection
     private BrightSkyOverlay? _sky;
     private Texture2D? _galacticImage;
     private bool _hasZodiacalMap;
+    private IReadOnlyDictionary<ObjectId, double> _groundSatelliteMagnitudes = new Dictionary<ObjectId, double>();
+    private SubViewport? _starlinkViewport;
+    private GroundStarlinkCanvas? _starlink;
+    internal int GroundStarlinkPoints => _surface.Visible && _starlinkViewport?.RenderTargetUpdateMode == SubViewport.UpdateMode.Always
+        ? _starlink!.PointCount : 0;
     internal bool GalacticSkyVisible => _galacticImage is not null && _surface.Visible;
     private MeteorOverlay? _meteors;
 
@@ -54,6 +59,7 @@ internal sealed partial class SurfaceProjection
     internal void SetSkyData(BrightSkyData data)
     {
         _surveySources = data.Surveys;
+        _groundSatelliteMagnitudes = data.SatelliteMagnitudes;
         _hasZodiacalMap = data.ZodiacalMap is not null;
         if (data.ZodiacalMap is { } map)
             _material.SetShaderParameter("zodiacal_map", map);
@@ -102,6 +108,7 @@ internal sealed partial class SurfaceProjection
         if (!surface)
         {
             HideSurvey();
+            HideStarlink();
             _meteors?.HideFrame();
             return true;
         }
@@ -116,6 +123,7 @@ internal sealed partial class SurfaceProjection
         {
             _surface.Hide();
             HideSurvey();
+            HideStarlink();
             _meteors?.HideFrame();
             return false;
         }
@@ -200,12 +208,35 @@ internal sealed partial class SurfaceProjection
         _material.SetShaderParameter("site_north", north);
         _material.SetShaderParameter("site_east", east);
         _material.SetShaderParameter("show_horizon_grid", observer.HorizonGrid);
+        float solarAltitudeForStars = (float)(lighting.SolarAltitudeRadians / Degrees);
+        float starDarkness = sky.HideAtmospheres ? 1 : 1 - Mathf.SmoothStep(-12, -4, solarAltitudeForStars);
+        float moonRadius = MathF.Asin(MathF.Min(moonDiskScale * (float)(EarthSurfaceLighting.MoonRadiusKilometers / moonOffset.Length), .1f));
+        if (sky.Starlink == true && world is not null && starDarkness > 0 && DisplayServer.GetName() != "headless")
+        {
+            if (_starlinkViewport is null)
+            {
+                _starlinkViewport = new SubViewport { TransparentBg = true, Disable3D = true };
+                _surface.AddChild(_starlinkViewport);
+                _starlink = new GroundStarlinkCanvas();
+                _starlinkViewport.AddChild(_starlink);
+                _starlink.SetAnchorsAndOffsetsPreset(Control.LayoutPreset.FullRect);
+                _surface.Resized += ResizeStarlink;
+                ResizeStarlink();
+                _material.SetShaderParameter("starlink_view", _starlinkViewport.GetTexture());
+            }
+            _starlink!.UpdatePoints(world, sample, model, lighting, observer, forward, right, cameraUp, _tanHalfField,
+                Convert(moonSeen), moonRadius, starDarkness, optics?.LimitingMagnitude() ?? observer.Conditions?.LimitingMagnitude() ?? 6.5,
+                _groundSatelliteMagnitudes);
+            bool visible = _starlink.PointCount > 0;
+            _starlinkViewport.RenderTargetUpdateMode = visible ? SubViewport.UpdateMode.Always : SubViewport.UpdateMode.Disabled;
+            _material.SetShaderParameter("show_starlink", visible);
+        }
+        else
+            HideStarlink();
         if (_sky is not null && sky.Visible)
         {
-            float solarAltitude = (float)(lighting.SolarAltitudeRadians / Degrees);
-            float moonRadius = MathF.Asin(MathF.Min(moonDiskScale * (float)(EarthSurfaceLighting.MoonRadiusKilometers / moonOffset.Length), .1f));
             _sky.ShowFrame(new(sample.Epoch, sky, selection, forward, right, cameraUp, _tanHalfField,
-                sky.HideAtmospheres ? 1 : 1 - Mathf.SmoothStep(-12, -4, solarAltitude), up, Convert(moonSeen), moonRadius,
+                starDarkness, up, Convert(moonSeen), moonRadius,
                 Conditions: observer.Conditions, Site: observer.Site, OpticalLimit: optics?.LimitingMagnitude(), ObserverBeta: observerBeta));
         }
         else
@@ -219,6 +250,20 @@ internal sealed partial class SurfaceProjection
         _cardinalFrame = observer.CardinalPoints ? (forward, right, cameraUp, north, east) : null;
         PlaceCardinals();
         return true;
+    }
+
+    private void ResizeStarlink()
+    {
+        Vector2 size = _surface.Size;
+        _starlinkViewport!.Size = new(Math.Max(2, (int)size.X), Math.Max(2, (int)size.Y));
+    }
+
+    private void HideStarlink()
+    {
+        if (_starlinkViewport is null)
+            return;
+        _starlinkViewport.RenderTargetUpdateMode = SubViewport.UpdateMode.Disabled;
+        _material.SetShaderParameter("show_starlink", false);
     }
 
     private Label CreateCardinal(string text)

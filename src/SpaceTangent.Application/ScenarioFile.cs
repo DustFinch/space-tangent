@@ -18,7 +18,7 @@ public sealed record SimulationScenario(IReadOnlyList<ObserverView> Views, bool 
 /// <summary>Persists observer settings with exact TDB epochs and stable catalog IDs.</summary>
 public static class ScenarioFile
 {
-    private const int Version = 37;
+    private const int Version = 38;
     internal const int MaximumBytes = 32 * 1024;
     private static readonly JsonSerializerOptions Json = new()
     {
@@ -63,7 +63,8 @@ public static class ScenarioFile
             throw new InvalidDataException("The scenario has an invalid camera sensitivity.");
         var document = new Document
         {
-            Version = scenario.Views.Any(view => view.EarthObserver?.MoonScale is not null) ? 37 :
+            Version = scenario.Views.Any(view => view.EarthObserver?.PlanetScale is not null) ? 38 :
+                scenario.Views.Any(view => view.EarthObserver?.MoonScale is not null) ? 37 :
                 scenario.Views.Any(view => view.EarthObserver?.EquatorialMount == true) ? 36 :
                 scenario.NightMode ? 35 :
                 scenario.Views.Any(view => view.Sky.HideTerrain) ? 34 :
@@ -196,7 +197,8 @@ public static class ScenarioFile
                 (document.Version < 3 || !earth.IsValid() || (document.Version < 11 && earth.Conditions is not null) ||
                     (document.Version < 13 && earth.LandscapeId is not null) || (document.Version < 23 && earth.HideLandscapeFog) ||
                     (document.Version < 36 && earth.EquatorialMount) ||
-                    (document.Version < 37 && earth.MoonScale is not null)))
+                    (document.Version < 37 && earth.MoonScale is not null) ||
+                    (document.Version < 38 && earth.PlanetScale is not null)))
                 throw new InvalidDataException("The scenario has an invalid Earth observer camera.");
             if (data.Sky is { HideTerrain: true } && document.Version < 34)
                 throw new InvalidDataException("Terrain visibility requires scenario version 34.");

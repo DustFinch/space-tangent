@@ -53,7 +53,8 @@ public static class LegacyObserverProfiles
         {
             Conditions = conditions,
             EquatorialMount = Flag(root, "EquatorialMount") ?? camera.EquatorialMount,
-            MoonScale = Number(root, "MoonScale") is >= 1 and <= 10 and var scale ? scale : camera.MoonScale,
+            MoonScale = Number(root, "MoonScale") is >= 1 and <= 10 and var moonScale ? moonScale : camera.MoonScale,
+            PlanetScale = Number(root, "PlanetScale") is >= 1 and <= 10 and var planetScale ? planetScale : camera.PlanetScale,
             CardinalPoints = Flag(root, "Cardinals") ?? camera.CardinalPoints,
             HorizonGrid = Flag(root, "HorizonGrid") ?? camera.HorizonGrid,
             HideLandscapeFog = Flag(root, "LandscapeFog") is { } showFog ? !showFog : camera.HideLandscapeFog,

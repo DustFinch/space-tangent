@@ -34,6 +34,10 @@ uniform bool show_atmosphere = true;
 uniform bool lunar_cloud_light = true;
 uniform int satellite_flare_count = 0;
 uniform vec4 satellite_flares[8];
+uniform int ground_planet_count = 0;
+uniform vec4 ground_planet_discs[7];
+uniform vec3 ground_planet_sun[7];
+uniform vec3 ground_planet_color[7];
 
 float cloud_hash(vec3 lattice) {
     lattice = fract(lattice * 0.3183099 + vec3(0.13, 0.27, 0.41));
@@ -88,6 +92,29 @@ vec3 lunar_disc(vec3 ray, vec3 moon_dir, float moon_distance, vec3 background) {
     return pow(max(lunar, vec3(0.0)), vec3(0.58)) * (0.035 + 1.35 * diffuse);
 }
 
+vec3 planet_discs(vec3 ray, vec3 background) {
+    float pixel_angle = max(length(dFdx(ray)), length(dFdy(ray)));
+    for (int index = 0; index < ground_planet_count; index++) {
+        vec4 disc = ground_planet_discs[index];
+        float along = dot(ray, disc.xyz);
+        if (along <= 0.0) {
+            continue;
+        }
+        vec3 transverse = ray - along * disc.xyz;
+        float angular_distance = length(transverse);
+        float radius = max(disc.w, pixel_angle * 0.55);
+        float coverage = 1.0 - smoothstep(max(0.0, radius - pixel_angle * 0.5),
+            radius + pixel_angle * 0.5, angular_distance);
+        if (coverage > 0.0) {
+            vec3 offset = transverse / radius;
+            vec3 normal = offset - sqrt(max(0.0, 1.0 - dot(offset, offset))) * disc.xyz;
+            float sunlight = max(0.0, dot(normal, ground_planet_sun[index]));
+            background = mix(background, ground_planet_color[index] * (0.015 + 1.6 * sunlight), coverage);
+        }
+    }
+    return background;
+}
+
 float grid_line(float coordinate) {
     float distance = abs(fract(coordinate + 0.5) - 0.5);
     return 1.0 - smoothstep(0.0, max(fwidth(coordinate), 0.001), distance);
@@ -116,6 +143,9 @@ void fragment() {
     if (!ground && show_survey) {
         float dark = show_atmosphere ? 1.0 - smoothstep(-0.208, -0.087, dot(sun_dir, site_up)) : 1.0;
         background += texture(survey_view, UV).rgb * (survey_brightness * dark / (1.0 + 64.0 * sky_glow));
+    }
+    if (!ground && ground_planet_count > 0) {
+        background = planet_discs(ray, background);
     }
     if (!ground && dot(moon_seen, site_up) > 0.0) {
         background = lunar_disc(ray, moon_dir, length(moon_delta), background);

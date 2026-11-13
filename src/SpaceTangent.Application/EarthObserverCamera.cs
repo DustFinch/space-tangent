@@ -24,6 +24,8 @@ public readonly record struct EarthObserverCamera(EarthSite Site, double Azimuth
     public bool EquatorialMount { get; init; }
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public double? MoonScale { get; init; }
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public double? PlanetScale { get; init; }
 
     // Coordinates in the site's east, north and up basis.
     [JsonIgnore]
@@ -63,5 +65,5 @@ public readonly record struct EarthObserverCamera(EarthSite Site, double Azimuth
     }
 
     public bool IsValid() => (LandscapeId is null || ObservingLandscape.ValidId(LandscapeId)) && Site.IsValid() && Site.HeightKilometers <= 100 && Conditions?.IsValid() != false &&
-        MoonScale is null or (>= 1 and <= 10) && AzimuthDegrees is >= 0 and < 360 && ElevationDegrees is >= -90 and <= 90;
+        MoonScale is null or (>= 1 and <= 10) && PlanetScale is null or (>= 1 and <= 10) && AzimuthDegrees is >= 0 and < 360 && ElevationDegrees is >= -90 and <= 90;
 }

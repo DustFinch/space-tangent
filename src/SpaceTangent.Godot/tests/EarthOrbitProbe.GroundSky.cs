@@ -48,6 +48,63 @@ public partial class EarthOrbitProbe
         GD.Print("Equatorial mount GPU: original Paranal site, south pole alignment, independent views and Alt+M after reload.");
     }
 
+    private async Task ExerciseGroundPlanets(SolarSystemScene scene, string directory)
+    {
+        var session = scene.Session!;
+        var world = session.World;
+        var paranal = world.EarthPlaces.Places.Single(place => place.EnglishName == "Paranal Observatory");
+        var site = paranal.ObserverSite;
+        var venus = SpaceTangent.Core.Ephemerides.SolarSystemSample.VenusId;
+        var start = JulianInstant.FromJulianDate(2460690, TimeScale.Tdb);
+        for (int hour = 0; hour < 24 * 45; hour++)
+        {
+            var epoch = start.AddSeconds(hour * 3600);
+            var snapshot = world.Graph.Evaluate(epoch);
+            if (snapshot.SolarSystem is not { } solar || !snapshot.TryState(venus, out var planet))
+                continue;
+            var lighting = EarthSurfaceLighting.Sample(solar, site, session.DeltaT);
+            if (lighting.SolarAltitudeRadians > -.16 ||
+                EarthObserving.Horizontal(lighting, (planet - solar.Earth).PositionKilometers) is not
+                    { AzimuthDegrees: { } heading, AltitudeDegrees: > 12 and < 75 } point)
+                continue;
+            var camera = new EarthObserverCamera(site, heading, point.AltitudeDegrees);
+            var standard = new ObserverView(epoch, CameraMode.Surface, null, false)
+                { EarthObserver = camera, FieldOfViewDegrees = 2, Sky = new() { HideClouds = true } };
+            string profile = Path.Combine(directory, "archived-planet-scale.json");
+            File.WriteAllText(profile, """{"DeltaT":"MorrisonStephenson2004","PlanetScale":10}""");
+            var imported = LegacyObserverProfiles.Read(profile, standard, session.DeltaT).Observer;
+            var scaled = standard with { EarthObserver = camera with { PlanetScale = imported.EarthObserver?.PlanetScale } };
+            string path = Path.Combine(directory, "paranal-venus-scale.stscene");
+            ScenarioFile.Save(path, new([scaled, standard], false, 0, 0, session.DeltaT));
+            if (!scene.LoadScenario(path) || !await scene.ReloadAddOns() || session[0] != scaled || session[1] != standard)
+                throw new InvalidOperationException("The original planet scale must survive with independent ground observers.");
+            await ToSignal(GetTree(), SceneTree.SignalName.ProcessFrame);
+            await ToSignal(RenderingServer.Singleton, RenderingServer.SignalName.FramePostDraw);
+            using var large = scene.Renderer(0).GetViewport().GetTexture().GetImage();
+            using var small = scene.Renderer(1).GetViewport().GetTexture().GetImage();
+            using var comparison = GetViewport().GetTexture().GetImage();
+            int first = Bright(large), second = Bright(small);
+            if (comparison.SavePng(Path.ChangeExtension(path, ".png")) != Error.Ok)
+                throw new IOException("Could not save the ground Venus scale comparison.");
+            if (first < 15 || second < 1 || first <= second * 5)
+                throw new InvalidOperationException($"Expected enlarged Venus at the same Paranal epoch, got {first}/{second} samples.");
+            GD.Print($"Ground planets GPU: original Venus at Paranal, 10x/1x lit samples {first}/{second}, both views restored.");
+            return;
+        }
+        throw new InvalidOperationException("No dark Venus observation was found for the original Paranal site.");
+
+        static int Bright(Image image)
+        {
+            int count = 0;
+            Vector2I center = image.GetSize() / 2;
+            for (int y = center.Y - 45; y <= center.Y + 45; y++)
+            for (int x = center.X - 45; x <= center.X + 45; x++)
+                if (image.GetPixel(x, y).R > .5f)
+                    count++;
+            return count;
+        }
+    }
+
     private async Task ExerciseGroundSky(SolarSystemScene scene, string directory)
     {
         var session = scene.Session!;

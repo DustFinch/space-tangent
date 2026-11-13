@@ -14,6 +14,10 @@ internal partial class BrightSkyOverlay : Control
         GroundSkyConditions? Conditions = null, EarthSite Site = default, double? OpticalLimit = null, Vector3d ObserverFromSun = default);
 
     private static readonly (Vector3 From, Vector3 To)[] Grid = MakeGrid().ToArray();
+    private static readonly (Vector3 From, Vector3 To)[] EclipticLine = Enumerable.Range(0, 360)
+        .Select(degree => (EclipticDirection(degree, 0), EclipticDirection(degree + 1, 0))).ToArray();
+    private static readonly (Vector3 From, Vector3 To)[] EclipticGrid = MakeAlternateGrid(EclipticDirection).ToArray();
+    private static readonly (Vector3 From, Vector3 To)[] GalacticGrid = MakeAlternateGrid(GalacticDirection).ToArray();
     private BrightSkyData _data = null!;
     private SkyFrame _frame;
     private bool _fillBackground;
@@ -125,6 +129,12 @@ internal partial class BrightSkyOverlay : Control
             DrawRect(new Rect2(Vector2.Zero, Size), new Color(.02745f, .03529f, .04706f));
         var occupied = new List<Rect2>();
         bool customConstellations = DrawCulture(occupied);
+        if (_frame.Layers.EclipticLine)
+            DrawSegments(EclipticLine, new(.75f, .52f, .22f, .72f));
+        if (_frame.Layers.EclipticGrid)
+            DrawSegments(EclipticGrid, new(.67f, .48f, .27f, .48f));
+        if (_frame.Layers.GalacticGrid)
+            DrawSegments(GalacticGrid, new(.36f, .65f, .48f, .52f));
         if (!_frame.ShowCatalogue)
         {
             DrawTransients();
@@ -249,6 +259,28 @@ internal partial class BrightSkyOverlay : Control
         for (int dec = -75; dec <= 75; dec += 15)
         for (int ra = 0; ra < 360; ra += 5)
             yield return (BrightSkyData.Equatorial(ra, dec), BrightSkyData.Equatorial(ra + 5, dec));
+    }
+
+    private static IEnumerable<(Vector3, Vector3)> MakeAlternateGrid(Func<float, float, Vector3> direction)
+    {
+        for (int longitude = 0; longitude < 360; longitude += 15)
+        for (int latitude = -80; latitude < 80; latitude += 2)
+            yield return (direction(longitude, latitude), direction(longitude, latitude + 2));
+        for (int latitude = -80; latitude <= 80; latitude += 10)
+        for (int longitude = 0; longitude < 360; longitude += 3)
+            yield return (direction(longitude, latitude), direction(longitude + 3, latitude));
+    }
+
+    internal static Vector3 EclipticDirection(float longitude, float latitude)
+    {
+        const float obliquity = 23.4392911f * MathF.PI / 180;
+        return BrightSkyData.Equatorial(longitude, latitude).Rotated(Vector3.Right, obliquity);
+    }
+
+    internal static Vector3 GalacticDirection(float longitude, float latitude)
+    {
+        Vector3 direction = BrightSkyData.Equatorial(longitude, latitude);
+        return Convert(GalacticLight.ToEquatorial.Transform(new(direction.X, direction.Y, direction.Z)));
     }
 
     internal static Vector3 Convert(Vector3d value) => new((float)value.X, (float)value.Y, (float)value.Z);

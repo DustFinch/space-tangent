@@ -62,7 +62,8 @@ internal partial class SimulationViewport
                 julianDate: observer.Epoch.ToJulianDate());
             bool culture = observer.Sky.ConstellationArt ||
                 (observer.Sky.Constellations && observer.Sky.CultureId is not null);
-            bool render = (catalogue || culture || (observer.Sky.Stars && _spaceSky.HasTransientStars)) && orbital;
+            bool render = (catalogue || culture || observer.Sky.HasAlternateGrids ||
+                (observer.Sky.Stars && _spaceSky.HasTransientStars)) && orbital;
             _spaceSky.Visible = render;
             _spaceSky.SetFillBackground(!GalacticSkyVisible && !survey);
             SkyEnvironment? background = render || GalacticSkyVisible || survey ? _canvasBackground : null;

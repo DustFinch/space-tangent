@@ -9,6 +9,14 @@ public readonly record struct SkyLayerSettings(bool Stars, bool Labels, bool Equ
 {
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingDefault)]
     public bool DeepSky { get; init; }
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingDefault)]
+    public bool EclipticLine { get; init; }
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingDefault)]
+    public bool EclipticGrid { get; init; }
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingDefault)]
+    public bool GalacticGrid { get; init; }
+    [JsonIgnore]
+    public bool HasAlternateGrids => EclipticLine || EclipticGrid || GalacticGrid;
 
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingDefault)]
     public bool Meteors { get; init; }
@@ -38,7 +46,7 @@ public readonly record struct SkyLayerSettings(bool Stars, bool Labels, bool Equ
     public bool HasCultureSettings => CultureId is not null || CultureNames != default || ConstellationArt;
 
     [JsonIgnore]
-    public bool Visible => Stars || Labels || EquatorialGrid || Constellations || DeepSky || Meteors || ConstellationArt || SurveyId is not null;
+    public bool Visible => Stars || Labels || EquatorialGrid || HasAlternateGrids || Constellations || DeepSky || Meteors || ConstellationArt || SurveyId is not null;
 
     internal bool IsValid() =>         (CultureId is null || SkyCultureLibrary.ValidId(CultureId)) && Enum.IsDefined(CultureNames) &&
         (SurveyId is null || LocalSkySurvey.ValidId(SurveyId)) && SurveyBrightness is null or (>= 0 and <= 2);

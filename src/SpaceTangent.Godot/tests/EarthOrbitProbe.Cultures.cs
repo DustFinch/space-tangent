@@ -9,6 +9,61 @@ namespace SpaceTangent.Godot.Tests;
 
 public partial class EarthOrbitProbe
 {
+    private async Task ExerciseArchivedSkyGrids(SolarSystemScene scene, JulianInstant epoch, string directory)
+    {
+        if (DisplayServer.GetName() == "headless")
+            return;
+        Vector3 solstice = BrightSkyOverlay.EclipticDirection(90, 0);
+        Vector3 galacticCenter = BrightSkyOverlay.GalacticDirection(0, 0);
+        if (solstice.DistanceTo(BrightSkyData.Equatorial(90, 23.43929f)) > .00001f ||
+            galacticCenter.DistanceTo(BrightSkyData.Equatorial(266.4051f, -28.9362f)) > .00002f)
+            throw new InvalidOperationException("The grid frames must match the J2000 solstice and galactic centre.");
+
+        var session = scene.Session!;
+        var forward = new Vector3d(1, 0, 0);
+        var up = new Vector3d(0, 0, 1);
+        var offset = new Vector3d(0, 2e8, 0);
+        var navigation = new NavigationCamera(session.World.StellarOrigin, offset.Length, 0, 0, null, false)
+            { Placement = new NavigationPlacement(offset, forward, up) };
+        var clear = new ObserverView(epoch, CameraMode.Solar, null, false)
+            { Navigation = navigation, FieldOfViewDegrees = 100, Sky = new(true, false, false, false) };
+        var scenario = new SimulationScenario([clear, clear], false, 0, 0, session.DeltaT);
+        string file = Path.Combine(directory, "sky-coordinate-grids.stscene");
+        string profile = Path.Combine(directory, "sky-coordinate-grids.json");
+        ScenarioFile.Save(file, scenario);
+        if (!scene.LoadScenario(file))
+            throw new InvalidOperationException("The baseline sky grid scenario could not open.");
+        using var baseline = await Screenshot();
+        foreach (int mask in new[] { 8, 16, 32 })
+        {
+            File.WriteAllText(profile, $$"""{"Site":{},"SkyLayers":{{mask}}}""");
+            var imported = LegacyObserverProfiles.Read(profile, clear, session.DeltaT);
+            var withGrids = clear with { Sky = imported.Observer.Sky };
+            ScenarioFile.Save(file, scenario with { Views = [withGrids, clear] });
+            if (!scene.LoadScenario(file) || session[0] != withGrids || session[1] != clear)
+                throw new InvalidOperationException("The archived grid must apply only to its saved observer.");
+            using var shown = await Screenshot();
+            int changed = 0;
+            for (int y = 12; y < shown.GetHeight() - 12; y += 2)
+            for (int x = 12; x < shown.GetWidth() - 12; x += 2)
+                if (!shown.GetPixel(x, y).IsEqualApprox(baseline.GetPixel(x, y)))
+                    changed++;
+            if (changed < 30 || shown.SavePng(Path.Combine(directory, $"sky-grid-{mask}.png")) != Error.Ok)
+                throw new InvalidOperationException($"Archived sky layer {mask} changed only {changed} rendered samples.");
+            GD.Print($"Sky grids GPU: archived layer {mask} changed {changed} samples.");
+        }
+        var expected = session.CaptureScenario(0);
+        if (!await scene.ReloadAddOns() || session[0] != expected.Views[0] || session[1] != clear)
+            throw new InvalidOperationException("The archived grid must survive add-on reload.");
+
+        async Task<Image> Screenshot()
+        {
+            await ToSignal(GetTree(), SceneTree.SignalName.ProcessFrame);
+            await ToSignal(RenderingServer.Singleton, RenderingServer.SignalName.FramePostDraw);
+            return scene.Renderer(0).GetViewport().GetTexture().GetImage();
+        }
+    }
+
     private async Task ExerciseSkyCultures(SolarSystemScene scene, JulianInstant epoch, string directory)
     {
         if (System.Environment.GetEnvironmentVariable("SPACETANGENT_SKY_CULTURE_GPU") != "1")

@@ -67,6 +67,9 @@ public static class LegacyObserverProfiles
             {
                 Constellations = (layers & 1) != 0,
                 EquatorialGrid = (layers & 2) != 0,
+                EclipticLine = (layers & 8) != 0,
+                EclipticGrid = (layers & 16) != 0,
+                GalacticGrid = (layers & 32) != 0,
                 DeepSky = (layers & 64) != 0,
                 ConstellationArt = (layers & 128) != 0
             };

@@ -53,6 +53,12 @@ public partial class EarthOrbitProbe : Node
                 return;
             }
             var epoch = JulianInstant.FromJulianDate(2460600.5008, TimeScale.Tdb);
+            if (System.Environment.GetEnvironmentVariable("SPACETANGENT_SKY_GRIDS_PROBE") == "only")
+            {
+                await ExerciseArchivedSkyGrids(scene, epoch, directory);
+                result = 0;
+                return;
+            }
             if (session.World.Stellar.Stars.Count > 0)
             {
                 using var process = System.Diagnostics.Process.GetCurrentProcess();
@@ -112,6 +118,7 @@ public partial class EarthOrbitProbe : Node
             if (System.Environment.GetEnvironmentVariable("SPACETANGENT_SPATIAL_SKY_SMOKE") == "1")
                 await ExerciseStellarSpace(scene, epoch, directory);
             await ExerciseSkyCultures(scene, epoch, directory);
+            await ExerciseArchivedSkyGrids(scene, epoch, directory);
             await ExerciseLocalSkySurvey(scene, directory);
             await ExerciseSkyPhotographs(scene, directory);
             await ExerciseCompactLens(scene, directory);

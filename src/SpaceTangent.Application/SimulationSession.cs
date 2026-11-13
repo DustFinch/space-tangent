@@ -103,7 +103,7 @@ public sealed partial class SimulationWorld
         }
         else
             PlanetEphemerides.AddMoonFrame(graph, planets);
-        SscBodies = InstalledSscBody.Install(graph, bodyDefinitions, Stellar, Exoplanets, BrightStars, StellarOrigin);
+        SscBodies = InstalledSscBody.Install(graph, bodyDefinitions, Stellar, Exoplanets, BrightStars, StellarOrigin, planets);
         _sscById = SscBodies.ToDictionary(body => body.Id);
         _sampledMissions = (sampledMissions ?? []).ToDictionary(mission => mission.Id);
         foreach (var imported in _sampledMissions.Values)

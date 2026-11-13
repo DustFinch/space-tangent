@@ -31,6 +31,7 @@ public partial class EarthOrbitProbe
 
         const string input = "SPACETANGENT_SSC_ADDON_ROOT";
         string? previous = System.Environment.GetEnvironmentVariable(input);
+        LocalAddonSettings? originalSettings = null;
         string original = Path.Combine(directory, "before-standard-spacecraft.stscene");
         if (!scene.SaveScenario(original))
             throw new IOException("Could not save the observers before importing the spacecraft.");
@@ -86,6 +87,17 @@ public partial class EarthOrbitProbe
                 await CheckPair("dimorphos-dart",
                     View("ssc/sol/65803-didymos/dimorphos", 2459849.45, .35),
                     View("ssc/sol/65803-didymos/dimorphos", 2459849.49, .35));
+            }
+
+            if (System.Environment.GetEnvironmentVariable("SPACETANGENT_GENERIC_CASSINI_SSC") is { Length: > 0 } cassini)
+            {
+                System.Environment.SetEnvironmentVariable(input, cassini);
+                originalSettings = new LocalAddonSettingsFile().Load();
+                if (!await scene.ReloadAddOns(originalSettings.SetDefault(LocalAddonKind.Timeline, false)))
+                    throw new InvalidOperationException($"The original Cassini timeline pack failed to load: {scene.LastAddonDiagnostic}.");
+                await CheckPair("huygens-carried-and-landed",
+                    View("ssc/sol/saturn/titan/huygens", 2453300.5, .006),
+                    View("ssc/sol/saturn/titan/huygens", 2453385.5, .006));
             }
 
             ObserverView View(string path, double day, double range)
@@ -151,6 +163,8 @@ public partial class EarthOrbitProbe
         finally
         {
             System.Environment.SetEnvironmentVariable(input, previous);
+            if (originalSettings is not null && !await scene.ReloadAddOns(originalSettings))
+                throw new InvalidOperationException("Could not restore the specialized timeline source.");
         }
 
         if (!await scene.ReloadAddOns() || !scene.LoadScenario(original))

@@ -34,7 +34,7 @@ public sealed record InstalledSscBody(ObjectId Id, ObjectId Parent, SscBodyDefin
                     StringComparison.OrdinalIgnoreCase)));
     }
 
-    internal static IReadOnlyList<InstalledSscBody> Install(WorldGraphBuilder graph, IEnumerable<SscBodyDefinition> definitions, StellarCatalogue stars, ExoplanetCatalogue exoplanets, BrightStarCatalogue brightStars, Vector3d stellarOrigin)
+    internal static IReadOnlyList<InstalledSscBody> Install(WorldGraphBuilder graph, IEnumerable<SscBodyDefinition> definitions, StellarCatalogue stars, ExoplanetCatalogue exoplanets, BrightStarCatalogue brightStars, Vector3d stellarOrigin, PlanetEphemerides? planets)
     {
         if (definitions.TryGetNonEnumeratedCount(out int count) && count == 0)
             return [];
@@ -101,13 +101,14 @@ public sealed record InstalledSscBody(ObjectId Id, ObjectId Parent, SscBodyDefin
             }
             bodies.Add((id, body));
         }
+        var importedRadii = bodies.ToDictionary(body => body.Id, body => body.Definition.RadiusKilometers);
         var installed = new List<InstalledSscBody>(bodies.Count);
         foreach (var (id, definition) in bodies)
         {
             ObjectId parent = Resolve(definition.Parent);
             (ObjectId Center, IReadOnlyList<Vector3d> Points)? orbit = null;
             if (definition.BindTimeline is { } timeline)
-                graph.AddSampledMission(timeline(id, Resolve));
+                graph.AddSampledMission(timeline(id, Resolve, Radius));
             else
             {
                 ObjectId center = Resolve(definition.Center);
@@ -148,6 +149,12 @@ public sealed record InstalledSscBody(ObjectId Id, ObjectId Parent, SscBodyDefin
                 return new(state.PositionKilometers + stellarOrigin, state.VelocityKilometersPerSecond);
             });
         }
+
+        double Radius(ObjectId body) => importedRadii.TryGetValue(body, out double radius) ? radius :
+            planets?.EquatorialRadiusKilometers(body) ?? (NaturalBodyCatalogue.Find(body)?.RadiusKilometers ??
+                PlanetCatalogue.Find(body)?.RadiusKilometers ?? (body == SolarSystemSample.MoonId ||
+                    body == SolarSystemSample.SunId ? NavigationCamera.BodyRadiusKilometers(body) :
+                    throw new InvalidDataException($"No SSC surface radius is available for {body.Value}.")));
 
         ObjectId Resolve(string path) => paths.TryGetValue(Normalize(path), out var id) ? id :
             throw new InvalidDataException($"An SSC body refers to the unavailable object {path}.");

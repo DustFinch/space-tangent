@@ -59,6 +59,15 @@ public sealed class PlanetEphemerides
 
     public bool HasOrientation(int naifId) => _frames.ContainsKey(naifId);
 
+    internal double? EquatorialRadiusKilometers(ObjectId body)
+    {
+        int? naif = PlanetCatalogue.Find(body)?.NaifId ?? NaturalBodyCatalogue.Find(body)?.NaifId;
+        if (body == SolarSystemSample.MoonId)
+            naif = 301;
+        return naif is { } id && _frames.TryGetValue(id, out var frame) && frame.RadiiKilometers.X > 0
+            ? frame.RadiiKilometers.X : null;
+    }
+
     internal static void AddPlanet(WorldGraphBuilder graph, PlanetDefinition planet, PlanetEphemerides? source)
     {
         if (planet.Id != planet.SystemId)

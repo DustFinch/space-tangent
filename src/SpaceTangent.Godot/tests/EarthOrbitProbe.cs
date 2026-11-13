@@ -115,6 +115,7 @@ public partial class EarthOrbitProbe : Node
             await ExerciseMissionTiledGlobe(scene, directory);
             await ExerciseMissionSwarms(scene, directory);
             await ExerciseLegacyModelFormats(scene, directory);
+            await ExerciseStandardSpacecraft(scene, directory);
             await ExerciseCrossSourceSsc(scene, directory);
             await ExerciseSpiceSsc(scene, directory);
             await ExerciseGltfShuttle(scene, directory);

@@ -20,6 +20,7 @@ public partial class SolarSystemScene : Control
         LineEdit TerrainCoordinates, SpinBox FieldOfView, Button AdvanceHour, SubViewportContainer Canvas, MeasurementOverlay Measurements)
     {
         internal WorldSnapshot? Snapshot { get; set; }
+        internal SimulationWorld? SnapshotWorld { get; set; }
         internal ProjectionScale? Perspective { get; set; }
         internal bool DraggingCamera { get; set; }
         internal Vector2? LookPress { get; set; }
@@ -1832,7 +1833,13 @@ public partial class SolarSystemScene : Control
         for (int index = 0; index < _views.Count; index++)
         {
             ViewControls controls = _views[index];
-            var snapshot = session.World.Graph.Evaluate(session[index].Epoch);
+            var epoch = session[index].Epoch;
+            // Catalogue Lua callbacks can change internal state even at the same epoch.
+            var snapshot = _addOns?.Decoded.AllowAddonLua != true && ReferenceEquals(controls.SnapshotWorld, session.World) &&
+                controls.Snapshot is { } cached && cached.Epoch == epoch
+                    ? cached
+                    : session.World.Graph.Evaluate(epoch);
+            controls.SnapshotWorld = session.World;
             session.UpdateCamera(index, snapshot, elapsed);
             if (!controls.DraggingCamera && !controls.Looking)
                 session.UpdateAutoOrbit(index, snapshot, elapsed);

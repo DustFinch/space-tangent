@@ -357,17 +357,33 @@ internal partial class SimulationViewport
         HideLocalSatelliteMarkers();
         if (CatalogueWorld is not { } world)
             return;
-        var color = new Color(.8f, .8f, .8f);
+        if (sky.HideSatellites)
+        {
+            if (selection is { } selected && world.FindLocalSatellite(selected) is { } selectedSatellite)
+                DrawSatellite(selectedSatellite, true, []);
+            if (pose.Target is { } tracked && tracked != selection && world.FindLocalSatellite(tracked) is { } trackedSatellite)
+                DrawSatellite(trackedSatellite, true, []);
+            return;
+        }
+
+        var frustum = _navigationCamera.GetFrustum().ToArray();
         foreach (var satellite in world.LocalSatellites)
+            DrawSatellite(satellite, satellite.Id == selection || satellite.Id == pose.Target, frustum);
+
+        void DrawSatellite(LocalTleSatellite satellite, bool selected, Plane[] planes)
         {
             var id = satellite.Id;
-            bool selected = id == selection || id == pose.Target;
-            if ((!selected && sky.HideSatellites) || _satellites.ContainsKey(id) || !snapshot.TryState(id, out var state))
-                continue;
+            if (_satellites.ContainsKey(id) || !snapshot.TryState(id, out var state))
+                return;
 
             var (position, projection) = project(state.PositionKilometers);
-            if (!selected && !_navigationCamera.IsPositionInFrustum(position))
-                continue;
+            if (!selected)
+            {
+                foreach (var plane in planes)
+                    if (plane.DistanceTo(position) > 0)
+                        return;
+            }
+            var color = new Color(.8f, .8f, .8f);
             const double tleRadius = .005, tleAlbedo = .3;
             float projectedRadius = (float)(tleRadius * projection / units);
             Vector3d towardEye = (pose.AnchorKilometers - state.PositionKilometers) + eyeOffset;
@@ -379,7 +395,7 @@ internal partial class SimulationViewport
                 DrawBodyLabel(id, satellite.Name, SolarSystemSample.EarthId, 0, tleRadius,
                     snapshot, state.PositionKilometers, towardEye, position, projectedRadius);
             if (!resolved)
-                continue;
+                return;
             if (!_localSatelliteMarkers.TryGetValue(id, out var marker))
             {
                 _localSatelliteSphere ??= new SphereMesh { Radius = 1, Height = 2, RadialSegments = 32, Rings = 16 };

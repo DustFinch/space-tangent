@@ -59,6 +59,12 @@ public partial class EarthOrbitProbe : Node
                 result = 0;
                 return;
             }
+            if (System.Environment.GetEnvironmentVariable("SPACETANGENT_DENSE_TLE_PROBE") == "1")
+            {
+                await ExerciseDenseTle(scene, directory);
+                result = 0;
+                return;
+            }
             if (System.Environment.GetEnvironmentVariable("SPACETANGENT_TLE_PHOTOMETRY_PROBE") == "only")
             {
                 await ExerciseTlePhotometry(scene, directory);

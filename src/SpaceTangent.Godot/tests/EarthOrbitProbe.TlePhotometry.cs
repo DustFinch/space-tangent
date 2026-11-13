@@ -10,6 +10,78 @@ namespace SpaceTangent.Godot.Tests;
 
 public partial class EarthOrbitProbe
 {
+    private async Task ExerciseDenseTle(SolarSystemScene scene, string directory)
+    {
+        var session = scene.Session!;
+        var group = session.World.LocalSatellites.Where(satellite =>
+            satellite.Name.StartsWith("STARLINK-", StringComparison.OrdinalIgnoreCase)).ToArray();
+        if (group.Length < 10_000)
+            throw new InvalidOperationException("The archived dense Starlink catalogue is required.");
+
+        var epoch = group[0].Epoch;
+        var first = Observer(epoch, false);
+        var second = Observer(epoch.AddSeconds(600), true);
+        var scenario = new SimulationScenario([first, second], false, 0, 0, session.DeltaT);
+        string path = Path.Combine(directory, "dense-tle.stscene");
+        ScenarioFile.Save(path, scenario);
+        if (!scene.LoadScenario(path))
+            throw new InvalidOperationException("Could not open the dense satellite scene.");
+        await ToSignal(GetTree(), SceneTree.SignalName.ProcessFrame);
+        scene.Seek(0, first.Epoch);
+        scene.Seek(1, second.Epoch);
+
+        CheckPoints();
+        long allocatedBefore = GC.GetAllocatedBytesForCurrentThread();
+        var timer = System.Diagnostics.Stopwatch.StartNew();
+        const int samples = 60;
+        for (int sample = 1; sample <= samples; sample++)
+            scene.Seek(sample % 2, epoch.AddSeconds(5 * sample + (sample % 2) * 600));
+        timer.Stop();
+        long allocated = GC.GetAllocatedBytesForCurrentThread() - allocatedBefore;
+        var expected = session.CaptureScenario(1);
+        int visible = CheckPoints();
+        if (!await scene.ReloadAddOns() ||
+            !session.CaptureScenario(1).Views.SequenceEqual(expected.Views) || session.DeltaT != expected.DeltaT)
+            throw new InvalidOperationException("Dense satellite reload lost the saved cameras or time settings.");
+        int afterReload = CheckPoints();
+        if (visible != afterReload)
+            throw new InvalidOperationException("Dense satellite reload changed the visible point count.");
+
+        await ToSignal(RenderingServer.Singleton, RenderingServer.SignalName.FramePostDraw);
+        using var image = GetViewport().GetTexture().GetImage();
+        if (image.SavePng(Path.ChangeExtension(path, ".png")) != Error.Ok)
+            throw new IOException("Could not capture the dense satellite scene.");
+        GD.Print(FormattableString.Invariant(
+            $"Dense TLE GPU: {group.Length} archived satellites, {visible}/{afterReload} visible before/after reload, {samples} two-view updates at {timer.Elapsed.TotalMilliseconds / samples:F1} ms and {allocated / samples:N0} managed bytes each."));
+
+        int CheckPoints()
+        {
+            int shown = group.Count(satellite => scene.Renderer(0).BodyPoint(satellite.Id)?.Visible == true);
+            if (shown < 20 || group.Any(satellite => scene.Renderer(1).BodyPoint(satellite.Id)?.Visible == true))
+                throw new InvalidOperationException($"Expected the dense satellite field in only one view, found {shown} points.");
+            return shown;
+        }
+
+        ObserverView Observer(JulianInstant instant, bool hidden)
+        {
+            var snapshot = session.World.Graph.Evaluate(instant);
+            if (snapshot.SolarSystem is not { } solar)
+                throw new InvalidOperationException("The dense satellite scene needs the original solar ephemeris.");
+            var sun = (solar.Sun - solar.Earth).PositionKilometers;
+            var eye = sun / sun.Length;
+            var up = Vector3d.Cross(Vector3d.Cross(eye, new(0, 0, 1)), eye);
+            const double range = 9000;
+            return new(instant, CameraMode.Solar, null, false)
+            {
+                Navigation = new(solar.Earth.PositionKilometers, range, 0, 0, null, false)
+                {
+                    Placement = new(eye * range, eye * -1, up / up.Length)
+                },
+                Sky = new SkyLayerSettings(false, false, false, false) { HideSatellites = hidden }
+            };
+        }
+    }
+
     private async Task ExerciseTlePhotometry(SolarSystemScene scene, string directory)
     {
         var world = scene.Session!.World;

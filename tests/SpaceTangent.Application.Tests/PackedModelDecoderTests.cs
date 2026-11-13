@@ -72,7 +72,7 @@ public sealed class PackedModelDecoderTests
             Assert.All(surface.Normals.ToArray(), normal => Assert.Equal(new SpaceTangent.Contracts.Vector3d(0, 0, 1), normal));
             Assert.Equal(.7, surface.Material.Opacity);
             Assert.Equal(.3, surface.Material.AlphaCutoff);
-            Assert.True(surface.Material.Emission.Length > .5);
+            Assert.Equal(new SpaceTangent.Contracts.Vector3d(.1, .2, .3), surface.Material.Emission);
 
             File.WriteAllText(model, json.Replace("../triangle%20data.bin", "data:application/octet-stream;base64," + Convert.ToBase64String(bytes)));
             Assert.Equal(surface.Positions.ToArray(), Assert.Single(PackedModelDecoder.Decode(model).Surfaces).Positions.ToArray());

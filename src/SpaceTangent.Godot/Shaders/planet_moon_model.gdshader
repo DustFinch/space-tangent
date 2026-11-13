@@ -7,7 +7,7 @@ uniform sampler2D normal_texture : filter_linear_mipmap, repeat_enable;
 uniform bool has_diffuse;
 uniform bool has_normal;
 uniform bool packed_normal;
-uniform vec3 emission_color : source_color;
+uniform vec3 emission_color;
 uniform sampler2D emission_texture : source_color, filter_linear_mipmap, repeat_enable;
 uniform bool has_emission_texture;
 
@@ -17,7 +17,11 @@ void fragment() {
         surface_color *= texture(diffuse_texture, UV).rgb;
     }
     ALBEDO = surface_color;
-    EMISSION = emission_color * (has_emission_texture ? texture(emission_texture, UV).rgb : vec3(1.0));
+    vec3 glow = has_emission_texture ? texture(emission_texture, UV).rgb : vec3(1.0);
+    if (OUTPUT_IS_SRGB) {
+        glow = mix(glow / 12.92, pow((glow + 0.055) / 1.055, vec3(2.4)), greaterThan(glow, vec3(0.04045)));
+    }
+    EMISSION = glow * emission_color;
     ROUGHNESS = 1.0;
     SPECULAR = 0.0;
     if (has_normal) {

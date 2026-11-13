@@ -31,7 +31,23 @@ internal static class ScienceMeshLoader
                 (float)definition.Color.Z, (float)definition.Opacity);
             Texture2D? albedo = definition.Texture is { } texture ? Texture(texture) : bodySurface;
             Material material;
-            if (shader is not null && !definition.AlphaBlend && definition.AlphaCutoff is null)
+            if (!litBody && definition.Emission.Length > 0)
+            {
+                bool blend = definition.AlphaCutoff is null && (definition.AlphaBlend || definition.Opacity < 1);
+                string path = blend ? "res://Shaders/model_emission_alpha.gdshader" : "res://Shaders/model_emission.gdshader";
+                var glowing = new ShaderMaterial { Shader = GD.Load<Shader>(path) };
+                glowing.SetShaderParameter("base_color", color);
+                if (albedo is not null)
+                    glowing.SetShaderParameter("albedo_map", albedo);
+                if (definition.EmissionTexture is { } emissionMap)
+                    glowing.SetShaderParameter("emission_map", Texture(emissionMap));
+                glowing.SetShaderParameter("emission_factor", new Vector3((float)definition.Emission.X,
+                    (float)definition.Emission.Y, (float)definition.Emission.Z));
+                if (definition.AlphaCutoff is { } cutoff)
+                    glowing.SetShaderParameter("alpha_cutoff", (float)cutoff);
+                material = glowing;
+            }
+            else if (shader is not null && !definition.AlphaBlend && definition.AlphaCutoff is null)
             {
                 var body = new ShaderMaterial { Shader = shader };
                 body.SetShaderParameter("base_color", definition.Texture is null && bodySurface is not null ? Colors.White : color);
@@ -76,7 +92,8 @@ internal static class ScienceMeshLoader
                     NormalTexture = litBody && definition.NormalTexture is { } normalMap ? Texture(normalMap) : null,
                     AlphaScissorThreshold = (float)(definition.AlphaCutoff ?? .5),
                     EmissionEnabled = definition.Emission.Length > 0,
-                    Emission = new((float)definition.Emission.X, (float)definition.Emission.Y, (float)definition.Emission.Z),
+                    EmissionOperator = BaseMaterial3D.EmissionOperatorEnum.Multiply,
+                    Emission = new Color((float)definition.Emission.X, (float)definition.Emission.Y, (float)definition.Emission.Z).LinearToSrgb(),
                     EmissionTexture = definition.EmissionTexture is { } glow ? Texture(glow) : null
                 };
             }

@@ -229,7 +229,7 @@ public static partial class PackedModelDecoder
             {
                 NormalTexture = Texture(value, "normalTexture"),
                 EmissionTexture = Texture(value, "emissiveTexture"),
-                Emission = new(Srgb(emission[0]) * strength, Srgb(emission[1]) * strength, Srgb(emission[2]) * strength),
+                Emission = new(emission[0] * strength, emission[1] * strength, emission[2] * strength),
                 AlphaBlend = alphaMode == "BLEND",
                 AlphaCutoff = alphaMode == "MASK" ? cutoff : null
             };

@@ -220,6 +220,17 @@ public static class PackedModelWriter
                 used.Add(EmissiveExtension);
                 result["extensions"] = new JsonObject { [EmissiveExtension] = new JsonObject { ["emissiveStrength"] = strength } };
             }
+            if (material.Specular != default || material.SpecularPower != 1)
+            {
+                result["extras"] = new JsonObject
+                {
+                    [PackedModelDecoder.LegacyMaterialProfile] = new JsonObject
+                    {
+                        ["specular"] = new JsonArray(material.Specular.X, material.Specular.Y, material.Specular.Z),
+                        ["specularPower"] = material.SpecularPower
+                    }
+                };
+            }
             AttachTexture(pbr, "baseColorTexture", material.Texture);
             AttachTexture(result, "normalTexture", material.NormalTexture);
             AttachTexture(result, "emissiveTexture", material.EmissionTexture);

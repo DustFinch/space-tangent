@@ -12,6 +12,8 @@ public sealed record DecodedMaterial(Vector3d Color, double Opacity, string? Tex
     public string? NormalTexture { get; init; }
     public string? EmissionTexture { get; init; }
     public Vector3d Emission { get; init; }
+    public Vector3d Specular { get; init; }
+    public double SpecularPower { get; init; } = 1;
     public bool AlphaBlend { get; init; }
     public double? AlphaCutoff { get; init; }
 }
@@ -209,6 +211,12 @@ public static class ScienceModelDecoder
                     break;
                 case "Kd" when fields.Length >= 4:
                     value = value with { Color = new(ClampColor(fields[1]), ClampColor(fields[2]), ClampColor(fields[3])) };
+                    break;
+                case "Ks" when fields.Length >= 4:
+                    value = value with { Specular = new(ClampColor(fields[1]), ClampColor(fields[2]), ClampColor(fields[3])) };
+                    break;
+                case "Ns" when fields.Length == 2:
+                    value = value with { SpecularPower = Math.Max(1, Number(fields[1])) };
                     break;
                 case "d" or "Tr" when fields.Length == 2:
                     value = value with { Opacity = ClampColor(fields[1]) };

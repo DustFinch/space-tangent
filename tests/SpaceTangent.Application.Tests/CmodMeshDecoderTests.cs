@@ -30,9 +30,14 @@ public sealed class CmodMeshDecoderTests
         var source = CmodMeshDecoder.Decode(root, Path.Combine(root, "models", "mir.cmod"));
         var emissions = source.Surfaces.Select(surface => surface.Material.Emission).Where(color => color.Length > 0).ToArray();
         Assert.NotEmpty(emissions);
+        var highlights = source.Surfaces.Select(surface => (surface.Material.Specular, surface.Material.SpecularPower)).ToArray();
+        Assert.Contains(highlights, highlight => Math.Abs(highlight.Specular.X - .8) < 1e-6 && highlight.SpecularPower == 55);
         Assert.Contains(emissions, color => Math.Abs(color.X - .02955684) < 1e-6 &&
             Math.Abs(color.Y - .28314874) < 1e-6 && Math.Abs(color.Z - .28314874) < 1e-6);
 
+        var probe = StudioMeshDecoder.Decode(root, Path.Combine(root, "models", "galileo-probe.3ds"));
+        Assert.Contains(probe.Surfaces, surface => surface.Material.Specular == new SpaceTangent.Contracts.Vector3d(1, 1, 1) &&
+            Math.Abs(surface.Material.SpecularPower - Math.Pow(2, 2.5)) < 1e-9);
         string export = Path.GetTempFileName();
         try
         {
@@ -40,6 +45,7 @@ public sealed class CmodMeshDecoderTests
                 PackedModelWriter.Write(source, output);
             var packed = PackedModelDecoder.Decode(export);
             Assert.Equal(emissions, packed.Surfaces.Select(surface => surface.Material.Emission).Where(color => color.Length > 0).ToArray());
+            Assert.Equal(highlights, packed.Surfaces.Select(surface => (surface.Material.Specular, surface.Material.SpecularPower)).ToArray());
         }
         finally
         {

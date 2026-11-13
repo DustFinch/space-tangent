@@ -18,6 +18,12 @@ public partial class EarthOrbitProbe : Node
             string directory = System.Environment.GetEnvironmentVariable("SPACETANGENT_EARTH_PROBE_OUTPUT")
                 ?? throw new InvalidOperationException("Set an output folder for the Earth orbit probe.");
             Directory.CreateDirectory(directory);
+            if (System.Environment.GetEnvironmentVariable("SPACETANGENT_SPECULAR_MODEL_PROBE") is { Length: > 0 } model)
+            {
+                await ExerciseModelSpecular(directory, model);
+                result = 0;
+                return;
+            }
             var scene = GD.Load<PackedScene>("res://Main.tscn").Instantiate<SolarSystemScene>();
             AddChild(scene);
             var timer = System.Diagnostics.Stopwatch.StartNew();

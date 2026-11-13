@@ -48,5 +48,10 @@
     "path": "src/SpaceTangent.Application/TourConverter.Guide.cs",
     "sha256": "12fb7452a2e242cca26d07abc371453875cc49ebc04082229cb972de73293542",
     "reason": "Required upstream Lua observer API global in generated guide scripts."
+  },
+  {
+    "reason": "Exact archived GLB extras key for preserving specular color and exponent.",
+    "sha256": "e2eaf9524cebe019f4e9933f9f7f12eb5532152e20b631426f862df22a4b3188",
+    "path": "src/SpaceTangent.Application/Assets/PackedModelDecoder.cs"
   }
 ]

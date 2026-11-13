@@ -13,6 +13,7 @@ public static partial class PackedModelDecoder
 {
     private const uint Magic = 0x46546c67, JsonChunk = 0x4e4f534a, BinaryChunk = 0x004e4942;
     private const string DdsExtension = "MSFT_texture_dds";
+    internal const string LegacyMaterialProfile = "celestia";
     private const string EmissiveExtension = "KHR_materials_emissive_strength";
     private const int MaximumModelBytes = 64 * 1024 * 1024, MaximumCorners = 3_000_000, MaximumSurfaces = 128, MaximumSprites = 1_000_000;
     private static readonly DecodedMaterial White = new(new(1, 1, 1), 1, null);
@@ -324,11 +325,21 @@ public static partial class PackedModelDecoder
                 !double.IsFinite(cutoff) || cutoff is < 0 or > 1)
                 throw new InvalidDataException("Invalid glTF alpha settings.");
             double opacity = alphaMode is "BLEND" or "MASK" ? color[3] : 1;
+            var profile = value.TryGetProperty("extras", out var extras) && extras.ValueKind == JsonValueKind.Object &&
+                extras.TryGetProperty(LegacyMaterialProfile, out var archived) && archived.ValueKind == JsonValueKind.Object
+                ? archived : default;
+            double[] specular = Channels(profile, "specular", [0, 0, 0]);
+            double power = profile.ValueKind == JsonValueKind.Object && profile.TryGetProperty("specularPower", out var exponent)
+                ? exponent.GetDouble() : 1;
+            if (!double.IsFinite(power) || Math.Abs(power) > float.MaxValue)
+                throw new InvalidDataException("Invalid archived material specular power.");
             return new(new(Srgb(color[0]), Srgb(color[1]), Srgb(color[2])), opacity, Texture(pbr, "baseColorTexture"))
             {
                 NormalTexture = Texture(value, "normalTexture"),
                 EmissionTexture = Texture(value, "emissiveTexture"),
                 Emission = new(emission[0] * strength, emission[1] * strength, emission[2] * strength),
+                Specular = new(specular[0], specular[1], specular[2]),
+                SpecularPower = power,
                 AlphaBlend = alphaMode == "BLEND",
                 AlphaCutoff = alphaMode == "MASK" ? cutoff : null
             };

@@ -136,12 +136,14 @@ public static partial class CmodMeshDecoder
                             value = value with { Color = color };
                         else if (token == 1014)
                             value = value with { Emission = new(Linear(color.X), Linear(color.Y), Linear(color.Z)) };
+                        else
+                            value = value with { Specular = color };
                         break;
                     case 1005 or 1006:
                         Expect(1);
                         float scalar = Float();
-                        if (token == 1006)
-                            value = value with { Opacity = Math.Clamp(scalar, 0, 1) };
+                        value = token == 1006 ? value with { Opacity = Math.Clamp(scalar, 0, 1) } :
+                            value with { SpecularPower = scalar };
                         break;
                     case 1015:
                         input.ReadInt16();

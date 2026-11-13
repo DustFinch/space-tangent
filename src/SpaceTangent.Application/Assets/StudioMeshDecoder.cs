@@ -222,7 +222,8 @@ public static class StudioMeshDecoder
     private static (string Name, DecodedMaterial Material) ReadMaterial(ReadOnlySpan<byte> data)
     {
         string? name = null;
-        Vector3d color = DefaultMaterial.Color;
+        Vector3d color = DefaultMaterial.Color, specular = default;
+        double shininess = 0;
         double opacity = 1;
         string? texture = null;
         ReadChunks(data, (kind, bytes) =>
@@ -233,23 +234,16 @@ public static class StudioMeshDecoder
                     name = ReadName(bytes, out _);
                     break;
                 case 0xa020:
-                    ReadChunks(bytes, (id, value) =>
-                    {
-                        if (id is 0x0010 or 0x0013)
-                            color = ReadVector(value);
-                        else if (id is 0x0011 or 0x0012)
-                            color = value.Length == 3 ? new(value[0] / 255.0, value[1] / 255.0, value[2] / 255.0)
-                                : throw new InvalidDataException("Invalid 3DS material color.");
-                    });
+                    color = ReadMaterialColor(bytes, color);
+                    break;
+                case 0xa030:
+                    specular = ReadMaterialColor(bytes, specular);
+                    break;
+                case 0xa040:
+                    shininess = ReadPercentage(bytes, shininess);
                     break;
                 case 0xa050:
-                    ReadChunks(bytes, (id, value) =>
-                    {
-                        if (id == 0x0030)
-                            opacity = 1 - ReadU16(value) / 100.0;
-                        else if (id == 0x0031 && value.Length == 4)
-                            opacity = 1 - BinaryPrimitives.ReadSingleLittleEndian(value);
-                    });
+                    opacity = 1 - ReadPercentage(bytes, 1 - opacity);
                     break;
                 case 0xa200:
                     ReadChunks(bytes, (id, value) =>
@@ -260,10 +254,42 @@ public static class StudioMeshDecoder
                     break;
             }
         });
-        if (name is null || color.X is < 0 or > 1 || color.Y is < 0 or > 1 || color.Z is < 0 or > 1 ||
+        if (name is null || !IsColor(color) || !IsColor(specular) || !double.IsFinite(shininess) || shininess is < 0 or > 1 ||
             !double.IsFinite(opacity) || opacity is < 0 or > 1)
             throw new InvalidDataException("Invalid 3DS material.");
-        return (name, new(color, opacity, texture));
+        return (name, new(color, opacity, texture)
+        {
+            Specular = specular,
+            SpecularPower = Math.Pow(2, 1 + 10 * shininess)
+        });
+
+        static bool IsColor(Vector3d value) =>
+            value.X is >= 0 and <= 1 && value.Y is >= 0 and <= 1 && value.Z is >= 0 and <= 1;
+    }
+
+    private static Vector3d ReadMaterialColor(ReadOnlySpan<byte> data, Vector3d color)
+    {
+        ReadChunks(data, (id, value) =>
+        {
+            if (id is 0x0010 or 0x0013)
+                color = ReadVector(value);
+            else if (id is 0x0011 or 0x0012)
+                color = value.Length == 3 ? new(value[0] / 255.0, value[1] / 255.0, value[2] / 255.0)
+                    : throw new InvalidDataException("Invalid 3DS material color.");
+        });
+        return color;
+    }
+
+    private static double ReadPercentage(ReadOnlySpan<byte> data, double percentage)
+    {
+        ReadChunks(data, (id, value) =>
+        {
+            if (id == 0x0030)
+                percentage = ReadU16(value) / 100.0;
+            else if (id == 0x0031 && value.Length == 4)
+                percentage = BinaryPrimitives.ReadSingleLittleEndian(value);
+        });
+        return percentage;
     }
 
     private static Vector3d ReadVector(ReadOnlySpan<byte> data)

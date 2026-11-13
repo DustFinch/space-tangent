@@ -51,8 +51,18 @@ internal static class ScienceMeshLoader
             }
             else if (shader is not null && !definition.AlphaBlend && definition.AlphaCutoff is null)
             {
-                var body = new ShaderMaterial { Shader = shader };
+                bool hasSpecular = definition.SpecularPower > 0 && definition.Specular.Length > 0;
+                var body = new ShaderMaterial
+                {
+                    Shader = hasSpecular ? GD.Load<Shader>("res://Shaders/planet_moon_model_specular.gdshader") : shader
+                };
                 body.SetShaderParameter("base_color", definition.Texture is null && bodySurface is not null ? Colors.White : color);
+                if (hasSpecular)
+                {
+                    body.SetShaderParameter("specular_color", new Vector3((float)definition.Specular.X,
+                        (float)definition.Specular.Y, (float)definition.Specular.Z));
+                    body.SetShaderParameter("specular_power", (float)definition.SpecularPower);
+                }
                 if (albedo is not null)
                 {
                     body.SetShaderParameter("has_diffuse", true);

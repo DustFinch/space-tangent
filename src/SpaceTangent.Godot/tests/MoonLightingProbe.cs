@@ -59,6 +59,22 @@ public partial class MoonLightingProbe : Node
                 "The saved Clouds preference must remove cloud pixels while retaining the full Moon.");
             Require(Difference(hiddenByProfile, nightOn).Mean > .005,
                 "The archived Clouds preference must change the original cloudy scene.");
+            string scaleProfile = Path.Combine(output, "archived-moon-scale.json");
+            File.WriteAllText(scaleProfile, """{"DeltaT":"MorrisonStephenson2004","MoonScale":1}""");
+            var physical = LegacyObserverProfiles.Read(scaleProfile, observer, session.DeltaT).Observer;
+            var groundCamera = observer.EarthObserver ?? EarthObserverCamera.Moscow;
+            string scaleScenario = Path.Combine(output, "full-moon-physical-size.stscene");
+            ScenarioFile.Save(scaleScenario, fullMoon with { Views = [observer with
+                { EarthObserver = groundCamera with { MoonScale = physical.EarthObserver?.MoonScale } }] });
+            Require(scene.LoadScenario(scaleScenario) && await scene.ReloadAddOns() &&
+                session[0].EarthObserver?.MoonScale == 1, "The archived Moon scale must survive scenario open and add-on reload.");
+            renderer = scene.Renderer(0);
+            using var physicalMoon = await Capture(renderer, output, "night-physical-moon", false, false);
+            int physicalPixels = CountBrightPixels(physicalMoon);
+            int enlargedPixels = CountBrightPixels(noCloudOn);
+            Require(physicalPixels > 100 && enlargedPixels > physicalPixels * 12 && enlargedPixels < physicalPixels * 20,
+                $"Expected an approximately sixteenfold disc area change. Physical {physicalPixels}, enlarged {enlargedPixels}.");
+            GD.Print($"Moon scale GPU: archived 1x disc {physicalPixels} pixels, existing 4x disc {enlargedPixels} pixels after reload.");
             string visibleScenario = Path.Combine(output, "full-moon-clouds-visible.stscene");
             ScenarioFile.Save(visibleScenario, fullMoon);
             Require(scene.LoadScenario(visibleScenario), "Could not restore the original full-Moon scene.");

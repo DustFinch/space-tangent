@@ -157,7 +157,7 @@ internal sealed partial class SurfaceProjection
         _material.SetShaderParameter("earth_angle", (float)lighting.EarthRotationRadians);
         _material.SetShaderParameter("earth_radius", (float)EarthSurfaceLighting.EarthRadiusKilometers);
         _material.SetShaderParameter("moon_radius", (float)EarthSurfaceLighting.MoonRadiusKilometers);
-        float moonDiskScale = trueAngularScale || optics is not null ? 1 : 4;
+        float moonDiskScale = trueAngularScale || optics is not null ? 1 : (float)(observer.MoonScale ?? 4);
         _material.SetShaderParameter("moon_disk_scale", moonDiskScale);
         _material.SetShaderParameter("lunar_strength", (float)Math.Clamp(.12 * lighting.RelativeLunarFlux, 0, 1));
         _material.SetShaderParameter("site_north", north);

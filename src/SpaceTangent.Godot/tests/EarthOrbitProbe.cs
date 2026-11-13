@@ -28,6 +28,12 @@ public partial class EarthOrbitProbe : Node
                 await ToSignal(GetTree(), SceneTree.SignalName.ProcessFrame);
             }
             var session = scene.Session ?? throw new InvalidOperationException("The probe needs DE440.");
+            if (System.Environment.GetEnvironmentVariable("SPACETANGENT_CAPTURE_PACKED_CASSINI") == "1")
+            {
+                await ExercisePackedCassini(scene, directory);
+                result = 0;
+                return;
+            }
             if (System.Environment.GetEnvironmentVariable("SPACETANGENT_CAPTURE_PACKED_SCIENCE") == "only")
             {
                 await CapturePackedScience(scene, directory);

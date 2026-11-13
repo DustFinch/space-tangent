@@ -23,6 +23,8 @@ public readonly record struct SkyLayerSettings(bool Stars, bool Labels, bool Equ
     public bool HideSatellites { get; init; }
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public bool? Starlink { get; init; }
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public MinorBodyDisplay? SmallBodies { get; init; }
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingDefault)]
     public bool HideClouds { get; init; }
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingDefault)]
@@ -98,5 +100,5 @@ public readonly record struct SkyLayerSettings(bool Stars, bool Labels, bool Equ
 
     internal bool IsValid() =>         (CultureId is null || SkyCultureLibrary.ValidId(CultureId)) && Enum.IsDefined(CultureNames) &&
                 (SurveyId is null || LocalSkySurvey.ValidId(SurveyId)) && SurveyBrightness is null or (>= 0 and <= 2) &&
-        (MeteorRateMultiplier is not { } rate || ValidMeteorRate(rate)) && (DeepSkyFilter is not { } filter || filter.IsValid());
+        (SmallBodies is not { } minorBodies || Enum.IsDefined(minorBodies)) && (MeteorRateMultiplier is not { } rate || ValidMeteorRate(rate)) && (DeepSkyFilter is not { } filter || filter.IsValid());
 }

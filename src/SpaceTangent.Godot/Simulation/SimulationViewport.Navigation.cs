@@ -132,6 +132,8 @@ internal partial class SimulationViewport
         _navigationMoonMaterial.SetShaderParameter("earth_from_moon", ToGodot((solar.Earth - solar.Moon).PositionKilometers, 1));
         DrawPlanetGlobes(snapshot, pose, placement.OffsetKilometers, units, sky, selection, ProjectWithScale);
         DrawWorldAtmospheres(snapshot, solar.Sun.PositionKilometers, sky);
+        DrawMinorBodySwarm(snapshot, solar.Sun.PositionKilometers, pose.AnchorKilometers + placement.OffsetKilometers,
+            sky.SmallBodies ?? MinorBodyDisplay.Photometric, ProjectWithScale);
         DrawStellarObjects(pose, snapshot, sky, placement.OffsetKilometers, units, ProjectWithScale);
         DrawExtrasolarOrbits(pose, snapshot, units, ProjectWithScale);
         DrawCompactObjects(snapshot, sky, units, ProjectWithScale);
@@ -304,6 +306,7 @@ internal partial class SimulationViewport
         HideExtrasolarOrbits();
         HideImportedBodies();
         HideLocalSatelliteMarkers();
+        HideMinorBodySwarm();
         HideComets();
     }
 }

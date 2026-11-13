@@ -23,6 +23,7 @@ internal partial class SimulationViewport
     internal void SetSkyData(BrightSkyData data)
     {
         _compactSky = data;
+        SetMinorBodySwarm(data.MinorBodies);
         _satelliteMagnitudes = data.SatelliteMagnitudes;
         var layer = new CanvasLayer { Layer = -1 };
         AddChild(layer);

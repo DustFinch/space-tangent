@@ -18,7 +18,7 @@ public sealed record SimulationScenario(IReadOnlyList<ObserverView> Views, bool 
 /// <summary>Persists observer settings with exact TDB epochs and stable catalog IDs.</summary>
 public static class ScenarioFile
 {
-    private const int Version = 42;
+    private const int Version = 43;
     internal const int MaximumBytes = 32 * 1024;
     private static readonly JsonSerializerOptions Json = new()
     {
@@ -63,7 +63,8 @@ public static class ScenarioFile
             throw new InvalidDataException("The scenario has an invalid camera sensitivity.");
         var document = new Document
         {
-            Version = scenario.Views.Any(view => view.Sky.Starlink.HasValue) ? 42 :
+            Version = scenario.Views.Any(view => view.Sky.SmallBodies.HasValue) ? 43 :
+                scenario.Views.Any(view => view.Sky.Starlink.HasValue) ? 42 :
                 scenario.Views.Any(view => view.EarthObserver?.ApparentPlaces == true) ? 41 :
                 scenario.Views.Any(view => view.Sky.ZodiacalLight) ? 40 :
                 scenario.Views.Any(view => view.Sky.PointerCoordinates) ? 39 :
@@ -120,7 +121,7 @@ public static class ScenarioFile
                 PlaybackRate = view.PlaybackRate,
                 Navigation = view.Navigation is { } pose ? Camera.From(pose) : null,
                 EarthObserver = view.EarthObserver,
-                Sky = view.Sky.Visible || view.Sky.HasCultureSettings || view.Sky.HasSurveySettings || view.Sky.HasMeteorSettings || view.Sky.MinorBodyLabels || view.Sky.HideSatellites || view.Sky.HasBodyLayerSettings || view.Sky.CinematicBlackHoles || view.Sky.HasDeepSkyPreferences || view.Sky.HideClouds || view.Sky.HideAtmospheres || view.Sky.HideTerrain || view.Sky.PointerCoordinates || view.Sky.ZodiacalLight || view.Sky.Starlink.HasValue ? view.Sky : null,
+                Sky = view.Sky.Visible || view.Sky.HasCultureSettings || view.Sky.HasSurveySettings || view.Sky.HasMeteorSettings || view.Sky.MinorBodyLabels || view.Sky.HideSatellites || view.Sky.HasBodyLayerSettings || view.Sky.CinematicBlackHoles || view.Sky.HasDeepSkyPreferences || view.Sky.HideClouds || view.Sky.HideAtmospheres || view.Sky.HideTerrain || view.Sky.PointerCoordinates || view.Sky.ZodiacalLight || view.Sky.Starlink.HasValue || view.Sky.SmallBodies.HasValue ? view.Sky : null,
                 ReferenceMarks = view.ReferenceMarks,
                 Optics = view.Optics,
                 LightTimeDelayed = view.LightTimeDelayed
@@ -221,6 +222,8 @@ public static class ScenarioFile
                 throw new InvalidDataException("Cinematic black holes require scenario version 30.");
             if (data.Sky is { HasBodyLayerSettings: true } && document.Version < 29)
                 throw new InvalidDataException("Body layer preferences require scenario version 29.");
+            if (data.Sky is { SmallBodies: not null } && document.Version < 43)
+                throw new InvalidDataException("The small-body swarm requires scenario version 43.");
             if (data.Sky is { Starlink: not null } && document.Version < 42)
                 throw new InvalidDataException("The Starlink layer requires scenario version 42.");
             if (data.Sky is { HideSatellites: true } && document.Version < 28)

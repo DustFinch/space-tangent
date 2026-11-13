@@ -57,6 +57,7 @@ public partial class SolarSystemScene : Control
     private CheckButton _deepSky = null!;
     private CheckButton _stars = null!, _starLabels = null!, _equatorialGrid = null!, _constellations = null!;
     private CheckButton _zodiacalLight = null!, _starlink = null!;
+    private OptionButton _smallBodyMode = null!;
     private SimulatorWorkspace _workspace = null!;
     private ObjectSearchPanel _objectSearch = null!;
     private Label _timeHeading = null!, _dataSummary = null!;
@@ -306,6 +307,17 @@ public partial class SolarSystemScene : Control
         _deepSky = SkyToggle(layers, "DeepSkyLayer", "Deep-sky objects");
         _zodiacalLight = SkyToggle(layers, "ZodiacalLightLayer", "Zodiacal light");
         _zodiacalLight.Disabled = _brightSky?.ZodiacalMap is null;
+        _smallBodyMode = new OptionButton { Name = "SmallBodySwarmMode", Disabled = _brightSky?.MinorBodies.Length is not > 0 };
+        _smallBodyMode.AddItem("Small-body swarm off");
+        _smallBodyMode.AddItem("Small-body brightness");
+        _smallBodyMode.AddItem("Small-body diagram");
+        _smallBodyMode.ItemSelected += index =>
+        {
+            var session = Session!;
+            session.SetSkyLayers(_active, session[_active].Sky with { SmallBodies = (MinorBodyDisplay)index });
+            Refresh();
+        };
+        layers.AddChild(_smallBodyMode);
         layers.AddChild(SimulatorTheme.Section("Earth satellites"));
         _satelliteLayersMode = AddButton(layers, "Earth satellites view", () => SetMode(_active, CameraMode.Satellites));
         _starlink = new CheckButton { Name = "StarlinkLayer", Text = "Starlink" };
@@ -1827,6 +1839,7 @@ public partial class SolarSystemScene : Control
         _deepSky.SetPressedNoSignal(active.Sky.DeepSky);
         _zodiacalLight.SetPressedNoSignal(active.Sky.ZodiacalLight);
         _starlink.SetPressedNoSignal(active.Sky.Starlink ?? !active.Sky.HideSatellites);
+        _smallBodyMode.Select((int)(active.Sky.SmallBodies ?? MinorBodyDisplay.Photometric));
         _objectSearch.UpdateSelection(active.Selection);
         var target = active.Selection is { } selection ? Session.World.Catalogue.Find(selection) : null;
         bool tracking = active.Navigation is { Tracking: true } pose && pose.Target == target?.Id;

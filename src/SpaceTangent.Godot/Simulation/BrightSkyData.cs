@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
 using Godot;
+using SpaceTangent.Application;
 using System.Globalization;
 using SpaceTangent.Contracts;
 using SpaceTangent.Core.Observing;
@@ -12,6 +13,7 @@ internal sealed record BrightSkyData(BrightStarCatalogue Catalogue, IReadOnlyLis
     internal IReadOnlyList<(Vector3 From, Vector3 To)> Boundaries => BoundaryMap?.Segments ?? [];
     internal SkyBoundaryMap? BoundaryMap { get; init; }
     internal Texture2D? ZodiacalMap { get; init; }
+    internal MinorBodyEntry[] MinorBodies { get; init; } = [];
     internal IReadOnlyDictionary<ObjectId, double> SatelliteMagnitudes { get; init; } = new Dictionary<ObjectId, double>();
 
     private readonly Dictionary<string, Texture2D?> _artTextures = new(StringComparer.Ordinal);
@@ -99,6 +101,7 @@ internal sealed record BrightSkyData(BrightStarCatalogue Catalogue, IReadOnlyLis
         {
             BoundaryMap = LoadBoundaries(),
             ZodiacalMap = ZodiacalGlow.LoadMap(),
+            MinorBodies = LoadMinorBodies(),
             SatelliteMagnitudes = LoadSatelliteMagnitudes()
         };
     }
@@ -132,6 +135,26 @@ internal sealed record BrightSkyData(BrightStarCatalogue Catalogue, IReadOnlyLis
             table.Clear();
         }
         return table;
+    }
+
+    private static MinorBodyEntry[] LoadMinorBodies()
+    {
+        string path = LocalDataPaths.Find("SPACETANGENT_MINOR_BODY_CSV", "small-bodies/small-bodies.csv");
+        if (!File.Exists(path))
+            return [];
+        try
+        {
+            using var file = File.OpenRead(path);
+            if (file.Length > 32 * 1024 * 1024)
+                throw new InvalidDataException("The small-body catalogue exceeds its size limit.");
+            using var input = new StreamReader(file);
+            return MinorBodySwarm.Read(input);
+        }
+        catch (Exception error) when (error is IOException or InvalidDataException or ArgumentException or OverflowException)
+        {
+            GD.Print("Small-body catalogue: " + error.Message);
+            return [];
+        }
     }
 
     private static SkyBoundaryMap? LoadBoundaries()

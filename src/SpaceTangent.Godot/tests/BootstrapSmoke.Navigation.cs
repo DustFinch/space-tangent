@@ -64,6 +64,26 @@ public partial class BootstrapSmoke
 
         scene.ToggleSplit();
         ObserverView lunar = session[1];
+        double priorField = session[0].EffectiveFieldOfView;
+        viewport.EmitSignal(Control.SignalName.GuiInput,
+            new InputEventMouseButton { Pressed = true, ButtonIndex = MouseButton.WheelUp, CtrlPressed = true });
+        Require(Math.Abs(session[0].EffectiveFieldOfView - priorField * .85) < 1e-12 &&
+                session[0].Navigation == adjusted && session[1] == lunar,
+            "Ctrl+wheel must narrow the field independently without moving either camera.");
+        viewport.EmitSignal(Control.SignalName.GuiInput,
+            new InputEventMouseButton { Pressed = true, ButtonIndex = MouseButton.WheelDown, CtrlPressed = true });
+        Require(Math.Abs(session[0].EffectiveFieldOfView - priorField) < 1e-12 && session[1] == lunar,
+            "The opposite wheel direction must restore the field.");
+
+        scene.SetMode(0, CameraMode.Surface);
+        ObserverView surface = session[0];
+        viewport.EmitSignal(Control.SignalName.GuiInput,
+            new InputEventMouseButton { Pressed = true, ButtonIndex = MouseButton.WheelUp });
+        Require(Math.Abs(session[0].EffectiveFieldOfView - surface.EffectiveFieldOfView * .85) < 1e-12 &&
+                session[0].EarthObserver == surface.EarthObserver && session[1] == lunar,
+            "The observatory wheel must narrow its field without changing the observing site or other view.");
+        scene.SetMode(0, CameraMode.Solar);
+        session.SetFieldOfView(0, priorField);
         JulianInstant beforeJason = session[0].Epoch;
         Select("26997");
         Require(session[0].Epoch == beforeJason && session[1] == lunar,

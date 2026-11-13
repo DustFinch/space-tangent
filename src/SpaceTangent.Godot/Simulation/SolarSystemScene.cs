@@ -1407,8 +1407,8 @@ public partial class SolarSystemScene : Control
         }
         bool adjusted = input switch
         {
-            InputEventMouseButton { Pressed: true, ButtonIndex: MouseButton.WheelUp } => Session!.AdjustCamera(view, 0, 0, .8),
-            InputEventMouseButton { Pressed: true, ButtonIndex: MouseButton.WheelDown } => Session!.AdjustCamera(view, 0, 0, 1.25),
+            InputEventMouseButton { Pressed: true, ButtonIndex: MouseButton.WheelUp or MouseButton.WheelDown } wheel =>
+                AdjustWheel(view, wheel),
             InputEventMouseMotion motion when (motion.ButtonMask & MouseButtonMask.Right) != 0 =>
                 Session!.AdjustCamera(view, -.006 * motion.Relative.X, .006 * motion.Relative.Y, 1),
             _ => false
@@ -1418,6 +1418,21 @@ public partial class SolarSystemScene : Control
             GetViewport().SetInputAsHandled();
             Refresh();
         }
+    }
+
+    private bool AdjustWheel(int view, InputEventMouseButton wheel)
+    {
+        var session = Session!;
+        var observer = session[view];
+        bool inward = wheel.ButtonIndex == MouseButton.WheelUp;
+        if (wheel.CtrlPressed || observer is { Mode: CameraMode.Surface, Navigation: null })
+        {
+            double factor = inward ? .85 : 1 / .85;
+            session.SetFieldOfView(view, Math.Clamp(observer.EffectiveFieldOfView * factor, 2, 120));
+            return true;
+        }
+
+        return session.AdjustCamera(view, 0, 0, inward ? .8 : 1.25);
     }
 
     private readonly GalacticTextureCache _galacticSky = new();

@@ -20,7 +20,7 @@ internal partial class SimulationViewport
         material.GetShaderParameter("has_globe_map").AsBool();
 
     private void DrawExoplanets(SimulationWorld world, NavigationCamera pose, WorldSnapshot snapshot,
-        Vector3d eyeOffset, double units, Func<Vector3d, (Vector3 Position, double Scale)> project)
+        Vector3d eyeOffset, double units, bool labels, Func<Vector3d, (Vector3 Position, double Scale)> project)
     {
         if (pose.Target is not { } target)
             return;
@@ -43,7 +43,11 @@ internal partial class SimulationViewport
             count++;
             Color tint = SurfaceColor(planet.TextureClass);
             Vector3d towardEye = (pose.AnchorKilometers - state.PositionKilometers) + eyeOffset;
-            if (!DrawReflectedBody(planet.Id, world.Exoplanets.CanonicalHost(planet.Parent), planet.RadiusKilometers,
+            ObjectId parent = world.Exoplanets.CanonicalHost(planet.Parent);
+            if (labels)
+                DrawBodyLabel(planet.Id, planet.Name, parent, planet.ParentRelativeState(snapshot.Epoch).PositionKilometers.Length,
+                    planet.RadiusKilometers, snapshot, state.PositionKilometers, towardEye, center, radius);
+            if (!DrawReflectedBody(planet.Id, parent, planet.RadiusKilometers,
                 planet.GeometricAlbedo, tint, snapshot, towardEye, state.PositionKilometers, center, radius, lights))
                 continue;
             int index = _visibleExoplanets.Count;

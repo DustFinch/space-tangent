@@ -80,7 +80,10 @@ public partial class EarthOrbitProbe
             Vector3d light = (host - state).PositionKilometers;
             light /= light.Length;
             Vector3d eye = light + Vector3d.Cross(light, new(0, 0, 1)) * .42;
-            await Capture("dimidium", exoplanet.Id, state.PositionKilometers, exoplanet.RadiusKilometers * 4.2, sky, eye / eye.Length);
+            await Capture("dimidium", exoplanet.Id, state.PositionKilometers, exoplanet.RadiusKilometers * 4.2,
+                sky with { Labels = true }, eye / eye.Length);
+            if (scene.Renderer(0).BodyLabel(exoplanet.Id) is not { Visible: true })
+                throw new InvalidOperationException("The original Dimidium must have a label in the enabled view.");
             if (!scene.Renderer(0).ExoplanetVisible(exoplanet.Id) || !scene.Renderer(0).ExoplanetTextured(exoplanet.Id))
                 throw new InvalidOperationException("The original Dimidium map must be visible in the planet view.");
             if (DisplayServer.GetName() != "headless")

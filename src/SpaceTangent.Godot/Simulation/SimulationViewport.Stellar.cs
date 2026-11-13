@@ -45,6 +45,14 @@ internal partial class SimulationViewport
             _lastStellarPosition = null;
         if (!ReferenceEquals(CatalogueWorld?.DeepSky, world.DeepSky) || CatalogueWorld?.StellarOrigin != world.StellarOrigin)
             CacheDeepSky(world);
+        if (!ReferenceEquals(CatalogueWorld, world))
+        {
+            foreach (ObjectId id in _bodyLabels.Keys.Where(id => world.Catalogue.Find(id) is null).ToArray())
+            {
+                _bodyLabels[id].QueueFree();
+                _bodyLabels.Remove(id);
+            }
+        }
         CatalogueWorld = world;
         _spaceSky?.SetCultureWorld(world);
         _surface?.SetCultureWorld(world);
@@ -70,7 +78,7 @@ internal partial class SimulationViewport
             new Vector3d(localEye.X, -localEye.Z, localEye.Y) * units;
         Vector3d eye = pose.AnchorKilometers + eyeOffset;
         DrawDeepSky(world, pose, sky, eye, units, project);
-        DrawExoplanets(world, pose, snapshot, placementOffset, units, project);
+        DrawExoplanets(world, pose, snapshot, placementOffset, units, sky.Labels, project);
         DrawDemoWorlds(pose, snapshot, units, project);
         if (sky.Stars && (_fieldStars.Count != 0 || world.DistantStars is not null) && (eye - world.StellarOrigin).Length > StellarEntry.KilometersPerLightYear * .025)
             DrawSpatialField(eye, snapshot.Epoch, world, pose.Target);

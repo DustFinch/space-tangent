@@ -134,8 +134,8 @@ internal partial class SimulationViewport
         DrawStellarObjects(pose, snapshot, sky, placement.OffsetKilometers, units, ProjectWithScale);
         DrawExtrasolarOrbits(pose, snapshot, units, ProjectWithScale);
         DrawCompactObjects(snapshot, sky, units, ProjectWithScale);
-        DrawImportedBodies(snapshot, pose, placement.OffsetKilometers, units, ProjectWithScale);
-        DrawLocalSatellite(snapshot, pose, placement.OffsetKilometers, units, ProjectWithScale);
+        DrawImportedBodies(snapshot, pose, placement.OffsetKilometers, units, sky, selection, ProjectWithScale);
+        DrawLocalSatellite(snapshot, pose, placement.OffsetKilometers, units, sky, selection, ProjectWithScale);
         HideComets();
         DrawComets(snapshot, solar.Sun, units, ProjectWithScale);
 
@@ -151,12 +151,18 @@ internal partial class SimulationViewport
                 continue;
             double radius = NavigationCamera.BodyRadiusKilometers(asset.Track.Id);
             var satelliteId = asset.Track.Id;
-            if (!_satelliteMagnitudes.ContainsKey(satelliteId) && radius / pose.RangeKilometers < .0002 && pose.Target != satelliteId)
+            bool label = sky.Labels && (sky.MinorBodyLabels || selection == satelliteId);
+            bool drawModel = _satelliteMagnitudes.ContainsKey(satelliteId) || radius / pose.RangeKilometers >= .0002 ||
+                pose.Target == satelliteId;
+            if (!label && !drawModel)
                 continue;
             Vector3 position = Project(state.PositionKilometers, out double scale);
             float projectedRadius = (float)(radius / units * scale);
             Vector3d towardEye = (pose.AnchorKilometers - state.PositionKilometers) + placement.OffsetKilometers;
-            if (!DrawSatellitePoint(satelliteId, snapshot, state.PositionKilometers, towardEye, radius, position, projectedRadius))
+            if (label)
+                DrawBodyLabel(satelliteId, asset.Track.Name, SolarSystemSample.EarthId, 0, radius,
+                    snapshot, state.PositionKilometers, towardEye, position, projectedRadius);
+            if (!drawModel || !DrawSatellitePoint(satelliteId, snapshot, state.PositionKilometers, towardEye, radius, position, projectedRadius))
                 continue;
             float modelScale = projectedRadius * asset.MarkerScale / 9;
             if (modelScale < 1e-7f)

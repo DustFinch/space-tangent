@@ -80,7 +80,9 @@ internal partial class SimulationViewport
         double distance = towardEye.Length;
         if (distance <= bodyRadius || _navigationCamera.IsPositionBehind(position))
             return;
-        if (parentId is { } primary && snapshot.TryState(primary, out var parent))
+        if (parentId is { } primary &&
+            (CatalogueWorld is { } world ? world.TryNavigationState(primary, snapshot, out var parent) :
+                snapshot.TryState(primary, out parent)))
         {
             Vector3d relativeParent = parent.PositionKilometers - center;
             Vector3d direction = towardEye / distance;

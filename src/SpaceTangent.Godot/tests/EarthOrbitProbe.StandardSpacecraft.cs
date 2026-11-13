@@ -129,7 +129,10 @@ public partial class EarthOrbitProbe
                     {
                         Placement = new NavigationPlacement(eye * range, eye * -1, up / up.Length)
                     };
-                    var far = new ObserverView(at, CameraMode.Solar, id, false) { Navigation = pose };
+                    var far = new ObserverView(at, CameraMode.Solar, id, false)
+                    {
+                        Navigation = pose, Sky = new(false, true, false, false)
+                    };
                     var near = View("ssc/sol/earth/hubble", 2458849.5, .048);
                     string path = Path.Combine(directory, "hubble-point-and-model.stscene");
                     ScenarioFile.Save(path, new([far, near], false, 0, 0, session.DeltaT));
@@ -137,7 +140,9 @@ public partial class EarthOrbitProbe
                         throw new InvalidOperationException("Could not open Hubble's distant photometry view.");
                     if (renderer.BodyPoint(id) is not { Visible: true, MaterialOverride: ShaderMaterial material } point ||
                         renderer.ImportedBodyNode(id) is not { Visible: false } ||
-                        scene.Renderer(1).ImportedBodyNode(id) is not { Visible: true })
+                        scene.Renderer(1).ImportedBodyNode(id) is not { Visible: true } ||
+                        renderer.BodyLabel(id) is not { Visible: true } ||
+                        scene.Renderer(1).BodyLabel(id)?.Visible == true)
                         throw new InvalidOperationException("Hubble must use a point at subpixel size and retain its nearby model.");
                     double ratio = radius / sunward.Length * 149597870.7 / range;
                     double expected = -26.74 - 2.5 * Math.Log10((original.Definition.GeometricAlbedo ?? .5) * ratio * ratio);
@@ -148,7 +153,17 @@ public partial class EarthOrbitProbe
                     using var image = GetViewport().GetTexture().GetImage();
                     if (image.SavePng(Path.ChangeExtension(path, ".png")) != Error.Ok)
                         throw new IOException("Could not capture Hubble's original point and model.");
+                    ScenarioFile.Save(path, new([far with { Selection = null }, near], false, 0, 0, session.DeltaT));
+                    if (!scene.LoadScenario(path) || renderer.BodyLabel(id)?.Visible == true)
+                        throw new InvalidOperationException("Tracking alone must not reveal an unselected spacecraft label.");
+                    var labels = far.Sky with { MinorBodyLabels = true };
+                    ScenarioFile.Save(path, new([far with { Selection = null, Sky = labels }, near], false, 0, 0, session.DeltaT));
+                    if (!scene.LoadScenario(path) || !await scene.ReloadAddOns() ||
+                        renderer.BodyLabel(id) is not { Visible: true, Text: "Hubble" } ||
+                        scene.Renderer(1).BodyLabel(id)?.Visible == true)
+                        throw new InvalidOperationException("The minor label must survive reload only in the enabled view.");
                     GD.Print($"SSC spacecraft photometry GPU: original Hubble magnitude {expected:F5}, point picking and near model.");
+                    GD.Print("Imported labels GPU: original Hubble selection and independent minor-label preference survive reload.");
                     return;
                 }
                 throw new InvalidOperationException("No sunlit Hubble sample at the original SSC epoch.");

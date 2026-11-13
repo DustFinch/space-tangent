@@ -45,7 +45,8 @@ public partial class EarthOrbitProbe
         if (day is not { } illuminated || night is not { } eclipsed)
             throw new InvalidOperationException("The ISS orbit must provide both sunlit and eclipsed epochs.");
         string path = Path.Combine(directory, "iss-photometry.stscene");
-        ScenarioFile.Save(path, new([illuminated, eclipsed], false, 0, 0, session.DeltaT));
+        var labels = new SkyLayerSettings(false, true, false, false);
+        ScenarioFile.Save(path, new([illuminated with { Sky = labels }, eclipsed], false, 0, 0, session.DeltaT));
         if (!scene.LoadScenario(path))
             throw new InvalidOperationException("Could not open the two ISS observers.");
         await ToSignal(GetTree(), SceneTree.SignalName.ProcessFrame);
@@ -56,6 +57,8 @@ public partial class EarthOrbitProbe
             Math.Abs(material.GetShaderParameter("magnitude").AsSingle() + 2.5) > 1e-4 ||
             scene.Renderer(1).BodyPoint(id)?.Visible == true || scene.Renderer(1).LocalSatelliteVisible(id))
             throw new InvalidOperationException("ISS must match its archived standard magnitude at 1000 km and disappear in Earth's shadow.");
+        if (renderer.BodyLabel(id) is not { Visible: true } || scene.Renderer(1).BodyLabel(id)?.Visible == true)
+            throw new InvalidOperationException("The selected ISS label must appear only in the enabled view.");
         if (renderer.PickObject(renderer.NavigationCameraNode.UnprojectPosition(point.Position)) != id)
             throw new InvalidOperationException("The sunlit ISS point must remain selectable.");
         await ToSignal(RenderingServer.Singleton, RenderingServer.SignalName.FramePostDraw);

@@ -13,11 +13,16 @@ public sealed record RecordedOrbit(string Name, IReadOnlyList<Vector3d> Points, 
 public readonly record struct RecordedLabel(string Text, Vector3d CameraPosition, int Kind,
     double Opacity, Vector3d? Color, double MarkerRadians);
 
+public readonly record struct RecordedBodyPoint(string Name, double Magnitude, Vector3d Color, double Fade, bool ReplacesSurface);
+
 internal sealed class LegacyFrameOverlays
 {
     private readonly List<IReadOnlyList<Vector3d>> _geometry = [];
     private RecordedOrbit[] _lastOrbits = [];
     private RecordedLabel[] _lastLabels = [];
+    private RecordedBodyPoint[] _lastPoints = [];
+    private IReadOnlyDictionary<string, RecordedBodyPoint> _points =
+        new System.Collections.ObjectModel.ReadOnlyDictionary<string, RecordedBodyPoint>(new Dictionary<string, RecordedBodyPoint>());
     private IReadOnlyList<RecordedOrbit> _orbits = [];
     private IReadOnlyList<RecordedLabel> _labels = [];
     private int _geometryBytes, _retained;
@@ -37,7 +42,7 @@ internal sealed class LegacyFrameOverlays
         _geometry.Add(Array.AsReadOnly(points));
     }
 
-    internal (IReadOnlyList<RecordedOrbit>, IReadOnlyList<RecordedLabel>, int StellarOffset) Read(ReadOnlySpan<byte> data,
+    internal (IReadOnlyList<RecordedOrbit>, IReadOnlyList<RecordedLabel>, IReadOnlyDictionary<string, RecordedBodyPoint>, int StellarOffset) Read(ReadOnlySpan<byte> data,
         int offset, int minor, IReadOnlyList<string> strings)
     {
         int stars = Count(data, 100, 256), orbitCount = Count(data, 102, 128);
@@ -64,7 +69,19 @@ internal sealed class LegacyFrameOverlays
                 worldFrame == 1 ? worldToCamera : Basis3d.Identity, color, fade);
         }
 
-        reader.Skip(shadows * 20 + points * 25);
+        reader.Skip(shadows * 20);
+        var bodyPoints = new RecordedBodyPoint[points];
+        for (int index = 0; index < bodyPoints.Length; index++)
+        {
+            string name = reader.Text(strings);
+            double magnitude = reader.Float();
+            Vector3d color = reader.Vector();
+            double fade = reader.Unit();
+            byte replaces = reader.Byte();
+            if (replaces > 1)
+                throw new InvalidDataException("Invalid archived point visibility flag.");
+            bodyPoints[index] = new(name, magnitude, color, fade, replaces == 1);
+        }
         var labels = new RecordedLabel[labelCount];
         for (int index = 0; index < labels.Length; index++)
         {
@@ -90,7 +107,17 @@ internal sealed class LegacyFrameOverlays
             Charge(labels.Length);
             _labels = Array.AsReadOnly(_lastLabels = labels);
         }
-        return (_orbits, _labels, data.Length - reader.Remaining);
+        if (!bodyPoints.AsSpan().SequenceEqual(_lastPoints))
+        {
+            Charge(bodyPoints.Length);
+            var byName = new Dictionary<string, RecordedBodyPoint>(StringComparer.Ordinal);
+            foreach (var point in bodyPoints)
+                if (!byName.TryAdd(point.Name, point))
+                    throw new InvalidDataException("Duplicate archived body point.");
+            _lastPoints = bodyPoints;
+            _points = new System.Collections.ObjectModel.ReadOnlyDictionary<string, RecordedBodyPoint>(byName);
+        }
+        return (_orbits, _labels, _points, data.Length - reader.Remaining);
 
         Vector3d Turn(Vector3d value)
         {

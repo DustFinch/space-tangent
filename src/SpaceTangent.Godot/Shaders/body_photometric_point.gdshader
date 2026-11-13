@@ -5,13 +5,16 @@ render_mode unshaded, blend_add, depth_draw_never, cull_disabled, shadows_disabl
 uniform vec3 point_color = vec3(1.0);
 uniform float magnitude = 30.0;
 uniform float fade = 1.0;
+uniform float faintest = 7.8;
+uniform float brightness_scale = 0.19;
+uniform float saturation_point = 2.6;
 varying float core_alpha;
 varying float core_scale;
 varying float halo;
 
 void vertex() {
-    float brightness = (7.8 - magnitude) * 0.19;
-    float disc = brightness > 1.0 ? clamp(4.6 - magnitude, 2.0, 3.0) : 0.5;
+    float brightness = (faintest - magnitude) * brightness_scale;
+    float disc = brightness > 1.0 ? clamp(saturation_point + 2.0 - magnitude, 2.0, 3.0) : 0.5;
     POINT_SIZE = 10.0 * disc;
     core_scale = 2.0 * disc;
     core_alpha = clamp(brightness, 0.0, 1.0) * fade;

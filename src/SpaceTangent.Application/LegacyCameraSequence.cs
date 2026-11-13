@@ -21,6 +21,8 @@ public sealed record RecordedSceneGeometry(double KilometersPerUnit, IReadOnlyLi
     public IReadOnlyList<RecordedOrbit> Orbits { get; init; } = [];
     public IReadOnlyList<RecordedLabel> Labels { get; init; } = [];
     public RecordedStellarView? StellarView { get; init; }
+    public IReadOnlyDictionary<string, RecordedBodyPoint> BodyPoints { get; init; } =
+        new System.Collections.ObjectModel.ReadOnlyDictionary<string, RecordedBodyPoint>(new Dictionary<string, RecordedBodyPoint>());
 }
 
 /// <summary>Reconstructs the archived single camera against the installed ephemeris.</summary>
@@ -154,11 +156,12 @@ public sealed class LegacyCameraSequence : IObserverReplay
                     RingInnerRadius = inner, RingOuterRadius = outer, LightAngularRadius = lightRadius
                 };
             }
-            var (orbits, labels, stellarOffset) = overlays.Read(data, cursor, minor, strings);
+            var (orbits, labels, points, stellarOffset) = overlays.Read(data, cursor, minor, strings);
             var stellarView = minor >= 10 ? stellar.ReadView(data, stellarOffset) : null;
             if (previousGeometry is null || previousGeometry.KilometersPerUnit != scale ||
                 !geometry.AsSpan().SequenceEqual(previousBodies) ||
-                !ReferenceEquals(orbits, previousGeometry.Orbits) || !ReferenceEquals(labels, previousGeometry.Labels) || previousGeometry.StellarView != stellarView)
+                !ReferenceEquals(orbits, previousGeometry.Orbits) || !ReferenceEquals(labels, previousGeometry.Labels) || previousGeometry.StellarView != stellarView ||
+                !ReferenceEquals(points, previousGeometry.BodyPoints))
             {
                 if (!geometry.AsSpan().SequenceEqual(previousBodies))
                     retainedBodies += geometry.Length;
@@ -166,7 +169,7 @@ public sealed class LegacyCameraSequence : IObserverReplay
                     throw new InvalidDataException("Archived replay exceeds the body geometry budget.");
                 var savedBodies = previousGeometry is not null && geometry.AsSpan().SequenceEqual(previousBodies)
                     ? previousGeometry.Bodies : Array.AsReadOnly(geometry);
-                previousGeometry = new(scale, savedBodies) { Orbits = orbits, Labels = labels, StellarView = stellarView };
+                previousGeometry = new(scale, savedBodies) { Orbits = orbits, Labels = labels, StellarView = stellarView, BodyPoints = points };
                 previousBodies = geometry;
             }
             _geometry.Add(previousGeometry);

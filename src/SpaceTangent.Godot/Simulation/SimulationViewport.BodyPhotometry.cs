@@ -104,6 +104,13 @@ internal partial class SimulationViewport
     {
         if (_bodyPoints.TryGetValue(id, out var existing))
             return existing;
+        var point = CreateBodyPoint();
+        _bodyPoints.Add(id, point);
+        return point;
+    }
+
+    private MeshInstance3D CreateBodyPoint()
+    {
         if (_bodyPointMesh is null)
         {
             using var arrays = new global::Godot.Collections.Array();
@@ -120,7 +127,6 @@ internal partial class SimulationViewport
             CustomAabb = new Aabb(-Vector3.One, Vector3.One * 2),
             CastShadow = GeometryInstance3D.ShadowCastingSetting.Off
         };
-        _bodyPoints.Add(id, point);
         AddChild(point);
         return point;
     }

@@ -16,6 +16,11 @@ internal partial class SimulationViewport
     private EarthOrbitTextures? _archivedEarthMaps;
     internal MeshInstance3D? ArchivedEarthLimb { get; private set; }
     private int _archivedUsed;
+    private readonly List<MeshInstance3D> _archivedPointPool = [];
+    private readonly Dictionary<string, MeshInstance3D> _archivedPoints = new(StringComparer.Ordinal);
+    private int _archivedPointsUsed;
+
+    internal MeshInstance3D? ArchivedPoint(string name) => _archivedPoints.GetValueOrDefault(name);
     private PlanetTextures? _archivedPlanetTextures;
     private readonly Dictionary<ObjectId, (MeshInstance3D Node, Vector2 Radii)> _archivedRings = new();
 
@@ -55,14 +60,22 @@ internal partial class SimulationViewport
             double distance = body.CameraPosition.Length * scale;
             double projection = distance > NavigationFar * .8 ? NavigationFar * .8 / distance : 1;
             float radius = (float)(body.Radius * scale * projection);
-            if (radius < .001f)
-                continue;
+
             Vector3 local = Column(body.CameraPosition * (scale * projection));
             Vector3 center = _navigationCamera.Position + camera * local;
             var rotation = body.CameraBasis;
             double maximumAxis = Math.Sqrt(Vector3d.Dot(rotation.X, rotation.X) + Vector3d.Dot(rotation.Y, rotation.Y) + Vector3d.Dot(rotation.Z, rotation.Z));
             double extent = Math.Max(body.Radius * maximumAxis, body.RingOuterRadius) * scale * projection;
             if (frustum.Any(plane => plane.DistanceTo(center) > extent))
+                continue;
+
+            if (scene.BodyPoints.TryGetValue(body.Name, out var point))
+            {
+                DrawArchivedPoint(point, center, radius, scene.StellarView);
+                if (point.ReplacesSurface)
+                    continue;
+            }
+            if (radius < .001f)
                 continue;
 
             if (_archivedBodies.Count == _archivedUsed)
@@ -239,11 +252,33 @@ internal partial class SimulationViewport
         rings.Node.Show();
     }
 
+    private void DrawArchivedPoint(RecordedBodyPoint record, Vector3 center, float radius, RecordedStellarView? sky)
+    {
+        if (_archivedPointsUsed == _archivedPointPool.Count)
+            _archivedPointPool.Add(CreateBodyPoint());
+        var node = _archivedPointPool[_archivedPointsUsed++];
+        var material = (ShaderMaterial)node.MaterialOverride;
+        material.SetShaderParameter("magnitude", (float)record.Magnitude);
+        material.SetShaderParameter("point_color", new Vector3((float)record.Color.X, (float)record.Color.Y, (float)record.Color.Z));
+        material.SetShaderParameter("fade", (float)record.Fade);
+        material.SetShaderParameter("faintest", sky?.FaintestMagnitude ?? 7.8f);
+        material.SetShaderParameter("brightness_scale", sky?.BrightnessScale ?? .19f);
+        material.SetShaderParameter("saturation_point", sky?.SaturationPoint ?? 2.6f);
+        Vector3 toCamera = _navigationCamera.Position - center;
+        node.Position = center + toCamera.Normalized() * Math.Min(toCamera.Length() * .9f, 1.01f * radius);
+        _archivedPoints.Add(record.Name, node);
+        node.Show();
+    }
+
     private void HideArchivedBodies()
     {
         for (int index = 0; index < _archivedUsed; index++)
             _archivedBodies[index].Hide();
         _archivedUsed = 0;
+        for (int index = 0; index < _archivedPointsUsed; index++)
+            _archivedPointPool[index].Hide();
+        _archivedPointsUsed = 0;
+        _archivedPoints.Clear();
         _archivedVisible.Clear();
         _archivedOverlayRoot?.Hide();
         _archivedSymbolCanvas?.Hide();

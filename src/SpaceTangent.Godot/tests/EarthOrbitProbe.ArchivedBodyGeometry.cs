@@ -44,6 +44,31 @@ public partial class EarthOrbitProbe
                 if (changed < 50 || with.SavePng(Path.Combine(directory, file + "-replay.png")) != Error.Ok)
                     throw new InvalidOperationException($"The {name} rings changed only {changed} GPU samples.");
                 GD.Print($"Archived rings GPU: {name}, {record.RingInnerRadius * geometry.KilometersPerUnit:F1}–{record.RingOuterRadius * geometry.KilometersPerUnit:F1} km, {changed} changed samples.");
+                if (file == "saturn")
+                {
+                    const string nameOfMoon = "Sol/Saturn/Atlas";
+                    var savedPoint = geometry.BodyPoints[nameOfMoon];
+                    var moon = renderer.ArchivedPoint(nameOfMoon);
+                    if (!savedPoint.ReplacesSurface || renderer.ArchivedBody(nameOfMoon) is not null ||
+                        moon is not { Visible: true, MaterialOverride: ShaderMaterial pointMaterial } ||
+                        Math.Abs(pointMaterial.GetShaderParameter("magnitude").AsSingle() - savedPoint.Magnitude) > .0001)
+                        throw new InvalidOperationException("Atlas did not use the archived unresolved-body photometry.");
+                    rings.Show();
+                    await ToSignal(RenderingServer.Singleton, RenderingServer.SignalName.FramePostDraw);
+                    using var lit = renderer.GetViewport().GetTexture().GetImage();
+                    moon.Hide();
+                    await ToSignal(RenderingServer.Singleton, RenderingServer.SignalName.FramePostDraw);
+                    using var control = renderer.GetViewport().GetTexture().GetImage();
+                    Vector2 pixel = renderer.NavigationCameraNode.UnprojectPosition(moon.Position);
+                    int pointPixels = 0;
+                    for (int y = Math.Max(0, (int)pixel.Y - 15); y < Math.Min(lit.GetHeight(), (int)pixel.Y + 16); y++)
+                    for (int x = Math.Max(0, (int)pixel.X - 15); x < Math.Min(lit.GetWidth(), (int)pixel.X + 16); x++)
+                        if (lit.GetPixel(x, y).Luminance - control.GetPixel(x, y).Luminance > .025)
+                            pointPixels++;
+                    if (pointPixels < 3)
+                        throw new InvalidOperationException($"Atlas changed only {pointPixels} GPU pixels at its recorded location.");
+                    GD.Print($"Archived body point GPU: Atlas magnitude {savedPoint.Magnitude:F2}, {pointPixels} lit pixels and no surface mesh.");
+                }
                 if (!scene.LoadScenario(saved) || rings.Visible)
                     throw new InvalidOperationException($"The {name} rings persisted after replay.");
             }

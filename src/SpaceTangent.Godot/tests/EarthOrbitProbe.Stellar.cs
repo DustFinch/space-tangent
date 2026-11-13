@@ -108,6 +108,15 @@ public partial class EarthOrbitProbe
                 if (Math.Abs(expected - actual) > 1e-4)
                     throw new InvalidOperationException($"Dimidium magnitude differs from the catalogue ({expected:F5} vs {actual:F5}).");
                 GD.Print($"Catalogue exoplanet photometry GPU: original Dimidium point magnitude {actual:F5}, picking and near texture.");
+
+                const double archivedAxis = 7_829_952.552;
+                double labelRange = focal * archivedAxis / 30;
+                await Capture("dimidium-label-fade", exoplanet.Id, state.PositionKilometers, labelRange,
+                    sky with { Labels = true }, eye / eye.Length);
+                if (renderer.BodyLabel(exoplanet.Id) is not { Visible: true } label ||
+                    Math.Abs(label.Modulate.A - .5) > 1e-4)
+                    throw new InvalidOperationException("The Dimidium label must use the archived semimajor axis for its 30-pixel fade.");
+                GD.Print("Catalogue exoplanet label GPU: Dimidium is half opaque at a 30-pixel projected semimajor axis.");
             }
         }
         if (world.Stellar.FindByName("Kepler-931 A") is { } primary &&

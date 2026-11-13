@@ -45,7 +45,7 @@ internal partial class SimulationViewport
             Vector3d towardEye = (pose.AnchorKilometers - state.PositionKilometers) + eyeOffset;
             ObjectId parent = world.Exoplanets.CanonicalHost(planet.Parent);
             if (labels)
-                DrawBodyLabel(planet.Id, planet.Name, parent, planet.ParentRelativeState(snapshot.Epoch).PositionKilometers.Length,
+                DrawBodyLabel(planet.Id, planet.Name, parent, planet.SemiMajorAxisKilometers,
                     planet.RadiusKilometers, snapshot, state.PositionKilometers, towardEye, center, radius);
             if (!DrawReflectedBody(planet.Id, parent, planet.RadiusKilometers,
                 planet.GeometricAlbedo, tint, snapshot, towardEye, state.PositionKilometers, center, radius, lights))

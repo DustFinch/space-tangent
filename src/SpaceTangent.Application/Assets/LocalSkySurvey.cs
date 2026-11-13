@@ -15,13 +15,18 @@ public sealed record LocalSkySurvey(string Id, string Title, string Root, Basis3
     public static LocalSkySurvey Read(string root)
     {
         root = Path.GetFullPath(root);
-        string id = Path.GetFileName(root);
-        if (!ValidId(id))
-            throw new InvalidDataException("A survey directory needs a lowercase identifier.");
         using var stream = AddonDependencies.OpenRead(Path.Combine(root, "properties"), 64 * 1024);
         if (stream.Length > 64 * 1024)
             throw new InvalidDataException("The survey properties file exceeds 64 KiB.");
         using var reader = new StreamReader(stream);
+        return ReadProperties(root, reader);
+    }
+
+    public static LocalSkySurvey ReadProperties(string root, TextReader reader)
+    {
+        string id = Path.GetFileName(root);
+        if (!ValidId(id))
+            throw new InvalidDataException("A survey directory needs a lowercase identifier.");
         var values = new Dictionary<string, string>(StringComparer.Ordinal);
         while (reader.ReadLine() is { } row)
         {

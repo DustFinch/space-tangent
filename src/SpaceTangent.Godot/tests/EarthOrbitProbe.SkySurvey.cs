@@ -9,9 +9,47 @@ namespace SpaceTangent.Godot.Tests;
 
 public partial class EarthOrbitProbe
 {
+    private async Task ExerciseRemoteSkySurveys(SolarSystemScene scene, string directory)
+    {
+        var session = scene.Session!;
+        var epoch = JulianInstant.FromJulianDate(2460310.5, TimeScale.Tdb);
+        var sight = new Vector3d(.107237, .989727, -.093935);
+        sight /= sight.Length;
+        var up = new Vector3d(0, 0, 1) - sight * sight.Z;
+        var pose = new NavigationCamera(session.World.StellarOrigin + new Vector3d(0, 0, 4e8), 1000, 0, 0, null, false)
+            { Placement = new NavigationPlacement(default, sight, up / up.Length) };
+        var first = new ObserverView(epoch, CameraMode.Solar, null, false)
+        {
+            Navigation = pose, FieldOfViewDegrees = 2.5, Sky = new(true, false, false, false) { SurveyId = "dss" }
+        };
+        var second = first with { Sky = first.Sky with { SurveyId = "planck" } };
+        string path = Path.Combine(directory, "remote-dss-and-planck.stscene");
+        ScenarioFile.Save(path, new([first, second], false, 0, 0, session.DeltaT));
+        if (!scene.LoadScenario(path))
+            throw new InvalidOperationException("Could not open the remote HiPS scenario.");
+        ulong deadline = Time.GetTicksMsec() + 95000;
+        while (scene.Renderer(0).SpaceSurveyCanvas is not { SurveyId: "dss", DetailPatches: > 0 } ||
+            scene.Renderer(1).SpaceSurveyCanvas is not { SurveyId: "planck", OverviewPatches: > 0 })
+        {
+            if (Time.GetTicksMsec() > deadline)
+                throw new TimeoutException("The DSS detail or Planck overview did not arrive.");
+            await ToSignal(GetTree(), SceneTree.SignalName.ProcessFrame);
+        }
+        if (!await scene.ReloadAddOns() || session[0] != first || session[1] != second ||
+            scene.Renderer(0).SpaceSurveyCanvas?.SurveyId != "dss" ||
+            scene.Renderer(1).SpaceSurveyCanvas?.SurveyId != "planck")
+            throw new InvalidOperationException("The two remote surveys did not survive add-on reload.");
+
+        await ToSignal(RenderingServer.Singleton, RenderingServer.SignalName.FramePostDraw);
+        using Image image = GetViewport().GetTexture().GetImage();
+        if (image.SavePng(Path.ChangeExtension(path, ".png")) != Error.Ok)
+            throw new IOException("Could not capture the two HiPS surveys.");
+        GD.Print($"Remote HiPS GPU: DSS order {scene.Renderer(0).SpaceSurveyCanvas!.FinestSourceOrder}, Planck overview, independent paused views and reload.");
+    }
+
     private async Task ExerciseLocalSkySurvey(SolarSystemScene scene, string directory)
     {
-        if (System.Environment.GetEnvironmentVariable("SPACETANGENT_SKY_SURVEY_PROBE") != "1")
+        if (System.Environment.GetEnvironmentVariable("SPACETANGENT_SKY_SURVEY_PROBE") is not ("1" or "only"))
             return;
         var session = scene.Session!;
         var epoch = JulianInstant.FromJulianDate(2460310.5, TimeScale.Tdb);

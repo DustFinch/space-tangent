@@ -56,11 +56,13 @@ Place the archived culture directories under `data/sky/cultures`, or set `SPACET
 
 The loader verified 33 archived definitions and 85 available Western illustrations. Keep each culture's credits and licence with its data. A missing image leaves the figure and label available.
 
-## Local HiPS surveys
+## HiPS surveys
 
 Place each survey in its own lowercase directory under `data/sky/surveys`, or set `SPACETANGENT_SKY_SURVEYS` to the parent. Keep `properties`, `Norder3/Allsky.jpg` or the PNG equivalent, and any cached detail tiles in their original `NorderN/DirD/NpixP` layout. The renderer uses the closest available parent tile and the survey overview for uncached areas. Equatorial and Galactic surveys work in both perspective and Earth-observatory projections.
 
-Use `--startup-sky-survey dss --startup-sky-survey-brightness 0.8` for a local survey directory named `dss`. Brightness ranges from 0 to 2. Use `none` to clear the selection. Scenario version 16 stores the layer independently in each view. The verified files are from the color DSS by STScI/NASA and CDS. Keep the survey properties and credits with the files.
+Use `--startup-sky-survey dss --startup-sky-survey-brightness 0.8` to select DSS. Brightness ranges from 0 to 2. Use `none` to clear the selection. Scenario version 16 stores the layer independently in each view. The verified files are from the color DSS by STScI/NASA and CDS. Keep the survey properties and credits with the files.
+
+The built-in survey IDs are `dss`, `2mass`, `allwise`, `galex`, `sdss`, `iris`, and `planck`. The selected built-in survey can download its overview and visible tiles in the background from NASA/IPAC IRSA. Installed tiles take precedence, and downloaded tiles are reused from the Godot user data directory under `hips`. Set `SPACETANGENT_HIPS_CACHE` to override that directory or `SPACETANGENT_HIPS_OFFLINE=1` to use installed files and the existing cache offline. [NASA/IPAC HiPS archive](https://irsa.ipac.caltech.edu/data/hips/)
 
 ## Local sky photographs
 

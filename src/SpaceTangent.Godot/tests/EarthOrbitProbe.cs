@@ -70,6 +70,18 @@ public partial class EarthOrbitProbe : Node
                 result = 0;
                 return;
             }
+            if (System.Environment.GetEnvironmentVariable("SPACETANGENT_REMOTE_HIPS_PROBE") == "1")
+            {
+                await ExerciseRemoteSkySurveys(scene, directory);
+                result = 0;
+                return;
+            }
+            if (System.Environment.GetEnvironmentVariable("SPACETANGENT_SKY_SURVEY_PROBE") == "only")
+            {
+                await ExerciseLocalSkySurvey(scene, directory);
+                result = 0;
+                return;
+            }
             var epoch = JulianInstant.FromJulianDate(2460600.5008, TimeScale.Tdb);
             if (System.Environment.GetEnvironmentVariable("SPACETANGENT_MOON_MODELS_GPU") == "only")
             {

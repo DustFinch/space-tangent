@@ -161,7 +161,7 @@ public partial class SolarSystemScene
         if (_startupArguments.Contains("--startup-sky-survey", StringComparer.Ordinal))
         {
             string id = RequiredArgument("--startup-sky-survey");
-            if (id != "none" && _brightSky?.Surveys.Find(id) is null)
+            if (id != "none" && _brightSky?.Surveys.HasSurvey(id) != true)
                 throw new InvalidDataException($"Unknown local sky survey {id}.");
             sky = sky with { SurveyId = id == "none" ? null : id };
         }

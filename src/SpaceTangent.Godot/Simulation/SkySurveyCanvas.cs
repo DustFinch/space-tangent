@@ -6,7 +6,7 @@ using SpaceTangent.Core.Observing;
 
 namespace SpaceTangent.Godot.Simulation;
 
-internal sealed class SkySurveyTiles
+internal sealed partial class SkySurveyTiles : IDisposable
 {
     private const int MaximumTiles = 220, MaximumLookups = 4096, MaximumPixels = 32 * 1024 * 1024;
     private readonly Dictionary<string, LocalSkySurvey> _surveys = new(StringComparer.Ordinal);
@@ -29,9 +29,10 @@ internal sealed class SkySurveyTiles
         }
 
         LoadSurveys(root);
+        LoadSurveys(_remoteRoot, preserveLocal: true);
     }
 
-    private void LoadSurveys(string root)
+    private void LoadSurveys(string root, bool preserveLocal = false)
     {
         if (!Directory.Exists(root))
             return;
@@ -42,7 +43,8 @@ internal sealed class SkySurveyTiles
             try
             {
                 var survey = LocalSkySurvey.Read(directory);
-                _surveys.Add(survey.Id, survey);
+                if (!preserveLocal || Providers.ContainsKey(survey.Id))
+                    _surveys.TryAdd(survey.Id, survey);
             }
             catch (Exception error) when (error is IOException or InvalidDataException or UnauthorizedAccessException)
             {
@@ -51,7 +53,18 @@ internal sealed class SkySurveyTiles
         }
     }
 
-    internal LocalSkySurvey? Find(string? id) => id is null ? null : _surveys.GetValueOrDefault(id);
+    internal bool HasSurvey(string id) => _surveys.ContainsKey(id) || Providers.ContainsKey(id);
+
+    internal LocalSkySurvey? Find(string? id)
+    {
+        if (id is null)
+            return null;
+        if (_surveys.TryGetValue(id, out var survey))
+            return survey;
+        if (Providers.ContainsKey(id))
+            RequestRemote(id, "properties", properties: true);
+        return null;
+    }
 
     internal Texture2D? Texture(string path, LocalSkySurvey? survey, bool allSky = false)
     {
@@ -71,25 +84,17 @@ internal sealed class SkySurveyTiles
                     throw new InvalidDataException("A sky survey image exceeds its size limit.");
                 var bytes = new byte[(int)file.Length];
                 file.ReadExactly(bytes);
-                using var image = new Image();
-                if (survey is null && !ValidPhotographHeader(bytes))
-                    throw new InvalidDataException("A sky photograph has an unsupported PNG header.");
-                Error status = survey is null || survey.Extension == "png" ? image.LoadPngFromBuffer(bytes) : image.LoadJpgFromBuffer(bytes);
-                int width = image.GetWidth(), height = image.GetHeight();
-                if (status != Error.Ok || width is < 2 or > 4096 || height is < 2 or > 4096 ||
-                    (survey is not null && (allSky ? !LocalSkySurvey.ValidAllSky(width, height) : width != height || width != survey.TileWidth)))
-                    throw new InvalidDataException("A sky survey image has unsupported dimensions.");
-                int pixels = width * height;
-                while (_tiles.Count >= MaximumTiles || _pixels + pixels > MaximumPixels)
-                {
-                    var oldest = _tiles.MinBy(pair => pair.Value.Used);
-                    _pixels -= oldest.Value.Texture.GetWidth() * oldest.Value.Texture.GetHeight();
-                    _tiles.Remove(oldest.Key);
-                }
-                var texture = ImageTexture.CreateFromImage(image);
-                _tiles[path] = (texture, ++_use);
-                _pixels += pixels;
-                return texture;
+                return DecodeTexture(path, bytes, survey, allSky);
+            }
+            if (survey is not null && Providers.ContainsKey(survey.Id))
+            {
+                string relative = Path.GetRelativePath(survey.Root, path);
+                string cachedPath = Path.Combine(_remoteRoot, survey.Id, relative);
+                if (cachedPath != path && (_tiles.ContainsKey(cachedPath) || File.Exists(cachedPath)))
+                    return Texture(cachedPath, survey with { Root = Path.Combine(_remoteRoot, survey.Id) }, allSky);
+                RequestRemote(survey.Id, relative.Replace(Path.DirectorySeparatorChar, '/'),
+                    survey: survey, allSky: allSky);
+                return null;
             }
         }
         catch (Exception error) when (error is IOException or InvalidDataException or UnauthorizedAccessException)
@@ -100,6 +105,29 @@ internal sealed class SkySurveyTiles
             _missing.Clear();
         _missing.Add(path);
         return null;
+    }
+
+    private Texture2D DecodeTexture(string path, byte[] bytes, LocalSkySurvey? survey, bool allSky)
+    {
+        using var image = new Image();
+        if (survey is null && !ValidPhotographHeader(bytes))
+            throw new InvalidDataException("A sky photograph has an unsupported PNG header.");
+        Error status = survey is null || survey.Extension == "png" ? image.LoadPngFromBuffer(bytes) : image.LoadJpgFromBuffer(bytes);
+        int width = image.GetWidth(), height = image.GetHeight();
+        if (status != Error.Ok || width is < 2 or > 4096 || height is < 2 or > 4096 ||
+            (survey is not null && (allSky ? !LocalSkySurvey.ValidAllSky(width, height) : width != height || width != survey.TileWidth)))
+            throw new InvalidDataException("A sky survey image has unsupported dimensions.");
+        int pixels = width * height;
+        while (_tiles.Count >= MaximumTiles || _pixels + pixels > MaximumPixels)
+        {
+            var oldest = _tiles.MinBy(pair => pair.Value.Used);
+            _pixels -= oldest.Value.Texture.GetWidth() * oldest.Value.Texture.GetHeight();
+            _tiles.Remove(oldest.Key);
+        }
+        var texture = ImageTexture.CreateFromImage(image);
+        _tiles[path] = (texture, ++_use);
+        _pixels += pixels;
+        return texture;
     }
 
     private static bool ValidPhotographHeader(ReadOnlySpan<byte> bytes)
@@ -126,6 +154,7 @@ internal partial class SkySurveyCanvas : Control
     private readonly SkySurveyTiles _tiles;
     private readonly List<Texture2D> _drawnTextures = [];
     private Frame? _frame;
+    private int _tileRevision;
     private readonly bool _alwaysAdditive;
     private readonly CanvasItemMaterial _additive = new() { BlendMode = CanvasItemMaterial.BlendModeEnum.Add };
 
@@ -159,9 +188,10 @@ internal partial class SkySurveyCanvas : Control
             next = new(survey, allSky, forward, right, up, tangent, brightness, background);
         PhotographFrame? photoFrame = next is null && photographs && tangent > 0 && _tiles.Photographs.Count != 0 ?
             new(forward, right, up, tangent, limitingMagnitude, julianDate) : null;
-        if (_frame != next || _photographs != photoFrame)
+        if (_frame != next || _photographs != photoFrame || next is not null && _tileRevision != _tiles.Revision)
         {
             _frame = next;
+            _tileRevision = _tiles.Revision;
             _photographs = photoFrame;
             Material = _alwaysAdditive || photoFrame is not null ? _additive : null;
             Visible = next is not null || photoFrame is not null;

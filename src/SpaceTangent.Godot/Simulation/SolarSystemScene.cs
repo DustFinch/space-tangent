@@ -731,6 +731,7 @@ public partial class SolarSystemScene : Control
     public override void _ExitTree()
     {
         _galacticSky.Dispose();
+        _brightSky?.Surveys.Dispose();
         _addOns?.Decoded.DistantStars.Value?.Dispose();
         _eventSearch?.Cancel();
         _landscapeLifetime.Cancel();
@@ -771,6 +772,7 @@ public partial class SolarSystemScene : Control
             changed |= StepFreeFlight(delta);
         }
         changed |= _demoSurfaces.PublishReady();
+        changed |= _brightSky?.Surveys.PublishRemote() == true;
         foreach (var view in _views)
             changed |= view.Renderer.PublishDemoTerrain();
         changed |= UpdatePerspectiveScale();

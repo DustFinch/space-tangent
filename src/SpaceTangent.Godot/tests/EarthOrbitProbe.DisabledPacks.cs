@@ -48,6 +48,8 @@ public partial class EarthOrbitProbe
         GD.Print("Legacy disabled packs: original comet manifest ID, Halley removed and restored, panel and profile re-enable, other sources and ΔT preserved.");
         if (System.Environment.GetEnvironmentVariable("SPACETANGENT_LEGACY_SECOND_PACK_PROBE") is { Length: > 0 } asteroidRoot)
             await ExerciseSameNamedPacks(scene, directory, file, packRoot, asteroidRoot, scenario.DeltaT);
+        if (System.Environment.GetEnvironmentVariable("SPACETANGENT_LEGACY_TERRAIN_TIMELINE_PROBE") == "1")
+            await ExerciseTerrainAndTimelineSwitches(scene, directory, file, scenario.DeltaT);
     }
 
     private static async Task ExerciseSameNamedPacks(SolarSystemScene scene, string directory, LocalAddonSettingsFile file,
@@ -66,11 +68,7 @@ public partial class EarthOrbitProbe
             body.Name.Contains("Halley", StringComparison.OrdinalIgnoreCase)).Id;
         var asteroid = session.World.Catalogue.Objects.Single(body => body.Kind == CatalogueKind.Asteroid &&
             body.Name.Contains("Pallas", StringComparison.OrdinalIgnoreCase)).Id;
-        string legacyPath = Path.GetFullPath(first).Replace('\\', '/');
-        if (OperatingSystem.IsWindows())
-            legacyPath = legacyPath.ToUpperInvariant();
-        string fingerprint = Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(legacyPath + "\0"))).ToLowerInvariant();
-        string key = "addon-root:" + fingerprint;
+        string key = ArchivedPackPathKey(first);
         string profile = Path.Combine(directory, "archived-same-named-packs.json");
         File.WriteAllText(profile, System.Text.Json.JsonSerializer.Serialize(new { Site = new { }, DisabledPacks = key }));
         await scene.ImportStartupSettings(profile);
@@ -114,5 +112,41 @@ public partial class EarthOrbitProbe
             }
             return destination;
         }
+    }
+
+    private static async Task ExerciseTerrainAndTimelineSwitches(SolarSystemScene scene, string directory,
+        LocalAddonSettingsFile file, SpaceTangent.Core.Time.DeltaTModel deltaT)
+    {
+        var session = scene.Session!;
+        var timeline = session.World.TimelineId ?? throw new InvalidOperationException("The original Cassini timeline must load.");
+        if (!session.World.HasLunarTerrain)
+            throw new InvalidOperationException("The original lunar relief must load.");
+
+        string profile = Path.Combine(directory, "archived-terrain-timeline.json");
+        foreach (LocalAddonKind kind in new[] { LocalAddonKind.Timeline, LocalAddonKind.Terrain })
+        {
+            string key = ArchivedPackPathKey(AddonLoader.DefaultPath(kind).Resolve());
+            File.WriteAllText(profile, System.Text.Json.JsonSerializer.Serialize(new { Site = new { }, DisabledPacks = key }));
+            await scene.ImportStartupSettings(profile);
+            if (!await scene.ReloadAddOns() || session.World.HasLunarTerrain != (kind != LocalAddonKind.Terrain) ||
+                session.World.TimelineId != (kind == LocalAddonKind.Timeline ? null : timeline) ||
+                !file.Load().DisabledPacks.SequenceEqual([key]) || session.World.Satellites.Count != 2 || session.DeltaT != deltaT)
+                throw new InvalidOperationException($"Disabling {kind} must preserve the other source, spacecraft and delta-T.");
+        }
+
+        File.WriteAllText(profile, """{"Site":{},"DisabledPacks":""}""");
+        await scene.ImportStartupSettings(profile);
+        if (!session.World.HasLunarTerrain || session.World.TimelineId != timeline || file.Load().DisabledPacks.Length != 0)
+            throw new InvalidOperationException("Clearing the archive profile must restore both timeline and terrain.");
+        GD.Print("Terrain and timeline pack switches: original lunar relief and Cassini disabled independently after reload and restored.");
+    }
+
+    private static string ArchivedPackPathKey(string root)
+    {
+        string legacyPath = Path.GetFullPath(root).Replace('\\', '/');
+        if (OperatingSystem.IsWindows())
+            legacyPath = legacyPath.ToUpperInvariant();
+        string fingerprint = Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(legacyPath + "\0"))).ToLowerInvariant();
+        return "addon-root:" + fingerprint;
     }
 }

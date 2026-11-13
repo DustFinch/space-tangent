@@ -73,7 +73,6 @@ internal static class ScienceMeshLoader
                     body.SetShaderParameter("has_normal", true);
                     body.SetShaderParameter("normal_texture", Texture(normalMap));
                     body.SetShaderParameter("packed_normal", Dds(normalMap));
-                    arrays[(int)Mesh.ArrayType.Tangent] = Tangents(vertices, normals, uvs);
                 }
                 if (definition.Emission.Length > 0)
                 {
@@ -89,8 +88,6 @@ internal static class ScienceMeshLoader
             }
             else
             {
-                if (litBody && definition.NormalTexture is not null)
-                    arrays[(int)Mesh.ArrayType.Tangent] = Tangents(vertices, normals, uvs);
                 material = new StandardMaterial3D
                 {
                     AlbedoColor = color,
@@ -108,6 +105,12 @@ internal static class ScienceMeshLoader
                     Emission = new Color((float)definition.Emission.X, (float)definition.Emission.Y, (float)definition.Emission.Z).LinearToSrgb(),
                     EmissionTexture = definition.EmissionTexture is { } glow ? Texture(glow) : null
                 };
+            }
+            if (definition.NormalTexture is { } normal)
+            {
+                arrays[(int)Mesh.ArrayType.Tangent] = Tangents(vertices, normals, uvs);
+                material.SetMeta("model_normal_map", Texture(normal));
+                material.SetMeta("model_packed_normal", Dds(normal));
             }
             mesh.AddSurfaceFromArrays(Mesh.PrimitiveType.Triangles, arrays);
             mesh.SurfaceSetMaterial(mesh.GetSurfaceCount() - 1, material);

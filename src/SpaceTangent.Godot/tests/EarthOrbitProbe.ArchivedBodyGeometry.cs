@@ -115,6 +115,59 @@ public partial class EarthOrbitProbe
         }
     }
 
+    private async Task ExerciseArchivedModelMaterial(SolarSystemScene scene, string directory, string mode)
+    {
+        scene.SetProcess(false);
+        if (!scene.StartReplay(Path.Combine(directory, "shuttle.celframe")))
+            throw new InvalidOperationException("Could not open the archived model materials fixture.");
+        var renderer = scene.Renderer(0);
+        const string name = "Sol/Earth/Archived Shuttle GLB";
+        var record = renderer.ArchivedGeometry!.Bodies.Single();
+        if (renderer.ArchivedBody(name) is not { Visible: true, Mesh: ArrayMesh mesh } node)
+            throw new InvalidOperationException("The archived shuttle model was not visible.");
+        var materials = Enumerable.Range(0, mesh.GetSurfaceCount())
+            .Select(index => node.GetSurfaceOverrideMaterial(index)).OfType<ShaderMaterial>().ToArray();
+        bool normal = mode == "normal";
+        bool blend = mode.Contains("blend", StringComparison.Ordinal);
+        bool cutout = mode.Contains("cutout", StringComparison.Ordinal);
+        bool glow = mode.Contains("emission", StringComparison.Ordinal);
+        if (materials.Length != mesh.GetSurfaceCount() ||
+            (normal && !materials.Any(material => material.GetShaderParameter("has_normal").AsBool())) ||
+            (!normal && materials.Any(material =>
+            material.Shader.ResourcePath.EndsWith("_blend.gdshader", StringComparison.Ordinal) != blend ||
+            (material.GetShaderParameter("alpha_cutoff").AsSingle() >= 0) != cutout ||
+            (material.GetShaderParameter("emission_factor").AsVector3().LengthSquared() > 0) != glow ||
+            material.GetShaderParameter("light_color").AsVector3() !=
+                new Vector3((float)record.LightColor.X, (float)record.LightColor.Y, (float)record.LightColor.Z))))
+            throw new InvalidOperationException($"The archived {mode} material did not retain its parameters. " +
+                string.Join(", ", materials.Select(material => $"{material.Shader.ResourcePath}: cut {material.GetShaderParameter("alpha_cutoff")}, " +
+                    $"glow {material.GetShaderParameter("emission_factor")}, light {material.GetShaderParameter("light_color")}").Distinct()));
+
+        await ToSignal(RenderingServer.Singleton, RenderingServer.SignalName.FramePostDraw);
+        using var rendered = renderer.GetViewport().GetTexture().GetImage();
+        foreach (var material in materials)
+        {
+            if (cutout)
+                material.SetShaderParameter("alpha_cutoff", -1f);
+            else if (normal)
+                material.SetShaderParameter("has_normal", false);
+            else if (glow)
+                material.SetShaderParameter("emission_factor", Vector3.Zero);
+            else
+                material.SetShaderParameter("light_color", Vector3.Zero);
+        }
+        await ToSignal(RenderingServer.Singleton, RenderingServer.SignalName.FramePostDraw);
+        using var control = renderer.GetViewport().GetTexture().GetImage();
+        int affected = 0;
+        for (int y = 0; y < rendered.GetHeight(); y += 2)
+        for (int x = 0; x < rendered.GetWidth(); x += 2)
+            if (Math.Abs(rendered.GetPixel(x, y).Luminance - control.GetPixel(x, y).Luminance) > (cutout && !glow ? .004f : .02f))
+                affected++;
+        if (affected < 50 || rendered.SavePng(Path.Combine(directory, mode + "-replay.png")) != Error.Ok)
+            throw new InvalidOperationException($"Archived {mode} material changed only {affected} GPU samples.");
+        GD.Print($"Archived model material GPU: {mode}, {materials.Length} surfaces, {affected} affected samples.");
+    }
+
     private async Task ExerciseArchivedTimedModel(SolarSystemScene scene, string directory, string recording)
     {
         scene.SetProcess(false);

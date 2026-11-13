@@ -12,7 +12,7 @@ internal partial class SimulationViewport
     private readonly List<(MeshInstance3D Node, ShaderMaterial Surface)> _archivedBodies = [];
     private readonly Dictionary<string, MeshInstance3D> _archivedVisible = new(StringComparer.Ordinal);
     private readonly SphereMesh _archivedSphere = new() { Radius = 1, Height = 2, RadialSegments = 48, Rings = 24 };
-    private Shader? _archivedBodyShader;
+    private Shader? _archivedBodyShader, _archivedModelShader, _archivedModelBlendShader;
     private readonly Dictionary<MeshInstance3D, (ArrayMesh Mesh, ShaderMaterial?[] Materials)> _archivedModelMaterials = new();
     private Texture2D? _archivedMoonMap;
     private EarthOrbitTextures? _archivedEarthMaps;
@@ -255,15 +255,8 @@ internal partial class SimulationViewport
             var materials = new ShaderMaterial?[mesh.GetSurfaceCount()];
             for (int index = 0; index < materials.Length; index++)
             {
-                if (mesh.SurfaceGetMaterial(index) is not StandardMaterial3D
-                    { Transparency: BaseMaterial3D.TransparencyEnum.Disabled, EmissionEnabled: false, NormalEnabled: false } original)
+                if (mesh.SurfaceGetMaterial(index) is not { } original || CreateArchivedModelMaterial(original) is not { } surface)
                     continue;
-                var surface = new ShaderMaterial { Shader = _archivedBodyShader };
-                surface.SetShaderParameter("has_map", original.AlbedoTexture is not null);
-                if (original.AlbedoTexture is { } texture)
-                    surface.SetShaderParameter("surface_map", texture);
-                surface.SetShaderParameter("tint", original.AlbedoColor);
-                surface.SetShaderParameter("tint_map", true);
                 materials[index] = surface;
                 node.SetSurfaceOverrideMaterial(index, surface);
             }
@@ -282,6 +275,85 @@ internal partial class SimulationViewport
         }
 
         static Vector3 Column(Vector3d axis) => new((float)axis.X, (float)axis.Y, (float)axis.Z);
+    }
+
+    private ShaderMaterial? CreateArchivedModelMaterial(Material original)
+    {
+        bool blend = false;
+        float cutoff = -1;
+        Color tint;
+        Texture2D? albedo;
+        Texture2D? glow = null;
+        Vector3 emission = default, specular = default;
+        float specularPower = 0;
+        Texture2D? normal = original.HasMeta("model_normal_map") ? original.GetMeta("model_normal_map").AsGodotObject() as Texture2D : null;
+        bool packed = original.HasMeta("model_packed_normal") && original.GetMeta("model_packed_normal").AsBool();
+        if (original is StandardMaterial3D standard)
+        {
+            tint = standard.AlbedoColor;
+            albedo = standard.AlbedoTexture;
+            blend = standard.Transparency == BaseMaterial3D.TransparencyEnum.Alpha;
+            if (standard.Transparency == BaseMaterial3D.TransparencyEnum.AlphaScissor)
+                cutoff = standard.AlphaScissorThreshold;
+            if (standard.EmissionEnabled)
+            {
+                var linear = standard.Emission.SrgbToLinear();
+                emission = new Vector3(linear.R, linear.G, linear.B) * standard.EmissionEnergyMultiplier;
+                glow = standard.EmissionTexture;
+            }
+        }
+        else if (original is ShaderMaterial source)
+        {
+            switch (source.Shader.ResourcePath)
+            {
+                case "res://Shaders/model_emission_alpha.gdshader":
+                    blend = true;
+                    goto case "res://Shaders/model_emission.gdshader";
+                case "res://Shaders/model_emission.gdshader":
+                    tint = source.GetShaderParameter("base_color").AsColor();
+                    albedo = source.GetShaderParameter("albedo_map").AsGodotObject() as Texture2D;
+                    glow = source.GetShaderParameter("emission_map").AsGodotObject() as Texture2D;
+                    emission = source.GetShaderParameter("emission_factor").AsVector3();
+                    if (!blend && source.GetShaderParameter("alpha_cutoff") is { VariantType: not Variant.Type.Nil } threshold)
+                        cutoff = threshold.AsSingle();
+                    break;
+                case "res://Shaders/planet_moon_model.gdshader":
+                case "res://Shaders/planet_moon_model_specular.gdshader":
+                    tint = source.GetShaderParameter("base_color").AsColor();
+                    albedo = source.GetShaderParameter("diffuse_texture").AsGodotObject() as Texture2D;
+                    glow = source.GetShaderParameter("emission_texture").AsGodotObject() as Texture2D;
+                    emission = source.GetShaderParameter("emission_color").AsVector3();
+                    specular = source.GetShaderParameter("specular_color").AsVector3();
+                    specularPower = source.GetShaderParameter("specular_power").AsSingle();
+                    break;
+                default:
+                    return null;
+            }
+        }
+        else
+            return null;
+
+        Shader shader = blend
+            ? _archivedModelBlendShader ??= GD.Load<Shader>("res://Shaders/archived_model_blend.gdshader")
+            : _archivedModelShader ??= GD.Load<Shader>("res://Shaders/archived_model.gdshader");
+        var material = new ShaderMaterial { Shader = shader };
+        material.SetShaderParameter("tint", tint);
+        material.SetShaderParameter("has_map", albedo is not null);
+        if (albedo is not null)
+            material.SetShaderParameter("surface_map", albedo);
+        material.SetShaderParameter("alpha_cutoff", cutoff);
+        material.SetShaderParameter("emission_factor", emission);
+        material.SetShaderParameter("specular_color", specular);
+        material.SetShaderParameter("specular_power", specularPower);
+        if (glow is not null)
+            material.SetShaderParameter("emission_map", glow);
+        if (normal is not null)
+        {
+            material.SetShaderParameter("has_normal", true);
+            material.SetShaderParameter("packed_normal", packed);
+            material.SetShaderParameter("normal_map", normal);
+        }
+        return material;
     }
 
     private static bool TryArchivedStarSurface(string? material, out char surface, out Color tint)

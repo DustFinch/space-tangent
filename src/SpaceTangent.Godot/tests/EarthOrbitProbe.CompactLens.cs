@@ -66,6 +66,8 @@ public partial class EarthOrbitProbe
             throw new InvalidOperationException($"The compact lens only changed {pixels} samples and emitted {disk} disk samples with shadow center {center}.");
         GD.Print($"Compact lens: original Cygnus X-1 and HDE 226868, 60 Schwarzschild radii and 16 million km, {pixels} altered GPU samples and {disk} disk samples, independent reload.");
 
+        await CheckOpaqueGeometry();
+
         string profile = Path.Combine(directory, "cinematic-legacy.json");
         File.WriteAllText(profile, """{"Site":{},"CinematicBlackHoles":true}""");
         var imported = LegacyObserverProfiles.Read(profile, near, session.DeltaT).Observer;
@@ -95,6 +97,73 @@ public partial class EarthOrbitProbe
         if (comparison.SavePng(Path.ChangeExtension(modesPath, ".png")) != Error.Ok)
             throw new IOException("Could not save the two compact lens modes.");
         GD.Print($"Cinematic lens GPU: original Cygnus X-1 modes differ in {different} samples after reload.");
+
+        async Task CheckOpaqueGeometry()
+        {
+            var depthObserver = Observer(epoch, hole.Direction * -1 + transverse * .65, 500 * hole.SchwarzschildRadiusKilometers);
+            string depthPath = Path.Combine(directory, "cygnus-depth.stscene");
+            ScenarioFile.Save(depthPath, new([depthObserver, far], false, 0, 0, session.DeltaT));
+            if (!scene.LoadScenario(depthPath))
+                throw new InvalidOperationException("Could not load the opaque lens depth scene.");
+            await WaitForFrame();
+            var camera = left.NavigationCameraNode;
+            var target = left.ProjectNavigationPoint(depthObserver.Navigation!.Value, compact.PositionKilometers) ??
+                throw new InvalidOperationException("The Cygnus X-1 lens needs a visible center.");
+            var pixel = new Vector2I((int)target.X, (int)target.Y);
+            var plane = new MeshInstance3D
+            {
+                Mesh = new QuadMesh(),
+                MaterialOverride = new StandardMaterial3D
+                {
+                    AlbedoColor = new Color(.1f, .9f, .17f),
+                    ShadingMode = BaseMaterial3D.ShadingModeEnum.Unshaded
+                },
+                CastShadow = GeometryInstance3D.ShadowCastingSetting.Off
+            };
+            left.AddChild(plane);
+            float lensDistance = camera.Position.Length();
+            try
+            {
+                Place(lensDistance * .65f);
+                using var foreground = await Left();
+                Color inFront = foreground.GetPixel(pixel.X, pixel.Y);
+                Place(lensDistance * 1.4f);
+                using var background = await Left();
+                Color behind = background.GetPixel(pixel.X, pixel.Y);
+                int bentSamples = 0;
+                for (int y = 0; y < background.GetHeight(); y += 4)
+                for (int x = 0; x < background.GetWidth(); x += 4)
+                {
+                    if (Green(background.GetPixel(x, y)))
+                        bentSamples++;
+                }
+                if (foreground.SavePng(Path.Combine(directory, "cygnus-opaque-foreground.png")) != Error.Ok ||
+                    background.SavePng(Path.Combine(directory, "cygnus-opaque-background.png")) != Error.Ok)
+                    throw new IOException("Could not save the opaque lens depth comparison.");
+                left.CompactLensAllowed = false;
+                scene.Seek(0, epoch);
+                using var unlensed = await Left();
+                Color unobstructed = unlensed.GetPixel(pixel.X, pixel.Y);
+                if (!Green(inFront) || !Green(unobstructed) || bentSamples < 50 || behind.R + behind.G + behind.B > .08)
+                    throw new InvalidOperationException($"Opaque lens depth samples disagree: foreground {inFront}, shadow {behind}, bent samples {bentSamples}, unlensed {unobstructed}.");
+                GD.Print($"Compact lens depth GPU: preserved opaque foreground {inFront}, shadowed opaque background {behind}, recovered opaque background in {bentSamples} bent samples.");
+            }
+            finally
+            {
+                plane.Hide();
+                plane.QueueFree();
+                left.CompactLensAllowed = true;
+                scene.Seek(0, epoch);
+            }
+
+            void Place(float distance)
+            {
+                plane.GlobalTransform = new(camera.GlobalBasis.Scaled(Vector3.One * distance * 1.5f),
+                    camera.GlobalPosition - camera.GlobalBasis.Z * distance);
+            }
+
+            static bool Green(Color color) => color.G > .5 && color.G > color.R * 2 && color.G > color.B * 2;
+        }
 
         ObserverView Observer(JulianInstant at, Vector3d outward, double distance)
         {

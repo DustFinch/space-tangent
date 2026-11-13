@@ -198,8 +198,11 @@ public sealed partial class SimulationWorld
         FindSurfaceSite(id)?.ScaleKilometers ?? StarRadius(FindStellarTarget(id)) ?? DeepSky.Find(id)?.RadiusKilometers ??
         Exoplanets.Find(id)?.RadiusKilometers ?? DemoWorlds.Find(id)?.RadiusKilometers ??
         _sscById.GetValueOrDefault(id)?.Definition.RadiusKilometers ??
-        _sampledMissions.GetValueOrDefault(id)?.RadiusKilometers ?? BlackHoles.Find(id)?.SchwarzschildRadiusKilometers ??
+        MissionNavigationRadius(id) ?? BlackHoles.Find(id)?.SchwarzschildRadiusKilometers ??
         (id == CygnusCompanionId ? CygnusCompanionRadiusKilometers : NavigationCamera.BodyRadiusKilometers(id));
+    private double? MissionNavigationRadius(ObjectId id) => _sampledMissions.TryGetValue(id, out var mission)
+        ? mission.NavigationRadiusKilometers ?? mission.RadiusKilometers : null;
+
     private static double? StarRadius(StellarEntry? star) => star is null ? null :
         star.IsBarycenter ? Math.Max(1000, star.SystemRadiusKilometers) : Math.Max(.007, star.RadiusKilometers);
 

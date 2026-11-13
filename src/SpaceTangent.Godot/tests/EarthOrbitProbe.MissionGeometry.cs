@@ -10,6 +10,7 @@ public partial class EarthOrbitProbe
 {
     private async Task ExerciseMissionGeometry(SolarSystemScene scene, string directory)
     {
+
         if (System.Environment.GetEnvironmentVariable("SPACETANGENT_MISSION_GEOMETRY_PROBE") != "1")
             return;
         var session = scene.Session!;
@@ -56,5 +57,46 @@ public partial class EarthOrbitProbe
             }
             return active;
         }
+    }
+
+    private async Task ExerciseTimedGeometryBounds(SolarSystemScene scene, string directory)
+    {
+        var session = scene.Session!;
+        var id = new ObjectId("mission/timeboundsprobe");
+        const double expected = 0.010251794010400772; // Native float sphere for the original model and authored offset.
+        double bound = session.World.TargetRadiusKilometers(id);
+        if (bound != expected)
+            throw new InvalidOperationException($"Expected the hidden original model to set a {expected:R} km bound, got {bound:R} km.");
+
+        foreach (double day in new[] { 2455755.005, 2455755.015, 2455755.025 })
+        {
+            var epoch = JulianInstant.FromJulianDate(day, TimeScale.Tdb);
+            if (!session.World.Graph.Evaluate(epoch).TryState(id, out var state))
+                throw new InvalidOperationException("The timed geometry target is unavailable.");
+            var pose = new NavigationCamera(state.PositionKilometers, bound * 2, .48, .14, id, true);
+            var view = new ObserverView(epoch, CameraMode.Solar, id, false) { Navigation = pose };
+            string path = Path.Combine(directory, FormattableString.Invariant($"timed-bounds-{day:F3}"));
+            ScenarioFile.Save(path + ".stscene", new([view], false, 0, 0, session.DeltaT));
+            if (!scene.LoadScenario(path + ".stscene"))
+                throw new InvalidOperationException("Could not open the timed geometry scene.");
+
+            var node = scene.Renderer(0).ImportedBodyNode(id);
+            bool globe = day == 2455755.015;
+            if (node is not { Visible: true } || (globe ? node.Mesh is not SphereMesh : node.Mesh is not ArrayMesh))
+                throw new InvalidOperationException("The hidden mesh must leave the active SORCE and globe phases intact.");
+
+            if (DisplayServer.GetName() != "headless")
+            {
+                await ToSignal(GetTree(), SceneTree.SignalName.ProcessFrame);
+                await ToSignal(RenderingServer.Singleton, RenderingServer.SignalName.FramePostDraw);
+                using var image = GetViewport().GetTexture().GetImage();
+                if (image.SavePng(path + ".png") != Error.Ok)
+                    throw new IOException("Could not capture the timed geometry phase.");
+            }
+        }
+
+        if (!await scene.ReloadAddOns() || session.World.TargetRadiusKilometers(id) != bound)
+            throw new InvalidOperationException("The timed navigation bound changed after add-on reload.");
+        GD.Print(FormattableString.Invariant($"Timed geometry kept a {bound:R} km navigation bound across both meshes and the globe."));
     }
 }

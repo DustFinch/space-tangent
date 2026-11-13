@@ -463,7 +463,18 @@ internal static partial class AddonLoader
             var meshes = new Dictionary<string, DecodedScienceModel>(StringComparer.Ordinal);
             foreach (string file in (mission.Geometry ?? []).Select(span => span.Shape.MeshPath).OfType<string>().Distinct())
                 meshes.Add(file, ReadAddonMesh(root, file, cancellation));
-            tracks.Add(new(mission, meshes, ReadMissionTextures(mission, textureCache, ref textureBytes, cancellation),
+            var track = mission;
+            if (mission.GeometryBounds is { Complete: true } bounds)
+            {
+                var metrics = new Dictionary<string, (float Extent, float OriginRadius)>(StringComparer.Ordinal);
+                foreach (string file in bounds.Meshes.Select(term => term.Path).Distinct())
+                {
+                    var model = meshes.TryGetValue(file, out var decodedMesh) ? decodedMesh : ReadAddonMesh(root, file, cancellation);
+                    metrics.Add(file, ReadMissionMeshMetrics(model));
+                }
+                track = mission with { NavigationRadiusKilometers = bounds.Resolve(file => metrics[file]) };
+            }
+            tracks.Add(new(track, meshes, ReadMissionTextures(mission, textureCache, ref textureBytes, cancellation),
                 ReadMissionTiles(mission, tileCache, ref tileBytes, cancellation)));
         }
         return new(tracks.AsReadOnly(), content.Annotations, content.Viewpoints);
@@ -517,6 +528,24 @@ internal static partial class AddonLoader
             }
             return new DecodedSscBody(body, mesh, pixels, ringMap);
         }).ToArray());
+    }
+
+    private static (float Extent, float OriginRadius) ReadMissionMeshMetrics(DecodedScienceModel model)
+    {
+        var (_, span) = ReadMeshBounds(model);
+        float squaredRadius = 0;
+        foreach (var surface in model.Surfaces)
+        foreach (var vertex in surface.Positions.Span)
+            Include(vertex);
+        foreach (var sprite in model.Sprites)
+            Include(sprite.Position);
+        return ((float)Math.Max(span.X, Math.Max(span.Y, span.Z)), MathF.Sqrt(squaredRadius));
+
+        void Include(Vector3d vertex)
+        {
+            float x = (float)vertex.X, y = (float)vertex.Y, z = (float)vertex.Z;
+            squaredRadius = MathF.Max(squaredRadius, x * x + y * y + z * z);
+        }
     }
 
     private static (Vector3d Center, Vector3d Span) ReadMeshBounds(DecodedScienceModel model)

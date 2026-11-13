@@ -21,6 +21,5 @@ void fragment() {
     vec3 clouds = texture(cloud_map, UV + vec2(0.25 + cloud_offset, 0.0)).rgb;
     clouds = OUTPUT_IS_SRGB ? air_srgb_linear(clouds) : clouds;
     float sun = max(0.0, dot(normalize(air_surface), light_in_body));
-    vec3 color = clouds * (0.013 + 0.94 * sun) * transmission + radiance;
-    ALBEDO = OUTPUT_IS_SRGB ? air_linear_srgb(color) : color;
+    ALBEDO = air_display_color(clouds * (0.013 + 0.94 * sun), transmission, radiance);
 }

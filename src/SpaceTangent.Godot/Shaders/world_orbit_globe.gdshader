@@ -34,6 +34,5 @@ void fragment() {
     if (draw_air) {
         world_orbit_air(air_eye * ground_radius_km, normalize(air_surface - air_eye), transmission, radiance);
     }
-    vec3 color = surface * (0.013 + 0.94 * sun) * transmission + radiance;
-    ALBEDO = OUTPUT_IS_SRGB ? air_linear_srgb(color) : color;
+    ALBEDO = air_display_color(surface * (0.013 + 0.94 * sun), transmission, radiance);
 }

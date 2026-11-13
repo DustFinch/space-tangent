@@ -71,7 +71,7 @@ internal partial class SimulationViewport
     {
         _marsTiles = tiles.GetValueOrDefault(PlanetCatalogue.MarsId);
         ObjectId venus = SolarSystemSample.VenusId;
-        _worldAtmospheres.Add(venus, new(_planetGlobes[venus], 6051.8f, null, tiles.GetValueOrDefault(venus), hasAtmosphere: true, venusClouds: _venusClouds));
+        _worldAtmospheres.Add(venus, new(_planetGlobes[venus], 6051.8f, null, tiles.GetValueOrDefault(venus), hasAtmosphere: true, venusClouds: _venusClouds, venusScattering: true));
         foreach (var (id, lookup) in lookups)
             if (_planetGlobes.TryGetValue(id, out MeshInstance3D? globe))
                 _worldAtmospheres.Add(id, new(globe, lookup.RadiusKilometers, lookup, tiles.GetValueOrDefault(id), hasAtmosphere: true));

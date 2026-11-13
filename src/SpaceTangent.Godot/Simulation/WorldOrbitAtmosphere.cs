@@ -19,7 +19,7 @@ internal sealed class WorldOrbitAtmosphere
     internal BodyTileTextures? Tiles { get; }
 
     internal WorldOrbitAtmosphere(MeshInstance3D globe, float radius, OrbitAtmosphereTextures? lookup,
-        BodyTileTextures? tiles, bool hasAtmosphere, Texture2D? venusClouds = null)
+        BodyTileTextures? tiles, bool hasAtmosphere, Texture2D? venusClouds = null, bool venusScattering = false)
     {
         _globe = globe;
         _surface = (StandardMaterial3D)globe.MaterialOverride;
@@ -36,13 +36,14 @@ internal sealed class WorldOrbitAtmosphere
             return;
 
         _limb = new ShaderMaterial { Shader = GD.Load<Shader>("res://Shaders/world_orbit_limb.gdshader") };
-        float shellHeight = lookup?.HeightKilometers ?? (venusClouds is null ? 105 : 200);
+        float shellHeight = lookup?.HeightKilometers ?? (venusScattering ? 200 : 105);
         float groundRadius = lookup?.RadiusKilometers ?? radius;
         foreach (ShaderMaterial material in new[] { _ground, _limb })
         {
             material.SetShaderParameter("ground_radius_km", groundRadius);
             material.SetShaderParameter("shell_height_km", shellHeight);
             material.SetShaderParameter("air_base_km", 70f);
+            material.SetShaderParameter("venus_scattering", venusScattering);
             lookup?.Bind(material);
         }
         _shell = new MeshInstance3D
@@ -61,7 +62,7 @@ internal sealed class WorldOrbitAtmosphere
             _cloudMaterial.SetShaderParameter("cloud_radius_km", groundRadius + VenusCloudHeight);
             _cloudMaterial.SetShaderParameter("ground_radius_km", groundRadius);
             _cloudMaterial.SetShaderParameter("shell_height_km", shellHeight);
-            _cloudMaterial.SetShaderParameter("air_base_km", VenusCloudHeight);
+            _cloudMaterial.SetShaderParameter("venus_scattering", venusScattering);
             _clouds = new()
             {
                 Mesh = globe.Mesh,

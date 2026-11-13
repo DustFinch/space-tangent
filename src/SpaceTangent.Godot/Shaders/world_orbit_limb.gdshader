@@ -13,6 +13,6 @@ void fragment() {
     vec3 transmission;
     vec3 radiance;
     world_orbit_air(air_eye * (ground_radius_km + shell_height_km), normalize(air_surface - air_eye), transmission, radiance);
-    ALBEDO = OUTPUT_IS_SRGB ? air_linear_srgb(radiance) : radiance;
+    ALBEDO = air_display_color(vec3(0.0), transmission, radiance);
     ALPHA = 1.0;
 }

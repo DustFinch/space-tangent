@@ -11,7 +11,7 @@ public partial class EarthOrbitProbe
 {
     private async Task ExerciseMissionObservations(SolarSystemScene scene, string directory)
     {
-        if (System.Environment.GetEnvironmentVariable("SPACETANGENT_MISSION_OBSERVATION_PROBE") != "1")
+        if (System.Environment.GetEnvironmentVariable("SPACETANGENT_MISSION_OBSERVATION_PROBE") is not ("1" or "only"))
             return;
         var session = scene.Session!;
         ObjectId map = new("mission/jason-footprints"), clipped = new("mission/sorce-footprints");
@@ -25,7 +25,9 @@ public partial class EarthOrbitProbe
         if (!scene.LoadScenario(path + ".stscene"))
             throw new InvalidOperationException("Could not open the two independent footprint epochs.");
         Check();
-        if (!await scene.ReloadAddOns())
+        var before = session.CaptureScenario(0);
+        if (!await scene.ReloadAddOns() || !session.CaptureScenario(0).Views.SequenceEqual(before.Views) ||
+            session.DeltaT != before.DeltaT)
             throw new InvalidOperationException("Footprints could not reload.");
         Check();
         if (DisplayServer.GetName() != "headless")

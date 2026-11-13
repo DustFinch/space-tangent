@@ -32,6 +32,7 @@ internal sealed record PreparedMissionGeometry(JulianInstant Start, JulianInstan
     Basis3d MeshRotation, Vector3d MeshOffset, ArrayMesh? Model, double ModelDiameter, MissionSensor? Sensor,
     IReadOnlyList<PreparedParticleEmitter>? Particles)
 {
+    internal double? MeshScale { get; init; }
     internal MissionAxesStyle? Axes { get; init; }
     internal MissionVectorStyle? VectorOverlay { get; init; }
     internal PreparedMissionSwarm? Swarm { get; init; }
@@ -292,7 +293,8 @@ internal partial class SimulationViewport
             }
             else
             {
-                double scale = radius * 2 / (active?.ModelDiameter ?? asset.ModelDiameter);
+                double scale = active?.MeshScale is { } physicalScale ? physicalScale * projection / units :
+                    radius * 2 / (active?.ModelDiameter ?? asset.ModelDiameter);
                 Basis3d axes = frame.ToWorld, rotation = active?.MeshRotation ?? body.MeshRotation;
                 Vector3d modelCenter = body.MeshCenter;
                 if (active is null && asset.ModelBounds is { } bounds)

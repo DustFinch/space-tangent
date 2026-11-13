@@ -420,6 +420,7 @@ internal static partial class AddonLoader
                     shape.ParticleEmitters?.Select(emitter => new PreparedParticleEmitter(emitter,
                         emitter.TexturePath is { } image ? textures[image] : null)).ToArray())
                 {
+                    MeshScale = shape.MeshScale,
                     Axes = shape.Axes,
                     VectorOverlay = shape.VectorOverlay,
                     Swarm = shape.Swarm is { } swarm ? MissionSwarmRendering.Publish(swarm, swarmResources) : null,
@@ -504,16 +505,30 @@ internal static partial class AddonLoader
             foreach (string file in (mission.Geometry ?? []).Select(span => span.Shape.MeshPath).OfType<string>().Distinct())
                 meshes.Add(file, ReadAddonMesh(root, file, cancellation));
             var track = mission;
+            var metrics = meshes.ToDictionary(pair => pair.Key, pair => ReadMissionMeshMetrics(pair.Value), StringComparer.Ordinal);
+            double? navigationRadius = null;
             if (mission.GeometryBounds is { Complete: true } bounds)
             {
-                var metrics = new Dictionary<string, (float Extent, float OriginRadius)>(StringComparer.Ordinal);
                 foreach (string file in bounds.Meshes.Select(term => term.Path).Distinct())
-                {
-                    var model = meshes.TryGetValue(file, out var decodedMesh) ? decodedMesh : ReadAddonMesh(root, file, cancellation);
-                    metrics.Add(file, ReadMissionMeshMetrics(model));
-                }
-                track = mission with { NavigationRadiusKilometers = bounds.Resolve(file => metrics[file]) };
+                    if (!metrics.ContainsKey(file))
+                        metrics.Add(file, ReadMissionMeshMetrics(ReadAddonMesh(root, file, cancellation)));
+                navigationRadius = bounds.Resolve(file => metrics[file]);
             }
+            IReadOnlyList<MissionGeometrySpan>? geometry = mission.Geometry?.Select(span =>
+            {
+                var shape = span.Shape;
+                if (shape.MeshPath is not { } path)
+                    return span;
+                var (extent, originRadius) = metrics[path];
+                var bound = new MissionMeshBound(path, shape.RadiusKilometers, shape.MeshOffset) { Scale = shape.MeshScale };
+                double physicalRadius = Math.Abs(bound.InstanceRadius(extent, originRadius));
+                if (!double.IsFinite(physicalRadius))
+                    throw new InvalidDataException("A mission mesh has a nonfinite physical radius.");
+                return span with { Shape = shape with { MeshScale = bound.ScaleForExtent(extent), RadiusKilometers = physicalRadius } };
+            }).ToArray();
+            if (navigationRadius is null && geometry?.Any(span => span.Shape.MeshScale.HasValue) == true)
+                navigationRadius = geometry.Max(span => span.Shape.RadiusKilometers);
+            track = mission with { Geometry = geometry, NavigationRadiusKilometers = navigationRadius };
             tracks.Add(new(track, meshes, ReadMissionTextures(mission, textureCache, ref textureBytes, cancellation),
                 ReadMissionTiles(mission, tileCache, ref tileBytes, cancellation)));
         }

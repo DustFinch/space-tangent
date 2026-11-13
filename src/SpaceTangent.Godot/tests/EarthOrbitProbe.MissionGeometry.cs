@@ -59,6 +59,50 @@ public partial class EarthOrbitProbe
         }
     }
 
+    private async Task ExerciseMissionMeshScale(SolarSystemScene scene, string directory)
+    {
+        var session = scene.Session!;
+        foreach (var (name, size, direct, offset, surfaces) in new (string, double, double?, Vector3d, int)[]
+        {
+            ("nativesizeprobe", .01, null, new(1000, 2000, -1500), 28),
+            ("nativescaleprobe", 0, 8e-7, new(-500, 250, 400), 20),
+            ("nativedefaultprobe", 0, 1, default, 28)
+        })
+        {
+            var id = new ObjectId("mission/" + name);
+            var epoch = JulianInstant.FromJulianDate(name == "nativedefaultprobe" ? 2455755.2 : 2455755.005, TimeScale.Tdb);
+            var snapshot = session.World.Graph.Evaluate(epoch);
+            if (!snapshot.TryState(id, out var state) || !snapshot.TryOrientation(id, out var frame))
+                throw new InvalidOperationException($"Missing original mission mesh state for {name}.");
+            double radius = session.World.TargetRadiusKilometers(id);
+            double range = radius * 4;
+            var pose = new NavigationCamera(state.PositionKilometers, range, .48, .14, id, true);
+            var view = new ObserverView(epoch, CameraMode.Solar, id, false) { Navigation = pose };
+            string path = Path.Combine(directory, name);
+            ScenarioFile.Save(path + ".stscene", new([view], false, 0, 0, session.DeltaT));
+            if (!scene.LoadScenario(path + ".stscene") || !await scene.ReloadAddOns() ||
+                scene.Renderer(0).ImportedBodyNode(id) is not { Visible: true, Mesh: ArrayMesh mesh } node ||
+                mesh.GetSurfaceCount() != surfaces)
+                throw new InvalidOperationException($"Original mesh did not render after reload for {name}.");
+            var span = mesh.GetAabb().Size;
+            double extent = Math.Max(span.X, Math.Max(span.Y, span.Z));
+            double scale = direct ?? size * 2 / extent;
+            double projected = scale * 48 / range;
+            var worldOffset = frame.ToWorld.Transform(offset) * projected;
+            var expected = new Vector3((float)worldOffset.X, (float)worldOffset.Z, (float)-worldOffset.Y);
+            if (Math.Abs(node.Basis.X.Length() / projected - 1) > 1e-6 ||
+                (node.Position - expected).Length() > 2e-5)
+                throw new InvalidOperationException($"Wrong mesh scale or offset for {name}: {node.Position} vs {expected}.");
+            await ToSignal(GetTree(), SceneTree.SignalName.ProcessFrame);
+            await ToSignal(RenderingServer.Singleton, RenderingServer.SignalName.FramePostDraw);
+            using var image = GetViewport().GetTexture().GetImage();
+            if (image.SavePng(path + ".png") != Error.Ok)
+                throw new IOException("Could not save the mission mesh scale capture.");
+            GD.Print(FormattableString.Invariant($"Mesh scale {name}: {scale:R}, offset {node.Position}, navigation radius {radius:R}."));
+        }
+    }
+
+
     private async Task ExerciseTimedGeometryBounds(SolarSystemScene scene, string directory)
     {
         var session = scene.Session!;

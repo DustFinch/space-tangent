@@ -45,6 +45,9 @@ internal partial class SimulationViewport
         _navigationEarth.Hide();
         _navigationMoon.Hide();
         HidePlanetGlobes();
+        foreach (var disk in _stellarDisks)
+            disk.Hide();
+        _visibleStars.Clear();
         HideImportedBodies();
         HideComets();
         HideLocalSatelliteMarkers();
@@ -53,6 +56,17 @@ internal partial class SimulationViewport
 
         Basis camera = _navigationCamera.Basis;
         double scale = scene.KilometersPerUnit / units;
+        // If the navigation anchor is far from a recorded foreground object, its
+        // live scale can put the whole foreground inside the camera near plane.
+        double nearest = double.PositiveInfinity;
+        foreach (var body in scene.Bodies)
+        {
+            double distance = body.CameraPosition.Length;
+            if (body.CameraPosition.Z < 0 && distance > 0)
+                nearest = Math.Min(nearest, Math.Max(distance - body.Radius, distance * .01));
+        }
+        if (nearest * scale < .25)
+            scale = .25 / nearest;
         Plane[] frustum = _navigationCamera.GetFrustum().ToArray();
         foreach (var body in scene.Bodies)
         {
@@ -108,6 +122,14 @@ internal partial class SimulationViewport
             node.Transform = new(camera * basis.Scaled(Vector3.One * radius), center);
             EarthOrbitTextures? earth = id == SolarSystemSample.EarthId ? _archivedEarthMaps : null;
             Texture2D? texture = id == SolarSystemSample.MoonId ? _archivedMoonMap : earth?.Day ?? (id is { } planet ? _archivedPlanetTextures?.Surfaces.GetValueOrDefault(planet) : null) ?? globeMaterial?.AlbedoTexture;
+            Color tint = id == SolarSystemSample.SunId ? new("ffd18d") :
+                id == SolarSystemSample.EarthId ? new("4a76ad") : globeMaterial?.AlbedoColor ?? new Color("b8b0a6");
+            bool stellar = TryArchivedStarSurface(body.MaterialId, out char surfaceClass, out var stellarTint);
+            if (stellar)
+            {
+                texture = _archivedPlanetTextures?.StellarSurfaces.GetValueOrDefault(surfaceClass);
+                tint = stellarTint;
+            }
             material.SetShaderParameter("has_night_map", earth?.Night is not null);
             material.SetShaderParameter("has_cloud_map", earth?.Clouds is not null);
             if (earth?.Night is { } night)
@@ -117,9 +139,9 @@ internal partial class SimulationViewport
             material.SetShaderParameter("has_map", texture is not null);
             if (texture is not null)
                 material.SetShaderParameter("surface_map", texture);
-            material.SetShaderParameter("tint", id == SolarSystemSample.SunId ? new Color("ffd18d") :
-                id == SolarSystemSample.EarthId ? new Color("4a76ad") : globeMaterial?.AlbedoColor ?? new Color("b8b0a6"));
-            material.SetShaderParameter("emissive", id == SolarSystemSample.SunId);
+            material.SetShaderParameter("tint", tint);
+            material.SetShaderParameter("tint_map", stellar);
+            material.SetShaderParameter("emissive", stellar || id == SolarSystemSample.SunId);
             BindArchivedShadows(material, scene, body, radius);
             material.SetShaderParameter("camera_light", Column(body.LightDirection));
             material.SetShaderParameter("light_color", Column(body.LightColor));
@@ -157,6 +179,24 @@ internal partial class SimulationViewport
         DrawArchivedComets(scene.CometTails, scale);
 
         static Vector3 Column(Vector3d value) => new((float)value.X, (float)value.Y, (float)value.Z);
+    }
+
+    private static bool TryArchivedStarSurface(string? material, out char surface, out Color tint)
+    {
+        surface = material is { Length: 6 } && material.StartsWith("star/", StringComparison.Ordinal) ? material[5] : '\0';
+        // Display tints of the representative dwarf in each archived texture class.
+        tint = surface switch
+        {
+            'o' => new(.3425f, .4803f, 1),
+            'b' => new(.4496f, .5732f, 1),
+            'a' => new(.7543f, .7942f, 1),
+            'f' => new(.9852f, .937f, 1),
+            'g' => new(1, .8694f, .803f),
+            'k' => new(1, .713f, .4767f),
+            'm' => new(1, .4964f, .1735f),
+            _ => default
+        };
+        return tint.A > 0;
     }
 
     private void BindArchivedShadows(ShaderMaterial material, RecordedSceneGeometry scene, RecordedBodyGeometry body, float renderRadius, Basis? receiverAxes = null)

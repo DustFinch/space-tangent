@@ -106,6 +106,7 @@ public sealed class RecordingTests
         Assert.Equal(6378.1366, geometry.KilometersPerUnit);
         var savedMoon = Assert.Single(geometry.Bodies, body => body.Name == "Sol/Earth/Moon");
         Assert.Equal(SolarSystemSample.MoonId, savedMoon.Id);
+        Assert.Equal("world/Sol/Earth/Moon", savedMoon.MaterialId);
         Assert.InRange(savedMoon.Radius, 1.08990, 1.08992);
         Assert.InRange(savedMoon.CameraPosition.Z, -55.52255, -55.52253);
         Assert.InRange(savedMoon.CameraBasis.X.Length, .99999, 1.00001);

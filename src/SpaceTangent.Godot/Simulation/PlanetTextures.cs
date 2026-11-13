@@ -7,6 +7,8 @@ namespace SpaceTangent.Godot.Simulation;
 
 internal sealed record PlanetTextures(IReadOnlyDictionary<ObjectId, Texture2D> Surfaces, IReadOnlyDictionary<ObjectId, Texture2D> Rings, Texture2D? VenusClouds)
 {
+    internal IReadOnlyDictionary<char, Texture2D> StellarSurfaces { get; init; } = new Dictionary<char, Texture2D>();
+
     internal static PlanetTextures Load()
     {
         string root = LocalDataPaths.Find("SPACETANGENT_PLANET_TEXTURES", "planets", directory: true);
@@ -23,7 +25,11 @@ internal sealed record PlanetTextures(IReadOnlyDictionary<ObjectId, Texture2D> S
         foreach (PlanetRingProfile profile in PlanetRingRendering.Profiles)
             if (Read(ringsRoot, profile.Texture) is { } ring)
                 rings.Add(profile.Id, ring);
-        return new(surfaces, rings, Read(root, "venus-clouds.jpg"));
+        var stars = new Dictionary<char, Texture2D>();
+        foreach (char surface in "obafgkm")
+            if (Read(root, $"star-{surface}.jpg") is { } image)
+                stars.Add(surface, image);
+        return new(surfaces, rings, Read(root, "venus-clouds.jpg")) { StellarSurfaces = stars };
     }
 
     internal Texture2DArray? CreateGroundSurfaceArray()

@@ -12,6 +12,7 @@ uniform bool has_night_map;
 uniform bool has_cloud_map;
 uniform vec4 tint : source_color = vec4(1.0);
 uniform bool emissive;
+uniform bool tint_map;
 uniform vec3 camera_light;
 uniform vec3 light_color = vec3(1.0);
 uniform vec3 camera_secondary_light;
@@ -38,6 +39,9 @@ void fragment() {
     vec3 color = has_map ? texture(surface_map, UV).rgb : tint.rgb;
     if (OUTPUT_IS_SRGB) {
         color = air_srgb_to_linear(color);
+    }
+    if (has_map && tint_map) {
+        color *= OUTPUT_IS_SRGB ? air_srgb_to_linear(tint.rgb) : tint.rgb;
     }
     vec3 normal = normalize(NORMAL);
     float primary = incidence(normal, camera_light);

@@ -320,6 +320,46 @@ public partial class EarthOrbitProbe
         }
     }
 
+    private async Task ExerciseArchivedStellarMaterial(SolarSystemScene scene, string directory, string recording)
+    {
+        scene.SetProcess(false);
+        string saved = Path.Combine(directory, "before-archived-stellar-material.stscene");
+        if (!scene.SaveScenario(saved) || !scene.StartReplay(recording))
+            throw new InvalidOperationException("Could not open the original stellar material recording.");
+        var renderer = scene.Renderer(0);
+        var geometry = renderer.ArchivedGeometry!;
+        var body = geometry.Bodies.Where(body => body.MaterialId == "star/a").MaxBy(body => body.Radius);
+        var node = renderer.ArchivedBody(body.Name);
+        if (node?.MaterialOverride is not ShaderMaterial material ||
+            !material.GetShaderParameter("emissive").AsBool() ||
+            !material.GetShaderParameter("has_map").AsBool() ||
+            !material.GetShaderParameter("tint_map").AsBool())
+            throw new InvalidOperationException($"The recorded stellar surface was not bound for {body.Name}.");
+        Color tint = material.GetShaderParameter("tint").AsColor();
+        if (tint.B <= tint.G || tint.G <= tint.R)
+            throw new InvalidOperationException("The recorded A-class surface lost its blue tint.");
+
+        await ToSignal(RenderingServer.Singleton, RenderingServer.SignalName.FramePostDraw);
+        using var lit = renderer.GetViewport().GetTexture().GetImage();
+        material.SetShaderParameter("emissive", false);
+        await ToSignal(RenderingServer.Singleton, RenderingServer.SignalName.FramePostDraw);
+        using var dark = renderer.GetViewport().GetTexture().GetImage();
+        int litSamples = 0;
+        for (int y = 0; y < lit.GetHeight(); y += 16)
+        for (int x = 0; x < lit.GetWidth(); x += 16)
+        {
+            Color pixel = lit.GetPixel(x, y);
+            if (pixel.B > pixel.G && pixel.G > pixel.R && pixel.Luminance - dark.GetPixel(x, y).Luminance > .06f)
+                litSamples++;
+        }
+        if (lit.SavePng(Path.Combine(directory, "archived-stellar-material.png")) != Error.Ok ||
+            dark.SavePng(Path.Combine(directory, "archived-stellar-material-control.png")) != Error.Ok || litSamples < 200)
+            throw new InvalidOperationException($"The recorded stellar disk lit only {litSamples} sampled pixels.");
+        if (!scene.LoadScenario(saved) || node.Visible)
+            throw new InvalidOperationException("The archived stellar disk persisted outside replay.");
+        GD.Print($"Archived stellar material GPU: {body.Name}, {body.MaterialId}, {litSamples} lit samples.");
+    }
+
     private async Task ExerciseArchivedStarPoints(SolarSystemScene scene, string directory, string recording)
     {
         scene.SetProcess(false);

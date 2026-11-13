@@ -11,6 +11,7 @@ public readonly record struct RecordedBodyGeometry(string Name, ObjectId? Id, Ve
     double PolarScale, Basis3d CameraBasis, Vector3d LightDirection,
     Vector3d LightColor, Vector3d SecondLightDirection, Vector3d SecondLightColor, double AtmosphereRadius)
 {
+    public string? MaterialId { get; init; }
     public double RingInnerRadius { get; init; }
     public double RingOuterRadius { get; init; }
     public double LightAngularRadius { get; init; }
@@ -110,6 +111,9 @@ public sealed class LegacyCameraSequence : IObserverReplay
                 Vector3d position = Vector(body[4..]);
                 if (key is { } known)
                     Consider(known, position);
+                uint material = BinaryPrimitives.ReadUInt32LittleEndian(body[48..]);
+                if (material >= strings.Count)
+                    throw new InvalidDataException("An archived camera refers to an undefined body material.");
                 double radius = Single(body[16..]), polarScale = Single(body[65..]);
                 if (!position.IsFinite || !double.IsFinite(radius) || radius <= 0 ||
                     !double.IsFinite(polarScale) || polarScale <= 0)
@@ -160,7 +164,7 @@ public sealed class LegacyCameraSequence : IObserverReplay
                 geometry[index] = new(strings[(int)id], key, position, radius, polarScale, basis,
                     light, lightColor, secondDirection, secondColor, atmosphereRadius)
                 {
-                    RingInnerRadius = inner, RingOuterRadius = outer, LightAngularRadius = lightRadius,
+                    MaterialId = strings[(int)material], RingInnerRadius = inner, RingOuterRadius = outer, LightAngularRadius = lightRadius,
                     SecondLightAngularRadius = secondLightRadius
                 };
             }

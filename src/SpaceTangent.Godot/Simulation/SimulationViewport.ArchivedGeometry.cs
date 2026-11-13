@@ -3,15 +3,17 @@ using Godot;
 using SpaceTangent.Application;
 using SpaceTangent.Contracts;
 using SpaceTangent.Core.Ephemerides;
+using SpaceTangent.Core.Time;
 
 namespace SpaceTangent.Godot.Simulation;
 
 internal partial class SimulationViewport
 {
-    private readonly List<MeshInstance3D> _archivedBodies = [];
+    private readonly List<(MeshInstance3D Node, ShaderMaterial Surface)> _archivedBodies = [];
     private readonly Dictionary<string, MeshInstance3D> _archivedVisible = new(StringComparer.Ordinal);
     private readonly SphereMesh _archivedSphere = new() { Radius = 1, Height = 2, RadialSegments = 48, Rings = 24 };
     private Shader? _archivedBodyShader;
+    private readonly Dictionary<MeshInstance3D, (ArrayMesh Mesh, ShaderMaterial?[] Materials)> _archivedModelMaterials = new();
     private Texture2D? _archivedMoonMap;
     private EarthOrbitTextures? _archivedEarthMaps;
     internal MeshInstance3D? ArchivedEarthLimb { get; private set; }
@@ -35,11 +37,19 @@ internal partial class SimulationViewport
     internal RecordedSceneGeometry? ArchivedGeometry { get; set; }
     internal MeshInstance3D? ArchivedBody(string name) => _archivedVisible.GetValueOrDefault(name);
 
-    private void DrawArchivedBodies(double units)
+    private void DrawArchivedBodies(double units, JulianInstant epoch)
     {
         HideArchivedBodies();
         if (ArchivedGeometry is not { } scene)
+        {
+            foreach (var node in _archivedModelMaterials.Keys)
+            {
+                ClearArchivedSurfaceOverrides(node);
+                node.Mesh = null;
+            }
+            _archivedModelMaterials.Clear();
             return;
+        }
 
         _navigationSun.Hide();
         _navigationEarth.Hide();
@@ -96,19 +106,24 @@ internal partial class SimulationViewport
             if (_archivedBodies.Count == _archivedUsed)
             {
                 _archivedBodyShader ??= GD.Load<Shader>("res://Shaders/archived_body.gdshader");
-                var mesh = new MeshInstance3D
-                {
-                    MaterialOverride = new ShaderMaterial { Shader = _archivedBodyShader },
-                    CastShadow = GeometryInstance3D.ShadowCastingSetting.Off
-                };
+                var mesh = new MeshInstance3D { CastShadow = GeometryInstance3D.ShadowCastingSetting.Off };
                 AddChild(mesh);
-                _archivedBodies.Add(mesh);
+                _archivedBodies.Add((mesh, new ShaderMaterial { Shader = _archivedBodyShader }));
             }
-            var node = _archivedBodies[_archivedUsed++];
+            var (node, material) = _archivedBodies[_archivedUsed++];
             _archivedVisible.TryAdd(body.Name, node);
             var basis = new Basis(Column(rotation.X), Column(rotation.Y) * (float)body.PolarScale, Column(rotation.Z));
-            var material = (ShaderMaterial)node.MaterialOverride;
             var id = body.Id;
+            if (id is { } importedId && _importedNodes.TryGetValue(importedId, out var imported) &&
+                PlaceArchivedModel(node, imported.Asset, epoch, camera * basis, center, radius))
+            {
+                BindArchivedModelMaterials(node, scene, body, radius);
+                node.Show();
+                continue;
+            }
+            if (_archivedModelMaterials.Remove(node))
+                ClearArchivedSurfaceOverrides(node);
+            node.MaterialOverride = material;
             var source = id.HasValue ? _planetGlobes.GetValueOrDefault(id.Value) : null;
             var globeMaterial = source?.MaterialOverride as StandardMaterial3D;
             // The archive's spherical surfaces use a quarter-turn about the pole.
@@ -181,6 +196,95 @@ internal partial class SimulationViewport
         static Vector3 Column(Vector3d value) => new((float)value.X, (float)value.Y, (float)value.Z);
     }
 
+    private static bool PlaceArchivedModel(MeshInstance3D node, PreparedImportedBody asset, JulianInstant epoch,
+        Basis bodyBasis, Vector3 center, float radius)
+    {
+        PreparedMissionGeometry? phase = null;
+        if (asset.Geometry is { } intervals)
+        {
+            phase = intervals.FirstOrDefault(span => epoch.CompareTo(span.Start) >= 0 && epoch.CompareTo(span.End) < 0);
+            if (phase is null)
+                return false;
+        }
+        if ((phase is null ? asset.Model : phase.Model) is not { } model)
+            return false;
+        var rotation = phase?.MeshRotation ?? asset.MeshRotation;
+        double diameter = phase?.ModelDiameter ?? asset.ModelDiameter;
+        Vector3d modelCenter = asset.MeshCenter;
+        if (phase is null && asset.ModelBounds is { } bounds)
+        {
+            modelCenter += bounds.Center;
+            diameter = Math.Max(bounds.Span.X, Math.Max(bounds.Span.Y, bounds.Span.Z));
+        }
+        if (diameter <= 0)
+            return false;
+
+        var local = new Basis(Column(rotation.X), Column(rotation.Y), Column(rotation.Z));
+        float factor = 2 * radius / (float)diameter;
+        if (phase is { MeshScale: { } physicalScale, RadiusKilometers: > 0 })
+            factor = (float)(radius * physicalScale / phase.RadiusKilometers);
+        Basis meshBasis = bodyBasis * local * Basis.FromScale(Vector3.One * factor);
+        Vector3 offset = phase is null
+            ? -(meshBasis * Column(modelCenter))
+            : bodyBasis * Column(phase.MeshOffset) * factor;
+        if (node.Mesh != model)
+        {
+            ClearArchivedSurfaceOverrides(node);
+            node.Mesh = model;
+        }
+        node.MaterialOverride = null;
+        node.Transform = new(meshBasis, center + offset);
+        return true;
+
+        static Vector3 Column(Vector3d axis) => new((float)axis.X, (float)axis.Y, (float)axis.Z);
+    }
+
+    private static void ClearArchivedSurfaceOverrides(MeshInstance3D node)
+    {
+        if (node.Mesh is not { } mesh)
+            return;
+        for (int index = 0; index < mesh.GetSurfaceCount(); index++)
+            node.SetSurfaceOverrideMaterial(index, null);
+    }
+
+    private void BindArchivedModelMaterials(MeshInstance3D node, RecordedSceneGeometry scene,
+        RecordedBodyGeometry body, float radius)
+    {
+        var mesh = (ArrayMesh)node.Mesh;
+        if (!_archivedModelMaterials.TryGetValue(node, out var cached) || cached.Mesh != mesh)
+        {
+            var materials = new ShaderMaterial?[mesh.GetSurfaceCount()];
+            for (int index = 0; index < materials.Length; index++)
+            {
+                if (mesh.SurfaceGetMaterial(index) is not StandardMaterial3D
+                    { Transparency: BaseMaterial3D.TransparencyEnum.Disabled, EmissionEnabled: false, NormalEnabled: false } original)
+                    continue;
+                var surface = new ShaderMaterial { Shader = _archivedBodyShader };
+                surface.SetShaderParameter("has_map", original.AlbedoTexture is not null);
+                if (original.AlbedoTexture is { } texture)
+                    surface.SetShaderParameter("surface_map", texture);
+                surface.SetShaderParameter("tint", original.AlbedoColor);
+                surface.SetShaderParameter("tint_map", true);
+                materials[index] = surface;
+                node.SetSurfaceOverrideMaterial(index, surface);
+            }
+            cached = (mesh, materials);
+            _archivedModelMaterials[node] = cached;
+        }
+        foreach (var surface in cached.Materials)
+        {
+            if (surface is null)
+                continue;
+            surface.SetShaderParameter("camera_light", Column(body.LightDirection));
+            surface.SetShaderParameter("light_color", Column(body.LightColor));
+            surface.SetShaderParameter("camera_secondary_light", Column(body.SecondLightDirection));
+            surface.SetShaderParameter("secondary_light_color", Column(body.SecondLightColor));
+            BindArchivedShadows(surface, scene, body, radius, centerInCamera: node.Position - _navigationCamera.Position);
+        }
+
+        static Vector3 Column(Vector3d axis) => new((float)axis.X, (float)axis.Y, (float)axis.Z);
+    }
+
     private static bool TryArchivedStarSurface(string? material, out char surface, out Color tint)
     {
         surface = material is { Length: 6 } && material.StartsWith("star/", StringComparison.Ordinal) ? material[5] : '\0';
@@ -199,14 +303,20 @@ internal partial class SimulationViewport
         return tint.A > 0;
     }
 
-    private void BindArchivedShadows(ShaderMaterial material, RecordedSceneGeometry scene, RecordedBodyGeometry body, float renderRadius, Basis? receiverAxes = null)
+    private void BindArchivedShadows(ShaderMaterial material, RecordedSceneGeometry scene, RecordedBodyGeometry body, float renderRadius, Basis? receiverAxes = null, Vector3? centerInCamera = null)
     {
+        Vector3d origin = body.CameraPosition;
+        if (centerInCamera is { } centerOffset)
+        {
+            Vector3 cameraOffset = _navigationCamera.Basis.Inverse() * centerOffset;
+            origin = new Vector3d(cameraOffset.X, cameraOffset.Y, cameraOffset.Z) * (body.Radius / renderRadius);
+        }
         int count = 0;
         foreach (var blocker in scene.Shadows)
         {
             if (!string.Equals(blocker.Receiver, body.Name, StringComparison.Ordinal))
                 continue;
-            Vector3d offset = (blocker.Center - body.CameraPosition) / body.Radius;
+            Vector3d offset = (blocker.Center - origin) / body.Radius;
             if (receiverAxes is { } axes)
                 offset = Rotate(offset, axes);
             _archivedBlockers[count++] = new((float)offset.X, (float)offset.Y, (float)offset.Z, (float)(blocker.Radius / body.Radius));
@@ -216,7 +326,7 @@ internal partial class SimulationViewport
         material.SetShaderParameter("archived_shadow_count", count);
         if (count == 0)
             return;
-        Vector3d sun = (scene.SunPosition - body.CameraPosition) / body.Radius;
+        Vector3d sun = (scene.SunPosition - origin) / body.Radius;
         material.SetShaderParameter("archived_blockers", _archivedBlockers);
         if (receiverAxes is null)
             material.SetShaderParameter("archived_render_radius", renderRadius);
@@ -373,7 +483,7 @@ internal partial class SimulationViewport
     private void HideArchivedBodies()
     {
         for (int index = 0; index < _archivedUsed; index++)
-            _archivedBodies[index].Hide();
+            _archivedBodies[index].Node.Hide();
         _archivedUsed = 0;
         for (int index = 0; index < _archivedPointsUsed; index++)
             _archivedPointPool[index].Hide();

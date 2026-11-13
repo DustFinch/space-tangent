@@ -180,7 +180,7 @@ internal partial class SimulationViewport
             node.Show();
         }
 
-        DrawArchivedBodies(units);
+        DrawArchivedBodies(units, snapshot.Epoch);
 
         void PlaceBody(MeshInstance3D node, Vector3d position, ObjectId id,
             ObjectId? parentId = null, double albedo = 0, string tint = "")

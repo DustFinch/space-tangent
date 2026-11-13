@@ -115,6 +115,53 @@ public partial class EarthOrbitProbe
         }
     }
 
+    private async Task ExerciseArchivedStation(SolarSystemScene scene, string directory, string recording)
+    {
+        var file = new LocalAddonSettingsFile();
+        var settings = file.Load();
+        string source = System.Environment.GetEnvironmentVariable("SPACETANGENT_ARCHIVED_ISS_SOURCE")!;
+        var station = new LocalAddonSource(Guid.NewGuid(), LocalAddonKind.BodyCatalog, source, false, true);
+        if (!await scene.ReloadAddOns(settings.SetSource(station, true)))
+            throw new InvalidOperationException("Could not install the original station catalogue.");
+        scene.SetProcess(false);
+        string saved = Path.Combine(directory, "before-archived-station.stscene");
+        if (!scene.SaveScenario(saved) || !scene.StartReplay(recording))
+            throw new InvalidOperationException("Could not open the original station recording.");
+        var renderer = scene.Renderer(0);
+        var body = renderer.ArchivedGeometry!.Bodies.Single(body => body.Name == "Sol/Earth/ISS");
+        var node = renderer.ArchivedBody(body.Name);
+        if (body.Id is not { } id || node is not { Visible: true, MaterialOverride: null, Mesh: ArrayMesh mesh } ||
+            renderer.ImportedBodyNode(id) is not { Visible: false } live || live.Mesh != mesh)
+            throw new InvalidOperationException($"The archived station did not use its installed mesh ({body.Id}).");
+        int textured = Enumerable.Range(0, mesh.GetSurfaceCount()).Count(index =>
+            mesh.SurfaceGetMaterial(index) is StandardMaterial3D { AlbedoTexture: not null });
+        int litSurfaces = Enumerable.Range(0, mesh.GetSurfaceCount()).Count(index =>
+            node.GetSurfaceOverrideMaterial(index) is ShaderMaterial material &&
+            material.GetShaderParameter("has_map").AsBool() &&
+            material.GetShaderParameter("light_color").AsVector3().IsEqualApprox(
+                new Vector3((float)body.LightColor.X, (float)body.LightColor.Y, (float)body.LightColor.Z)));
+        if (textured == 0 || litSurfaces == 0)
+            throw new InvalidOperationException("The archived station lost its surface textures or recorded lighting.");
+        await ToSignal(RenderingServer.Singleton, RenderingServer.SignalName.FramePostDraw);
+        using var visible = renderer.GetViewport().GetTexture().GetImage();
+        node.Hide();
+        await ToSignal(RenderingServer.Singleton, RenderingServer.SignalName.FramePostDraw);
+        using var absent = renderer.GetViewport().GetTexture().GetImage();
+        int changed = 0;
+        for (int y = 0; y < visible.GetHeight(); y += 2)
+        for (int x = 0; x < visible.GetWidth(); x += 2)
+            if (Math.Abs(visible.GetPixel(x, y).Luminance - absent.GetPixel(x, y).Luminance) > .03f)
+                changed++;
+        if (changed < 300 || visible.SavePng(Path.Combine(directory, "iss-replay.png")) != Error.Ok)
+            throw new InvalidOperationException($"The archived station changed only {changed} pixel samples.");
+        if (!scene.LoadScenario(saved) || !await scene.ReloadAddOns(settings) || !scene.StartReplay(recording) ||
+            renderer.ArchivedBody(body.Name) is not { Visible: true, Mesh: SphereMesh, MaterialOverride: ShaderMaterial })
+            throw new InvalidOperationException("The archive did not fall back to its stored geometry when the add-on was removed.");
+        if (!scene.LoadScenario(saved) || renderer.ArchivedBody(body.Name) is not null)
+            throw new InvalidOperationException("The archived station persisted outside replay.");
+        GD.Print($"Original ISS model GPU: {textured} textured surfaces, {litSurfaces} with recorded lighting, {changed} changed samples, fallback after removal.");
+    }
+
     private async Task ExerciseArchivedRingShadow(SolarSystemScene scene, string directory, string recording)
     {
         string saved = Path.Combine(directory, "before-archived-ring-shadow.stscene");

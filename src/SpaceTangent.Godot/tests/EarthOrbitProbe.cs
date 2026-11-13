@@ -52,6 +52,12 @@ public partial class EarthOrbitProbe : Node
                 result = 0;
                 return;
             }
+            if (System.Environment.GetEnvironmentVariable("SPACETANGENT_MISSION_DISPLAY_PROBE") == "1")
+            {
+                await ExerciseMissionDisplay(scene, directory);
+                result = 0;
+                return;
+            }
             if (System.Environment.GetEnvironmentVariable("SPACETANGENT_FOLLOW_SPIN_PROBE") == "1")
             {
                 await ExerciseFollowSpin(scene, directory);

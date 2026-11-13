@@ -75,7 +75,7 @@ internal partial class SimulationViewport
     }
 
     private void DrawBodyLabel(ObjectId id, string name, ObjectId? parentId, double orbitRadius, double bodyRadius,
-        WorldSnapshot snapshot, Vector3d center, Vector3d towardEye, Vector3 position, float radius)
+        WorldSnapshot snapshot, Vector3d center, Vector3d towardEye, Vector3 position, float radius, Vector3d? tint = null)
     {
         double distance = towardEye.Length;
         if (distance <= bodyRadius || _navigationCamera.IsPositionBehind(position))
@@ -116,7 +116,7 @@ internal partial class SimulationViewport
         }
         label.Text = name;
         float opacity = (float)Math.Min(1, (orbitPixels - minimumPixels) / minimumPixels);
-        label.Modulate = new Color(Colors.White, opacity);
+        label.Modulate = tint is { } rgb ? new Color((float)rgb.X, (float)rgb.Y, (float)rgb.Z, opacity) : new Color(Colors.White, opacity);
         label.OutlineModulate = new Color(Colors.Black, opacity);
         Vector3 cameraOffset = _navigationCamera.Position - position;
         float depth = Math.Abs(cameraOffset.Dot(_navigationCamera.Basis.Z));

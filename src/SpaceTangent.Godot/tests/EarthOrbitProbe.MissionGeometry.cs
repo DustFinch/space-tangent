@@ -8,6 +8,59 @@ namespace SpaceTangent.Godot.Tests;
 
 public partial class EarthOrbitProbe
 {
+    private async Task ExerciseMissionDisplay(SolarSystemScene scene, string directory)
+    {
+        var session = scene.Session!;
+        var jason = new ObjectId("norad/26997");
+        var earth = new ObjectId("sol/earth");
+        var epoch = JulianInstant.FromJulianDate(2455755, TimeScale.Tdb);
+        var world = session.World.Graph;
+        if (!world.Evaluate(epoch).TryState(jason, out var state))
+            throw new InvalidOperationException("The original Jason-1 is unavailable.");
+        var pose = new NavigationCamera(state.PositionKilometers, 4500, .48, .14, jason, true);
+        var active = new ObserverView(epoch, CameraMode.Solar, jason, false)
+            { Navigation = pose, Sky = new() { Labels = true } };
+        var hidden = active with { Sky = active.Sky with { HideOrbits = true } };
+        string path = Path.Combine(directory, "archived-display.stscene");
+        ScenarioFile.Save(path, new([active, hidden], false, 0, 0, session.DeltaT));
+        if (!scene.LoadScenario(path))
+            throw new InvalidOperationException("The two trail views did not open.");
+        Check();
+        if (!await scene.ReloadAddOns())
+            throw new InvalidOperationException("The archived display pack could not reload.");
+        Check();
+        await ToSignal(GetTree(), SceneTree.SignalName.ProcessFrame);
+        await ToSignal(RenderingServer.Singleton, RenderingServer.SignalName.FramePostDraw);
+        using var image = GetViewport().GetTexture().GetImage();
+        if (image.SavePng(Path.ChangeExtension(path, ".png")) != Error.Ok)
+            throw new IOException("Could not capture the archived orbit style.");
+        GD.Print("Archived display: Jason-1 label tint, 45-minute trail, 10-minute lead and independent orbit toggle verified after reload.");
+
+        void Check()
+        {
+            var shown = scene.Renderer(0);
+            var other = scene.Renderer(1);
+            if (!shown.MissionTrailVisible || other.MissionTrailVisible || shown.MissionTrailPointCount != 65 ||
+                shown.BodyLabel(jason) is not { Visible: true } label ||
+                Math.Abs(label.Modulate.R - .7) > 1e-6 || Math.Abs(label.Modulate.B - .9) > 1e-6 ||
+                shown.MissionTrailFirstPoint is not { } first || shown.MissionTrailLastPoint is not { } last ||
+                (first - OffsetAt(epoch.AddSeconds(-2700))).Length > 1e-6 ||
+                (last - OffsetAt(epoch.AddSeconds(600))).Length > 1e-6 ||
+                shown.MissionTrailEdgeColors is not { } colors ||
+                !colors.First.IsEqualApprox(new Color(.12f, .32f, .18f)) ||
+                !colors.Last.IsEqualApprox(new Color(.3f, .8f, .45f)))
+                throw new InvalidOperationException("The archived orbit window, fade or label tint differs.");
+        }
+
+        Vector3d OffsetAt(JulianInstant time)
+        {
+            var snapshot = session.World.Graph.Evaluate(time);
+            if (!snapshot.TryState(jason, out var satellite) || !snapshot.TryState(earth, out var parent))
+                throw new InvalidOperationException("The reference state for the orbit trail is missing.");
+            return (satellite - parent).PositionKilometers;
+        }
+    }
+
     private async Task ExerciseFollowSpin(SolarSystemScene scene, string directory)
     {
         var session = scene.Session!;

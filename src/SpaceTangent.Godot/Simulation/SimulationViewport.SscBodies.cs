@@ -255,7 +255,8 @@ internal partial class SimulationViewport
                     if (primary is null && snapshot.TryStateCenter(body.Id, out var center))
                         primary = center;
                     DrawBodyLabel(body.Id, catalogue.Name, primary, minor ? 0 : body.LabelOrbitRadius,
-                        physicalRadius, snapshot, state.PositionKilometers, towardEye, position, (float)radius);
+                        physicalRadius, snapshot, state.PositionKilometers, towardEye, position, (float)radius,
+                        labelWorld.FindSampledMission(body.Id)?.Display?.LabelColor);
                 }
             }
             ObjectId? photometricParent = body.PhotometricParent;

@@ -136,6 +136,7 @@ internal partial class SimulationViewport
             sky.SmallBodies ?? MinorBodyDisplay.Photometric, ProjectWithScale);
         DrawStellarObjects(pose, snapshot, sky, placement.OffsetKilometers, units, ProjectWithScale);
         DrawExtrasolarOrbits(pose, snapshot, units, ProjectWithScale);
+        DrawMissionTrail(snapshot, selection ?? pose.Target, ProjectWithScale);
         DrawCompactObjects(snapshot, sky, units, ProjectWithScale);
         DrawImportedBodies(snapshot, pose, placement.OffsetKilometers, units, sky, selection, ProjectWithScale);
         DrawLocalSatellites(snapshot, pose, placement.OffsetKilometers, units, sky, selection, ProjectWithScale);
@@ -163,7 +164,7 @@ internal partial class SimulationViewport
             Vector3d towardEye = (pose.AnchorKilometers - state.PositionKilometers) + placement.OffsetKilometers;
             if (label)
                 DrawBodyLabel(satelliteId, asset.Track.Name, SolarSystemSample.EarthId, 0, radius,
-                    snapshot, state.PositionKilometers, towardEye, position, projectedRadius);
+                    snapshot, state.PositionKilometers, towardEye, position, projectedRadius, asset.Track.Display?.LabelColor);
             bool resolved = _satelliteMagnitudes.ContainsKey(satelliteId)
                 ? DrawSatellitePoint(satelliteId, snapshot, state.PositionKilometers, towardEye, radius, position, projectedRadius)
                 : DrawReflectedBody(satelliteId, SolarSystemSample.EarthId, radius, .5, Colors.White,
@@ -304,6 +305,7 @@ internal partial class SimulationViewport
         HideStellarObjects();
         HideCompactObjects();
         HideExtrasolarOrbits();
+        _missionTrailNode?.Hide();
         HideImportedBodies();
         HideLocalSatelliteMarkers();
         HideMinorBodySwarm();

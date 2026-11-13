@@ -128,6 +128,7 @@ public sealed partial class SimulationWorld
     private readonly Dictionary<ObjectId, LocalTleSatellite> _localSatellites;
     public IReadOnlyCollection<LocalTleSatellite> LocalSatellites => _localSatellites.Values;
     public LocalTleSatellite? FindLocalSatellite(ObjectId id) => _localSatellites.GetValueOrDefault(id);
+    public SampledMission? FindSampledMission(ObjectId id) => _sampledMissions.GetValueOrDefault(id);
     public IReadOnlyList<InstalledSscBody> SscBodies { get; }
     public ObjectCatalogue Catalogue { get; }
     public BrightStarCatalogue BrightStars { get; }

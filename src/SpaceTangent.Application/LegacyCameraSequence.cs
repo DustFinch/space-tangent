@@ -20,6 +20,7 @@ public sealed record RecordedSceneGeometry(double KilometersPerUnit, IReadOnlyLi
 {
     public IReadOnlyList<RecordedOrbit> Orbits { get; init; } = [];
     public IReadOnlyList<RecordedLabel> Labels { get; init; } = [];
+    public RecordedStellarView? StellarView { get; init; }
 }
 
 /// <summary>Reconstructs the archived single camera against the installed ephemeris.</summary>
@@ -46,7 +47,8 @@ public sealed class LegacyCameraSequence : IObserverReplay
         RecordedBodyGeometry[]? previousBodies = null;
         int retainedBodies = 0;
         var overlays = new LegacyFrameOverlays();
-        FrameCount = LegacyFrameInspection.Inspect(stream, AddFrame, default, overlays.AddOrbitGeometry).Frames;
+        var stellar = new LegacyFrameStars();
+        FrameCount = LegacyFrameInspection.Inspect(stream, AddFrame, default, overlays.AddOrbitGeometry, stellar.ReadField).Frames;
 
         void AddFrame(ReadOnlySpan<byte> data, int minor, IReadOnlyList<string> strings)
         {
@@ -152,10 +154,11 @@ public sealed class LegacyCameraSequence : IObserverReplay
                     RingInnerRadius = inner, RingOuterRadius = outer, LightAngularRadius = lightRadius
                 };
             }
-            var (orbits, labels) = overlays.Read(data, cursor, minor, strings);
+            var (orbits, labels, stellarOffset) = overlays.Read(data, cursor, minor, strings);
+            var stellarView = minor >= 10 ? stellar.ReadView(data, stellarOffset) : null;
             if (previousGeometry is null || previousGeometry.KilometersPerUnit != scale ||
                 !geometry.AsSpan().SequenceEqual(previousBodies) ||
-                !ReferenceEquals(orbits, previousGeometry.Orbits) || !ReferenceEquals(labels, previousGeometry.Labels))
+                !ReferenceEquals(orbits, previousGeometry.Orbits) || !ReferenceEquals(labels, previousGeometry.Labels) || previousGeometry.StellarView != stellarView)
             {
                 if (!geometry.AsSpan().SequenceEqual(previousBodies))
                     retainedBodies += geometry.Length;
@@ -163,7 +166,7 @@ public sealed class LegacyCameraSequence : IObserverReplay
                     throw new InvalidDataException("Archived replay exceeds the body geometry budget.");
                 var savedBodies = previousGeometry is not null && geometry.AsSpan().SequenceEqual(previousBodies)
                     ? previousGeometry.Bodies : Array.AsReadOnly(geometry);
-                previousGeometry = new(scale, savedBodies) { Orbits = orbits, Labels = labels };
+                previousGeometry = new(scale, savedBodies) { Orbits = orbits, Labels = labels, StellarView = stellarView };
                 previousBodies = geometry;
             }
             _geometry.Add(previousGeometry);

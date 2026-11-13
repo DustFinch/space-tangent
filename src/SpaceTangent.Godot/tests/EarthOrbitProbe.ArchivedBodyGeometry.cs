@@ -147,6 +147,34 @@ public partial class EarthOrbitProbe
         if (!scene.LoadScenario(saved) || renderer.ArchivedBody("Sol/Earth/Moon") is not null)
             throw new InvalidOperationException("Leaving replay did not restore live geometry.");
         GD.Print("Archived geometry GPU: rendered the recorded lunar transform and visible disc, then restored the live view.");
+        if (renderer.ArchivedStarCount != 0 || !scene.StartReplay(archive) || renderer.ArchivedStarCount != 183247)
+            throw new InvalidOperationException("The recorded background and moving stars did not replace the live field.");
+        scene.SetProcess(false);
+        try
+        {
+            var background = renderer.GetNode<MeshInstance3D>("ArchivedStarBackground");
+            var moving = renderer.GetNode<MeshInstance3D>("ArchivedMovingStars");
+            await ToSignal(RenderingServer.Singleton, RenderingServer.SignalName.FramePostDraw);
+            using var stars = renderer.GetViewport().GetTexture().GetImage();
+            background.Hide();
+            moving.Hide();
+            await ToSignal(RenderingServer.Singleton, RenderingServer.SignalName.FramePostDraw);
+            using var blank = renderer.GetViewport().GetTexture().GetImage();
+            int changed = 0;
+            for (int y = 0; y < stars.GetHeight(); y++)
+            for (int x = 0; x < stars.GetWidth(); x++)
+                if (stars.GetPixel(x, y).Luminance - blank.GetPixel(x, y).Luminance > .025)
+                    changed++;
+            if (changed < 20 || stars.SavePng(Path.Combine(directory, "archived-stars.png")) != Error.Ok)
+                throw new InvalidOperationException($"Recorded stars changed only {changed} pixels.");
+            GD.Print($"Archived stars GPU: 182625 catalogue entries, 622 moving entries, {changed} lit pixels.");
+        }
+        finally
+        {
+            scene.SetProcess(true);
+        }
+        if (!scene.LoadScenario(saved) || renderer.ArchivedStarCount != 0)
+            throw new InvalidOperationException("The archived stars persisted after replay.");
         string? orbits = System.Environment.GetEnvironmentVariable("SPACETANGENT_LEGACY_ORBITS");
         if (orbits is null)
             return;

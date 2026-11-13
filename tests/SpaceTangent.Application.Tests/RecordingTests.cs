@@ -98,6 +98,11 @@ public sealed class RecordingTests
         var first = replay.ReadNext()!;
         var geometry = Assert.IsType<RecordedSceneGeometry>(replay.CurrentGeometry);
         Assert.Equal(65, geometry.Bodies.Count);
+        var stars = Assert.IsType<RecordedStellarView>(geometry.StellarView);
+        Assert.Equal(182625, stars.Background.Count);
+        Assert.Equal(622, stars.Periodic!.Count);
+        Assert.Equal(622 * 12, stars.PeriodicPositions.Length);
+        Assert.InRange(stars.ToCamera.Z.Length, .99999, 1.00001);
         Assert.Equal(6378.1366, geometry.KilometersPerUnit);
         var savedMoon = Assert.Single(geometry.Bodies, body => body.Name == "Sol/Earth/Moon");
         Assert.Equal(SolarSystemSample.MoonId, savedMoon.Id);

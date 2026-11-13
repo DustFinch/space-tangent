@@ -37,7 +37,7 @@ internal sealed class LegacyFrameOverlays
         _geometry.Add(Array.AsReadOnly(points));
     }
 
-    internal (IReadOnlyList<RecordedOrbit>, IReadOnlyList<RecordedLabel>) Read(ReadOnlySpan<byte> data,
+    internal (IReadOnlyList<RecordedOrbit>, IReadOnlyList<RecordedLabel>, int StellarOffset) Read(ReadOnlySpan<byte> data,
         int offset, int minor, IReadOnlyList<string> strings)
     {
         int stars = Count(data, 100, 256), orbitCount = Count(data, 102, 128);
@@ -90,7 +90,7 @@ internal sealed class LegacyFrameOverlays
             Charge(labels.Length);
             _labels = Array.AsReadOnly(_lastLabels = labels);
         }
-        return (_orbits, _labels);
+        return (_orbits, _labels, data.Length - reader.Remaining);
 
         Vector3d Turn(Vector3d value)
         {
@@ -124,6 +124,7 @@ internal sealed class LegacyFrameOverlays
             return value;
         }
 
+        internal int Remaining => _remaining.Length;
         internal void Skip(int count) => _ = Take(count);
         internal byte Byte() => Take(1)[0];
         internal uint U32() => BinaryPrimitives.ReadUInt32LittleEndian(Take(4));

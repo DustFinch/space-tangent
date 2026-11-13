@@ -20,7 +20,7 @@ public static class LegacyFrameInspection
     internal delegate void FrameVisitor(ReadOnlySpan<byte> payload, int minor, IReadOnlyList<string> strings);
     internal delegate void GeometryVisitor(ReadOnlySpan<byte> payload);
 
-    internal static LegacyFrameSummary Inspect(Stream stream, FrameVisitor? visitor, CancellationToken cancellation, GeometryVisitor? geometryVisitor = null)
+    internal static LegacyFrameSummary Inspect(Stream stream, FrameVisitor? visitor, CancellationToken cancellation, GeometryVisitor? geometryVisitor = null, GeometryVisitor? stellarVisitor = null)
     {
         ArgumentNullException.ThrowIfNull(stream);
         Span<byte> file = stackalloc byte[24];
@@ -60,6 +60,12 @@ public static class LegacyFrameInspection
                 throw new InvalidDataException("Archived frame record exceeds its length limit.");
             byte[] payload = kind == 3 && visitor is not null && length > buffer.Length
                 ? largeFrame ??= new byte[1024 * 1024] : buffer;
+            if (kind == 5 && stellarVisitor is not null && length > payload.Length)
+            {
+                if (length > 6 + 3_000_000 * 39)
+                    throw new InvalidDataException("Archived stellar resource exceeds its limit.");
+                payload = new byte[length];
+            }
             int read = Math.Min(length, payload.Length);
             stream.ReadExactly(payload.AsSpan(0, read));
             uint crc = Update(0xffffffffu, record);
@@ -115,6 +121,8 @@ public static class LegacyFrameInspection
                 visitor?.Invoke(payload.AsSpan(0, length), minor, names!);
             else if (kind == 2)
                 geometryVisitor?.Invoke(payload.AsSpan(0, length));
+            else if (kind == 5)
+                stellarVisitor?.Invoke(payload.AsSpan(0, length));
             if (kind == 4)
             {
                 if (stream.ReadByte() != -1)

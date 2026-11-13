@@ -43,9 +43,13 @@ internal partial class SimulationViewport
     internal bool Draw(ObserverView observer, WorldSnapshot snapshot, DeltaTModel deltaT)
     {
         if (ArchivedGeometry is not null)
-            observer = observer with { Sky = observer.Sky with { Labels = false } };
+            observer = observer with
+            {
+                Sky = observer.Sky with { Labels = false, Stars = ArchivedGeometry.StellarView is null && observer.Sky.Stars }
+            };
         PrepareGalacticSky(observer, snapshot, deltaT);
         bool available = DrawScene(observer, snapshot, deltaT);
+        DrawArchivedStars(ArchivedGeometry?.StellarView, observer.Epoch.ToJulianDate());
         if (_spaceSky is not null)
         {
             bool localSky = observer.Sky.Stars || observer.Sky.Labels || observer.Sky.EquatorialGrid || observer.Sky.Constellations;

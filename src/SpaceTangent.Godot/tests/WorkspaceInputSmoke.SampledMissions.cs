@@ -42,14 +42,15 @@ public partial class WorkspaceInputSmoke
                 "The original Dawn orbit must use Vesta as its center.");
             var accepted = Session.CaptureScenario(0);
             var world = Session.World;
-            string track = Path.Combine(local, "trajectories", "dawn-vesta-orbit.xyzv");
+            string track = Directory.EnumerateFiles(local, "dawn-vesta-orbit.xyzv", SearchOption.AllDirectories).Single();
             File.Move(track, track + ".missing");
             try
             {
                 await OpenAddOns();
                 await Click(Find<Button>("ReloadAddOns"));
                 await Until(() => _scene.LastAddonDiagnostic is not null, "Reporting the missing Dawn trajectory", 20);
-                Require(_scene.LastAddonDiagnostic?.Stage == AddonStage.Catalog && ReferenceEquals(world, Session.World),
+                Require(_scene.LastAddonDiagnostic is { Code: AddonIssue.MissingResource, File: { } missing } &&
+                    Path.GetFileName(missing) == Path.GetFileName(track) && ReferenceEquals(world, Session.World),
                     "A missing mission track must retain the last published world.");
                 RequireScenario(accepted, Session.CaptureScenario(0), "Rejected Dawn trajectory reload");
             }

@@ -84,6 +84,7 @@ public static class LegacyObserverProfiles
         sky = sky with
         {
             Labels = Flag(root, "Labels") ?? sky.Labels,
+            HideAtmospheres = Flag(root, "Atmospheres") is { } atmospheres ? !atmospheres : sky.HideAtmospheres,
             HideClouds = Flag(root, "Clouds") is { } clouds ? !clouds : sky.HideClouds,
             MinorBodyLabels = Flag(root, "MinorLabels") ?? sky.MinorBodyLabels,
             HideOrbits = Flag(root, "Orbits") is { } orbits ? !orbits : sky.HideOrbits,

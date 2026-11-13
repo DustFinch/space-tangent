@@ -92,7 +92,7 @@ internal partial class SimulationViewport
 
     internal (bool Visible, float Offset)? VenusCloudState => _worldAtmospheres.GetValueOrDefault(SolarSystemSample.VenusId)?.CloudState;
 
-    private void DrawWorldAtmospheres(WorldSnapshot snapshot, Vector3d sun, bool showClouds)
+    private void DrawWorldAtmospheres(WorldSnapshot snapshot, Vector3d sun, SkyLayerSettings sky)
     {
         foreach (var (id, atmosphere) in _worldAtmospheres)
         {
@@ -109,7 +109,7 @@ internal partial class SimulationViewport
                 if (SolarOccultation.VisibleFraction(direction, occluder, parentRadius + moon.RadiusKilometers + 1000) < 1)
                     radius = parentRadius;
             }
-            atmosphere.Update(direction, _navigationCamera.Position, snapshot.Epoch, showClouds, occluder, radius);
+            atmosphere.Update(direction, _navigationCamera.Position, snapshot.Epoch, !sky.HideAtmospheres, !sky.HideClouds, occluder, radius);
         }
     }
 
@@ -195,7 +195,7 @@ internal partial class SimulationViewport
             {
                 Vector3d toSun = snapshot.SolarSystem!.Value.Sun.PositionKilometers - state.PositionKilometers;
                 double distance = toSun.Length;
-                rings.Update(ToGodot(toSun / distance, 1), distance, oriented);
+                rings.Update(ToGodot(toSun / distance, 1), distance, oriented, !sky.HideAtmospheres);
             }
         }
         DrawSmallBodies(snapshot, pose, eyeOffset, units, sky, selection, project);

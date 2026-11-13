@@ -130,6 +130,7 @@ internal sealed partial class SurfaceProjection
         }
         _tanHalfField = (float)Math.Tan(fieldOfView * Degrees / 2);
         _material.SetShaderParameter("tan_half_field", _tanHalfField);
+        _material.SetShaderParameter("show_atmosphere", !sky.HideAtmospheres);
         _hideObserverClouds = sky.HideClouds;
         _material.SetShaderParameter("show_clouds", _cloudsEnabled && !_hideObserverClouds);
         _material.SetShaderParameter("observer", Convert(lighting.PositionKilometers));
@@ -145,7 +146,7 @@ internal sealed partial class SurfaceProjection
         Vector3d moon = moonOffset / moonOffset.Length;
         var moonSeen = observer.Conditions?.RefractDirection(moon, lighting.EastNorthUp.Z, observer.Site) ?? moon;
         _material.SetShaderParameter("moon_seen", Convert(moonSeen));
-        _material.SetShaderParameter("sky_glow", (float)(observer.Conditions?.ZenithGlow() ?? 0));
+        _material.SetShaderParameter("sky_glow", (float)(sky.HideAtmospheres ? 0 : observer.Conditions?.ZenithGlow() ?? 0));
         EclipseRendering.SetEarthShadow(_material, lighting, godotAxes: false);
         _material.SetShaderParameter("earth_angle", (float)lighting.EarthRotationRadians);
         _material.SetShaderParameter("earth_radius", (float)EarthSurfaceLighting.EarthRadiusKilometers);
@@ -161,7 +162,7 @@ internal sealed partial class SurfaceProjection
             float solarAltitude = (float)(lighting.SolarAltitudeRadians / Degrees);
             float moonRadius = MathF.Asin(MathF.Min(moonDiskScale * (float)(EarthSurfaceLighting.MoonRadiusKilometers / moonOffset.Length), .1f));
             _sky.ShowFrame(new(sample.Epoch, sky, selection, forward, right, cameraUp, _tanHalfField,
-                1 - Mathf.SmoothStep(-12, -4, solarAltitude), up, Convert(moonSeen), moonRadius,
+                sky.HideAtmospheres ? 1 : 1 - Mathf.SmoothStep(-12, -4, solarAltitude), up, Convert(moonSeen), moonRadius,
                 Conditions: observer.Conditions, Site: observer.Site, OpticalLimit: optics?.LimitingMagnitude()));
         }
         else

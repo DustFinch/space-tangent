@@ -91,7 +91,7 @@ internal sealed class PlanetRingRendering
         Atmosphere?.Hide();
     }
 
-    internal void Update(Vector3 sunDirection, double sunDistanceKilometers, bool bodyFixed)
+    internal void Update(Vector3 sunDirection, double sunDistanceKilometers, bool bodyFixed, bool showAtmosphere)
     {
         Basis rotation = _globe.Transform.Basis.Orthonormalized();
         Vector3 light = rotation.Inverse() * sunDirection;
@@ -103,7 +103,7 @@ internal sealed class PlanetRingRendering
         _surface.SetShaderParameter("cast_ring_shadows", visible);
         if (Atmosphere is { MaterialOverride: ShaderMaterial air } shell)
         {
-            shell.Visible = visible;
+            shell.Visible = visible && showAtmosphere;
             if (visible)
             {
                 air.SetShaderParameter("sun_in_body", light);

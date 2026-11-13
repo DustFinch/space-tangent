@@ -89,7 +89,7 @@ internal partial class SimulationViewport
         Vector3d eye = pose.AnchorKilometers + eyeOffset;
         DrawDeepSky(world, pose, sky, eye, units, project);
         DrawExoplanets(world, pose, snapshot, placementOffset, units, sky.Labels, project);
-        DrawDemoWorlds(pose, snapshot, units, !sky.HideClouds, project);
+        DrawDemoWorlds(pose, snapshot, units, sky, project);
         if (sky.Stars && (_fieldStars.Count != 0 || world.DistantStars is not null) && (eye - world.StellarOrigin).Length > StellarEntry.KilometersPerLightYear * .025)
             DrawSpatialField(eye, snapshot.Epoch, world, pose.Target);
     }

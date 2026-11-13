@@ -124,14 +124,14 @@ internal partial class SimulationViewport
         if (_earthOrbit is not null)
         {
             float projectedDistance = _navigationEarth.Position.DistanceTo(_navigationCamera.Position);
-            _earthOrbit.Update(solar, deltaT, _navigationEarth.Visible && _navigationEarth.Scale.X > projectedDistance * .004f, !sky.HideClouds);
+            _earthOrbit.Update(solar, deltaT, !sky.HideAtmospheres && _navigationEarth.Visible && _navigationEarth.Scale.X > projectedDistance * .004f, !sky.HideClouds);
         }
         PlaceBody(_navigationMoon, solar.Moon.PositionKilometers, SolarSystemSample.MoonId,
             SolarSystemSample.EarthId, .136, "c9c4b6");
         _navigationMoonMaterial.SetShaderParameter("sun_from_moon", ToGodot((solar.Sun - solar.Moon).PositionKilometers, 1));
         _navigationMoonMaterial.SetShaderParameter("earth_from_moon", ToGodot((solar.Earth - solar.Moon).PositionKilometers, 1));
         DrawPlanetGlobes(snapshot, pose, placement.OffsetKilometers, units, sky, selection, ProjectWithScale);
-        DrawWorldAtmospheres(snapshot, solar.Sun.PositionKilometers, !sky.HideClouds);
+        DrawWorldAtmospheres(snapshot, solar.Sun.PositionKilometers, sky);
         DrawStellarObjects(pose, snapshot, sky, placement.OffsetKilometers, units, ProjectWithScale);
         DrawExtrasolarOrbits(pose, snapshot, units, ProjectWithScale);
         DrawCompactObjects(snapshot, sky, units, ProjectWithScale);

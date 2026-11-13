@@ -30,6 +30,7 @@ uniform vec3 site_north;
 uniform vec3 site_east;
 uniform bool show_horizon_grid = false;
 uniform bool show_clouds = true;
+uniform bool show_atmosphere = true;
 uniform bool lunar_cloud_light = true;
 uniform int satellite_flare_count = 0;
 uniform vec4 satellite_flares[8];
@@ -108,12 +109,12 @@ void fragment() {
     vec3 background = ground ? vec3(0.010, 0.009, 0.008) : vec3(0.012, 0.018, 0.035);
 
     if (!ground && show_galactic_sky) {
-        float dark = 1.0 - smoothstep(-0.208, -0.087, dot(sun_dir, site_up));
+        float dark = show_atmosphere ? 1.0 - smoothstep(-0.208, -0.087, dot(sun_dir, site_up)) : 1.0;
         float contrast = dark / (1.0 + 64.0 * sky_glow);
         background += galactic_radiance(ray) * contrast;
     }
     if (!ground && show_survey) {
-        float dark = 1.0 - smoothstep(-0.208, -0.087, dot(sun_dir, site_up));
+        float dark = show_atmosphere ? 1.0 - smoothstep(-0.208, -0.087, dot(sun_dir, site_up)) : 1.0;
         background += texture(survey_view, UV).rgb * (survey_brightness * dark / (1.0 + 64.0 * sky_glow));
     }
     if (!ground && dot(moon_seen, site_up) > 0.0) {
@@ -151,8 +152,11 @@ void fragment() {
         }
         float cloud_value = (0.045 + 0.88 * sunlight + 1.65 * moonlight) * (1.0 - 0.40 * coverage);
         if (coverage > 0.0) {
-            air_integrate(observer, ray, sun_dir, earth_radius, 0.0, cloud_distance, 12, view_column, air_radiance);
-            cloud_radiance = air_compose(vec3(cloud_value), view_column, air_radiance);
+            cloud_radiance = vec3(cloud_value);
+            if (show_atmosphere) {
+                air_integrate(observer, ray, sun_dir, earth_radius, 0.0, cloud_distance, 12, view_column, air_radiance);
+                cloud_radiance = air_compose(cloud_radiance, view_column, air_radiance);
+            }
         }
     }
 
@@ -161,8 +165,11 @@ void fragment() {
         sky_distance = ground_offset / (-eye_projection + sqrt(ground_discriminant));
     }
     float start = coverage > 0.0 ? cloud_distance : 0.0;
-    air_integrate(observer, ray, sun_dir, earth_radius, start, sky_distance, 20, view_column, air_radiance);
-    vec3 sky = air_compose(background, view_column, air_radiance);
+    vec3 sky = background;
+    if (show_atmosphere) {
+        air_integrate(observer, ray, sun_dir, earth_radius, start, sky_distance, 20, view_column, air_radiance);
+        sky = air_compose(background, view_column, air_radiance);
+    }
     vec3 composite = mix(sky, cloud_radiance, coverage);
     if (!ground && sky_glow > 0.0) {
         float night = 1.0 - smoothstep(-0.208, -0.087, dot(sun_dir, site_up));

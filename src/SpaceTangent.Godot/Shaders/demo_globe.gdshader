@@ -12,6 +12,7 @@ uniform sampler2D rings_map : filter_linear_mipmap, repeat_disable;
 uniform vec3 fallback_color;
 uniform bool has_maps;
 uniform bool has_clouds;
+uniform bool draw_air = true;
 uniform bool has_emission;
 uniform bool has_rings;
 uniform float cloud_height;
@@ -127,10 +128,12 @@ void fragment() {
             max(dot(cloud_normal, second_direction), 0.0) * second_irradiance;
         color = mix(color, 0.82 * light + vec3(0.008), cover * 0.9);
     }
-    vec3 transmission, radiance;
-    vec3 segment = air_surface - air_eye;
-    demo_air(air_eye * demo_radius, normalize(segment), use_terrain ? length(segment) * demo_radius : 0.0,
-        transmission, radiance);
-    color = color * transmission + radiance;
+    if (draw_air) {
+        vec3 transmission, radiance;
+        vec3 segment = air_surface - air_eye;
+        demo_air(air_eye * demo_radius, normalize(segment), use_terrain ? length(segment) * demo_radius : 0.0,
+            transmission, radiance);
+        color = color * transmission + radiance;
+    }
     ALBEDO = OUTPUT_IS_SRGB ? air_linear_srgb(color) : color;
 }

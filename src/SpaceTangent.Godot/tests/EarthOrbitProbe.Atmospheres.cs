@@ -60,6 +60,32 @@ public partial class EarthOrbitProbe
                     !scene.Renderer(0).WorldAtmosphereActive(id, lookup: false))
                     throw new InvalidOperationException("The archived Clouds preference must hide only the cloud deck in its observer.");
                 GD.Print("Cloud settings GPU: original Venus cloud deck independent of atmosphere and second view after reload.");
+                File.WriteAllText(profilePath, """{"Site":{},"Atmospheres":false}""");
+                var noAir = LegacyObserverProfiles.Read(profilePath, clear, session.DeltaT).Observer;
+                string airPath = Path.Combine(directory, "venus-independent-atmospheres.stscene");
+                ScenarioFile.Save(airPath, new([noAir, clear], false, 0, 0, session.DeltaT));
+                if (!scene.LoadScenario(airPath) || !await scene.ReloadAddOns() ||
+                    scene.Session![0] != noAir || scene.Session[1] != clear ||
+                    scene.Renderer(0).WorldAtmosphereActive(id, lookup: false) ||
+                    !scene.Renderer(1).WorldAtmosphereActive(id, lookup: false) ||
+                    scene.Renderer(0).VenusCloudState is not { Visible: true } ||
+                    scene.Renderer(1).VenusCloudState is not { Visible: true })
+                    throw new InvalidOperationException("The archived Atmospheres preference must hide only one atmosphere and preserve both cloud decks.");
+                if (DisplayServer.GetName() != "headless")
+                {
+                    await ToSignal(GetTree(), SceneTree.SignalName.ProcessFrame);
+                    await ToSignal(RenderingServer.Singleton, RenderingServer.SignalName.FramePostDraw);
+                    using var withoutAir = scene.Renderer(0).GetViewport().GetTexture().GetImage();
+                    using var withAir = scene.Renderer(1).GetViewport().GetTexture().GetImage();
+                    var center0 = withoutAir.GetPixel(withoutAir.GetWidth() / 2, 3 * withoutAir.GetHeight() / 4);
+                    var center1 = withAir.GetPixel(withAir.GetWidth() / 2, 3 * withAir.GetHeight() / 4);
+                    if (Math.Abs(center0.R - center1.R) + Math.Abs(center0.G - center1.G) + Math.Abs(center0.B - center1.B) < .02)
+                        throw new InvalidOperationException("The saved atmosphere preference must change the rendered Venus cloud color.");
+                    using var comparison = GetViewport().GetTexture().GetImage();
+                    if (comparison.SavePng(Path.ChangeExtension(airPath, ".png")) != Error.Ok)
+                        throw new IOException("Could not save the Venus atmosphere comparison.");
+                }
+                GD.Print("Atmosphere settings GPU: original Venus atmosphere hidden in one restored view with both cloud decks visible.");
                 var later = epoch.AddSeconds(86400);
                 if (!scene.Session.World.Graph.Evaluate(later).TryState(id, out var laterState))
                     throw new InvalidOperationException("Venus must have a state one day later.");

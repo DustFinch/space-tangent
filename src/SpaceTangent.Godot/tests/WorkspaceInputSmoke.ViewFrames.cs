@@ -92,7 +92,13 @@ public partial class WorkspaceInputSmoke
         await Click(Find<SubViewportContainer>("ViewCanvas1"));
         await Click(Find<Button>("FreeFlight"));
         var at = Session[1].Navigation;
-        await KeyPress(Key.W);
+        using (var down = new InputEventKey { Keycode = Key.W, Pressed = true })
+        using (var up = new InputEventKey { Keycode = Key.W })
+        {
+            Tree.Root.PushInput(down, inLocalCoords: true);
+            _scene._Process(.05);
+            Tree.Root.PushInput(up, inLocalCoords: true);
+        }
         Require(Session[1].Navigation is { Tracking: false, Placement.BodyFixed: false } moved &&
             moved.AnchorKilometers != at!.Value.AnchorKilometers, "A free-flight key must translate the active camera.");
         NavigationCamera freeStart = Session[1].Navigation!.Value;

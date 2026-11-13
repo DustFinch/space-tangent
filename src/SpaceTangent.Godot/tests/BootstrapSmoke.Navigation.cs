@@ -221,6 +221,43 @@ public partial class BootstrapSmoke
         Require(session[0].Navigation == atStop && session[1] == lunar,
             "Esc must stop both inertial motions at their current pose without changing the second view.");
         session.RestoreScenario(beforeInertia);
+        session.SelectObject(0, moon);
+        var freeOrigin = session.CaptureScenario(0);
+        var eye = session[0].Navigation!.Value;
+        var moonSnapshot = session.World.Graph.Evaluate(session[0].Epoch);
+        Require(moonSnapshot.TryState(moon, out var moonPosition), "The Moon must be available for free flight.");
+        double step = Math.Clamp((moonPosition.PositionKilometers - eye.AnchorKilometers).Length * .2, 1, 1e12) * .05;
+        using var forward = new InputEventKey { Keycode = Key.W, Pressed = true };
+        using var strafe = new InputEventKey { Keycode = Key.D, Pressed = true };
+        using var accelerate = new InputEventKey { Keycode = Key.Shift, Pressed = true };
+        using var releaseForward = new InputEventKey { Keycode = Key.W };
+        using var releaseStrafe = new InputEventKey { Keycode = Key.D };
+        using var releaseShift = new InputEventKey { Keycode = Key.Shift };
+        scene._UnhandledKeyInput(forward);
+        scene._Process(.05);
+        var straight = session[0].Navigation!.Value;
+        Require(((straight.AnchorKilometers - eye.AnchorKilometers) - eye.Placement!.Value.Forward * step).Length < 1e-6,
+            "Free flight must move at the archived distance-dependent rate.");
+        scene._Input(releaseForward);
+        scene._Process(.05);
+        Require(session[0].Navigation == straight, "Free flight must stop when the movement key is released.");
+        session.RestoreScenario(freeOrigin);
+        scene._UnhandledKeyInput(forward);
+        scene._UnhandledKeyInput(strafe);
+        scene._Process(.05);
+        var diagonal = session[0].Navigation!.Value;
+        Require(Math.Abs((diagonal.AnchorKilometers - eye.AnchorKilometers).Length - step) < 1e-6,
+            "Diagonal movement must not increase speed.");
+        session.RestoreScenario(freeOrigin);
+        scene._Input(accelerate);
+        scene._Process(.05);
+        var fast = session[0].Navigation!.Value;
+        Require(Math.Abs((fast.AnchorKilometers - eye.AnchorKilometers).Length - 5 * step) < 1e-6 && session[1] == lunar,
+            "Shift must increase the held-key speed fivefold while the other observer remains unchanged.");
+        scene._Input(releaseShift);
+        scene._Input(releaseForward);
+        scene._Input(releaseStrafe);
+        session.RestoreScenario(beforeInertia);
         session.SetFieldOfView(0, priorField);
         JulianInstant beforeJason = session[0].Epoch;
         Select("26997");

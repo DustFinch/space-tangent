@@ -27,6 +27,8 @@ public partial class SolarSystemScene : Control
     }
 
     private readonly List<ViewControls> _views = [];
+    private readonly HashSet<Key> _freeFlightKeys = [];
+    private bool _freeFlightBoost;
     private AddonGeneration? _addOns;
     private LocalAddonSettings _localAddons = LocalAddonSettings.Empty;
     private LocalAddonSettingsFile _localAddonFile = null!;
@@ -489,6 +491,14 @@ public partial class SolarSystemScene : Control
             foreach (var view in _views)
                 view.DraggingCamera = false;
 
+        if (input is InputEventKey flightKey)
+        {
+            _freeFlightBoost = FreeFlightKey(flightKey) == Key.Shift ? flightKey.Pressed : flightKey.ShiftPressed;
+            if (!flightKey.Pressed)
+                _freeFlightKeys.Remove(FreeFlightKey(flightKey));
+            if (flightKey.CtrlPressed || flightKey.AltPressed || flightKey.MetaPressed)
+                _freeFlightKeys.Clear();
+        }
         if (input is InputEventKey shipKey && HandleShipInput(shipKey))
         {
             GetViewport().SetInputAsHandled();
@@ -620,9 +630,9 @@ public partial class SolarSystemScene : Control
                 }
                 else if (_script is { Finished: false } || _scriptMedia?.Active == true)
                     StopScript();
-                else if (StopCameraMotion(_active))
+                else if (StopCameraMotion(_active, out bool stoppedFlight))
                 {
-                    _status.Text = "Camera motion stopped.";
+                    _status.Text = stoppedFlight ? "Flight stopped." : "Camera motion stopped.";
                     Refresh();
                 }
                 else if (!ExitShip())
@@ -656,6 +666,8 @@ public partial class SolarSystemScene : Control
         if (what == NotificationApplicationFocusOut)
         {
             _shipKeys.Clear();
+            _freeFlightKeys.Clear();
+            _freeFlightBoost = false;
             foreach (var view in _views)
                 ClearCameraInertia(view);
         }
@@ -670,7 +682,10 @@ public partial class SolarSystemScene : Control
         FlyShip(delta);
         bool changed = Session?.Tick(delta) == true;
         if (Session is not null)
+        {
             changed |= StepCameraInertia(delta);
+            changed |= StepFreeFlight(delta);
+        }
         changed |= _demoSurfaces.PublishReady();
         foreach (var view in _views)
             changed |= view.Renderer.PublishDemoTerrain();
@@ -858,7 +873,7 @@ public partial class SolarSystemScene : Control
     private void StartFreeFlight()
     {
         Session!.StartFreeFlight(_active);
-        _status.Text = "Free flight · WASD to move, R/F for height, right-drag to turn.";
+        _status.Text = "Free flight · WASD to move, Q/E or R/F for height, Shift to accelerate, right-drag to turn.";
         Refresh();
     }
 
@@ -934,20 +949,34 @@ public partial class SolarSystemScene : Control
     {
         if (key.CtrlPressed || key.AltPressed || key.MetaPressed || GetViewport().GuiGetFocusOwner() is LineEdit)
             return false;
-        (double right, double up, double forward) = key.Keycode switch
-        {
-            Key.A => (-1, 0, 0),
-            Key.D => (1, 0, 0),
-            Key.W => (0, 0, 1),
-            Key.S => (0, 0, -1),
-            Key.R => (0, 1, 0),
-            Key.F => (0, -1, 0),
-            _ => (0, 0, 0)
-        };
-        if ((right, up, forward) == (0d, 0d, 0d) || !Session!.MoveFreeFlight(_active, right, up, forward))
+        Key movement = FreeFlightKey(key);
+        if (movement is not (Key.W or Key.A or Key.S or Key.D or Key.Q or Key.E or Key.R or Key.F) ||
+            !Session!.CanMoveFreeFlight(_active))
             return false;
-        Refresh();
+        if (!key.Echo)
+            _freeFlightKeys.Add(movement);
+        _freeFlightBoost = key.ShiftPressed;
         return true;
+    }
+
+    private static Key FreeFlightKey(InputEventKey key) => key.PhysicalKeycode == Key.None ? key.Keycode : key.PhysicalKeycode;
+
+    private bool StepFreeFlight(double delta)
+    {
+        if (_freeFlightKeys.Count == 0)
+            return false;
+        var session = Session!;
+        if (!session.CanMoveFreeFlight(_active) || GetViewport().GuiGetFocusOwner() is LineEdit)
+        {
+            _freeFlightKeys.Clear();
+            return false;
+        }
+        int right = (Held(Key.D) ? 1 : 0) - (Held(Key.A) ? 1 : 0);
+        int up = (Held(Key.E) || Held(Key.R) ? 1 : 0) - (Held(Key.Q) || Held(Key.F) ? 1 : 0);
+        int forward = (Held(Key.W) ? 1 : 0) - (Held(Key.S) ? 1 : 0);
+        return session.MoveFreeFlight(_active, right, up, forward, delta, _freeFlightBoost);
+
+        bool Held(Key key) => _freeFlightKeys.Contains(key);
     }
 
     private void UpdateViewLayout()
@@ -1196,6 +1225,7 @@ public partial class SolarSystemScene : Control
         ObserverLayout previousLayout = Session!.Layout;
         ViewSplit previousDirection = Session.SplitLayout;
         Session.RestoreScenario(scenario);
+        _freeFlightKeys.Clear();
         foreach (var view in _views)
             ClearCameraInertia(view);
         ResetPerspectiveScale();
@@ -1501,13 +1531,14 @@ public partial class SolarSystemScene : Control
         return changed;
     }
 
-    private bool StopCameraMotion(int index)
+    private bool StopCameraMotion(int index, out bool stoppedFlight)
     {
         var controls = _views[index];
-        bool stoppedFlight = Session!.CancelFlight(index);
-        bool moving = controls.DraggingCamera || controls.CameraDragVelocity.LengthSquared() > 1 ||
+        stoppedFlight = Session!.CancelFlight(index);
+        bool moving = _freeFlightKeys.Count > 0 || controls.DraggingCamera || controls.CameraDragVelocity.LengthSquared() > 1 ||
             Math.Abs(controls.CameraDollyRate) > .001;
         ClearCameraInertia(controls);
+        _freeFlightKeys.Clear();
         return stoppedFlight || moving;
     }
 
@@ -1674,6 +1705,7 @@ public partial class SolarSystemScene : Control
         if (_active == index)
             return;
         _shipKeys.Clear();
+        _freeFlightKeys.Clear();
         _active = index;
         UpdateActiveFrame();
     }

@@ -26,16 +26,25 @@ public sealed partial class SimulationSession
         };
     }
 
-    public bool MoveFreeFlight(int view, double right, double up, double forward)
+    public bool CanMoveFreeFlight(int view) => !InShip(view) && !IsFlying(view) &&
+        _views[view].Navigation is { Tracking: false, Placement.BodyFixed: false };
+
+    public bool MoveFreeFlight(int view, double right, double up, double forward, double elapsed, bool boost)
     {
-        if (!double.IsFinite(right) || !double.IsFinite(up) || !double.IsFinite(forward))
+        double length = new Vector3d(right, up, forward).Length;
+        if (!(length > 0) || !double.IsFinite(length) || !(elapsed > 0) || !CanMoveFreeFlight(view))
             return false;
         ObserverView observer = _views[view];
         if (observer.Navigation is not { Tracking: false, Placement: { BodyFixed: false } placement } camera)
             return false;
+        double distance = camera.RangeKilometers;
+        if (observer.Selection is { } target &&
+            World.TryNavigationState(target, World.Graph.Evaluate(observer.Epoch), out var state, DeltaT))
+            distance = ((state.PositionKilometers - camera.AnchorKilometers) - placement.OffsetKilometers).Length;
+        double speed = Math.Clamp(distance * .2, 1, 1e12);
         Vector3d axisRight = Vector3d.Cross(placement.Forward, placement.Up);
         Vector3d displacement = (axisRight * right + placement.Up * up + placement.Forward * forward) *
-            (camera.RangeKilometers * .13);
+            (speed * Math.Min(elapsed, .25) * (boost ? 5 : 1) / length);
         NavigationCamera next = camera with { AnchorKilometers = camera.AnchorKilometers + displacement };
         if (!next.IsValid())
             return false;

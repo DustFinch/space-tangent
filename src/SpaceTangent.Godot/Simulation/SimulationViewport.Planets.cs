@@ -51,8 +51,9 @@ internal partial class SimulationViewport
 
     private Texture2D? _venusClouds;
 
-    internal void SetPlanetTextures(PlanetTextures textures)
+    internal void SetPlanetTextures(PlanetTextures textures, Texture2DArray? groundMaps = null)
     {
+        _surface?.SetPlanetMaps(textures.Surfaces, groundMaps);
         _venusClouds = textures.VenusClouds;
         _marsSurface = textures.Surfaces.GetValueOrDefault(PlanetCatalogue.MarsId);
         foreach (var (id, texture) in textures.Surfaces)

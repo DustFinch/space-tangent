@@ -43,6 +43,7 @@ public partial class SolarSystemScene : Control
     private EarthOrbitTextures? _earthOrbitTextures;
     private PlanetTextures? _planetTextures;
     private Texture2D? _groundRingAtlas;
+    private Texture2DArray? _groundSurfaceMaps;
     private IReadOnlyDictionary<ObjectId, ArrayMesh>? _planetMoonModels;
     private readonly Dictionary<string, Texture2D> _exoplanetTextures = new(StringComparer.OrdinalIgnoreCase);
     private IReadOnlyDictionary<ObjectId, OrbitAtmosphereTextures> _orbitAtmospheres =
@@ -182,6 +183,7 @@ public partial class SolarSystemScene : Control
             _earthOrbitTextures = EarthOrbitTextures.Load(_surfaceTextures);
             _planetTextures = PlanetTextures.Load();
             _groundRingAtlas = _planetTextures.CreateGroundRingAtlas();
+            _groundSurfaceMaps = _planetTextures.CreateGroundSurfaceArray();
             _orbitAtmospheres = OrbitAtmosphereTextures.LoadAll();
             _surfaceTiles = BodyTileTextures.Load();
             string maps = LocalDataPaths.Find("SPACETANGENT_EXOPLANET_TEXTURES", "sky/exoplanet-textures", directory: true);
@@ -1453,7 +1455,7 @@ public partial class SolarSystemScene : Control
         if (_earthOrbitTextures is { } earthOrbit)
             renderer.SetEarthOrbitTextures(earthOrbit, _orbitAtmospheres.GetValueOrDefault(SolarSystemSample.EarthId));
         if (_planetTextures is { } planets)
-            renderer.SetPlanetTextures(planets);
+            renderer.SetPlanetTextures(planets, _groundSurfaceMaps);
         if (_planetMoonModels is { } models)
             renderer.SetPlanetMoonModels(models);
         renderer.SetWorldAtmospheres(_orbitAtmospheres, _surfaceTiles);

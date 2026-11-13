@@ -40,6 +40,9 @@ uniform vec3 ground_planet_sun[7];
 uniform vec3 ground_planet_color[7];
 uniform vec4 ground_planet_poles[7];
 uniform vec3 ground_planet_rings[7];
+uniform vec4 ground_planet_meridians[7];
+uniform sampler2DArray ground_planet_maps : filter_linear_mipmap, repeat_enable;
+uniform bool use_ground_planet_maps;
 uniform sampler2D ground_ring_atlas : source_color, filter_linear, repeat_disable;
 
 float cloud_hash(vec3 lattice) {
@@ -139,7 +142,21 @@ vec3 planet_discs(vec3 ray, vec3 background) {
         if (coverage > 0.0) {
             vec3 normal = offset + globe_depth * disc.xyz;
             float sunlight = max(0.0, dot(normal, ground_planet_sun[index]));
-            background = mix(background, ground_planet_color[index] * (0.015 + 1.6 * sunlight), coverage);
+            vec4 meridian = ground_planet_meridians[index];
+            vec3 color = ground_planet_color[index];
+            if (use_ground_planet_maps && meridian.w >= 0.0 && disc.w >= 1.5 * pixel_angle) {
+                vec3 pole = ground_planet_poles[index].xyz;
+                vec3 east = cross(pole, meridian.xyz);
+                float longitude = atan(dot(normal, east), dot(normal, meridian.xyz));
+                float latitude = asin(clamp(dot(normal, pole), -1.0, 1.0));
+                vec2 uv = vec2(0.5 + longitude / TAU, clamp(0.5 - latitude / PI, 0.002, 0.998));
+                float lod = max(0.0, log2(512.0 * pixel_angle / (TAU * disc.w)));
+                color = air_srgb_to_linear(textureLod(ground_planet_maps, vec3(uv, meridian.w), lod).rgb);
+                color = air_linear_to_srgb(color * (0.015 + 1.6 * sunlight));
+            } else {
+                color *= 0.015 + 1.6 * sunlight;
+            }
+            background = mix(background, color, coverage);
         }
         if (angular_distance <= disc.w * ground_planet_rings[index].y && disc.w >= 0.5 * pixel_angle) {
             background = ground_ring(disc.xyz, transverse / disc.w, ground_planet_poles[index],

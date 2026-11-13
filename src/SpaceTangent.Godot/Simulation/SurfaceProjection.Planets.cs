@@ -18,6 +18,18 @@ internal sealed partial class SurfaceProjection
     private readonly Vector3[] _planetRings = new Vector3[MaximumGroundPlanets];
     private static readonly int[] GroundRingRows = PlanetCatalogue.Planets
         .Select(planet => Array.FindIndex(PlanetRingRendering.Profiles, profile => profile.Id == planet.Id)).ToArray();
+    private readonly Vector4[] _planetMeridians = new Vector4[MaximumGroundPlanets];
+    private readonly bool[] _hasPlanetMaps = new bool[PlanetCatalogue.Planets.Count];
+
+    internal void SetPlanetMaps(IReadOnlyDictionary<ObjectId, Texture2D> textures, Texture2DArray? maps)
+    {
+        for (int index = 0; index < _hasPlanetMaps.Length; index++)
+            _hasPlanetMaps[index] = maps is not null && textures.ContainsKey(PlanetCatalogue.Planets[index].Id);
+        if (maps is not null)
+            _material.SetShaderParameter("ground_planet_maps", maps);
+        _material.SetShaderParameter("use_ground_planet_maps", maps is not null);
+    }
+
     private readonly Vector3[] _planetColors = new Vector3[MaximumGroundPlanets];
     private static readonly Color[] GroundPlanetColors = PlanetCatalogue.Planets
         .Select(planet => new Color(planet.Color).SrgbToLinear()).ToArray();
@@ -45,15 +57,24 @@ internal sealed partial class SurfaceProjection
                 int ringRow = _hasGroundRings ? GroundRingRows[index] : -1;
                 float extent = radius;
                 Vector3 pole = Vector3.Zero;
+                Vector4 meridian = new(0, 0, 0, -1);
                 var rings = Vector3.Zero;
-                if (ringRow >= 0 && snapshot.TryOrientation(planet.Id, out var rotation))
+                if (snapshot.TryOrientation(planet.Id, out var rotation))
+                {
+                    pole = Convert(rotation.ToWorld.Z);
+                    if (_hasPlanetMaps[index])
+                    {
+                        var prime = Convert(rotation.ToWorld.X);
+                        meridian = new(prime.X, prime.Y, prime.Z, index);
+                    }
+                }
+                if (ringRow >= 0 && pole.LengthSquared() > .5f)
                 {
                     var profile = PlanetRingRendering.Profiles[ringRow];
                     rings = new(profile.InnerKilometers / (float)planet.RadiusKilometers,
                         profile.OuterKilometers / (float)planet.RadiusKilometers,
                         (ringRow + .5f) / PlanetRingRendering.Profiles.Length);
                     extent *= rings.Y;
-                    pole = Convert(rotation.ToWorld.Z);
                 }
                 if (Vector3d.Dot(apparent, lighting.EastNorthUp.Z) < -extent)
                     continue;
@@ -70,6 +91,7 @@ internal sealed partial class SurfaceProjection
                 _planetIllumination[count] = Convert(sun / sun.Length);
                 _planetPoles[count] = new(pole.X, pole.Y, pole.Z, (float)(planet.PolarRadiusKilometers / planet.RadiusKilometers));
                 _planetRings[count] = rings;
+                _planetMeridians[count] = meridian;
                 _planetColors[count++] = new(color.R, color.G, color.B);
             }
         }
@@ -81,6 +103,7 @@ internal sealed partial class SurfaceProjection
             _material.SetShaderParameter("ground_planet_color", _planetColors);
             _material.SetShaderParameter("ground_planet_poles", _planetPoles);
             _material.SetShaderParameter("ground_planet_rings", _planetRings);
+            _material.SetShaderParameter("ground_planet_meridians", _planetMeridians);
         }
     }
 }

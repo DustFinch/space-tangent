@@ -151,6 +151,36 @@ public partial class EarthOrbitProbe
             if (ringPixels < 12)
                 throw new InvalidOperationException($"Expected the original rings outside Saturn's globe, got {ringPixels} pixels.");
             GD.Print($"Ground Saturn rings GPU: {ringPixels} illuminated ring pixels outside the disc at Paranal.");
+            var material = scene.Renderer(0).GetChildren().OfType<CanvasLayer>()
+                .SelectMany(layer => layer.GetChildren().OfType<ColorRect>())
+                .Select(rect => rect.Material).OfType<ShaderMaterial>()
+                .Single(shader => shader.Shader.ResourcePath.EndsWith("/earth_observer.gdshader", StringComparison.Ordinal));
+            if (material.GetShaderParameter("ground_planet_maps").AsGodotObject() is not Texture2DArray maps ||
+                maps.GetLayers() != PlanetCatalogue.Planets.Count)
+                throw new InvalidOperationException("The ground view must bind the original planetary maps.");
+            material.SetShaderParameter("use_ground_planet_maps", false);
+            try
+            {
+                await ToSignal(GetTree(), SceneTree.SignalName.ProcessFrame);
+                await ToSignal(RenderingServer.Singleton, RenderingServer.SignalName.FramePostDraw);
+                using var flat = scene.Renderer(0).GetViewport().GetTexture().GetImage();
+                int changed = 0;
+                for (int y = center.Y - 50; y < center.Y + 50; y++)
+                for (int x = center.X - 50; x < center.X + 50; x++)
+                {
+                    double dx = x + .5 - image.GetWidth() * .5, dy = y + .5 - image.GetHeight() * .5;
+                    if (dx * dx + dy * dy < .81 * radius * radius &&
+                        Math.Abs(image.GetPixel(x, y).R - flat.GetPixel(x, y).R) > .03)
+                        changed++;
+                }
+                if (flat.SavePng(Path.Combine(directory, "paranal-saturn-without-map.png")) != Error.Ok || changed < 25)
+                    throw new InvalidOperationException($"Expected the original Saturn surface to change the disc, got {changed} pixels.");
+                GD.Print($"Ground Saturn texture GPU: {changed} changed interior pixels with the same pose and rings.");
+            }
+            finally
+            {
+                material.SetShaderParameter("use_ground_planet_maps", true);
+            }
             return;
         }
         throw new InvalidOperationException("No dark Saturn observation was found at Paranal.");

@@ -26,6 +26,38 @@ internal sealed record PlanetTextures(IReadOnlyDictionary<ObjectId, Texture2D> S
         return new(surfaces, rings, Read(root, "venus-clouds.jpg"));
     }
 
+    internal Texture2DArray? CreateGroundSurfaceArray()
+    {
+        const int width = 512, height = 256;
+        var maps = new global::Godot.Collections.Array<Image>();
+        try
+        {
+            foreach (var planet in PlanetCatalogue.Planets)
+            {
+                var map = Surfaces.TryGetValue(planet.Id, out var texture)
+                    ? texture.GetImage() : Image.CreateEmpty(width, height, false, Image.Format.Rgb8);
+                maps.Add(map);
+                if (map.IsCompressed() && map.Decompress() != Error.Ok)
+                    throw new InvalidDataException($"Could not decompress the ground map for {planet.Name}.");
+                map.ClearMipmaps();
+                map.Convert(Image.Format.Rgb8);
+                if (map.GetWidth() != width || map.GetHeight() != height)
+                    map.Resize(width, height, Image.Interpolation.Lanczos);
+                map.GenerateMipmaps();
+            }
+            var array = new Texture2DArray();
+            if (array.CreateFromImages(maps) == Error.Ok)
+                return array;
+            array.Dispose();
+            return null;
+        }
+        finally
+        {
+            foreach (var map in maps)
+                map.Dispose();
+        }
+    }
+
     internal Texture2D? CreateGroundRingAtlas()
     {
         if (Rings.Count == 0)

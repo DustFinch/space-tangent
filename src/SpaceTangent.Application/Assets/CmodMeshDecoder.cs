@@ -14,8 +14,8 @@ public static partial class CmodMeshDecoder
     public static DecodedScienceModel Decode(string root, string path, CancellationToken cancellation = default) =>
         AddonDiagnostics.Read(AddonStage.Mesh, path, () => Read(root, path, nativeBody: false, cancellation));
 
-    public static DecodedScienceModel DecodeForTriangleExport(string root, string path) =>
-        AddonDiagnostics.Read(AddonStage.Mesh, path, () => Read(root, path, nativeBody: false,
+    public static DecodedScienceModel DecodeForTriangleExport(string root, string path, bool nativeBody = false) =>
+        AddonDiagnostics.Read(AddonStage.Mesh, path, () => Read(root, path, nativeBody,
             CancellationToken.None, requireTriangles: true));
 
     public static DecodedScienceModel DecodeNativeBody(string root, string path, CancellationToken cancellation = default) =>

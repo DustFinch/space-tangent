@@ -29,6 +29,25 @@ public sealed class PlanetMoonModelTests
                 Assert.Equal(File.ReadAllBytes(Path.Combine(source, "phobos-normals.dds")),
                     original.Textures[a.Material.NormalTexture!].ToArray());
                 Assert.Null(b.Material.NormalTexture);
+
+                string file = Path.GetTempFileName();
+                try
+                {
+                    var native = CmodMeshDecoder.DecodeForTriangleExport(source, Path.Combine(source, name + ".cmod"), nativeBody: true);
+                    using (var output = File.Create(file))
+                        PackedModelWriter.Write(native, output);
+                    var exported = PackedModelDecoder.Decode(file);
+                    var surface = Assert.Single(exported.Surfaces);
+                    Assert.Equal(a.Positions.ToArray(), surface.Positions.ToArray());
+                    Assert.Equal(a.TextureCoordinates.ToArray(), surface.TextureCoordinates.ToArray());
+                    Assert.NotNull(surface.Material.NormalTexture);
+                    Assert.Equal(original.Textures[a.Material.NormalTexture!].ToArray(),
+                        exported.Textures[surface.Material.NormalTexture!].ToArray());
+                }
+                finally
+                {
+                    File.Delete(file);
+                }
             }
             else
             {

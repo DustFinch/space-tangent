@@ -11,7 +11,7 @@ public partial class EarthOrbitProbe
 {
     private async Task ExerciseMarsMoonModels(SolarSystemScene scene, JulianInstant epoch, string directory)
     {
-        if (System.Environment.GetEnvironmentVariable("SPACETANGENT_MOON_MODELS_GPU") != "1")
+        if (System.Environment.GetEnvironmentVariable("SPACETANGENT_MOON_MODELS_GPU") is not ("1" or "only"))
             return;
         var session = scene.Session!;
         var snapshot = session.World.Graph.Evaluate(epoch);
@@ -24,8 +24,8 @@ public partial class EarthOrbitProbe
         if (!scene.LoadScenario(path) || !await scene.ReloadAddOns() || session[0] != a || session[1] != b)
             throw new InvalidOperationException("The original Mars moon views did not restore.");
 
-        bool normalSource = System.Environment.GetEnvironmentVariable("SPACETANGENT_MOON_MODELS_NATIVE") == "1";
-        Check(0, phobos, 49_152, a.Navigation!.Value.RangeKilometers, normalSource, false, 26.169);
+        bool expectNormal = System.Environment.GetEnvironmentVariable("SPACETANGENT_MOON_MODELS_NATIVE") == "1";
+        Check(0, phobos, 49_152, a.Navigation!.Value.RangeKilometers, expectNormal, false, 26.169);
         Check(1, deimos, 5_040, b.Navigation!.Value.RangeKilometers, false, true, 16.014);
         await ToSignal(GetTree(), SceneTree.SignalName.ProcessFrame);
         await ToSignal(RenderingServer.Singleton, RenderingServer.SignalName.FramePostDraw);

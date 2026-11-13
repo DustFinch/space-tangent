@@ -2,9 +2,10 @@
 using SpaceTangent.Application.Assets;
 using SpaceTangent.Core.Addons;
 
-if (args is not ["model", var input, var output, .. var options] || options is not ([] or ["--root", _]))
+if (args is not ["model", var input, var output, .. var options] ||
+    options is not ([] or ["--native-body"] or ["--root", _] or ["--root", _, "--native-body"]))
 {
-    Console.Error.WriteLine("Usage: model <input> <out.glb> [--root <add-on folder>]");
+    Console.Error.WriteLine("Usage: model <input> <out.glb> [--root <add-on folder>] [--native-body]");
     return 2;
 }
 
@@ -12,7 +13,11 @@ try
 {
     string source = Path.GetFullPath(input);
     string target = Path.GetFullPath(output);
-    string root = options.Length == 0 ? Path.GetDirectoryName(source)! : Path.GetFullPath(options[1]);
+    string root = options is ["--root", var folder, ..] ? Path.GetFullPath(folder) : Path.GetDirectoryName(source)!;
+    bool nativeBody = options is ["--native-body"] or ["--root", _, "--native-body"];
+    string extension = Path.GetExtension(source).ToLowerInvariant();
+    if (nativeBody && extension != ".cmod")
+        throw new NotSupportedException("--native-body applies to CMOD input.");
     string relative = Path.GetRelativePath(root, source);
     if (Path.IsPathRooted(relative) || relative.StartsWith(".." + Path.DirectorySeparatorChar, StringComparison.Ordinal))
         throw new InvalidDataException("The input model must be inside its add-on root.");
@@ -21,10 +26,10 @@ try
     if (Path.Exists(target))
         throw new IOException("The output already exists.");
 
-    DecodedScienceModel model = Path.GetExtension(source).ToLowerInvariant() switch
+    DecodedScienceModel model = extension switch
     {
         ".obj" => ScienceModelDecoder.Decode(source),
-        ".cmod" => CmodMeshDecoder.DecodeForTriangleExport(root, source),
+        ".cmod" => CmodMeshDecoder.DecodeForTriangleExport(root, source, nativeBody),
         ".cms" => DisplacedSphereDecoder.Decode(source),
         ".3ds" => StudioMeshDecoder.Decode(root, source),
         ".glb" or ".gltf" => PackedModelDecoder.Decode(root, source),

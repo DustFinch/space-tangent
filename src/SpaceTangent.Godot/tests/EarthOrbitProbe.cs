@@ -53,6 +53,12 @@ public partial class EarthOrbitProbe : Node
                 return;
             }
             var epoch = JulianInstant.FromJulianDate(2460600.5008, TimeScale.Tdb);
+            if (System.Environment.GetEnvironmentVariable("SPACETANGENT_MOON_MODELS_GPU") == "only")
+            {
+                await ExerciseMarsMoonModels(scene, epoch, directory);
+                result = 0;
+                return;
+            }
             if (System.Environment.GetEnvironmentVariable("SPACETANGENT_SSC_SPACECRAFT_PHOTOMETRY_PROBE") == "only")
             {
                 await ExerciseStandardSpacecraft(scene, directory);

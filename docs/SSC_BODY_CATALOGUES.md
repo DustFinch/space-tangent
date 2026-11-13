@@ -5,3 +5,14 @@ Choose **Add-ons → SSC body catalogue** and select the folder containing the c
 The importer reads top-level and `data` SSC files in filename order. It supports Add, Modify and Replace within a source, aliases, elliptic and cubic XYZV trajectories, and equatorial or ecliptic J2000 orbit axes. Supported attitudes include fixed, uniform, synchronous, sampled and two-vector. The archived minor moon catalogue uses constant two-vector orbital frames and local PCK for the known Amalthea and Thebe spin models. SemiAxes defines physical mesh dimensions and a local Texture reference supplies the surface map. Models can use binary or text CMOD, displaced-sphere CMS, OBJ, the supported 3DS subset, or packed GLB. Text CMOD uses the same triangle and local texture validation as binary CMOD. Unsupported orbital or attitude models report a source error.
 
 The selected source is applied as a unit. A bad model, missing texture or unresolved reference leaves the previous world and camera in place. The original station model and a sampled asteroid arc were verified with the regular add-on controls.
+
+## Build a pack
+
+Run the commands from the simulator checkout with its core submodule initialized.
+
+```sh
+dotnet run --project deps/space-tangent-core/tools/SpaceTangent.PackTool -- import "/path/to/source" --pack "/path/to/new-pack"
+dotnet run --project deps/space-tangent-core/tools/SpaceTangent.PackTool -- check "/path/to/new-pack/pack.json" --strict
+```
+
+Select the output folder as an SSC body catalogue. Move the entire folder to relocate the pack. The command preserves the relative paths of the model, texture and trajectory files.

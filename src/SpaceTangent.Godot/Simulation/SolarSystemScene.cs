@@ -685,7 +685,7 @@ public partial class SolarSystemScene : Control
             else if (_script is null)
                 _scriptMenu.SetItemDisabled(1, !media.Active);
         }
-        if (changed || Session is { } session && (session.AnyFlight || session.HasShips))
+        if (changed || Session is { } session && (session.AnyFlight || session.HasShips || session.HasActiveAutoOrbit))
             Refresh(delta);
     }
 
@@ -857,6 +857,14 @@ public partial class SolarSystemScene : Control
 
     private bool TryObserverFrameKey(InputEventKey key)
     {
+        if (key.Keycode == Key.O && !Session!.InShip(_active))
+        {
+            _status.Text = Session.ToggleAutoOrbit(_active)
+                ? Session[_active].AutoOrbit is { Enabled: true } ? "Automatic orbit enabled." : "Automatic orbit stopped."
+                : "Select a target in a space view to orbit.";
+            Refresh();
+            return true;
+        }
         if (key.Keycode == Key.G)
         {
             if (key.ShiftPressed && Session!.ApproachProceduralSurface(_active))
@@ -1651,6 +1659,7 @@ public partial class SolarSystemScene : Control
             ViewControls controls = _views[index];
             var snapshot = session.World.Graph.Evaluate(session[index].Epoch);
             session.UpdateCamera(index, snapshot, elapsed);
+            session.UpdateAutoOrbit(index, snapshot, elapsed);
             session.UpdateShip(index, snapshot, elapsed);
             ShipView? ship = session.Ship(index);
             ObserverView view = session[index];

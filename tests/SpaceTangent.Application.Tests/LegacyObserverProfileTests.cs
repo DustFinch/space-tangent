@@ -33,6 +33,7 @@ public sealed class LegacyObserverProfileTests
         Assert.Equal(view.Navigation, observer.Navigation);
         Assert.Equal(DeltaTModel.MorrisonStephenson2004, result.DeltaT);
         Assert.Equal(50, observer.FieldOfViewDegrees);
+        Assert.Equal(new CameraAutoOrbit(120, false), observer.AutoOrbit);
         Assert.True(observer.Sky.Stars && observer.Sky.DeepSky && observer.Sky.Labels && observer.Sky.Meteors);
         Assert.False(observer.Sky.EquatorialGrid || observer.Sky.Constellations);
         var camera = Assert.IsType<EarthObserverCamera>(observer.EarthObserver);
@@ -97,6 +98,30 @@ public sealed class LegacyObserverProfileTests
             Assert.True(restored.Optics.Active);
         }
         finally { directory.Delete(recursive: true); }
+    }
+
+    [Fact]
+    public void ArchivedOrbitRateAndDirectionSurviveScenarioRoundTrip()
+    {
+        string path = Path.GetTempFileName();
+        try
+        {
+            File.WriteAllText(path, """{"DeltaT":"MorrisonStephenson2004","AutoRotateSeconds":45,"AutoRotateClockwise":true}""");
+            var view = new ObserverView(new(2451545, 0, TimeScale.Tdb), CameraMode.Solar, null, false);
+            var profile = LegacyObserverProfiles.Read(path, view, DeltaTModel.EspenakMeeus2006);
+            Assert.Equal(new CameraAutoOrbit(45, true), profile.Observer.AutoOrbit);
+
+            var active = profile.Observer with { AutoOrbit = new(45, true, true) };
+            var scenario = new SimulationScenario([active, view], false, 0, 0, profile.DeltaT);
+            ScenarioFile.Save(path, scenario);
+            Assert.Equal(scenario.Views, ScenarioFile.Load(path).Views);
+            var json = System.Text.Json.Nodes.JsonNode.Parse(File.ReadAllText(path))!.AsObject();
+            Assert.Equal(20, json["version"]!.GetValue<int>());
+            json["version"] = 19;
+            File.WriteAllText(path, json.ToJsonString());
+            Assert.Throws<InvalidDataException>(() => ScenarioFile.Load(path));
+        }
+        finally { File.Delete(path); }
     }
 
     private sealed class ArchiveSettingsFactAttribute : FactAttribute

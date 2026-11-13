@@ -30,6 +30,7 @@ public readonly record struct ObserverView(JulianInstant Epoch, CameraMode Mode,
     public SkyLayerSettings Sky { get; init; }
     public BodyReferenceMarks ReferenceMarks { get; init; }
     public double? FieldOfViewDegrees { get; init; }
+    public CameraAutoOrbit? AutoOrbit { get; init; }
     public double? PlaybackRate { get; init; }
     public bool LightTimeDelayed { get; init; }
     public ObserverOptics? Optics { get; init; }

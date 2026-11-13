@@ -17,7 +17,7 @@ public sealed record SimulationScenario(IReadOnlyList<ObserverView> Views, bool 
 /// <summary>Persists observer settings with exact TDB epochs and stable catalog IDs.</summary>
 public static class ScenarioFile
 {
-    private const int Version = 19;
+    private const int Version = 20;
     internal const int MaximumBytes = 32 * 1024;
     private static readonly JsonSerializerOptions Json = new()
     {
@@ -56,9 +56,12 @@ public static class ScenarioFile
             throw new InvalidDataException("The scenario has an invalid optics profile.");
         if (scenario.Views.Any(view => !view.Sky.IsValid()))
             throw new InvalidDataException("The scenario has invalid sky layer settings.");
+        if (scenario.Views.Any(view => view.AutoOrbit is { } orbit && !orbit.IsValid()))
+            throw new InvalidDataException("The scenario has an invalid camera orbit period.");
         var document = new Document
         {
-            Version = scenario.Views.Any(view => view.Navigation?.Placement?.CatalogueFrame is not null) ? 19 :
+            Version = scenario.Views.Any(view => view.AutoOrbit is not null) ? 20 :
+                scenario.Views.Any(view => view.Navigation?.Placement?.CatalogueFrame is not null) ? 19 :
                 scenario.Views.Any(view => view.Optics?.Finders is not null) ? 18 :
                 scenario.Views.Any(view => view.Navigation?.Placement?.Frame == NavigationFrame.Equatorial) ? 17 :
                 scenario.Views.Any(view => view.Sky.HasSurveySettings) ? 16 :
@@ -85,6 +88,7 @@ public static class ScenarioFile
                 Playing = view.Playing,
                 Terrain = view.Terrain,
                 FieldOfViewDegrees = view.FieldOfViewDegrees,
+                AutoOrbit = view.AutoOrbit,
                 PlaybackRate = view.PlaybackRate,
                 Navigation = view.Navigation is { } pose ? Camera.From(pose) : null,
                 EarthObserver = view.EarthObserver,
@@ -194,10 +198,13 @@ public static class ScenarioFile
                 throw new InvalidDataException("The scenario has an invalid optics profile.");
             if (document.Version < 10 && data.LightTimeDelayed)
                 throw new InvalidDataException("Light-time correction requires a version 10 scenario.");
+            if (data.AutoOrbit is { } orbit && (document.Version < 20 || !orbit.IsValid()))
+                throw new InvalidDataException("The scenario has an invalid or unsupported camera orbit period.");
             views[i] = new(epoch, data.Camera, selection, data.Playing)
             {
                 Terrain = data.Terrain,
                 FieldOfViewDegrees = data.FieldOfViewDegrees,
+                AutoOrbit = data.AutoOrbit,
                 PlaybackRate = data.PlaybackRate,
                 Navigation = navigation,
                 EarthObserver = data.EarthObserver,
@@ -236,6 +243,8 @@ public static class ScenarioFile
         public LunarTerrainCamera? Terrain { get; init; }
         [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
         public double? FieldOfViewDegrees { get; init; }
+        [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+        public CameraAutoOrbit? AutoOrbit { get; init; }
         [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
         public double? PlaybackRate { get; init; }
         [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]

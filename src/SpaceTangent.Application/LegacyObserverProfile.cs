@@ -118,8 +118,20 @@ public static class LegacyObserverProfiles
             if (optics is not null || finders.Visible)
                 optics = (optics ?? new(ObserverOpticsLibrary.Default, false)) with { Finders = finders.Visible ? finders : null };
         }
+        var autoOrbit = current.AutoOrbit;
+        double? period = Number(root, "AutoRotateSeconds");
+        bool? clockwise = Flag(root, "AutoRotateClockwise");
+        if (period is >= 20 and <= 1200 || clockwise.HasValue)
+        {
+            var previous = autoOrbit ?? CameraAutoOrbit.Default;
+            autoOrbit = previous with
+            {
+                PeriodSeconds = period is >= 20 and <= 1200 ? period.Value : previous.PeriodSeconds,
+                Clockwise = clockwise ?? previous.Clockwise
+            };
+        }
         var observer = current with { EarthObserver = camera.IsValid() ? camera : current.EarthObserver,
-            Sky = sky, ReferenceMarks = marks, FieldOfViewDegrees = field, Optics = optics };
+            Sky = sky, ReferenceMarks = marks, FieldOfViewDegrees = field, Optics = optics, AutoOrbit = autoOrbit };
         return new(observer, deltaT) { SavedSites = EarthPlaceCatalogue.ParseSavedText(Word(root, "SavedSites")) };
     }
 

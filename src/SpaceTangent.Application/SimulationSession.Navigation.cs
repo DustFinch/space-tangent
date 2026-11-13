@@ -5,6 +5,12 @@ using SpaceTangent.Core.World;
 
 namespace SpaceTangent.Application;
 
+public readonly record struct CameraAutoOrbit(double PeriodSeconds, bool Clockwise, bool Enabled = false)
+{
+    public static CameraAutoOrbit Default => new(120, false);
+    public bool IsValid() => PeriodSeconds is >= 20 and <= 1200;
+}
+
 public sealed partial class SimulationSession
 {
     private sealed record CameraFlight(NavigationCamera Start, double Elapsed, double Duration, double TargetRange)
@@ -92,6 +98,35 @@ public sealed partial class SimulationSession
                 Target = target, Tracking = true, Placement = null }
         };
         return true;
+    }
+
+    public bool HasActiveAutoOrbit => _views.Any(view => view.AutoOrbit is { Enabled: true });
+
+    public bool ToggleAutoOrbit(int view)
+    {
+        var observer = _views[view];
+        var orbit = observer.AutoOrbit ?? CameraAutoOrbit.Default;
+        if (!orbit.Enabled && (InShip(view) || observer.Mode == CameraMode.Surface && observer.Navigation is null ||
+            (observer.Navigation?.Target ?? observer.Selection) is null))
+            return false;
+        _views[view] = observer with { AutoOrbit = orbit with { Enabled = !orbit.Enabled } };
+        return true;
+    }
+
+    public void UpdateAutoOrbit(int view, WorldSnapshot snapshot, double elapsedSeconds)
+    {
+        var observer = _views[view];
+        if (!(elapsedSeconds > 0) || observer.AutoOrbit is not { Enabled: true } orbit ||
+            InShip(view) || IsFlying(view) || observer.Mode == CameraMode.Surface && observer.Navigation is null)
+            return;
+        double radians = (orbit.Clockwise ? -1 : 1) * Math.Tau * Math.Min(elapsedSeconds, .1) / orbit.PeriodSeconds;
+        if (observer.Navigation is { Target: { } target })
+        {
+            if (World.TryNavigationState(target, snapshot, out _, DeltaT))
+                AdjustCamera(view, radians, 0, 1);
+        }
+        else
+            TurnScriptView(view, new(0, 1, 0), radians, orbit: true, snapshot);
     }
 
     public bool CancelFlight(int view)

@@ -68,6 +68,19 @@ public partial class BootstrapSmoke
 
         scene.ToggleSplit();
         ObserverView lunar = session[1];
+        using var autoOrbitKey = new InputEventKey { Pressed = true, Keycode = Key.O };
+        scene._UnhandledKeyInput(autoOrbitKey);
+        Require(session[0].AutoOrbit is { Enabled: true } && session[1] == lunar,
+            "Automatic orbit must start only in the active view.");
+        var orbitStart = session[0].Navigation!.Value;
+        await Until(() => session[0].Navigation != orbitStart, "A paused clock must still let the camera orbit.");
+        var orbitEnd = session[0].Navigation!.Value;
+        Require(session[0].Epoch == lunar.Epoch && session[1] == lunar &&
+                orbitStart.AnchorKilometers == orbitEnd.AnchorKilometers && orbitStart.RangeKilometers == orbitEnd.RangeKilometers,
+            "Automatic orbit must preserve both clocks, its range, and the other view.");
+        scene._UnhandledKeyInput(autoOrbitKey);
+        Require(session[0].AutoOrbit is { Enabled: false }, "The same key must stop automatic orbit.");
+        adjusted = orbitEnd;
         double priorField = session[0].EffectiveFieldOfView;
         viewport.EmitSignal(Control.SignalName.GuiInput,
             new InputEventMouseButton { Pressed = true, ButtonIndex = MouseButton.WheelUp, CtrlPressed = true });

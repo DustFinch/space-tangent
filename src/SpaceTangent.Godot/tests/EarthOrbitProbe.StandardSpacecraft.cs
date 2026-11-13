@@ -219,7 +219,16 @@ public partial class EarthOrbitProbe
                         GD.Print($"Original SSC GPU: {id.Value}, original textured model in {name}.");
                     }
                     if (id.Value == "ssc/sol/earth/mir")
+                    {
                         CheckMirBounds(node, second.Navigation!.Value.RangeKilometers);
+                        var emission = new Vector3(.02955684f, .28314877f, .28314877f);
+                        int glowing = Enumerable.Range(0, mesh.GetSurfaceCount()).Select(mesh.SurfaceGetMaterial)
+                            .OfType<ShaderMaterial>().Count(material =>
+                                material.GetShaderParameter("emission_factor").AsVector3().DistanceTo(emission) < 1e-6f);
+                        if (glowing == 0)
+                            throw new InvalidOperationException("The original Mir emission did not reach its GPU materials.");
+                        GD.Print($"Mir GPU: {glowing} surfaces with the original linear emission.");
+                    }
                 }
 
                 await ToSignal(GetTree(), SceneTree.SignalName.ProcessFrame);

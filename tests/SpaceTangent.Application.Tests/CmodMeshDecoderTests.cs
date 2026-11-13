@@ -22,6 +22,40 @@ public sealed class CmodMeshDecoderTests
         });
     }
 
+    [MirModelFact]
+    [Trait("Category", "ExternalData")]
+    public void OriginalMirPreservesEmissionInSourceAndExport()
+    {
+        string root = Environment.GetEnvironmentVariable("SPACETANGENT_STANDARD_SPACECRAFT")!;
+        var source = CmodMeshDecoder.Decode(root, Path.Combine(root, "models", "mir.cmod"));
+        var emissions = source.Surfaces.Select(surface => surface.Material.Emission).Where(color => color.Length > 0).ToArray();
+        Assert.NotEmpty(emissions);
+        Assert.Contains(emissions, color => Math.Abs(color.X - .02955684) < 1e-6 &&
+            Math.Abs(color.Y - .28314874) < 1e-6 && Math.Abs(color.Z - .28314874) < 1e-6);
+
+        string export = Path.GetTempFileName();
+        try
+        {
+            using (var output = File.Create(export))
+                PackedModelWriter.Write(source, output);
+            var packed = PackedModelDecoder.Decode(export);
+            Assert.Equal(emissions, packed.Surfaces.Select(surface => surface.Material.Emission).Where(color => color.Length > 0).ToArray());
+        }
+        finally
+        {
+            File.Delete(export);
+        }
+    }
+
+    private sealed class MirModelFactAttribute : FactAttribute
+    {
+        public MirModelFactAttribute()
+        {
+            if (string.IsNullOrWhiteSpace(Environment.GetEnvironmentVariable("SPACETANGENT_STANDARD_SPACECRAFT")))
+                Skip = "Set SPACETANGENT_STANDARD_SPACECRAFT to the original spacecraft catalogue.";
+        }
+    }
+
     private sealed class SscModelFactAttribute : FactAttribute
     {
         public SscModelFactAttribute()

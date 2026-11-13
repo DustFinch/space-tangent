@@ -112,6 +112,13 @@ public static partial class CmodMeshDecoder
             return key;
         }
 
+        // CMOD colors are sRGB. The renderer and GLB writer consume linear emission.
+        static double Linear(double channel)
+        {
+            channel = Math.Clamp(channel, 0, 1);
+            return channel <= .04045 ? channel / 12.92 : Math.Pow((channel + .055) / 1.055, 2.4);
+        }
+
         DecodedMaterial ReadMaterial()
         {
             DecodedMaterial value = Default;
@@ -124,6 +131,8 @@ public static partial class CmodMeshDecoder
                         Vector3d color = new(Float(), Float(), Float());
                         if (token == 1003)
                             value = value with { Color = color };
+                        else if (token == 1014)
+                            value = value with { Emission = new(Linear(color.X), Linear(color.Y), Linear(color.Z)) };
                         break;
                     case 1005 or 1006:
                         Expect(1);

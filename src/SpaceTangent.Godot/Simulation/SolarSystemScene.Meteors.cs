@@ -16,8 +16,8 @@ public partial class SolarSystemScene
             _status.Text = "Meteor showers are visible from the Earth surface.";
             return;
         }
-        bool shown = !observer.Sky.Meteors;
-        Session.SetSkyLayers(_active, observer.Sky with { Meteors = shown });
+        bool shown = !observer.Sky.Meteors && !observer.Sky.ShowMeteorRadiants;
+        Session.SetSkyLayers(_active, observer.Sky with { Meteors = shown, MeteorRadiants = null });
         Refresh();
         _status.Text = shown ? "Meteor radiants and trails visible · Ctrl+Shift+H for the next peak" : "Meteor layer hidden.";
     }

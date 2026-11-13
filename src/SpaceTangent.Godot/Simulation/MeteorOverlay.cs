@@ -20,9 +20,12 @@ internal partial class MeteorOverlay : Control
     private ulong _lastUpdate;
     private Vector3 _forward, _right, _cameraUp, _zenith;
     private float _tangent, _night;
+    private bool _showRadiants;
     private static readonly Color RadiantColor = new(1f, .72f, .5f, .85f);
 
-    internal bool ShowsRadiant(string code) => Visible && _night > 0 &&
+    internal int ActiveTrailCount => _streaks.Count;
+
+    internal bool ShowsRadiant(string code) => Visible && _showRadiants && _night > 0 &&
         _radiants.Any(item => item.Shower.Code == code && TryProject(BrightSkyOverlay.Convert(item.Direction), out _));
 
     internal void Configure(MeteorCatalogue catalogue)
@@ -44,8 +47,10 @@ internal partial class MeteorOverlay : Control
     }
 
     internal void ShowFrame(SolarSystemSample solar, SurfaceLighting light, EarthSite site, double limit,
-        Vector3 forward, Vector3 right, Vector3 cameraUp, float tangent)
+        Vector3 forward, Vector3 right, Vector3 cameraUp, float tangent,
+        bool showTrails, bool showRadiants, int rateMultiplier)
     {
+        _showRadiants = showRadiants;
         _forward = forward;
         _right = right;
         _cameraUp = cameraUp;
@@ -72,7 +77,7 @@ internal partial class MeteorOverlay : Control
         _lastUpdate = now;
         double simulated = _previous is { } previous ? Seconds(epoch, previous) : 0;
         _previous = epoch;
-        if (simulated < 0 || simulated > 1800)
+        if (!showTrails || simulated < 0 || simulated > 1800)
         {
             _debt = 0;
             _streaks.Clear();
@@ -88,7 +93,7 @@ internal partial class MeteorOverlay : Control
                 else
                     _streaks[i] = streak with { Age = age };
             }
-            Spawn(simulated);
+            Spawn(simulated * rateMultiplier);
         }
         QueueRedraw();
     }
@@ -133,15 +138,8 @@ internal partial class MeteorOverlay : Control
 
     public override void _Draw()
     {
-        foreach (var item in _radiants)
-        {
-            if (!TryProject(BrightSkyOverlay.Convert(item.Direction), out Vector2 point))
-                continue;
-            Color tint = new(RadiantColor, RadiantColor.A * _night);
-            DrawArc(point, 7, 0, Mathf.Tau, 18, tint, 1.2f, true);
-            DrawString(ThemeDB.FallbackFont, point + new Vector2(9, -6), item.Shower.Code,
-                fontSize: 13, modulate: tint);
-        }
+        if (_showRadiants)
+            DrawRadiants();
         foreach (var streak in _streaks)
         {
             float fraction = (float)(streak.Age / streak.Duration);
@@ -150,6 +148,19 @@ internal partial class MeteorOverlay : Control
             if (TryProject(streak.Start * MathF.Cos(head) + streak.Away * MathF.Sin(head), out Vector2 a) &&
                 TryProject(streak.Start * MathF.Cos(tail) + streak.Away * MathF.Sin(tail), out Vector2 b))
                 DrawLine(a, b, new Color(streak.Tint, _night * (1 - fraction)), 2, true);
+        }
+    }
+
+    private void DrawRadiants()
+    {
+        foreach (var item in _radiants)
+        {
+            if (!TryProject(BrightSkyOverlay.Convert(item.Direction), out Vector2 point))
+                continue;
+            Color tint = new(RadiantColor, RadiantColor.A * _night);
+            DrawArc(point, 7, 0, Mathf.Tau, 18, tint, 1.2f, true);
+            DrawString(ThemeDB.FallbackFont, point + new Vector2(9, -6), item.Shower.Code,
+                fontSize: 13, modulate: tint);
         }
     }
 

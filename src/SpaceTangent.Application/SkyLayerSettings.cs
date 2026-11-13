@@ -22,6 +22,16 @@ public readonly record struct SkyLayerSettings(bool Stars, bool Labels, bool Equ
 
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingDefault)]
     public bool Meteors { get; init; }
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public bool? MeteorRadiants { get; init; }
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public int? MeteorRateMultiplier { get; init; }
+    [JsonIgnore]
+    public bool ShowMeteorRadiants => MeteorRadiants ?? Meteors;
+    [JsonIgnore]
+    public bool HasMeteorSettings => MeteorRadiants.HasValue || MeteorRateMultiplier.HasValue;
+
+    internal static bool ValidMeteorRate(int rate) => rate is 1 or 10 or 100;
 
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public string? CultureId { get; init; }
@@ -48,8 +58,9 @@ public readonly record struct SkyLayerSettings(bool Stars, bool Labels, bool Equ
     public bool HasCultureSettings => CultureId is not null || CultureNames != default || ConstellationArt;
 
     [JsonIgnore]
-    public bool Visible => Stars || Labels || EquatorialGrid || HasAlternateGrids || ConstellationBoundaries || Constellations || DeepSky || Meteors || ConstellationArt || SurveyId is not null;
+    public bool Visible => Stars || Labels || EquatorialGrid || HasAlternateGrids || ConstellationBoundaries || Constellations || DeepSky || Meteors || ShowMeteorRadiants || ConstellationArt || SurveyId is not null;
 
     internal bool IsValid() =>         (CultureId is null || SkyCultureLibrary.ValidId(CultureId)) && Enum.IsDefined(CultureNames) &&
-        (SurveyId is null || LocalSkySurvey.ValidId(SurveyId)) && SurveyBrightness is null or (>= 0 and <= 2);
+                (SurveyId is null || LocalSkySurvey.ValidId(SurveyId)) && SurveyBrightness is null or (>= 0 and <= 2) &&
+        (MeteorRateMultiplier is not { } rate || ValidMeteorRate(rate));
 }

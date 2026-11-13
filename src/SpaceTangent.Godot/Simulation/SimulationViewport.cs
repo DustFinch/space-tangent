@@ -224,6 +224,7 @@ internal partial class SimulationViewport : Node3D
 
     internal string? VisibleLandscape => _surface?.VisibleLandscape;
 
+    internal int ActiveMeteorTrailCount => _surface?.ActiveMeteorTrailCount ?? 0;
     internal bool ShowsMeteorRadiant(string code) => _surface?.ShowsMeteorRadiant(code) == true;
 
     internal void SetSurfacePitch(double degrees) => _surface!.PitchDegrees = degrees;

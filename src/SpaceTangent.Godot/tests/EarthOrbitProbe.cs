@@ -53,6 +53,12 @@ public partial class EarthOrbitProbe : Node
                 return;
             }
             var epoch = JulianInstant.FromJulianDate(2460600.5008, TimeScale.Tdb);
+            if (System.Environment.GetEnvironmentVariable("SPACETANGENT_METEOR_SETTINGS_PROBE") == "only")
+            {
+                await ExerciseMeteorRadiants(scene, directory);
+                result = 0;
+                return;
+            }
             if (System.Environment.GetEnvironmentVariable("SPACETANGENT_SKY_GRIDS_PROBE") == "only")
             {
                 await ExerciseArchivedSkyGrids(scene, epoch, directory);

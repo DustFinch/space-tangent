@@ -80,7 +80,15 @@ public static class LegacyObserverProfiles
             sky = sky with { CultureNames = names };
         if (Word(root, "HipsSurvey") is { } survey && (survey.Length == 0 || LocalSkySurvey.ValidId(survey)))
             sky = sky with { SurveyId = survey.Length == 0 ? null : survey };
-        sky = sky with { Labels = Flag(root, "Labels") ?? sky.Labels, Meteors = Flag(root, "Meteors") ?? sky.Meteors };
+        int? meteorRate = Integer(root, "MeteorBoost");
+        sky = sky with
+        {
+            Labels = Flag(root, "Labels") ?? sky.Labels,
+            Meteors = Flag(root, "Meteors") ?? sky.Meteors,
+            MeteorRadiants = Flag(root, "Radiants") ?? sky.MeteorRadiants,
+            MeteorRateMultiplier = meteorRate is { } rate && SkyLayerSettings.ValidMeteorRate(rate)
+                ? (rate == 1 ? null : rate) : sky.MeteorRateMultiplier
+        };
         var marks = Integer(root, "BodyMarks") is { } flags ? (BodyReferenceMarks)flags & BodyReferenceMarks.All : current.ReferenceMarks;
         double? field = Number(root, "FieldOfViewDegrees") is { } degrees && ObserverView.ValidFieldOfView(degrees)
             ? degrees : current.FieldOfViewDegrees;

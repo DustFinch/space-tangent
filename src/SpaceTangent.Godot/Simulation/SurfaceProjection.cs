@@ -23,6 +23,7 @@ internal sealed partial class SurfaceProjection
     internal bool GalacticSkyVisible => _galacticImage is not null && _surface.Visible;
     private MeteorOverlay? _meteors;
 
+    internal int ActiveMeteorTrailCount => _meteors?.ActiveTrailCount ?? 0;
     internal bool ShowsMeteorRadiant(string code) => _surface.Visible && _meteors?.ShowsRadiant(code) == true;
     private (Vector3 Forward, Vector3 Right, Vector3 Up, Vector3 North, Vector3 East)? _cardinalFrame;
     private float _tanHalfField = .087488664f;
@@ -161,9 +162,9 @@ internal sealed partial class SurfaceProjection
         }
         else
             _sky?.Hide();
-        if (sky.Meteors)
+        if (sky.Meteors || sky.ShowMeteorRadiants)
             _meteors?.ShowFrame(sample, lighting, observer.Site, observer.Conditions?.LimitingMagnitude() ?? 6.5,
-                forward, right, cameraUp, _tanHalfField);
+                forward, right, cameraUp, _tanHalfField, sky.Meteors, sky.ShowMeteorRadiants, sky.MeteorRateMultiplier ?? 1);
         else
             _meteors?.HideFrame();
         DrawLandscape(lighting, forward, right, cameraUp, north, east, up);

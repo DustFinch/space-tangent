@@ -47,6 +47,27 @@ public partial class EarthOrbitProbe
             throw new InvalidOperationException("The meteor layer must be invisible in daylight.");
         GD.Print("Meteor radiants: original Perseid parameters, GPU marker in one view, daytime suppression.");
 
+        string profile = Path.Combine(directory, "meteor-settings.json");
+        File.WriteAllText(profile, """{"Site":{},"Meteors":false,"Radiants":true,"MeteorBoost":100}""");
+        ObserverView markers = LegacyObserverProfiles.Read(profile, observing, session.DeltaT).Observer;
+        File.WriteAllText(profile, """{"Site":{},"Meteors":true,"Radiants":false,"MeteorBoost":100}""");
+        ObserverView trails = LegacyObserverProfiles.Read(profile, observing, session.DeltaT).Observer;
+        ScenarioFile.Save(path, new([markers, trails], false, 0, 0, session.DeltaT));
+        if (!scene.LoadScenario(path) || session[0] != markers || session[1] != trails ||
+            !scene.Renderer(0).ShowsMeteorRadiant("PER") || scene.Renderer(1).ShowsMeteorRadiant("PER"))
+            throw new InvalidOperationException("Independent archived Perseid settings must survive opening a scenario.");
+        int trailCount = 0;
+        for (int seconds = 10; seconds <= 60; seconds += 10)
+        {
+            scene.Seek(0, epoch.AddSeconds(seconds));
+            scene.Seek(1, epoch.AddSeconds(seconds));
+            trailCount = Math.Max(trailCount, scene.Renderer(1).ActiveMeteorTrailCount);
+        }
+        if (trailCount == 0 || scene.Renderer(0).ActiveMeteorTrailCount != 0 || !await scene.ReloadAddOns() ||
+            session[0].Sky != markers.Sky || session[1].Sky != trails.Sky)
+            throw new InvalidOperationException("Only the trail observer must spawn meteors, and both settings must survive reload.");
+        GD.Print($"Meteor settings: independent original Perseid radiants and boosted trails ({trailCount} active).");
+
         static int WarmPixels(Image image)
         {
             Vector2I center = image.GetSize() / 2;

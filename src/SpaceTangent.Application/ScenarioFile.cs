@@ -17,7 +17,7 @@ public sealed record SimulationScenario(IReadOnlyList<ObserverView> Views, bool 
 /// <summary>Persists observer settings with exact TDB epochs and stable catalog IDs.</summary>
 public static class ScenarioFile
 {
-    private const int Version = 25;
+    private const int Version = 26;
     internal const int MaximumBytes = 32 * 1024;
     private static readonly JsonSerializerOptions Json = new()
     {
@@ -62,7 +62,8 @@ public static class ScenarioFile
             throw new InvalidDataException("The scenario has an invalid camera sensitivity.");
         var document = new Document
         {
-            Version = scenario.Views.Any(view => view.Sky.ConstellationBoundaries) ? 25 :
+            Version = scenario.Views.Any(view => view.Sky.HasMeteorSettings) ? 26 :
+                scenario.Views.Any(view => view.Sky.ConstellationBoundaries) ? 25 :
                 scenario.Views.Any(view => view.Sky.HasAlternateGrids) ? 24 :
                 scenario.Views.Any(view => view.EarthObserver?.HideLandscapeFog == true) ? 23 :
                 scenario.Views.Any(view => view.CameraInertia) ? 22 :
@@ -101,7 +102,7 @@ public static class ScenarioFile
                 PlaybackRate = view.PlaybackRate,
                 Navigation = view.Navigation is { } pose ? Camera.From(pose) : null,
                 EarthObserver = view.EarthObserver,
-                Sky = view.Sky.Visible || view.Sky.HasCultureSettings || view.Sky.HasSurveySettings ? view.Sky : null,
+                Sky = view.Sky.Visible || view.Sky.HasCultureSettings || view.Sky.HasSurveySettings || view.Sky.HasMeteorSettings ? view.Sky : null,
                 ReferenceMarks = view.ReferenceMarks,
                 Optics = view.Optics,
                 LightTimeDelayed = view.LightTimeDelayed
@@ -180,6 +181,8 @@ public static class ScenarioFile
                 (document.Version < 3 || !earth.IsValid() || (document.Version < 11 && earth.Conditions is not null) ||
                     (document.Version < 13 && earth.LandscapeId is not null) || (document.Version < 23 && earth.HideLandscapeFog)))
                 throw new InvalidDataException("The scenario has an invalid Earth observer camera.");
+            if (data.Sky is { HasMeteorSettings: true } && document.Version < 26)
+                throw new InvalidDataException("Independent meteor settings require scenario version 26.");
             if (data.Sky is { Meteors: true } && document.Version < 12)
                 throw new InvalidDataException("This scenario version does not support meteor layers.");
             if (data.Sky is { } sky && (!sky.IsValid() || sky.HasCultureSettings && document.Version < 15 || sky.HasSurveySettings && document.Version < 16))

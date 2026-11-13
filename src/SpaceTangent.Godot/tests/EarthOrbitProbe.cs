@@ -154,6 +154,12 @@ public partial class EarthOrbitProbe : Node
                 result = 0;
                 return;
             }
+            if (System.Environment.GetEnvironmentVariable("SPACETANGENT_ARCHIVED_HUYGENS") is { Length: > 0 } huygens)
+            {
+                await ExerciseArchivedHuygens(scene, directory, huygens);
+                result = 0;
+                return;
+            }
             if (System.Environment.GetEnvironmentVariable("SPACETANGENT_ARCHIVED_ISS_MODEL") is { Length: > 0 } stationRecording)
             {
                 await ExerciseArchivedStation(scene, directory, stationRecording);

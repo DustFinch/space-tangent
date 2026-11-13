@@ -115,6 +115,54 @@ public partial class EarthOrbitProbe
         }
     }
 
+    private async Task ExerciseArchivedHuygens(SolarSystemScene scene, string directory, string recordings)
+    {
+        var settings = new LocalAddonSettingsFile().Load();
+        string source = System.Environment.GetEnvironmentVariable("SPACETANGENT_GENERIC_CASSINI_SSC")!;
+        var pack = new LocalAddonSource(Guid.NewGuid(), LocalAddonKind.BodyCatalog, source, false, true);
+        if (!await scene.ReloadAddOns(settings.SetDefault(LocalAddonKind.Timeline, false).SetSource(pack, true)))
+            throw new InvalidOperationException($"Could not install the original Cassini catalogue: {scene.LastAddonDiagnostic}");
+        scene.SetProcess(false);
+        string saved = Path.Combine(directory, "before-archived-huygens.stscene");
+        if (!scene.SaveScenario(saved))
+            throw new IOException("Could not save the live scenario.");
+        const string name = "Sol/Saturn/Titan/Huygens";
+        var renderer = scene.Renderer(0);
+        ArrayMesh? original = null;
+        Basis previous = default;
+        foreach (string phase in new[] { "carried", "landed" })
+        {
+            if (!scene.StartReplay(Path.Combine(recordings, phase + ".celframe")))
+                throw new InvalidOperationException($"Could not replay Huygens in its {phase} phase.");
+            var body = renderer.ArchivedGeometry!.Bodies.Single(body => body.Name == name);
+            if (body.Id is not { } id || renderer.ArchivedBody(name) is not { Visible: true, Mesh: ArrayMesh mesh } node ||
+                renderer.ImportedBodyNode(id)?.Mesh != mesh || (original is not null && original != mesh))
+                throw new InvalidOperationException($"The original Huygens mesh did not render in the {phase} phase ({body.Id}).");
+            var camera = renderer.NavigationCameraNode;
+            Basis orientation = (camera.Basis.Inverse() * node.Basis).Orthonormalized();
+            if (original is not null && previous.X.DistanceTo(orientation.X) + previous.Y.DistanceTo(orientation.Y) < .05f)
+                throw new InvalidOperationException("Huygens retained its old recorded orientation after switching archives.");
+            original = mesh;
+            previous = orientation;
+
+            await ToSignal(RenderingServer.Singleton, RenderingServer.SignalName.FramePostDraw);
+            using var visible = renderer.GetViewport().GetTexture().GetImage();
+            node.Hide();
+            await ToSignal(RenderingServer.Singleton, RenderingServer.SignalName.FramePostDraw);
+            using var control = renderer.GetViewport().GetTexture().GetImage();
+            int samples = 0;
+            for (int y = 0; y < visible.GetHeight(); y += 2)
+            for (int x = 0; x < visible.GetWidth(); x += 2)
+                if (Math.Abs(visible.GetPixel(x, y).Luminance - control.GetPixel(x, y).Luminance) > .025f)
+                    samples++;
+            if (samples < 50 || visible.SavePng(Path.Combine(directory, phase + "-replay.png")) != Error.Ok)
+                throw new InvalidOperationException($"Huygens affected only {samples} GPU samples in its {phase} phase.");
+            GD.Print($"Original Huygens GPU: {phase}, {mesh.GetSurfaceCount()} surfaces, {samples} changed samples.");
+        }
+        if (!scene.LoadScenario(saved) || renderer.ArchivedBody(name) is not null)
+            throw new InvalidOperationException("The archived probe persisted outside replay.");
+    }
+
     private async Task ExerciseArchivedStation(SolarSystemScene scene, string directory, string recording)
     {
         var file = new LocalAddonSettingsFile();

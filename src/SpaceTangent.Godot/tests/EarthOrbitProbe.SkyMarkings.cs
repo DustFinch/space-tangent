@@ -121,7 +121,57 @@ public partial class EarthOrbitProbe
         var center = quasarImage.GetPixel(quasarImage.GetWidth() / 2, quasarImage.GetHeight() / 2);
         if (!(center.R > center.B + .2f))
             throw new InvalidOperationException($"Expected a quasar at the centre of the view: {center}.");
+        await ExerciseNavigationalStar(scene, directory, first);
         GD.Print($"Catalogue marks GPU: {pulsars.Length} pulsars, {quasars.Length} quasars, 58 navigational HIP IDs, CTA 1 and {quasar.Name} search, {green} ring pixels after reload.");
+    }
+
+    private async Task ExerciseNavigationalStar(SolarSystemScene scene, string directory, ObserverView first)
+    {
+        var session = scene.Session!;
+        var sirius = session.World.BrightStars.Find(new("hip/32349")) ??
+            throw new InvalidOperationException("Sirius is missing from the original star catalogue.");
+        var direction = sirius.DirectionAt(first.Epoch);
+        if (session.World.Stellar.Find(sirius.Id) is { IsBarycenter: false } spatial)
+        {
+            var observerFromSun = first.Navigation!.Value.AnchorKilometers - session.World.StellarOrigin;
+            var relative = spatial.StateAt(first.Epoch).PositionKilometers - observerFromSun;
+            direction = relative / relative.Length;
+        }
+        var right = Vector3d.Cross(direction, new(0, 0, 1));
+        var up = Vector3d.Cross(right / right.Length, direction);
+        var baseline = first with
+        {
+            FieldOfViewDegrees = 5,
+            Navigation = first.Navigation!.Value with { Placement = new(default, direction, up) }
+        };
+        var enabled = baseline with { Sky = baseline.Sky with { Markings = SkyMarkings.NavigationalStars } };
+        string path = Path.Combine(directory, "navigational-sirius.stscene");
+        ScenarioFile.Save(path, new([enabled, baseline], false, 0, 0, session.DeltaT));
+        if (!scene.LoadScenario(path) || !await scene.ReloadAddOns() ||
+            session[0].Sky.Markings != SkyMarkings.NavigationalStars || session[1] != baseline)
+            throw new InvalidOperationException("The navigational layer must survive add-on reload independently.");
+        for (int frame = 0; frame < 4; frame++)
+        {
+            await ToSignal(GetTree(), SceneTree.SignalName.ProcessFrame);
+            await ToSignal(RenderingServer.Singleton, RenderingServer.SignalName.FramePostDraw);
+        }
+        using var left = scene.Renderer(0).GetViewport().GetTexture().GetImage();
+        using var rightImage = scene.Renderer(1).GetViewport().GetTexture().GetImage();
+        int diamond = 0;
+        for (int y = -9; y <= 9; y++)
+            for (int x = -9; x <= 9; x++)
+            {
+                int radius = Math.Abs(x) + Math.Abs(y);
+                if (radius is < 4 or > 9)
+                    continue;
+                var a = left.GetPixel(left.GetWidth() / 2 + x, left.GetHeight() / 2 + y);
+                var b = rightImage.GetPixel(rightImage.GetWidth() / 2 + x, rightImage.GetHeight() / 2 + y);
+                if (a.B > b.B + .25f && a.B > a.R + .08f)
+                    diamond++;
+            }
+        if (diamond < 12 || left.SavePng(Path.ChangeExtension(path, ".png")) != Error.Ok)
+            throw new InvalidOperationException($"Expected the navigational diamond around Sirius ({diamond} pixels).");
+        GD.Print($"Navigational star GPU: Sirius HIP 32349, {diamond} diamond pixels after reload, independent second view.");
     }
 
     private async Task ExerciseSkyMarkings(SolarSystemScene scene, string directory)

@@ -16,13 +16,16 @@ public partial class EarthOrbitProbe
         if (native && !scene.Renderer(0).WorldAtmosphereActive(SolarSystemSample.EarthId, lookup: true))
             throw new InvalidOperationException("The Earth orbit probe did not use the original lookup tables.");
 
+        if (native)
+            GD.Print("Atmosphere lookup active: Earth.");
         var rows = new List<(string Name, ObjectId Id, double Radius, double InsideHeight, bool Lookup)>
         {
             ("venus", SolarSystemSample.VenusId, 6051.8, 85, false)
         };
         if (native)
         {
-            rows.Add(("mars", PlanetCatalogue.MarsId, 3396.19, 15, true));
+            if (System.Environment.GetEnvironmentVariable("SPACETANGENT_ATMOSPHERE_PROBE") != "earth-titan")
+                rows.Add(("mars", PlanetCatalogue.MarsId, 3396.19, 15, true));
             rows.Add(("titan", new("sol/titan"), 2574.73, 30, true));
         }
         var snapshot = scene.Session!.World.Graph.Evaluate(epoch);

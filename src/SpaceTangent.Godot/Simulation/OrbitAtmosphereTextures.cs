@@ -14,9 +14,25 @@ internal sealed record OrbitAtmosphereTextures(ImageTexture Transmission, ImageT
     {
         var textures = new Dictionary<ObjectId, OrbitAtmosphereTextures>();
         string root = LocalDataPaths.Find("SPACETANGENT_ATMOSPHERE_ROOT", "atmospheres", directory: true);
-        foreach (var (id, name) in new[] { (SolarSystemSample.EarthId, "earth"), (PlanetCatalogue.MarsId, "mars"), (new ObjectId("sol/titan"), "titan") })
+        IReadOnlyDictionary<string, string> packed;
+        try
         {
-            string file = Path.Combine(root, $"builtin-original-{name}.atmscat");
+            packed = AtmosphereLookup.LoadPackPaths(root);
+        }
+        catch (Exception error) when (AddonDiagnostics.Annotate(error, AddonStage.Texture, root))
+        {
+            GD.PushWarning($"Could not load packed atmosphere declarations. {error.Message}");
+            packed = new Dictionary<string, string>();
+        }
+        foreach (var (id, name, path) in new[]
+        {
+            (SolarSystemSample.EarthId, "earth", "Sol/Earth"),
+            (PlanetCatalogue.MarsId, "mars", "Sol/Mars"),
+            (new ObjectId("sol/titan"), "titan", "Sol/Saturn/Titan")
+        })
+        {
+            string file = packed.TryGetValue(path, out string? asset) ? asset :
+                Path.Combine(root, $"builtin-original-{name}.atmscat");
             if (!File.Exists(file))
                 continue;
             try

@@ -103,5 +103,6 @@ internal partial class SimulationViewport
         _archivedUsed = 0;
         _archivedVisible.Clear();
         _archivedOverlayRoot?.Hide();
+        _archivedSymbolCanvas?.Hide();
     }
 }

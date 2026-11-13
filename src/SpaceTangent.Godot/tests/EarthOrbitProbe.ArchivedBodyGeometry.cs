@@ -47,9 +47,13 @@ public partial class EarthOrbitProbe
         await ToSignal(GetTree(), SceneTree.SignalName.ProcessFrame);
         await ToSignal(RenderingServer.Singleton, RenderingServer.SignalName.FramePostDraw);
         using var overlays = renderer.GetViewport().GetTexture().GetImage();
+        var symbols = renderer.ArchivedSymbols;
+        if (symbols.Count == 0)
+            throw new InvalidOperationException("The original recording has no projected deep-sky symbols.");
+        GD.Print($"Archived symbols GPU: {symbols.Count} symbols ({symbols.Count(symbol => symbol.Square)} squares), diameter {symbols.Max(symbol => symbol.Diameter):F2} pixels.");
         if (overlays.SavePng(Path.Combine(directory, "archived-orbits-labels.png")) != Error.Ok)
             throw new IOException("Could not capture the saved orbit and label overlay.");
-        if (!scene.LoadScenario(saved) || renderer.ArchivedOrbitSurfaces != 0 || renderer.ArchivedLabels.Count != 0)
+        if (!scene.LoadScenario(saved) || renderer.ArchivedOrbitSurfaces != 0 || renderer.ArchivedLabels.Count != 0 || renderer.ArchivedSymbols.Count != 0)
             throw new InvalidOperationException("The saved orbit and label overlays persisted outside replay.");
         GD.Print("Archived overlays GPU: original Windows capture published 66 orbit strips and 115 labels including Cyrillic, then cleared them on exit.");
     }

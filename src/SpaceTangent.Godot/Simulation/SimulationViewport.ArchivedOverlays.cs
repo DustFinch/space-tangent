@@ -12,6 +12,7 @@ internal partial class SimulationViewport
     private RecordedSceneGeometry? _lastArchivedOverlays;
     private double _lastArchivedScale;
     private readonly List<Label3D> _archivedLabels = [];
+    private ArchivedSymbolCanvas? _archivedSymbolCanvas;
     private readonly StandardMaterial3D _archivedOrbitMaterial = new()
     {
         ShadingMode = BaseMaterial3D.ShadingModeEnum.Unshaded,
@@ -19,6 +20,8 @@ internal partial class SimulationViewport
     };
     internal int ArchivedOrbitSurfaces => _archivedOverlayRoot is { Visible: true } ? _archivedOrbitMesh.GetSurfaceCount() : 0;
     internal IReadOnlyList<Label3D> ArchivedLabels => _archivedOverlayRoot is { Visible: true } ? _archivedLabels : [];
+
+    internal IReadOnlyList<ArchivedSymbol> ArchivedSymbols => _archivedSymbolCanvas is { Visible: true } canvas ? canvas.Symbols : [];
 
     private void DrawArchivedOverlays(RecordedSceneGeometry scene, double scale)
     {
@@ -36,6 +39,7 @@ internal partial class SimulationViewport
 
         _archivedOverlayRoot.Transform = _navigationCamera.Transform;
         _archivedOverlayRoot.Show();
+        DrawArchivedSymbols(scene.Labels);
         if (ReferenceEquals(_lastArchivedOverlays, scene) && _lastArchivedScale == scale)
             return;
         _lastArchivedOverlays = scene;
@@ -86,6 +90,45 @@ internal partial class SimulationViewport
         }
     }
 
+    private void DrawArchivedSymbols(IReadOnlyList<RecordedLabel> labels)
+    {
+        if (_archivedSymbolCanvas is null && !labels.Any(IsSymbol))
+            return;
+        if (_archivedSymbolCanvas is null)
+        {
+            var layer = new CanvasLayer { Layer = 20 };
+            AddChild(layer);
+            _archivedSymbolCanvas = new();
+            layer.AddChild(_archivedSymbolCanvas);
+        }
+        var canvas = _archivedSymbolCanvas;
+        canvas.Symbols.Clear();
+        Rect2 viewport = GetViewport().GetVisibleRect();
+        double pixelsPerRadian = viewport.Size.Y / (2 * Math.Tan(_navigationCamera.Fov * Math.PI / 360));
+        foreach (var label in labels)
+        {
+            if (!IsSymbol(label) || label.CameraPosition.Z >= 0 || label.Opacity <= 0)
+                continue;
+            var position = label.CameraPosition / label.CameraPosition.Length;
+            Vector3 point = _navigationCamera.Position + _navigationCamera.Basis *
+                new Vector3((float)position.X, (float)position.Y, (float)position.Z);
+            if (_navigationCamera.IsPositionBehind(point))
+                continue;
+            Vector2 center = _navigationCamera.UnprojectPosition(point).Floor();
+            float diameter = (float)Math.Min(label.MarkerRadians * pixelsPerRadian, 4096);
+            if (!viewport.Grow(diameter / 2).HasPoint(center))
+                continue;
+            Vector3d rgb = label.Color ?? DefaultLabelColor(label.Kind);
+            canvas.Symbols.Add(new(center, diameter, label.Kind == 9,
+                new((float)rgb.X, (float)rgb.Y, (float)rgb.Z, (float)label.Opacity)));
+        }
+        canvas.Visible = canvas.Symbols.Count != 0;
+        canvas.QueueRedraw();
+
+        // The archive uses a circle for an open cluster and a square for a nebula.
+        static bool IsSymbol(RecordedLabel label) => label.Kind is 8 or 9 && label.MarkerRadians > 0;
+    }
+
     private static Vector3d DefaultLabelColor(int kind) => kind switch
     {
         0 => new(.471, .356, .682),
@@ -99,4 +142,23 @@ internal partial class SimulationViewport
         9 => new(.541, .764, .278),
         _ => new(.407, .333, .964)
     };
+}
+
+internal readonly record struct ArchivedSymbol(Vector2 Center, float Diameter, bool Square, Color Color);
+
+internal partial class ArchivedSymbolCanvas : Node2D
+{
+    internal List<ArchivedSymbol> Symbols { get; } = [];
+
+    public override void _Draw()
+    {
+        foreach (var symbol in Symbols)
+        {
+            float radius = symbol.Diameter / 2;
+            if (symbol.Square)
+                DrawRect(new(symbol.Center - Vector2.One * radius, Vector2.One * symbol.Diameter), symbol.Color, false, 1);
+            else
+                DrawArc(symbol.Center, radius, 0, Mathf.Tau, Math.Clamp((int)symbol.Diameter, 10, 60), symbol.Color, 1, true);
+        }
+    }
 }

@@ -693,7 +693,11 @@ public partial class BootstrapSmoke : Node
         {
             foreach (string file in Directory.EnumerateFiles(source, "*", SearchOption.AllDirectories))
             {
-                string destination = Path.Combine(root.FullName, Path.GetRelativePath(source, file));
+                string relative = Path.GetRelativePath(source, file);
+                // Other corpus scenarios can supply overrides. This test owns its overlay directory.
+                if (relative.Split(Path.DirectorySeparatorChar, 2)[0].Equals("overrides", StringComparison.OrdinalIgnoreCase))
+                    continue;
+                string destination = Path.Combine(root.FullName, relative);
                 Directory.CreateDirectory(Path.GetDirectoryName(destination)!);
                 File.Copy(file, destination);
             }
@@ -727,6 +731,7 @@ public partial class BootstrapSmoke : Node
             WritePatch("model-a.3ds");
             Require(await scene.ReloadAddOns() && ((ArrayMesh)model.Mesh).GetSurfaceCount() == 4,
                 "A newly created override directory must be observed.");
+            Aabb overrideBounds = model.Mesh.GetAabb();
             var epoch = session[0];
             var other = session[1];
             var deltaT = session.DeltaT;
@@ -736,10 +741,16 @@ public partial class BootstrapSmoke : Node
             File.SetLastWriteTimeUtc(patch, timestamp);
             Require(File.GetLastWriteTimeUtc(patch) == timestamp && new FileInfo(patch).Length == bytes,
                 "The controlled edit must preserve both the original timestamp and file size.");
-            Require(await scene.ReloadAddOns() && ((ArrayMesh)model.Mesh).GetSurfaceCount() == 10 &&
-                ReferenceEquals(satellite, renderer.SatelliteMesh(new ObjectId("norad/26997"))) &&
-                session[0] == epoch && session[1] == other && session.DeltaT == deltaT,
-                "An equal-size SSC edit must refresh only the affected assets and preserve the observer state.");
+            Require(await scene.ReloadAddOns(), "The equal-size SSC edit must reload successfully.");
+            Require(model.Visible && model.Mesh is ArrayMesh refreshed &&
+                refreshed.GetSurfaceCount() == originalModel.GetSurfaceCount() &&
+                refreshed.GetAabb() == originalModel.GetAabb() && refreshed.GetAabb() != overrideBounds,
+                "The equal-size edit must restore the original Cassini geometry.");
+            Require(ReferenceEquals(satellite, renderer.SatelliteMesh(new ObjectId("norad/26997"))),
+                "The equal-size edit must reuse the unaffected Jason-1 node.");
+            Require(session[0] == epoch, $"The edit changed the active observer: {epoch} => {session[0]}");
+            Require(session[1] == other, $"The edit changed the second observer: {other} => {session[1]}");
+            Require(session.DeltaT == deltaT, "The equal-size edit must preserve delta-T.");
 
             var stableWorld = session.World;
             Mesh stableModel = model.Mesh;

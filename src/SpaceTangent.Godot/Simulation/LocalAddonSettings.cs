@@ -20,6 +20,7 @@ internal sealed record LocalAddonSource(Guid Id, LocalAddonKind Kind, string Pat
 internal sealed record LocalAddonSettings(LocalAddonKind[] DisabledDefaults, LocalAddonSource[] Sources)
 {
     internal string[] DisabledPlugins { get; init; } = [];
+    internal string[] DisabledPacks { get; init; } = [];
 
     internal static LocalAddonSettings Empty { get; } = new([], []);
 
@@ -99,7 +100,8 @@ internal sealed class LocalAddonSettingsFile
             throw new InvalidDataException("Unsupported local add-on settings.");
         var settings = new LocalAddonSettings(data.DisabledDefaults, data.Sources)
         {
-            DisabledPlugins = data.DisabledPlugins ?? []
+            DisabledPlugins = data.DisabledPlugins ?? [],
+            DisabledPacks = data.DisabledPacks ?? []
         };
         Validate(settings);
         return settings;
@@ -108,7 +110,8 @@ internal sealed class LocalAddonSettingsFile
     internal void Save(LocalAddonSettings settings)
     {
         Validate(settings);
-        byte[] bytes = JsonSerializer.SerializeToUtf8Bytes(new Document(1, settings.DisabledDefaults, settings.Sources, settings.DisabledPlugins.Length == 0 ? null : settings.DisabledPlugins), Json);
+        byte[] bytes = JsonSerializer.SerializeToUtf8Bytes(new Document(1, settings.DisabledDefaults, settings.Sources, settings.DisabledPlugins.Length == 0 ? null : settings.DisabledPlugins,
+            settings.DisabledPacks.Length == 0 ? null : settings.DisabledPacks), Json);
         if (bytes.Length > MaximumBytes)
             throw new InvalidDataException("The local add-on settings are too large.");
         string directory = Path.GetDirectoryName(_file)!;
@@ -159,6 +162,9 @@ internal sealed class LocalAddonSettingsFile
 
     private void Validate(LocalAddonSettings settings)
     {
+        if (settings.DisabledPacks.Length > 128 || settings.DisabledPacks.Any(key => !LegacyObserverProfiles.ValidPackKey(key)) ||
+            settings.DisabledPacks.Distinct(StringComparer.Ordinal).Count() != settings.DisabledPacks.Length)
+            throw new InvalidDataException("The local add-on settings contain an invalid disabled pack list.");
         if (settings.DisabledPlugins.Length > 128 || settings.DisabledPlugins.Any(id => !ObserverPluginManifest.ValidId(id)) ||
             settings.DisabledPlugins.Distinct(StringComparer.Ordinal).Count() != settings.DisabledPlugins.Length)
             throw new InvalidDataException("The local add-on settings contain an invalid disabled plugin list.");
@@ -177,5 +183,6 @@ internal sealed class LocalAddonSettingsFile
     }
 
     private sealed record Document(int Version, LocalAddonKind[] DisabledDefaults, LocalAddonSource[] Sources,
-        [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] string[]? DisabledPlugins);
+        [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] string[]? DisabledPlugins,
+        [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] string[]? DisabledPacks);
 }

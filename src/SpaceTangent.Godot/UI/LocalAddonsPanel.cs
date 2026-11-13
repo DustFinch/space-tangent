@@ -88,7 +88,7 @@ internal sealed class LocalAddonsPanel
             LocalDataPath path = AddonLoader.SourcePath(source, file);
             string display = Path.GetFileName(source.Kind == LocalAddonKind.Mission
                 ? Path.GetDirectoryName(path.Explicit!) : path.Explicit)!;
-            AddSource($"LocalAddon{index}", display, source.Enabled, path.Explicit!,
+            AddSource($"LocalAddon{index}", display, source.Enabled && loaded?.FilteredPacks.ContainsKey(path) != true, path.Explicit!,
                 loaded?.HasSource(source.Kind, path) == true, enabled => _setSource(source, enabled), Title(source.Kind));
         }
         foreach (LocalAddonKind kind in Enum.GetValues<LocalAddonKind>())
@@ -97,7 +97,7 @@ internal sealed class LocalAddonsPanel
             string location = path.Resolve();
             if (kind == LocalAddonKind.Mission && path.Explicit is null && !File.Exists(location))
                 location = path.WithExtension(".ssc").Resolve();
-            AddSource($"DefaultAddon{kind}", Title(kind), settings.UsesDefault(kind), location,
+            AddSource($"DefaultAddon{kind}", Title(kind), settings.UsesDefault(kind) && loaded?.FilteredPacks.ContainsKey(path) != true, location,
                 loaded?.HasSource(kind, path) == true, enabled => _setDefault(kind, enabled), "Default");
         }
     }

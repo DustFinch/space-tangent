@@ -377,8 +377,8 @@ public partial class SolarSystemScene : Control
         _dataSummary = SimulatorTheme.Detail("");
         addOns.AddChild(_dataSummary);
         _localAddonPanel = new(this, addOns, ReloadAddOns, InstallLocalAddon,
-            (kind, enabled) => ReloadAddOns(_localAddons.SetDefault(kind, enabled)),
-            (source, enabled) => ReloadAddOns(_localAddons.SetSource(source, enabled)), UpdateSatelliteGroups);
+            (kind, enabled) => ReloadAddOns(ApplyPackOverride(_localAddons.SetDefault(kind, enabled), AddonLoader.DefaultPath(kind), enabled)),
+            (source, enabled) => ReloadAddOns(ApplyPackOverride(_localAddons.SetSource(source, enabled), AddonLoader.SourcePath(source, _localAddonFile), enabled)), UpdateSatelliteGroups);
         _localAddonPanel.ShowSources(_localAddons, _localAddonFile, _addOns?.Decoded);
         var scripts = _workspace.AddPage("Scripts", "Observer scripts");
         scripts.AddChild(SimulatorTheme.Section("Observer scripts"));
@@ -1322,6 +1322,11 @@ public partial class SolarSystemScene : Control
     }
 
     internal Task<bool> ReloadAddOns() => ReloadAddOns(null);
+
+    private LocalAddonSettings ApplyPackOverride(LocalAddonSettings settings, LocalDataPath path, bool enabled) =>
+        enabled && _addOns?.Decoded.FilteredPacks.TryGetValue(path, out var blocked) == true
+            ? settings with { DisabledPacks = settings.DisabledPacks.Except(blocked, StringComparer.Ordinal).ToArray() }
+            : settings;
 
     private async Task InstallLocalAddon(LocalAddonKind kind, string path)
     {

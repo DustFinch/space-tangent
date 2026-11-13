@@ -85,6 +85,9 @@ public partial class SolarSystemScene
     {
         var session = Session!;
         var profile = LegacyObserverProfiles.Read(path, session[_active], session.DeltaT);
+        if (profile.DisabledPacks is { } disabledPacks && !_localAddons.DisabledPacks.SequenceEqual(disabledPacks) &&
+            !await ReloadAddOns(_localAddons with { DisabledPacks = disabledPacks.ToArray() }))
+            throw new InvalidDataException("The archived pack preferences could not be applied.");
         var saved = AddonLoader.SavedEarthPlacePath();
         int sites = LegacySavedEarthPlaces.Merge(saved.Explicit ?? saved.User, profile.SavedSites);
         if (profile.DisabledPlugins is { } disabled && !_localAddons.DisabledPlugins.SequenceEqual(disabled))

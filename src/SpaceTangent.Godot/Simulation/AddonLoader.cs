@@ -56,6 +56,9 @@ internal static partial class AddonLoader
         Cached<EarthPlaceCatalogue> EarthPlaces, LocalDataPath SavedEarthPlacesPath, bool AllowAddonLua,
         IReadOnlyDictionary<ObjectId, PreparedMissionObservation> Observations, Cached<GalacticDustGrid?> GalacticDust, Cached<DistantStarIndex?> DistantStars)
     {
+        internal IReadOnlyDictionary<LocalDataPath, string[]> FilteredPacks { get; init; } =
+            new Dictionary<LocalDataPath, string[]>();
+
         internal bool HasSource(LocalAddonKind kind, LocalDataPath path) => kind switch
         {
             LocalAddonKind.Science => Science.Any(source => source.Path == path && source.Value.Count > 0),
@@ -127,6 +130,22 @@ internal static partial class AddonLoader
         var savedEarthPlacesPath = SavedEarthPlacePath();
         return Task.Run(() =>
         {
+            var filteredPacks = new Dictionary<LocalDataPath, string[]>();
+            science = science.Where(Enabled).ToArray();
+            bodySources = bodySources.Where(Enabled).ToArray();
+            if (mission is { } missionSource && !Enabled(missionSource)) mission = null;
+            if (timeline is { } timelineSource && !Enabled(timelineSource)) timeline = null;
+            if (terrain is { } terrainSource && !Enabled(terrainSource)) terrain = null;
+            bool Enabled(LocalDataPath path)
+            {
+                if (settings.DisabledPacks.Length == 0)
+                    return true;
+                var keys = LegacyPackKeys.For(path).Intersect(settings.DisabledPacks, StringComparer.Ordinal).ToArray();
+                if (keys.Length == 0)
+                    return true;
+                filteredPacks[path] = keys;
+                return false;
+            }
             var satellites = science.Select(path => Cached<IReadOnlyList<DecodedSatellite>>.Load(
                 previous?.Science.FirstOrDefault(source => source.Path == path), path,
                 "Science satellites", ReadScience, cancellation)).ToArray();
@@ -214,7 +233,9 @@ internal static partial class AddonLoader
                     ReferenceEquals(previous.DeepSky, deepSky) && ReferenceEquals(previous.GalacticDust, galacticDust) && ReferenceEquals(previous.Stellar, stellar) &&
                     ReferenceEquals(previous.StellarArchive, archive) && ReferenceEquals(previous.DistantStars, distantStars) && ReferenceEquals(previous.StellarDefinitions, definitions) &&
                     ReferenceEquals(previous.Exoplanets, exoplanets) && ReferenceEquals(previous.SampledMissions, missions) &&
-                    ReferenceEquals(previous.LocalSatellites, tle) && ReferenceEquals(previous.EarthPlaces, earthPlaces))
+                    ReferenceEquals(previous.LocalSatellites, tle) && ReferenceEquals(previous.EarthPlaces, earthPlaces) &&
+                    previous.FilteredPacks.Count == filteredPacks.Count && filteredPacks.All(pair =>
+                        previous.FilteredPacks.TryGetValue(pair.Key, out var keys) && keys.SequenceEqual(pair.Value)))
                     return previous;
 
                 var tracks = new List<ScienceSatellite>();
@@ -234,7 +255,7 @@ internal static partial class AddonLoader
                     spice?.Track, sampled?.Value?.Track, sampled?.Value?.Probe, relief?.Value?.Frame, brightStars, planets, marsTerrain is not null, definitions.Value.Catalogue,
                     bodies.Bodies.Select(body => body.Body), locations.Value, deepSky.Value.Index, exoplanets.Value, missions.Tracks.Select(mission => mission.Track), tle.Value, earthPlaces.Value, distantStars.Value));
                 var observations = PrepareObservations(world, missions.Tracks, cancellation);
-                var decoded = new DecodedAddOns(world, sameScience ? previous!.Science : satellites, spice, sampled, relief, planets, marsTerrain, stellar, archive, definitions, bodies, locations, deepSky, exoplanets, missions, tle, tleUpdates, earthPlaces, savedEarthPlacesPath, allowAddonLua, observations, galacticDust, distantStars);
+                var decoded = new DecodedAddOns(world, sameScience ? previous!.Science : satellites, spice, sampled, relief, planets, marsTerrain, stellar, archive, definitions, bodies, locations, deepSky, exoplanets, missions, tle, tleUpdates, earthPlaces, savedEarthPlacesPath, allowAddonLua, observations, galacticDust, distantStars) { FilteredPacks = filteredPacks };
                 openedDistantStars = null;
                 return decoded;
             }
@@ -254,6 +275,7 @@ internal static partial class AddonLoader
             foreach (var source in settings.Sources.Where(source => source.Kind == kind && source.Enabled))
                 yield return SourcePath(source, file);
         }
+
 
         LocalDataPath? First(LocalAddonKind kind) => Paths(kind).Select(path => (LocalDataPath?)path).SingleOrDefault();
     }

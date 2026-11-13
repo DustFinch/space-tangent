@@ -10,6 +10,7 @@ public sealed record LegacyObserverProfile(ObserverView Observer, DeltaTModel De
 {
     public bool? NightMode { get; init; }
     public IReadOnlyList<string>? DisabledPlugins { get; init; }
+    public IReadOnlyList<string>? DisabledPacks { get; init; }
     public IReadOnlyList<EarthPlace> SavedSites { get; init; } = [];
 }
 
@@ -187,12 +188,18 @@ public static class LegacyObserverProfiles
         return new(observer, deltaT)
         {
             SavedSites = EarthPlaceCatalogue.ParseSavedText(Word(root, "SavedSites")),
+            DisabledPacks = Word(root, "DisabledPacks") is { } packs
+                ? packs.Split(',', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries)
+                    .Where(ValidPackKey).Distinct(StringComparer.Ordinal).Take(128).ToArray() : null,
             DisabledPlugins = Word(root, "DisabledPlugins") is { } disabled
                 ? disabled.Split(',', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries)
                     .Where(ObserverPluginManifest.ValidId).Distinct(StringComparer.Ordinal).Take(128).ToArray() : null,
             NightMode = Flag(root, "NightMode")
         };
     }
+
+    public static bool ValidPackKey(string? key) => key is { Length: > 0 and <= 160 } &&
+        !key.Any(character => char.IsControl(character) || character is ',' or '/' or '\\');
 
     private static double? Number(JsonElement element, string name) => element.TryGetProperty(name, out var value) &&
         value.ValueKind == JsonValueKind.Number && value.TryGetDouble(out double number) && double.IsFinite(number) ? number : null;

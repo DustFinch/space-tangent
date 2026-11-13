@@ -8,10 +8,10 @@ namespace SpaceTangent.Godot.Simulation;
 
 internal partial class SimulationViewport
 {
-    private readonly Dictionary<ObjectId, Label3D> _moonLabels = new();
+    private readonly Dictionary<ObjectId, Label3D> _bodyLabels = new();
     private IReadOnlyDictionary<ObjectId, ArrayMesh>? _moonModels;
 
-    internal Label3D? MoonLabel(ObjectId id) => _moonLabels.GetValueOrDefault(id);
+    internal Label3D? BodyLabel(ObjectId id) => _bodyLabels.GetValueOrDefault(id);
 
     internal MeshInstance3D? NaturalMoonModel(ObjectId id) =>
         _moonModels?.ContainsKey(id) == true ? _planetGlobes[id] : null;
@@ -31,19 +31,10 @@ internal partial class SimulationViewport
         foreach (NaturalBodyDefinition body in NaturalBodyCatalogue.Bodies)
         {
             _planetGlobes.Add(body.Id, CreateNavigationSphere(new Color(body.Color)));
-            if (body.Kind != CatalogueKind.Moon)
-                continue;
-            Label3D label = CreateLabel(body.Name, Vector3.Zero);
-            label.FixedSize = true;
-            label.PixelSize = .0015f;
-            label.NoDepthTest = false;
-            label.Hide();
-            _moonLabels.Add(body.Id, label);
-            AddChild(label);
         }
     }
 
-    private void DrawSmallBodies(WorldSnapshot snapshot, NavigationCamera pose, Vector3d eyeOffset, double units, bool labels,
+    private void DrawSmallBodies(WorldSnapshot snapshot, NavigationCamera pose, Vector3d eyeOffset, double units, SkyLayerSettings sky, ObjectId? selection,
         Func<Vector3d, (Vector3 Position, double Scale)> project)
     {
         foreach (NaturalBodyDefinition body in NaturalBodyCatalogue.Bodies)
@@ -75,37 +66,53 @@ internal partial class SimulationViewport
             }
             else if (resolved)
                 PlaceWorldGlobe(_planetGlobes[body.Id], snapshot, body.Id, position, radii * radius);
-            if (labels && isMoon)
-                DrawMoonLabel(body, snapshot, state.PositionKilometers, towardEye, position, radius);
+            bool minor = body.Kind is CatalogueKind.Asteroid or CatalogueKind.Comet;
+            if (sky.Labels && (!minor || sky.MinorBodyLabels || selection == body.Id))
+                DrawBodyLabel(body.Id, body.Name, body.Parent, isMoon ? MoonOrbitRadius(body.NaifId) :
+                    body.Kind == CatalogueKind.DwarfPlanet ? PlanetLabelOrbitRadius(body.NaifId) : 0,
+                    body.RadiusKilometers, snapshot, state.PositionKilometers, towardEye, position, radius);
         }
     }
 
-    private void DrawMoonLabel(NaturalBodyDefinition body, WorldSnapshot snapshot, Vector3d center, Vector3d towardEye,
-        Vector3 position, float radius)
+    private void DrawBodyLabel(ObjectId id, string name, ObjectId? parentId, double orbitRadius, double bodyRadius,
+        WorldSnapshot snapshot, Vector3d center, Vector3d towardEye, Vector3 position, float radius)
     {
         double distance = towardEye.Length;
-        if (distance <= body.RadiusKilometers || _navigationCamera.IsPositionBehind(position) ||
-            !snapshot.TryState(body.Parent, out var parent))
+        if (distance <= bodyRadius || _navigationCamera.IsPositionBehind(position))
             return;
-        Vector3d relativeParent = parent.PositionKilometers - center;
-        Vector3d direction = towardEye / distance;
-        double along = Vector3d.Dot(relativeParent, direction);
-        double parentRadius = NavigationCamera.BodyRadiusKilometers(body.Parent);
-        double miss = (relativeParent - direction * along).Length;
-        if (miss < parentRadius)
+        if (parentId is { } primary && snapshot.TryState(primary, out var parent))
         {
-            double halfChord = Math.Sqrt(parentRadius * parentRadius - miss * miss);
-            if (along + halfChord > 0 && along - halfChord < distance)
-                return;
+            Vector3d relativeParent = parent.PositionKilometers - center;
+            Vector3d direction = towardEye / distance;
+            double along = Vector3d.Dot(relativeParent, direction);
+            double parentRadius = CatalogueWorld?.TargetRadiusKilometers(primary) ?? NavigationCamera.BodyRadiusKilometers(primary);
+            double miss = (relativeParent - direction * along).Length;
+            if (miss < parentRadius)
+            {
+                double halfChord = Math.Sqrt(parentRadius * parentRadius - miss * miss);
+                if (along + halfChord > 0 && along - halfChord < distance)
+                    return;
+            }
         }
 
         const double minimumPixels = 20;
         double focalPixels = GetViewport().GetVisibleRect().Size.Y / (2 * Math.Tan(Math.PI * _navigationCamera.Fov / 360));
-        double orbitPixels = focalPixels * MoonOrbitRadius(body.NaifId) / distance;
+        if (focalPixels <= 0)
+            return;
+        double orbitPixels = orbitRadius > 0 ? focalPixels * orbitRadius / distance : double.PositiveInfinity;
         if (orbitPixels <= minimumPixels)
             return;
 
-        Label3D label = _moonLabels[body.Id];
+        if (!_bodyLabels.TryGetValue(id, out Label3D? label))
+        {
+            label = CreateLabel(name, Vector3.Zero);
+            label.FixedSize = true;
+            label.PixelSize = .0015f;
+            label.NoDepthTest = false;
+            _bodyLabels.Add(id, label);
+            AddChild(label);
+        }
+        label.Text = name;
         float opacity = (float)Math.Min(1, (orbitPixels - minimumPixels) / minimumPixels);
         label.Modulate = new Color(Colors.White, opacity);
         label.OutlineModulate = new Color(Colors.Black, opacity);
@@ -115,6 +122,18 @@ internal partial class SimulationViewport
         label.Position = position + cameraOffset.Normalized() * radius * 1.01f -
             _navigationCamera.Basis.Y * (radius + gap);
         label.Show();
+    }
+
+    private static double PlanetLabelOrbitRadius(int naif)
+    {
+        const double au = 149_597_870.7;
+        return au * (naif switch
+        {
+            199 => .467, 299 => .728, 399 => 1.017, 499 => 1.666,
+            599 => 5.457, 699 => 10.124, 799 => 20.10, 899 => 30.33,
+            999 => 49.31, 2000001 => 2.767677892029369 * 1.075823549018329,
+            _ => 0
+        });
     }
 
     // Apocentres from the archived orbital elements, in kilometres.

@@ -78,6 +78,25 @@ public partial class EarthOrbitProbe
             }
         }
         GD.Print("Small-body photometry GPU: points and picking for Pluto, Ceres, Vesta and comet 67P.");
+        var vestaId = new ObjectId("sol/vesta");
+        var labelSky = new SkyLayerSettings(false, true, false, false);
+        var trackedVesta = SmallBodyView(vestaId) with { Selection = null, Sky = labelSky };
+        var labeledSaturn = near with { Sky = labelSky };
+        Save(labeledSaturn, trackedVesta);
+        if (scene.Renderer(0).BodyLabel(saturn.Id) is not { Visible: true, Text: "Saturn" } ||
+            scene.Renderer(1).BodyLabel(vestaId)?.Visible == true)
+            throw new InvalidOperationException("The planet label should show while unselected minor bodies are hidden.");
+        Save(labeledSaturn, trackedVesta with { Selection = vestaId });
+        if (scene.Renderer(1).BodyLabel(vestaId) is not { Visible: true, Text: "Vesta" })
+            throw new InvalidOperationException("Selecting the original Vesta must show its minor body label.");
+        string profile = Path.Combine(directory, "minor-labels-profile.json");
+        File.WriteAllText(profile, """{"Site":{},"Labels":true,"MinorLabels":true}""");
+        var importedLabels = LegacyObserverProfiles.Read(profile, trackedVesta, session.DeltaT).Observer;
+        Save(labeledSaturn, importedLabels);
+        if (scene.Renderer(1).BodyLabel(vestaId) is not { Visible: true } ||
+            !session[1].Sky.MinorBodyLabels || session[0].Sky.MinorBodyLabels)
+            throw new InvalidOperationException("The archived minor labels preference must apply only to its saved view.");
+        GD.Print("Body labels GPU: Saturn, selected Vesta and the archived independent minor labels preference.");
         string? packed = System.Environment.GetEnvironmentVariable("SPACETANGENT_ASTEROIDS_SSC");
         if (!string.IsNullOrEmpty(packed))
         {

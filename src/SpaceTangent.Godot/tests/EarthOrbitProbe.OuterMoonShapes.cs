@@ -83,9 +83,9 @@ public partial class EarthOrbitProbe
         var hidden = WithLabel(At(focal * orbitRadius / 15));
         var faded = WithLabel(At(focal * orbitRadius / 30));
         Save([faded, hidden]);
-        var label = scene.Renderer(0).MoonLabel(id)!;
+        var label = scene.Renderer(0).BodyLabel(id)!;
         if (!label.Visible || Math.Abs(label.Modulate.A - .5f) > .01f ||
-            scene.Renderer(1).MoonLabel(id)?.Visible != false)
+            scene.Renderer(1).BodyLabel(id)?.Visible == true)
             throw new InvalidOperationException("Hyperion labels must fade between 20 and 40 projected orbit pixels.");
         await ToSignal(RenderingServer.Singleton, RenderingServer.SignalName.FramePostDraw);
         using var labeled = renderer.GetViewport().GetTexture().GetImage();
@@ -116,8 +116,8 @@ public partial class EarthOrbitProbe
             }
         };
         Save([occulted, faded with { Sky = default }]);
-        if (scene.Renderer(0).MoonLabel(id)?.Visible != false ||
-            scene.Renderer(1).MoonLabel(id)?.Visible != false)
+        if (scene.Renderer(0).BodyLabel(id)?.Visible == true ||
+            scene.Renderer(1).BodyLabel(id)?.Visible == true)
             throw new InvalidOperationException("Saturn occultation and the independent Labels layer must each hide Hyperion.");
         GD.Print($"Moon labels GPU: original Hyperion fade, {changed} label pixels, Saturn occultation and independent visibility.");
 

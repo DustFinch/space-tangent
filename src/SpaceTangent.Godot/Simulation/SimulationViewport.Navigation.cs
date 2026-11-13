@@ -66,7 +66,7 @@ internal partial class SimulationViewport
     }
 
     private void DrawNavigation(NavigationCamera pose, WorldSnapshot snapshot, SolarSystemSample solar, DeltaTModel deltaT,
-        SkyLayerSettings sky, double fieldOfView, bool inverted)
+        SkyLayerSettings sky, ObjectId? selection, double fieldOfView, bool inverted)
     {
         double units = pose.RangeKilometers / NavigationCameraUnits;
         var placement = pose.ResolvePlacement(snapshot, deltaT);
@@ -129,7 +129,7 @@ internal partial class SimulationViewport
             SolarSystemSample.EarthId, .136, "c9c4b6");
         _navigationMoonMaterial.SetShaderParameter("sun_from_moon", ToGodot((solar.Sun - solar.Moon).PositionKilometers, 1));
         _navigationMoonMaterial.SetShaderParameter("earth_from_moon", ToGodot((solar.Earth - solar.Moon).PositionKilometers, 1));
-        DrawPlanetGlobes(snapshot, pose, placement.OffsetKilometers, units, sky.Labels, ProjectWithScale);
+        DrawPlanetGlobes(snapshot, pose, placement.OffsetKilometers, units, sky, selection, ProjectWithScale);
         DrawWorldAtmospheres(snapshot, solar.Sun.PositionKilometers);
         DrawStellarObjects(pose, snapshot, sky, placement.OffsetKilometers, units, ProjectWithScale);
         DrawExtrasolarOrbits(pose, snapshot, units, ProjectWithScale);
@@ -179,6 +179,13 @@ internal partial class SimulationViewport
             Vector3d towardEye = (pose.AnchorKilometers - position) + placement.OffsetKilometers;
             node.Visible = parentId is not { } parent ||
                 DrawReflectedBody(id, parent, physicalRadius, albedo, new Color(tint), snapshot, towardEye, position, node.Position, radius);
+            if (sky.Labels)
+            {
+                string name = PlanetCatalogue.Find(id)?.Name ?? (id == SolarSystemSample.SunId ? "Sun" : "Moon");
+                double orbitRadius = id == SolarSystemSample.MoonId ? 384399 * 1.0549 :
+                    id == SolarSystemSample.EarthId ? PlanetLabelOrbitRadius(399) : 0;
+                DrawBodyLabel(id, name, parentId, orbitRadius, physicalRadius, snapshot, position, towardEye, node.Position, radius);
+            }
         }
 
         Vector3 Project(Vector3d position, out double scale) => ProjectNavigation((position - pose.AnchorKilometers) - _navigationEyeOffset, units, out scale);

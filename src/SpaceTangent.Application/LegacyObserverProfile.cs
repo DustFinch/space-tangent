@@ -84,6 +84,7 @@ public static class LegacyObserverProfiles
         sky = sky with
         {
             Labels = Flag(root, "Labels") ?? sky.Labels,
+            MinorBodyLabels = Flag(root, "MinorLabels") ?? sky.MinorBodyLabels,
             Meteors = Flag(root, "Meteors") ?? sky.Meteors,
             MeteorRadiants = Flag(root, "Radiants") ?? sky.MeteorRadiants,
             MeteorRateMultiplier = meteorRate is { } rate && SkyLayerSettings.ValidMeteorRate(rate)

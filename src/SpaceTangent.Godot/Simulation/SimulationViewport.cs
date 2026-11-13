@@ -248,7 +248,7 @@ internal partial class SimulationViewport : Node3D
         {
             _surface?.Draw(false, sample, deltaT);
             HideOrbitalMarkers();
-            DrawNavigation(navigation, snapshot, sample, deltaT, observer.Sky, OpticalField(observer),
+            DrawNavigation(navigation, snapshot, sample, deltaT, observer.Sky, observer.Selection, OpticalField(observer),
                 observer.ActiveOptics?.Inverted == true);
             DrawSurfaceSites(navigation, observer.Selection, snapshot, deltaT);
             return true;

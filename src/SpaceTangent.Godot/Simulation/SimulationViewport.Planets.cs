@@ -161,7 +161,7 @@ internal partial class SimulationViewport
         _planetPathNode.Hide();
     }
 
-    private void DrawPlanetGlobes(WorldSnapshot snapshot, NavigationCamera pose, Vector3d eyeOffset, double units, bool labels,
+    private void DrawPlanetGlobes(WorldSnapshot snapshot, NavigationCamera pose, Vector3d eyeOffset, double units, SkyLayerSettings sky, ObjectId? selection,
         Func<Vector3d, (Vector3 Position, double Scale)> project)
     {
         foreach (PlanetDefinition planet in PlanetCatalogue.Planets)
@@ -172,6 +172,9 @@ internal partial class SimulationViewport
             var (position, scale) = project(state.PositionKilometers);
             float radius = (float)(planet.RadiusKilometers * scale / units);
             Vector3d towardEye = (pose.AnchorKilometers - state.PositionKilometers) + eyeOffset;
+            if (sky.Labels)
+                DrawBodyLabel(planet.Id, planet.Name, SolarSystemSample.SunId, PlanetLabelOrbitRadius(planet.NaifId),
+                    planet.RadiusKilometers, snapshot, state.PositionKilometers, towardEye, position, radius);
             if (!DrawReflectedBody(planet.Id, SolarSystemSample.SunId, planet.RadiusKilometers, PlanetAlbedo(planet.NaifId),
                 new Color(planet.Color), snapshot, towardEye, state.PositionKilometers, position, radius))
                 continue;
@@ -184,7 +187,7 @@ internal partial class SimulationViewport
                 rings.Update(ToGodot(toSun / distance, 1), distance, oriented);
             }
         }
-        DrawSmallBodies(snapshot, pose, eyeOffset, units, labels, project);
+        DrawSmallBodies(snapshot, pose, eyeOffset, units, sky, selection, project);
     }
 
     private static bool PlaceWorldGlobe(MeshInstance3D globe, WorldSnapshot snapshot, ObjectId id, Vector3 position, Vector3 radii)
@@ -207,7 +210,7 @@ internal partial class SimulationViewport
             globe.Hide();
         foreach (PlanetRingRendering rings in _planetRings.Values)
             rings.Hide();
-        foreach (Label3D label in _moonLabels.Values)
+        foreach (Label3D label in _bodyLabels.Values)
             label.Hide();
     }
 }

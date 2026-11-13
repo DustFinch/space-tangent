@@ -22,6 +22,7 @@ internal sealed record PreparedMissionGeometry(JulianInstant Start, JulianInstan
 {
     internal MissionAxesStyle? Axes { get; init; }
     internal MissionVectorStyle? VectorOverlay { get; init; }
+    internal PreparedMissionSwarm? Swarm { get; init; }
     internal Vector3d? EllipsoidRadiiKilometers { get; init; }
     internal StandardMaterial3D? GlobeMaterial { get; init; }
 }
@@ -134,6 +135,12 @@ internal partial class SimulationViewport
                 }
                 if (active is null)
                     continue;
+                if (active.Swarm is { } swarm)
+                {
+                    MissionSwarmRendering.Draw(node, swarm, snapshot.Epoch, frame.ToWorld, position, projection / units,
+                        _navigationCamera, GetViewport().GetVisibleRect().Size.Y);
+                    continue;
+                }
                 if (active.VectorOverlay is { } overlay)
                 {
                     DrawMissionVector(node, overlay, state, snapshot, frame.ToWorld, position, projection / units);

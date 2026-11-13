@@ -342,6 +342,7 @@ internal static partial class AddonLoader
             };
         });
         var textures = new Dictionary<string, global::Godot.Texture2D>(StringComparer.Ordinal);
+        var swarmResources = new Dictionary<string, (global::Godot.ArrayMesh Mesh, global::Godot.Texture2D Data)>(StringComparer.OrdinalIgnoreCase);
         var missions = decoded.SampledMissions.Value.Select(item =>
         {
             var track = item.Track;
@@ -362,6 +363,7 @@ internal static partial class AddonLoader
                 {
                     Axes = shape.Axes,
                     VectorOverlay = shape.VectorOverlay,
+                    Swarm = shape.Swarm is { } swarm ? MissionSwarmRendering.Publish(swarm, swarmResources) : null,
                     EllipsoidRadiiKilometers = shape.EllipsoidRadiiKilometers,
                     GlobeMaterial = shape.GlobeTexturePath is { } map ? new global::Godot.StandardMaterial3D
                     {

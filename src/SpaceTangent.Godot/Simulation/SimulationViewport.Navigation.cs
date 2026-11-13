@@ -48,11 +48,11 @@ internal partial class SimulationViewport
         InitializeStellarRendering();
     }
 
-    private MeshInstance3D CreateNavigationSphere(Color color, bool emissive = false)
+    private MeshInstance3D CreateNavigationSphere(Color color, bool emissive = false, Mesh? sharedMesh = null)
     {
         var mesh = new MeshInstance3D
         {
-            Mesh = new SphereMesh { Radius = 1, Height = 2, RadialSegments = 64, Rings = 32 },
+            Mesh = sharedMesh ?? new SphereMesh { Radius = 1, Height = 2, RadialSegments = 64, Rings = 32 },
             MaterialOverride = new StandardMaterial3D
             {
                 AlbedoColor = color,
@@ -135,7 +135,7 @@ internal partial class SimulationViewport
         DrawExtrasolarOrbits(pose, snapshot, units, ProjectWithScale);
         DrawCompactObjects(snapshot, sky, units, ProjectWithScale);
         DrawImportedBodies(snapshot, pose, placement.OffsetKilometers, units, sky, selection, ProjectWithScale);
-        DrawLocalSatellite(snapshot, pose, placement.OffsetKilometers, units, sky, selection, ProjectWithScale);
+        DrawLocalSatellites(snapshot, pose, placement.OffsetKilometers, units, sky, selection, ProjectWithScale);
         HideComets();
         DrawComets(snapshot, solar.Sun, units, ProjectWithScale);
 
@@ -151,6 +151,8 @@ internal partial class SimulationViewport
                 continue;
             double radius = asset.Track.SizeKilometers;
             var satelliteId = asset.Track.Id;
+            if (sky.HideSatellites && selection != satelliteId && pose.Target != satelliteId)
+                continue;
             bool label = sky.Labels && (sky.MinorBodyLabels || selection == satelliteId);
             Vector3 position = Project(state.PositionKilometers, out double scale);
             float projectedRadius = (float)(radius / units * scale);
@@ -227,8 +229,8 @@ internal partial class SimulationViewport
             Consider(id, globe);
         foreach (var (id, satellite) in _satellites)
             Consider(id, satellite.Node);
-        if (_localSatelliteId is { } tracked && _localSatelliteMarker is { } marker)
-            Consider(tracked, marker);
+        foreach (var (satelliteId, marker) in _localSatelliteMarkers)
+            Consider(satelliteId, marker);
         foreach (var (id, body) in _importedNodes)
             if (body.Asset.Observation is null && body.Asset.Geometry?.Any(span => span.VectorOverlay is not null || span.Swarm is not null) != true)
                 Consider(id, body.Node);
@@ -299,7 +301,7 @@ internal partial class SimulationViewport
         HideCompactObjects();
         HideExtrasolarOrbits();
         HideImportedBodies();
-        _localSatelliteMarker?.Hide();
+        HideLocalSatelliteMarkers();
         HideComets();
     }
 }

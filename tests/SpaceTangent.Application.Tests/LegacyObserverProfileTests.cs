@@ -205,6 +205,32 @@ public sealed class LegacyObserverProfileTests
         finally { File.Delete(path); }
     }
 
+    [Fact]
+    public void ArchivedSatelliteVisibilityRoundTripsForOnlyOneView()
+    {
+        string path = Path.GetTempFileName();
+        try
+        {
+            var view = new ObserverView(new(2451545, 0, TimeScale.Tdb), CameraMode.Solar, null, false);
+            File.WriteAllText(path, """{"DeltaT":"MorrisonStephenson2004","Satellites":false}""");
+            var archived = LegacyObserverProfiles.Read(path, view, DeltaTModel.MorrisonStephenson2004);
+            Assert.True(archived.Observer.Sky.HideSatellites);
+
+            var scenario = new SimulationScenario([view, archived.Observer], false, 0, 0, archived.DeltaT);
+            ScenarioFile.Save(path, scenario);
+            Assert.Equal(scenario.Views, ScenarioFile.Load(path).Views);
+            var json = System.Text.Json.Nodes.JsonNode.Parse(File.ReadAllText(path))!.AsObject();
+            Assert.Equal(28, json["version"]!.GetValue<int>());
+            json["version"] = 27;
+            File.WriteAllText(path, json.ToJsonString());
+            Assert.Throws<InvalidDataException>(() => ScenarioFile.Load(path));
+
+            File.WriteAllText(path, """{"DeltaT":"MorrisonStephenson2004","Satellites":true}""");
+            Assert.False(LegacyObserverProfiles.Read(path, archived.Observer, archived.DeltaT).Observer.Sky.HideSatellites);
+        }
+        finally { File.Delete(path); }
+    }
+
     private sealed class ArchiveSettingsFactAttribute : FactAttribute
     {
         public ArchiveSettingsFactAttribute()

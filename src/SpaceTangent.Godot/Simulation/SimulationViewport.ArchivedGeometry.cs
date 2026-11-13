@@ -32,7 +32,7 @@ internal partial class SimulationViewport
         HidePlanetGlobes();
         HideImportedBodies();
         HideComets();
-        _localSatelliteMarker?.Hide();
+        HideLocalSatelliteMarkers();
         foreach (var (_, satellite) in _satellites.Values)
             satellite.Hide();
 

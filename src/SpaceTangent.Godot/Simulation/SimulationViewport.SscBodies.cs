@@ -345,38 +345,54 @@ internal partial class SimulationViewport
     }
 
     private IReadOnlyDictionary<ObjectId, double> _satelliteMagnitudes = new Dictionary<ObjectId, double>();
-    private MeshInstance3D? _localSatelliteMarker;
-    private ObjectId? _localSatelliteId;
-    internal bool LocalSatelliteVisible(ObjectId id) => _localSatelliteId == id && _localSatelliteMarker is { Visible: true };
+    private readonly Dictionary<ObjectId, MeshInstance3D> _localSatelliteMarkers = new();
+    private SphereMesh? _localSatelliteSphere;
+    internal bool LocalSatelliteVisible(ObjectId id) => _localSatelliteMarkers.GetValueOrDefault(id)?.Visible == true;
 
-    private void DrawLocalSatellite(WorldSnapshot snapshot, NavigationCamera pose, Vector3d eyeOffset, double units, SkyLayerSettings sky, ObjectId? selection,
+    private void HideLocalSatelliteMarkers()
+    {
+        foreach (var marker in _localSatelliteMarkers.Values)
+            marker.Hide();
+    }
+
+    private void DrawLocalSatellites(WorldSnapshot snapshot, NavigationCamera pose, Vector3d eyeOffset, double units, SkyLayerSettings sky, ObjectId? selection,
         Func<Vector3d, (Vector3 Position, double Scale)> project)
     {
-        _localSatelliteMarker?.Hide();
-        _localSatelliteId = null;
-        if (pose.Target is not { } id || _satellites.ContainsKey(id) ||
-            CatalogueWorld?.FindLocalSatellite(id) is not { } satellite || !snapshot.TryState(id, out var state))
+        HideLocalSatelliteMarkers();
+        if (CatalogueWorld is not { } world)
             return;
-        var (position, projection) = project(state.PositionKilometers);
-        const double tleRadius = .005, tleAlbedo = .3;
-        bool hasStandardMagnitude = _satelliteMagnitudes.ContainsKey(id);
-        double radius = hasStandardMagnitude ? NavigationCamera.BodyRadiusKilometers(id) : tleRadius;
-        float projectedRadius = (float)(radius * projection / units);
-        Vector3d towardEye = (pose.AnchorKilometers - state.PositionKilometers) + eyeOffset;
-        if (sky.Labels && (sky.MinorBodyLabels || selection == id))
-            DrawBodyLabel(id, satellite.Name, SolarSystemSample.EarthId, 0, radius,
-                snapshot, state.PositionKilometers, towardEye, position, projectedRadius);
-        bool resolved = hasStandardMagnitude
-            ? DrawSatellitePoint(id, snapshot, state.PositionKilometers, towardEye, radius, position, projectedRadius)
-            : DrawReflectedBody(id, SolarSystemSample.EarthId, radius, tleAlbedo, new(.8f, .8f, .8f),
-                snapshot, towardEye, state.PositionKilometers, position, projectedRadius);
-        if (!resolved)
-            return;
-        _localSatelliteMarker ??= CreateNavigationSphere(new(.8f, .8f, .8f));
-        _localSatelliteMarker.Position = position;
-        _localSatelliteMarker.Scale = Vector3.One * projectedRadius;
-        _localSatelliteId = id;
-        _localSatelliteMarker.Show();
+        var color = new Color(.8f, .8f, .8f);
+        foreach (var satellite in world.LocalSatellites)
+        {
+            var id = satellite.Id;
+            bool selected = id == selection || id == pose.Target;
+            if ((!selected && sky.HideSatellites) || _satellites.ContainsKey(id) || !snapshot.TryState(id, out var state))
+                continue;
+
+            var (position, projection) = project(state.PositionKilometers);
+            if (!selected && !_navigationCamera.IsPositionInFrustum(position))
+                continue;
+            const double tleRadius = .005, tleAlbedo = .3;
+            float projectedRadius = (float)(tleRadius * projection / units);
+            Vector3d towardEye = (pose.AnchorKilometers - state.PositionKilometers) + eyeOffset;
+            bool resolved = _satelliteMagnitudes.ContainsKey(id)
+                ? DrawSatellitePoint(id, snapshot, state.PositionKilometers, towardEye, tleRadius, position, projectedRadius)
+                : DrawReflectedBody(id, SolarSystemSample.EarthId, tleRadius, tleAlbedo, color,
+                    snapshot, towardEye, state.PositionKilometers, position, projectedRadius);
+            if (sky.Labels && (id == selection || (sky.MinorBodyLabels && (resolved || BodyPoint(id)?.Visible == true))))
+                DrawBodyLabel(id, satellite.Name, SolarSystemSample.EarthId, 0, tleRadius,
+                    snapshot, state.PositionKilometers, towardEye, position, projectedRadius);
+            if (!resolved)
+                continue;
+            if (!_localSatelliteMarkers.TryGetValue(id, out var marker))
+            {
+                _localSatelliteSphere ??= new SphereMesh { Radius = 1, Height = 2, RadialSegments = 32, Rings = 16 };
+                _localSatelliteMarkers.Add(id, marker = CreateNavigationSphere(color, sharedMesh: _localSatelliteSphere));
+            }
+            marker.Position = position;
+            marker.Scale = Vector3.One * projectedRadius;
+            marker.Show();
+        }
     }
 
     private bool DrawSatellitePoint(ObjectId id, WorldSnapshot snapshot, Vector3d center, Vector3d towardEye,

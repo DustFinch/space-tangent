@@ -89,6 +89,25 @@ public partial class EarthOrbitProbe
         if (image.SavePng(Path.ChangeExtension(path, ".png")) != Error.Ok)
             throw new IOException("Could not capture the two original satellite states.");
 
+        if (standardMagnitude.HasValue)
+        {
+            var free = illuminated with
+            {
+                Selection = null,
+                Navigation = illuminated.Navigation!.Value with { Target = null, Tracking = false }
+            };
+            var hidden = free with { Sky = free.Sky with { HideSatellites = true } };
+            string layerPath = Path.Combine(directory, "iss-satellite-layer.stscene");
+            ScenarioFile.Save(layerPath, new([free, hidden], false, 0, 0, session.DeltaT));
+            if (!scene.LoadScenario(layerPath) || !await scene.ReloadAddOns() ||
+                session[0].Sky.HideSatellites || !session[1].Sky.HideSatellites ||
+                scene.Renderer(0).BodyPoint(id) is not { Visible: true } freePoint ||
+                scene.Renderer(0).PickObject(scene.Renderer(0).NavigationCameraNode.UnprojectPosition(freePoint.Position)) != id ||
+                scene.Renderer(1).BodyPoint(id)?.Visible == true)
+                throw new InvalidOperationException("The ISS point must be selectable with a free camera and hidden only in the disabled view after reload.");
+            GD.Print("TLE layer GPU: original ISS is selectable without tracking and hidden in the independent saved view.");
+        }
+
         if (renderer.ScienceBodyNode(id) is null)
             return;
         var farPose = illuminated.Navigation!.Value;

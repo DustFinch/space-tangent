@@ -52,6 +52,16 @@ internal partial class SimulationViewport
                 _bodyLabels[id].QueueFree();
                 _bodyLabels.Remove(id);
             }
+            foreach (ObjectId id in _localSatelliteMarkers.Keys.Where(id => world.FindLocalSatellite(id) is null).ToArray())
+            {
+                _localSatelliteMarkers[id].QueueFree();
+                _localSatelliteMarkers.Remove(id);
+            }
+            foreach (ObjectId id in _bodyPoints.Keys.Where(id => world.Catalogue.Find(id) is null).ToArray())
+            {
+                _bodyPoints[id].QueueFree();
+                _bodyPoints.Remove(id);
+            }
         }
         CatalogueWorld = world;
         _spaceSky?.SetCultureWorld(world);

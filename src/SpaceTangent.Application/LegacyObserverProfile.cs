@@ -85,6 +85,7 @@ public static class LegacyObserverProfiles
         {
             Labels = Flag(root, "Labels") ?? sky.Labels,
             MinorBodyLabels = Flag(root, "MinorLabels") ?? sky.MinorBodyLabels,
+            HideSatellites = Flag(root, "Satellites") is { } satellites ? !satellites : sky.HideSatellites,
             Meteors = Flag(root, "Meteors") ?? sky.Meteors,
             MeteorRadiants = Flag(root, "Radiants") ?? sky.MeteorRadiants,
             MeteorRateMultiplier = meteorRate is { } rate && SkyLayerSettings.ValidMeteorRate(rate)

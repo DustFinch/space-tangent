@@ -485,6 +485,10 @@ public partial class SolarSystemScene : Control
 
     public override void _Input(InputEvent input)
     {
+        if (input is InputEventMouseButton { ButtonIndex: MouseButton.Right, Pressed: false })
+            foreach (var view in _views)
+                view.DraggingCamera = false;
+
         if (input is InputEventKey shipKey && HandleShipInput(shipKey))
         {
             GetViewport().SetInputAsHandled();
@@ -616,9 +620,9 @@ public partial class SolarSystemScene : Control
                 }
                 else if (_script is { Finished: false } || _scriptMedia?.Active == true)
                     StopScript();
-                else if (Session.CancelFlight(_active))
+                else if (StopCameraMotion(_active))
                 {
-                    _status.Text = "Flight stopped.";
+                    _status.Text = "Camera motion stopped.";
                     Refresh();
                 }
                 else if (!ExitShip())
@@ -1495,6 +1499,16 @@ public partial class SolarSystemScene : Control
             }
         }
         return changed;
+    }
+
+    private bool StopCameraMotion(int index)
+    {
+        var controls = _views[index];
+        bool stoppedFlight = Session!.CancelFlight(index);
+        bool moving = controls.DraggingCamera || controls.CameraDragVelocity.LengthSquared() > 1 ||
+            Math.Abs(controls.CameraDollyRate) > .001;
+        ClearCameraInertia(controls);
+        return stoppedFlight || moving;
     }
 
     private static void ClearCameraInertia(ViewControls controls)

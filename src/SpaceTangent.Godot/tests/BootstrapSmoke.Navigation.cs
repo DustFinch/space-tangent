@@ -186,7 +186,7 @@ public partial class BootstrapSmoke
         };
         viewport.EmitSignal(Control.SignalName.GuiInput, press);
         viewport.EmitSignal(Control.SignalName.GuiInput, coast);
-        viewport.EmitSignal(Control.SignalName.GuiInput, release);
+        scene._Input(release); // A release outside the viewport never reaches its GUI signal.
         var released = session[0].Navigation!.Value;
         scene._Process(.05);
         var firstCoast = session[0].Navigation!.Value;
@@ -208,6 +208,18 @@ public partial class BootstrapSmoke
         scene._Notification((int)Node.NotificationApplicationFocusOut);
         scene._Process(.05);
         Require(session[0].Navigation!.Value.RangeKilometers == zoomed, "Focus loss must clear the pending wheel push.");
+
+        viewport.EmitSignal(Control.SignalName.GuiInput, press);
+        viewport.EmitSignal(Control.SignalName.GuiInput, coast);
+        viewport.EmitSignal(Control.SignalName.GuiInput, release);
+        viewport.EmitSignal(Control.SignalName.GuiInput, zoom);
+        scene._Process(.05);
+        var atStop = session[0].Navigation!.Value;
+        using var stop = new InputEventKey { Pressed = true, Keycode = Key.Escape };
+        scene._UnhandledKeyInput(stop);
+        scene._Process(.05);
+        Require(session[0].Navigation == atStop && session[1] == lunar,
+            "Esc must stop both inertial motions at their current pose without changing the second view.");
         session.RestoreScenario(beforeInertia);
         session.SetFieldOfView(0, priorField);
         JulianInstant beforeJason = session[0].Epoch;

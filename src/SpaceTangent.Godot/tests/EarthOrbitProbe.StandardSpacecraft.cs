@@ -52,6 +52,16 @@ public partial class EarthOrbitProbe
                     View("ssc/sol/jupiter/galileo", 2450083.500708, .058),
                     View("ssc/sol/jupiter/galileo/galileo-probe", 2450059.417375, .006));
 
+            if (System.Environment.GetEnvironmentVariable("SPACETANGENT_PRECESSING_SSC") is { Length: > 0 } precessing)
+            {
+                System.Environment.SetEnvironmentVariable(input, precessing);
+                if (!await scene.ReloadAddOns())
+                    throw new InvalidOperationException("The original precessing SSC catalogue failed to load.");
+                await CheckPair("halley-and-apophis",
+                    View("ssc/sol/1p-halley", 2451545.0, 28),
+                    View("ssc/sol/99942-apophis", 2462200.1, .85));
+            }
+
             ObserverView View(string path, double day, double range)
             {
                 var id = new ObjectId(path);
@@ -90,6 +100,14 @@ public partial class EarthOrbitProbe
                         if (textured == 0)
                             throw new InvalidOperationException($"No original material texture for {id.Value}.");
                         GD.Print($"Galileo GPU: {id.Value}, {textured} textured surfaces.");
+                    }
+                    if (name == "halley-and-apophis")
+                    {
+                        if (node.MaterialOverride is not StandardMaterial3D { AlbedoTexture: not null } &&
+                            !Enumerable.Range(0, mesh.GetSurfaceCount()).Any(index =>
+                                mesh.SurfaceGetMaterial(index) is StandardMaterial3D { AlbedoTexture: not null }))
+                            throw new InvalidOperationException($"No original surface map for {id.Value}.");
+                        GD.Print($"Precessing SSC GPU: {id.Value}, original textured model.");
                     }
                     if (id.Value == "ssc/sol/earth/mir")
                         CheckMirBounds(node, second.Navigation!.Value.RangeKilometers);

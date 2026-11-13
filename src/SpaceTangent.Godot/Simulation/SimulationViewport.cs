@@ -4,6 +4,7 @@ using SpaceTangent.Application;
 using SpaceTangent.Contracts;
 using SpaceTangent.Core.Addons;
 using SpaceTangent.Core.Ephemerides;
+using SpaceTangent.Core.Observing;
 using SpaceTangent.Core.Spice;
 using SpaceTangent.Core.Time;
 using SpaceTangent.Core.World;
@@ -214,6 +215,16 @@ internal partial class SimulationViewport : Node3D
             _marsTerrain.FitCamera(GetViewport().GetVisibleRect().Size);
         }
         _marsTerrain?.Replace(asset);
+    }
+
+    internal (Vector3d Ray, HorizontalCoordinates? Horizon)? PointerDirection(Vector2 position)
+    {
+        if (_surface?.PointerDirection(position) is { } ground)
+            return ground;
+        if (!_navigationCamera.Current)
+            return null;
+        Vector3 direction = _navigationCamera.ProjectRayNormal(position);
+        return (new(direction.X, -direction.Z, direction.Y), null);
     }
 
     internal void SetSurfaceControls(bool clouds, bool lunarLight) => _surface!.SetControls(clouds, lunarLight);

@@ -19,6 +19,8 @@ public partial class SolarSystemScene : Control
         Button Play, OptionButton Mode, OptionButton Selection, LineEdit TimelineEpoch, HBoxContainer TerrainTools,
         LineEdit TerrainCoordinates, SpinBox FieldOfView, Button AdvanceHour, SubViewportContainer Canvas, MeasurementOverlay Measurements)
     {
+        internal Label? PointerReadout { get; set; }
+        internal Vector2? PointerPosition { get; set; }
         internal WorldSnapshot? Snapshot { get; set; }
         internal SimulationWorld? SnapshotWorld { get; set; }
         internal ProjectionScale? Perspective { get; set; }
@@ -626,6 +628,11 @@ public partial class SolarSystemScene : Control
                 break;
             case Key.D when key.CtrlPressed:
                 KeepActiveView();
+                break;
+            case Key.C when key.AltPressed && !key.CtrlPressed && !key.ShiftPressed && !key.MetaPressed:
+                var pointerSky = Session[_active].Sky;
+                Session.SetSkyLayers(_active, pointerSky with { PointerCoordinates = !pointerSky.PointerCoordinates });
+                Refresh();
                 break;
             case Key.C when key.CtrlPressed && key.ShiftPressed:
                 _workspace.Open("Bookmarks");
@@ -1441,6 +1448,7 @@ public partial class SolarSystemScene : Control
             SizeFlagsVertical = SizeFlags.ExpandFill
         };
         container.GuiInput += input => HandleViewInput(CurrentIndex(), input);
+
         panel.AddChild(container);
         var viewport = new SubViewport { OwnWorld3D = true, RenderTargetUpdateMode = SubViewport.UpdateMode.Always };
         container.AddChild(viewport);
@@ -1467,6 +1475,11 @@ public partial class SolarSystemScene : Control
         viewport.AddChild(measurements);
         var controls = new ViewControls(frame, renderer, epoch, play, mode, selection, timelineEpoch,
             terrainTools, terrainCoordinates, field, advanceHour, container, measurements);
+        container.MouseExited += () =>
+        {
+            controls.PointerPosition = null;
+            controls.PointerReadout?.Hide();
+        };
         _views.Add(controls);
         ReplaceAssets(controls);
     }
@@ -1476,6 +1489,11 @@ public partial class SolarSystemScene : Control
         if (input is InputEventMouseButton { Pressed: true })
             ActivateView(view);
         var controls = _views[view];
+        if (input is InputEventMouseMotion pointer)
+        {
+            controls.PointerPosition = pointer.Position;
+            UpdatePointerReadout(controls, Session![view].Sky.PointerCoordinates);
+        }
         if (input is InputEventMouseButton { ButtonIndex: MouseButton.Right } right)
         {
             controls.DraggingCamera = right.Pressed;
@@ -1845,6 +1863,7 @@ public partial class SolarSystemScene : Control
         for (int index = 0; index < _views.Count; index++)
         {
             ViewControls controls = _views[index];
+
             var epoch = session[index].Epoch;
             // Catalogue Lua callbacks can change internal state even at the same epoch.
             var snapshot = _addOns?.Decoded.AllowAddonLua != true && ReferenceEquals(controls.SnapshotWorld, session.World) &&
@@ -1864,6 +1883,7 @@ public partial class SolarSystemScene : Control
             controls.Renderer.SetLandscape(ViewLandscape(view), view.EarthObserver?.HideLandscapeFog != true);
             controls.Renderer.ArchivedGeometry = index == 0 ? (_replay as LegacyCameraSequence)?.CurrentGeometry : null;
             bool available = controls.Renderer.Draw(view, snapshot, session.DeltaT);
+            UpdatePointerReadout(controls, view.Sky.PointerCoordinates);
             controls.Renderer.DrawShip(ship, view.Navigation);
             controls.Renderer.SetScriptNotice(session.Notice(index));
             controls.Renderer.DrawScriptMarkers(view, snapshot, session.Markers(index), session.DeltaT);

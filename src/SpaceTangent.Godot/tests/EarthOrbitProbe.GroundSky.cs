@@ -48,6 +48,80 @@ public partial class EarthOrbitProbe
         GD.Print("Equatorial mount GPU: original Paranal site, south pole alignment, independent views and Alt+M after reload.");
     }
 
+    private async Task ExercisePointerCoordinates(SolarSystemScene scene, string directory)
+    {
+        var session = scene.Session!;
+        var time = TimeConversion.FromUtc(new(new(2024, 3, 10), 4, 30), TimeScale.Tdb);
+        var paranal = session.World.EarthPlaces.Places.Single(place => place.EnglishName == "Paranal Observatory");
+        var ordinary = new ObserverView(time, CameraMode.Surface, null, false)
+        {
+            EarthObserver = new EarthObserverCamera(paranal.ObserverSite, 120, 55)
+        };
+        string profile = Path.Combine(directory, "archived-pointer-coordinates.json");
+        File.WriteAllText(profile, """{"Site":{},"PointerCoordinates":true}""");
+        var imported = LegacyObserverProfiles.Read(profile, ordinary, session.DeltaT).Observer;
+        var enabled = ordinary with { Sky = imported.Sky };
+        string path = Path.Combine(directory, "paranal-pointer-coordinates.stscene");
+        ScenarioFile.Save(path, new([enabled, ordinary], false, 0, 0, session.DeltaT));
+        if (!scene.LoadScenario(path) || !await scene.ReloadAddOns() ||
+            !session[0].Sky.PointerCoordinates || session[1].Sky.PointerCoordinates)
+            throw new InvalidOperationException("The imported pointer setting must survive reload for only the first view.");
+
+        await ToSignal(GetTree(), SceneTree.SignalName.ProcessFrame);
+        var left = (SubViewportContainer)scene.FindChild("ViewCanvas0", recursive: true, owned: false);
+        var right = (SubViewportContainer)scene.FindChild("ViewCanvas1", recursive: true, owned: false);
+        static void Move(Control canvas, Vector2 position) =>
+            canvas.EmitSignal(Control.SignalName.GuiInput, new InputEventMouseMotion { Position = position });
+        Move(left, left.Size / 2);
+        Move(right, right.Size / 2);
+        if (left.GetNodeOrNull<Label>("PointerCoordinates") is not { Visible: true } label ||
+            !label.Text.Contains("(J2000)  A 120°00′00″  h +55°00′00″", StringComparison.Ordinal) ||
+            right.GetNodeOrNull<Label>("PointerCoordinates") is { Visible: true })
+            throw new InvalidOperationException($"Expected the pointing direction only on the enabled view: {left.GetNodeOrNull<Label>("PointerCoordinates")?.Text}");
+
+        for (int frameIndex = 0; frameIndex < 3; frameIndex++)
+        {
+            await ToSignal(GetTree(), SceneTree.SignalName.ProcessFrame);
+            await ToSignal(RenderingServer.Singleton, RenderingServer.SignalName.FramePostDraw);
+        }
+        using var frame = GetViewport().GetTexture().GetImage();
+        if (frame.SavePng(Path.ChangeExtension(path, ".png")) != Error.Ok)
+            throw new IOException("Could not capture the pointer coordinates.");
+
+        Move(left, new Vector2(-1, -1));
+        if (label.Visible)
+            throw new InvalidOperationException("The readout must hide outside the viewport.");
+        Move(left, left.Size / 2);
+        left.EmitSignal(Control.SignalName.MouseExited);
+        if (label.Visible)
+            throw new InvalidOperationException("The readout must hide when the pointer leaves the viewport.");
+        Move(left, left.Size / 2);
+        GetWindow().PushInput(new InputEventKey { Keycode = Key.C, AltPressed = true, Pressed = true });
+        GetWindow().PushInput(new InputEventKey { Keycode = Key.C, AltPressed = true, Pressed = false });
+        if (session[0].Sky.PointerCoordinates || session[1].Sky.PointerCoordinates || label.Visible)
+            throw new InvalidOperationException("Alt+C must switch off the readout in the active view.");
+        var earth = SpaceTangent.Core.Ephemerides.SolarSystemSample.EarthId;
+        var snapshot = session.World.Graph.Evaluate(time);
+        if (!snapshot.TryState(earth, out var state))
+            throw new InvalidOperationException("Earth is missing from the perspective test.");
+        var orbit = enabled with
+        {
+            Mode = CameraMode.Solar,
+            Navigation = new(state.PositionKilometers, 26000, 0, 0, earth, true)
+        };
+        path = Path.Combine(directory, "perspective-pointer-coordinates.stscene");
+        ScenarioFile.Save(path, new([orbit, ordinary], false, 0, 0, session.DeltaT));
+        if (!scene.LoadScenario(path))
+            throw new InvalidOperationException("Could not load the perspective test.");
+        await ToSignal(GetTree(), SceneTree.SignalName.ProcessFrame);
+        left = (SubViewportContainer)scene.FindChild("ViewCanvas0", recursive: true, owned: false);
+        Move(left, left.Size / 2);
+        if (left.GetNodeOrNull<Label>("PointerCoordinates") is not { Visible: true } perspective ||
+            !perspective.Text.EndsWith("(J2000)", StringComparison.Ordinal))
+            throw new InvalidOperationException("The perspective view must report J2000 coordinates without a horizon.");
+        GD.Print("Pointer coordinates GPU: Paranal, center altitude and azimuth, perspective, independent views and Alt+C after reload.");
+    }
+
     private async Task ExerciseGroundPlanets(SolarSystemScene scene, string directory)
     {
         var session = scene.Session!;

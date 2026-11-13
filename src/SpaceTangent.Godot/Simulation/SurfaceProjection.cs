@@ -28,6 +28,7 @@ internal sealed partial class SurfaceProjection
     private (Vector3 Forward, Vector3 Right, Vector3 Up, Vector3 North, Vector3 East)? _cardinalFrame;
     private bool _cloudsEnabled = true;
     private bool _hideObserverClouds;
+    private (SurfaceLighting Light, Vector3 Forward, Vector3 Right, Vector3 Up)? _pointerFrame;
     private float _tanHalfField = .087488664f;
     internal double? PitchDegrees { get; set; }
 
@@ -77,6 +78,17 @@ internal sealed partial class SurfaceProjection
     }
 
     internal ObjectId? PickStar(Vector2 position) => _sky?.Pick(position);
+
+    internal (Vector3d Ray, HorizontalCoordinates? Horizon)? PointerDirection(Vector2 position)
+    {
+        Vector2 size = _surface.Size;
+        if (!_surface.Visible || _pointerFrame is not { } frame || size.X <= 0 || size.Y <= 0)
+            return null;
+        Vector2 offset = (position - size * .5f) * (2 * _tanHalfField / size.Y);
+        Vector3 direction = (frame.Forward + frame.Right * offset.X - frame.Up * offset.Y).Normalized();
+        var ray = new Vector3d(direction.X, direction.Y, direction.Z);
+        return (ray, EarthObserving.HorizontalDirection(frame.Light, ray));
+    }
 
     internal bool Draw(bool surface, SolarSystemSample sample, DeltaTModel model, EarthObserverCamera? camera = null,
         SkyLayerSettings sky = default, ObjectId? selection = null, double fieldOfView = 10,
@@ -137,6 +149,7 @@ internal sealed partial class SurfaceProjection
             right = -right;
             cameraUp = -cameraUp;
         }
+        _pointerFrame = (lighting, forward, right, cameraUp);
         _tanHalfField = (float)Math.Tan(fieldOfView * Degrees / 2);
         _material.SetShaderParameter("tan_half_field", _tanHalfField);
         _material.SetShaderParameter("show_atmosphere", !sky.HideAtmospheres);

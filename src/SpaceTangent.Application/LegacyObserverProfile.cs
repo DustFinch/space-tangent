@@ -88,6 +88,7 @@ public static class LegacyObserverProfiles
         sky = sky with
         {
             Labels = Flag(root, "Labels") ?? sky.Labels,
+            PointerCoordinates = Flag(root, "PointerCoordinates") ?? sky.PointerCoordinates,
             HideTerrain = Flag(root, "Terrain") is { } terrain ? !terrain : sky.HideTerrain,
             HideAtmospheres = Flag(root, "Atmospheres") is { } atmospheres ? !atmospheres : sky.HideAtmospheres,
             HideClouds = Flag(root, "Clouds") is { } clouds ? !clouds : sky.HideClouds,

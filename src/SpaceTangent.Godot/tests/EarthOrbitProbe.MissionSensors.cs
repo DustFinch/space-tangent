@@ -11,7 +11,7 @@ public partial class EarthOrbitProbe
 {
     private async Task ExerciseMissionSensors(SolarSystemScene scene, string directory)
     {
-        if (System.Environment.GetEnvironmentVariable("SPACETANGENT_MISSION_SENSOR_PROBE") != "1")
+        if (System.Environment.GetEnvironmentVariable("SPACETANGENT_MISSION_SENSOR_PROBE") is not ("1" or "only"))
             return;
         var session = scene.Session!;
         ObjectId jasonSensor = new("mission/jasonnativesensor"), sorceSensor = new("mission/sorcenativesensor");

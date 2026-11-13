@@ -73,6 +73,22 @@ public partial class BootstrapSmoke
         viewport.EmitSignal(Control.SignalName.GuiInput,
             new InputEventMouseButton { Pressed = true, ButtonIndex = MouseButton.WheelUp });
         var adjusted = session[0].Navigation!.Value;
+        using (var lookDown = new InputEventMouseButton { Pressed = true, ButtonIndex = MouseButton.Left, Position = new(60, 60) })
+        using (var lookMotion = new InputEventMouseMotion { ButtonMask = MouseButtonMask.Left, Position = new(100, 40), Relative = new(40, -20) })
+        using (var lookUp = new InputEventMouseButton { ButtonIndex = MouseButton.Left, Position = new(100, 40) })
+        {
+            var cameraBeforeLook = session.CaptureScenario(0);
+            viewport.EmitSignal(Control.SignalName.GuiInput, lookDown);
+            viewport.EmitSignal(Control.SignalName.GuiInput, lookMotion);
+            viewport.EmitSignal(Control.SignalName.GuiInput, lookUp);
+            var looked = session[0].Navigation!.Value;
+            Require(looked.Tracking && looked.Target == moon && session[0].Selection == moon &&
+                    looked.AnchorKilometers == adjusted.AnchorKilometers &&
+                    looked.Placement!.Value.OffsetKilometers == adjusted.Placement!.Value.OffsetKilometers &&
+                    (looked.Placement.Value.Forward - adjusted.Placement.Value.Forward).Length > .01,
+                "A left drag must change the view direction while preserving the tracked target and eye.");
+            session.RestoreScenario(cameraBeforeLook);
+        }
         Require(adjusted.Tracking && adjusted.AzimuthRadians != pose.AzimuthRadians &&
                 adjusted.ElevationRadians != pose.ElevationRadians && adjusted.RangeKilometers < pose.RangeKilometers,
             "Right drag and the wheel must orbit and zoom without dropping tracking.");

@@ -137,7 +137,7 @@ public sealed partial class SimulationSession
         return true;
     }
 
-    public bool AdjustCamera(int view, double azimuth, double elevation, double zoom)
+    public bool AdjustCamera(int view, double azimuth, double elevation, double zoom, bool orbitTarget = true)
     {
         if (!double.IsFinite(azimuth) || !double.IsFinite(elevation) || !double.IsFinite(zoom) || zoom <= 0)
             return false;
@@ -158,7 +158,7 @@ public sealed partial class SimulationSession
             placement = camera.ResolveOrbitalPlacement();
         if (placement is { } attitude)
         {
-            var turned = rotating ? attitude.Turn(azimuth, elevation, orbit: camera.Target.HasValue) : attitude;
+            var turned = rotating ? attitude.Turn(azimuth, elevation, orbit: orbitTarget && camera.Target.HasValue) : attitude;
             next = next with { Placement = turned with
                 { OffsetKilometers = turned.OffsetKilometers * (next.RangeKilometers / camera.RangeKilometers) } };
         }

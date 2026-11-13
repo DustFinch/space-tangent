@@ -22,6 +22,10 @@ public partial class SolarSystemScene : Control
         internal WorldSnapshot? Snapshot { get; set; }
         internal ProjectionScale? Perspective { get; set; }
         internal bool DraggingCamera { get; set; }
+        internal Vector2? LookPress { get; set; }
+        internal int LookGesture { get; set; }
+        internal bool Looking { get; set; }
+        internal bool CameraCoastLooksAround { get; set; }
         internal Vector2 CameraDragVelocity { get; set; }
         internal double CameraDollyRate { get; set; }
     }
@@ -490,6 +494,10 @@ public partial class SolarSystemScene : Control
         if (input is InputEventMouseButton { ButtonIndex: MouseButton.Right, Pressed: false })
             foreach (var view in _views)
                 view.DraggingCamera = false;
+        if (input is InputEventMouseButton { ButtonIndex: MouseButton.Left, Pressed: false })
+            foreach (var view in _views)
+                if (view.LookPress.HasValue)
+                    DeferLookRelease(view);
 
         if (input is InputEventKey flightKey)
         {
@@ -1466,10 +1474,23 @@ public partial class SolarSystemScene : Control
             GetViewport().SetInputAsHandled();
             return;
         }
-        if (input is InputEventMouseButton { Pressed: true, ButtonIndex: MouseButton.Left } pick &&
-            _views[view].Renderer.PickObject(pick.Position) is { } target)
+        if (input is InputEventMouseButton { ButtonIndex: MouseButton.Left } left)
         {
-            SelectObject(target);
+            if (left.Pressed)
+            {
+                controls.LookGesture++;
+                controls.LookPress = left.Position;
+                controls.Looking = false;
+                controls.CameraDragVelocity = Vector2.Zero;
+            }
+            else if (controls.LookPress is { } press)
+            {
+                controls.LookPress = null;
+                if (!controls.Looking && left.Position.DistanceTo(press) <= 4 &&
+                    controls.Renderer.PickObject(press) is { } target)
+                    SelectObject(target);
+                controls.Looking = false;
+            }
             GetViewport().SetInputAsHandled();
             return;
         }
@@ -1478,7 +1499,11 @@ public partial class SolarSystemScene : Control
             InputEventMouseButton { Pressed: true, ButtonIndex: MouseButton.WheelUp or MouseButton.WheelDown } wheel =>
                 AdjustWheel(view, wheel),
             InputEventMouseMotion motion when (motion.ButtonMask & MouseButtonMask.Right) != 0 =>
-                ApplyCameraMotion(view, motion),
+                ApplyCameraMotion(view, motion, lookAround: false),
+            InputEventMouseMotion motion when controls.LookPress is { } press &&
+                (motion.ButtonMask & MouseButtonMask.Left) != 0 &&
+                (controls.Looking || motion.Position.DistanceTo(press) > 4) =>
+                ApplyCameraMotion(view, motion, lookAround: true),
             _ => false
         };
         if (adjusted)
@@ -1488,15 +1513,33 @@ public partial class SolarSystemScene : Control
         }
     }
 
+    private static void DeferLookRelease(ViewControls controls)
+    {
+        // Let the viewport resolve a click before cleaning up releases outside it.
+        int gesture = controls.LookGesture;
+        Callable.From(() =>
+        {
+            if (controls.LookGesture != gesture)
+                return;
+            controls.LookPress = null;
+            controls.Looking = false;
+        }).CallDeferred();
+    }
+
     private const double CameraInertiaSeconds = .3;
 
-    private bool ApplyCameraMotion(int view, InputEventMouseMotion motion)
+    private bool ApplyCameraMotion(int view, InputEventMouseMotion motion, bool lookAround)
     {
         var controls = _views[view];
-        bool moved = AdjustDrag(view, motion.Relative);
-        if (moved && controls.DraggingCamera && Session![view].CameraInertia && !Session.InShip(view) &&
-            motion.Velocity.IsFinite())
+        if (lookAround)
+            controls.Looking = true;
+        bool moved = AdjustDrag(view, motion.Relative, lookAround);
+        if (moved && (controls.DraggingCamera || controls.Looking) && Session![view].CameraInertia &&
+            !Session.InShip(view) && motion.Velocity.IsFinite())
+        {
+            controls.CameraCoastLooksAround = lookAround;
             controls.CameraDragVelocity = controls.CameraDragVelocity.Lerp(motion.Velocity.LimitLength(4000), .5f);
+        }
         return moved;
     }
 
@@ -1517,9 +1560,9 @@ public partial class SolarSystemScene : Control
                 controls.CameraDollyRate = 0;
                 continue;
             }
-            if (!controls.DraggingCamera && controls.CameraDragVelocity.LengthSquared() > 1)
+            if (!controls.DraggingCamera && !controls.Looking && controls.CameraDragVelocity.LengthSquared() > 1)
             {
-                changed |= AdjustDrag(index, controls.CameraDragVelocity * (float)integrated);
+                changed |= AdjustDrag(index, controls.CameraDragVelocity * (float)integrated, controls.CameraCoastLooksAround);
                 controls.CameraDragVelocity *= (float)decay;
             }
             if (Math.Abs(controls.CameraDollyRate) > .001)
@@ -1535,7 +1578,8 @@ public partial class SolarSystemScene : Control
     {
         var controls = _views[index];
         stoppedFlight = Session!.CancelFlight(index);
-        bool moving = _freeFlightKeys.Count > 0 || controls.DraggingCamera || controls.CameraDragVelocity.LengthSquared() > 1 ||
+        bool moving = _freeFlightKeys.Count > 0 || controls.DraggingCamera || controls.Looking ||
+            controls.CameraDragVelocity.LengthSquared() > 1 ||
             Math.Abs(controls.CameraDollyRate) > .001;
         ClearCameraInertia(controls);
         _freeFlightKeys.Clear();
@@ -1545,11 +1589,13 @@ public partial class SolarSystemScene : Control
     private static void ClearCameraInertia(ViewControls controls)
     {
         controls.DraggingCamera = false;
+        controls.LookPress = null;
+        controls.Looking = false;
         controls.CameraDragVelocity = Vector2.Zero;
         controls.CameraDollyRate = 0;
     }
 
-    private bool AdjustDrag(int view, Vector2 pixels)
+    private bool AdjustDrag(int view, Vector2 pixels, bool lookAround)
     {
         var session = Session!;
         if (!pixels.IsFinite())
@@ -1559,14 +1605,14 @@ public partial class SolarSystemScene : Control
         if (session.InShip(view))
             return session.AdjustCamera(view, -.006 * pixels.X * sensitivity, .006 * pixels.Y * sensitivity, 1);
         bool ground = observer is { Mode: CameraMode.Surface, Navigation: null };
-        bool look = ground || observer.Navigation is { Target: null };
+        bool look = lookAround || ground || observer.Navigation is { Target: null };
         const double radiansPerPixel = .003;
         if (look)
             sensitivity *= Math.Tan(observer.EffectiveFieldOfView * Math.PI / 360) / Math.Tan(50 * Math.PI / 360);
         double yaw = Math.Clamp(-pixels.X * radiansPerPixel * sensitivity, -1, 1);
         double pitch = Math.Clamp(-pixels.Y * radiansPerPixel * sensitivity, -1, 1);
         if (!ground)
-            return session.AdjustCamera(view, yaw, pitch, 1);
+            return session.AdjustCamera(view, yaw, pitch, 1, orbitTarget: !lookAround);
 
         var camera = observer.EarthObserver ?? EarthObserverCamera.Moscow;
         double direction = observer.ActiveOptics?.Inverted == true ? -1 : 1;
@@ -1788,7 +1834,7 @@ public partial class SolarSystemScene : Control
             ViewControls controls = _views[index];
             var snapshot = session.World.Graph.Evaluate(session[index].Epoch);
             session.UpdateCamera(index, snapshot, elapsed);
-            if (!controls.DraggingCamera)
+            if (!controls.DraggingCamera && !controls.Looking)
                 session.UpdateAutoOrbit(index, snapshot, elapsed);
             session.UpdateShip(index, snapshot, elapsed);
             ShipView? ship = session.Ship(index);

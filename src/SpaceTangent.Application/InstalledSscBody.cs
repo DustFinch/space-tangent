@@ -23,7 +23,7 @@ public sealed record InstalledSscBody(ObjectId Id, ObjectId Parent, SscBodyDefin
         _ => CatalogueKind.Asteroid
     };
 
-    internal static IReadOnlyList<InstalledSscBody> Install(WorldGraphBuilder graph, IEnumerable<SscBodyDefinition> definitions, StellarCatalogue stars, ExoplanetCatalogue exoplanets, Vector3d stellarOrigin)
+    internal static IReadOnlyList<InstalledSscBody> Install(WorldGraphBuilder graph, IEnumerable<SscBodyDefinition> definitions, StellarCatalogue stars, ExoplanetCatalogue exoplanets, BrightStarCatalogue brightStars, Vector3d stellarOrigin)
     {
         if (definitions.TryGetNonEnumeratedCount(out int count) && count == 0)
             return [];
@@ -44,12 +44,16 @@ public sealed record InstalledSscBody(ObjectId Id, ObjectId Parent, SscBodyDefin
         foreach (NaturalBodyDefinition natural in NaturalBodyCatalogue.Bodies)
             paths.Add(primaryPaths[natural.Parent] + "/" + natural.Name, natural.Id);
         var stellarPaths = new Dictionary<string, StellarEntry>(StringComparer.OrdinalIgnoreCase);
-        foreach (var star in stars.Stars.Concat(exoplanets.Hosts).Where(star => !star.IsBarycenter))
+        foreach (var star in stars.Stars.Concat(exoplanets.Hosts))
         {
             stellarPaths.TryAdd(Normalize(star.Name), star);
             foreach (string alias in star.Aliases)
                 stellarPaths.TryAdd(Normalize(alias), star);
         }
+
+        foreach (var bright in brightStars.Stars)
+            if (stars.Find(bright.Id) is { IsBarycenter: false } star)
+                stellarPaths.TryAdd(Normalize(bright.Name), star);
 
         var hosts = new Dictionary<ObjectId, StellarEntry>();
         var installedHostRules = new HashSet<ObjectId>();

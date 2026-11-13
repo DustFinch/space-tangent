@@ -293,7 +293,7 @@ internal partial class SimulationViewport
                     continue;
                 Vector3d towardSun = light.PositionKilometers - state.PositionKilometers;
                 double lightRadius = asset.StellarHost is not null && CatalogueWorld is { } world
-                    ? world.TargetRadiusKilometers(lightId)
+                    ? Math.Max(0, world.FindStellarTarget(lightId)?.RadiusKilometers ?? 0)
                     : SpaceTangent.Core.Observing.SolarOccultation.SunRadiusKilometers;
                 if (towardSun.Length > 0)
                 {

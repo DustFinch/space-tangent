@@ -1,14 +1,78 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
 using Godot;
+using SpaceTangent.Contracts;
+using SpaceTangent.Core.Ephemerides;
+using SpaceTangent.Application;
 using SpaceTangent.Godot.Simulation;
 
 namespace SpaceTangent.Godot.Tests;
 
 public partial class EarthOrbitProbe
 {
+    private async Task ExerciseArchivedAtmospheres(SolarSystemScene scene, string directory, string recordings)
+    {
+        var cases = new (string File, string Body, ObjectId Id)[]
+        {
+            ("venus", "Sol/Venus", SolarSystemSample.VenusId),
+            ("mars", "Sol/Mars", PlanetCatalogue.MarsId),
+            ("titan", "Sol/Saturn/Titan", new("sol/titan"))
+        };
+        string saved = Path.Combine(directory, "before-replay.stscene");
+        if (!scene.SaveScenario(saved))
+            throw new IOException("Could not save the live scenario.");
+
+        foreach (var (file, name, id) in cases)
+        {
+            if (!scene.StartReplay(Path.Combine(recordings, file + ".celframe")))
+                throw new InvalidOperationException($"Could not open the original {name} recording.");
+            scene.SetProcess(false);
+            try
+            {
+                var renderer = scene.Renderer(0);
+                var geometry = renderer.ArchivedGeometry!;
+                var recorded = geometry.Bodies.Single(body => body.Name == name);
+                var body = renderer.ArchivedBody(name) ?? throw new InvalidOperationException($"The archived {name} body was not drawn.");
+                var shell = renderer.ArchivedAtmosphere(id) ?? throw new InvalidOperationException($"The archived {name} atmosphere was not drawn.");
+                var material = (ShaderMaterial)shell.MaterialOverride;
+                var scattering = material.NextPass as ShaderMaterial ?? material;
+                double height = (recorded.AtmosphereRadius - recorded.Radius) * geometry.KilometersPerUnit;
+                if (!shell.Visible || height <= 0 || Math.Abs(scattering.GetShaderParameter("shell_height_km").AsSingle() - height) > .001 ||
+                    Math.Abs(shell.Basis.X.Length() / body.Basis.X.Length() - recorded.AtmosphereRadius / recorded.Radius) > .00001 ||
+                    shell.Position != body.Position ||
+                    (file == "venus" ? !scattering.GetShaderParameter("venus_scattering").AsBool() :
+                        !scattering.GetShaderParameter("use_atmosphere_lookup").AsBool()))
+                    throw new InvalidOperationException($"The archived {name} shell did not use its recorded geometry and atmospheric profile.");
+
+                await ToSignal(RenderingServer.Singleton, RenderingServer.SignalName.FramePostDraw);
+                using var air = renderer.GetViewport().GetTexture().GetImage();
+                shell.Hide();
+                await ToSignal(RenderingServer.Singleton, RenderingServer.SignalName.FramePostDraw);
+                using var bare = renderer.GetViewport().GetTexture().GetImage();
+                int changed = 0;
+                for (int y = 0; y < air.GetHeight(); y += 2)
+                for (int x = 0; x < air.GetWidth(); x += 2)
+                {
+                    Color before = air.GetPixel(x, y), after = bare.GetPixel(x, y);
+                    if (Math.Abs(before.R - after.R) + Math.Abs(before.G - after.G) + Math.Abs(before.B - after.B) > .025)
+                        changed++;
+                }
+                if (changed < 25 || air.SavePng(Path.Combine(directory, file + "-replay.png")) != Error.Ok)
+                    throw new InvalidOperationException($"The archived {name} atmosphere changed only {changed} GPU samples.");
+                GD.Print($"Archived atmosphere GPU: {name}, recorded shell {height:F2} km, {changed} changed samples.");
+            }
+            finally
+            {
+                scene.SetProcess(true);
+            }
+
+            if (!scene.LoadScenario(saved) || scene.Renderer(0).ArchivedAtmosphere(id)?.Visible == true)
+                throw new InvalidOperationException($"The {name} replay shell persisted in the live view.");
+        }
+    }
+
     private async Task ExerciseArchivedBodyGeometry(SolarSystemScene scene, string directory)
     {
-        if (System.Environment.GetEnvironmentVariable("SPACETANGENT_ARCHIVED_BODY_GPU") != "1")
+        if (System.Environment.GetEnvironmentVariable("SPACETANGENT_ARCHIVED_BODY_GPU") is not ("1" or "only"))
             return;
         string archive = System.Environment.GetEnvironmentVariable("SPACETANGENT_LEGACY_RECORDING")!;
         string saved = Path.Combine(directory, "before-archived-geometry.stscene");

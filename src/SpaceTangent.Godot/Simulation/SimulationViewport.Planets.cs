@@ -71,6 +71,7 @@ internal partial class SimulationViewport
     internal void SetWorldAtmospheres(IReadOnlyDictionary<ObjectId, OrbitAtmosphereTextures> lookups,
         IReadOnlyDictionary<ObjectId, BodyTileTextures> tiles)
     {
+        _archivedAtmosphereLookups = lookups;
         _marsTiles = tiles.GetValueOrDefault(PlanetCatalogue.MarsId);
         ObjectId venus = SolarSystemSample.VenusId;
         _worldAtmospheres.Add(venus, new(_planetGlobes[venus], 6051.8f, null, tiles.GetValueOrDefault(venus), hasAtmosphere: true, venusClouds: _venusClouds, venusScattering: true));

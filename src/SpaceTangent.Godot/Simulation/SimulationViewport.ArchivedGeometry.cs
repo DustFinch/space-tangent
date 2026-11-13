@@ -16,6 +16,11 @@ internal partial class SimulationViewport
     private EarthOrbitTextures? _archivedEarthMaps;
     internal MeshInstance3D? ArchivedEarthLimb { get; private set; }
     private int _archivedUsed;
+    private IReadOnlyDictionary<ObjectId, OrbitAtmosphereTextures> _archivedAtmosphereLookups =
+        new Dictionary<ObjectId, OrbitAtmosphereTextures>();
+    private readonly Dictionary<ObjectId, MeshInstance3D> _archivedAtmospheres = new();
+
+    internal MeshInstance3D? ArchivedAtmosphere(ObjectId id) => _archivedAtmospheres.GetValueOrDefault(id);
 
     internal RecordedSceneGeometry? ArchivedGeometry { get; set; }
     internal MeshInstance3D? ArchivedBody(string name) => _archivedVisible.GetValueOrDefault(name);
@@ -101,8 +106,14 @@ internal partial class SimulationViewport
             material.SetShaderParameter("camera_secondary_light", Column(body.SecondLightDirection));
             material.SetShaderParameter("secondary_light_color", Column(body.SecondLightColor));
             node.Show();
-            if (id == SolarSystemSample.EarthId && body.AtmosphereRadius > body.Radius && body.LightDirection.Length > 0)
-                DrawArchivedEarthLimb(node, body, scene.KilometersPerUnit, camera * Column(body.LightDirection));
+            if (id is { } atmosphereId && body.AtmosphereRadius > body.Radius && body.LightDirection.Length > 0)
+            {
+                Vector3 light = camera * Column(body.LightDirection);
+                if (atmosphereId == SolarSystemSample.EarthId)
+                    DrawArchivedEarthLimb(node, body, scene.KilometersPerUnit, light);
+                else
+                    DrawArchivedWorldAtmosphere(atmosphereId, node, body, scene.KilometersPerUnit, light);
+            }
         }
 
         DrawArchivedOverlays(scene, scale);
@@ -139,6 +150,56 @@ internal partial class SimulationViewport
         ArchivedEarthLimb.Show();
     }
 
+    private void DrawArchivedWorldAtmosphere(ObjectId id, MeshInstance3D surface, RecordedBodyGeometry body,
+        double kilometersPerUnit, Vector3 light)
+    {
+        bool venus = id == SolarSystemSample.VenusId;
+        var lookup = _archivedAtmosphereLookups.GetValueOrDefault(id);
+        if (!venus && lookup is null)
+            return;
+
+        float ground = (float)(body.Radius * kilometersPerUnit);
+        float height = (float)((body.AtmosphereRadius - body.Radius) * kilometersPerUnit);
+        float shellScale = (float)(body.AtmosphereRadius / body.Radius);
+        if (!float.IsFinite(ground + height) || !float.IsFinite(shellScale) || surface.Basis.Determinant() == 0)
+            return;
+
+        if (!_archivedAtmospheres.TryGetValue(id, out var shell))
+        {
+            var limb = new ShaderMaterial { Shader = GD.Load<Shader>("res://Shaders/world_orbit_limb.gdshader") };
+            limb.SetShaderParameter("venus_scattering", venus);
+            lookup?.Bind(limb);
+            Material shellMaterial = limb;
+            if (venus)
+            {
+                limb.RenderPriority = -1;
+                shellMaterial = new ShaderMaterial
+                {
+                    Shader = GD.Load<Shader>("res://Shaders/venus_orbit_transmission.gdshader"),
+                    RenderPriority = -2,
+                    NextPass = limb
+                };
+            }
+            shell = new MeshInstance3D
+            {
+                Mesh = _archivedSphere, MaterialOverride = shellMaterial,
+                CastShadow = GeometryInstance3D.ShadowCastingSetting.Off
+            };
+            AddChild(shell);
+            _archivedAtmospheres.Add(id, shell);
+        }
+
+        var material = (ShaderMaterial)shell.MaterialOverride;
+        var scattering = material.NextPass as ShaderMaterial ?? material;
+        material.SetShaderParameter("ground_radius_km", ground);
+        material.SetShaderParameter("shell_height_km", height);
+        scattering.SetShaderParameter("ground_radius_km", ground);
+        scattering.SetShaderParameter("shell_height_km", height);
+        scattering.SetShaderParameter("light_in_body", (surface.Basis.Orthonormalized().Inverse() * light).Normalized());
+        shell.Transform = new(surface.Basis.Scaled(Vector3.One * shellScale), surface.Position);
+        shell.Show();
+    }
+
     private void HideArchivedBodies()
     {
         for (int index = 0; index < _archivedUsed; index++)
@@ -148,5 +209,7 @@ internal partial class SimulationViewport
         _archivedOverlayRoot?.Hide();
         _archivedSymbolCanvas?.Hide();
         ArchivedEarthLimb?.Hide();
+        foreach (var atmosphere in _archivedAtmospheres.Values)
+            atmosphere.Hide();
     }
 }

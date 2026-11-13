@@ -82,6 +82,18 @@ public partial class EarthOrbitProbe : Node
                 result = 0;
                 return;
             }
+            if (System.Environment.GetEnvironmentVariable("SPACETANGENT_ARCHIVED_ATMOSPHERES") is { Length: > 0 } recordings)
+            {
+                await ExerciseArchivedAtmospheres(scene, directory, recordings);
+                result = 0;
+                return;
+            }
+            if (System.Environment.GetEnvironmentVariable("SPACETANGENT_ARCHIVED_BODY_GPU") == "only")
+            {
+                await ExerciseArchivedBodyGeometry(scene, directory);
+                result = 0;
+                return;
+            }
             var epoch = JulianInstant.FromJulianDate(2460600.5008, TimeScale.Tdb);
             if (System.Environment.GetEnvironmentVariable("SPACETANGENT_MOON_MODELS_GPU") == "only")
             {

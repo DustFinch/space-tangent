@@ -62,6 +62,19 @@ public partial class EarthOrbitProbe
                     View("ssc/sol/99942-apophis", 2462200.1, .85));
             }
 
+            if (System.Environment.GetEnvironmentVariable("SPACETANGENT_INTERSTELLAR_SSC") is { Length: > 0 } interstellar)
+            {
+                System.Environment.SetEnvironmentVariable(input, interstellar);
+                if (!await scene.ReloadAddOns())
+                    throw new InvalidOperationException("The original interstellar SSC catalogue failed to load.");
+                await CheckPair("oumuamua-and-borisov",
+                    View("ssc/sol/1i-oumuamua", 2458080.5, .5),
+                    View("ssc/sol/2i-borisov", 2458853.5, .8));
+                await CheckPair("atlas-and-oumuamua",
+                    View("ssc/sol/3i-atlas", 2460857.5, .65),
+                    View("ssc/sol/1i-oumuamua", 2458000.5, .5));
+            }
+
             ObserverView View(string path, double day, double range)
             {
                 var id = new ObjectId(path);
@@ -101,13 +114,13 @@ public partial class EarthOrbitProbe
                             throw new InvalidOperationException($"No original material texture for {id.Value}.");
                         GD.Print($"Galileo GPU: {id.Value}, {textured} textured surfaces.");
                     }
-                    if (name == "halley-and-apophis")
+                    if (name is "halley-and-apophis" or "oumuamua-and-borisov" or "atlas-and-oumuamua")
                     {
                         if (node.MaterialOverride is not StandardMaterial3D { AlbedoTexture: not null } &&
                             !Enumerable.Range(0, mesh.GetSurfaceCount()).Any(index =>
                                 mesh.SurfaceGetMaterial(index) is StandardMaterial3D { AlbedoTexture: not null }))
                             throw new InvalidOperationException($"No original surface map for {id.Value}.");
-                        GD.Print($"Precessing SSC GPU: {id.Value}, original textured model.");
+                        GD.Print($"Original SSC GPU: {id.Value}, original textured model in {name}.");
                     }
                     if (id.Value == "ssc/sol/earth/mir")
                         CheckMirBounds(node, second.Navigation!.Value.RangeKilometers);

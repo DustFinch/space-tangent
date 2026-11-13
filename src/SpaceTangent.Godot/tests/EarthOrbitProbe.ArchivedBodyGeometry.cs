@@ -38,5 +38,19 @@ public partial class EarthOrbitProbe
         if (!scene.LoadScenario(saved) || renderer.ArchivedBody("Sol/Earth/Moon") is not null)
             throw new InvalidOperationException("Leaving replay did not restore live geometry.");
         GD.Print("Archived geometry GPU: rendered the recorded lunar transform and visible disc, then restored the live view.");
+        string? orbits = System.Environment.GetEnvironmentVariable("SPACETANGENT_LEGACY_ORBITS");
+        if (orbits is null)
+            return;
+        if (!scene.StartReplay(orbits) || renderer.ArchivedGeometry is not { Orbits.Count: 66, Labels.Count: 115 } ||
+            renderer.ArchivedOrbitSurfaces != 66 || !renderer.ArchivedLabels.Any(label => label.Visible && label.Text == "Альтаир"))
+            throw new InvalidOperationException("The original Windows recording did not publish its saved orbits and Unicode labels.");
+        await ToSignal(GetTree(), SceneTree.SignalName.ProcessFrame);
+        await ToSignal(RenderingServer.Singleton, RenderingServer.SignalName.FramePostDraw);
+        using var overlays = renderer.GetViewport().GetTexture().GetImage();
+        if (overlays.SavePng(Path.Combine(directory, "archived-orbits-labels.png")) != Error.Ok)
+            throw new IOException("Could not capture the saved orbit and label overlay.");
+        if (!scene.LoadScenario(saved) || renderer.ArchivedOrbitSurfaces != 0 || renderer.ArchivedLabels.Count != 0)
+            throw new InvalidOperationException("The saved orbit and label overlays persisted outside replay.");
+        GD.Print("Archived overlays GPU: original Windows capture published 66 orbit strips and 115 labels including Cyrillic, then cleared them on exit.");
     }
 }

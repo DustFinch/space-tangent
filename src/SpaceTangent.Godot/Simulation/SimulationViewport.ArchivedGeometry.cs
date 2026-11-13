@@ -91,6 +91,8 @@ internal partial class SimulationViewport
             node.Show();
         }
 
+        DrawArchivedOverlays(scene, scale);
+
         static Vector3 Column(Vector3d value) => new((float)value.X, (float)value.Y, (float)value.Z);
     }
 
@@ -100,5 +102,6 @@ internal partial class SimulationViewport
             _archivedBodies[index].Hide();
         _archivedUsed = 0;
         _archivedVisible.Clear();
+        _archivedOverlayRoot?.Hide();
     }
 }

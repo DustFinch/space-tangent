@@ -134,11 +134,33 @@ public sealed class RecordingTests
         Assert.Throws<InvalidDataException>(() => new LegacyCameraSequence(corrupt, world, deltaT));
     }
 
+    [ArchiveFact(true)]
+    public void ReadsSavedOrbitsAndLabelsFromTheOriginalWindowsRecorder()
+    {
+        string path = Environment.GetEnvironmentVariable("SPACETANGENT_LEGACY_ORBITS")!;
+        var world = new SimulationWorld(De440Ephemeris.Load(Environment.GetEnvironmentVariable("SPACETANGENT_DE440")!), []);
+        using var file = File.OpenRead(path);
+        using var replay = new LegacyCameraSequence(file, world, DeltaTModel.MorrisonStephenson2004);
+        Assert.NotNull(replay.ReadNext());
+        var frame = Assert.IsType<RecordedSceneGeometry>(replay.CurrentGeometry);
+        Assert.Equal(66, frame.Orbits.Count);
+        Assert.Equal(115, frame.Labels.Count);
+        Assert.Contains(frame.Labels, label => label.Text == "Альтаир");
+        var earth = Assert.Single(frame.Orbits, orbit => orbit.Name == "Sol/Earth");
+        Assert.True(earth.Points.Count > 32);
+        Assert.True(earth.CameraPoint(0).IsFinite);
+        Assert.NotEqual(earth.CameraPoint(0), earth.CameraPoint(1));
+        Assert.NotNull(replay.ReadNext());
+        var next = Assert.Single(replay.CurrentGeometry!.Orbits, orbit => orbit.Name == earth.Name);
+        Assert.Same(earth.Points, next.Points);
+    }
+
     private sealed class ArchiveFactAttribute : FactAttribute
     {
-        public ArchiveFactAttribute()
+        public ArchiveFactAttribute(bool orbits = false)
         {
-            if (string.IsNullOrWhiteSpace(Environment.GetEnvironmentVariable("SPACETANGENT_LEGACY_RECORDING")))
+            string input = orbits ? "SPACETANGENT_LEGACY_ORBITS" : "SPACETANGENT_LEGACY_RECORDING";
+            if (string.IsNullOrWhiteSpace(Environment.GetEnvironmentVariable(input)))
                 Skip = "Set the original full-Moon frame recording.";
         }
     }

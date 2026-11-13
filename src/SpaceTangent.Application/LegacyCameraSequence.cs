@@ -10,7 +10,11 @@ namespace SpaceTangent.Application;
 public readonly record struct RecordedBodyGeometry(string Name, ObjectId? Id, Vector3d CameraPosition, double Radius,
     double PolarScale, Basis3d CameraBasis, Vector3d LightDirection);
 
-public sealed record RecordedSceneGeometry(double KilometersPerUnit, IReadOnlyList<RecordedBodyGeometry> Bodies);
+public sealed record RecordedSceneGeometry(double KilometersPerUnit, IReadOnlyList<RecordedBodyGeometry> Bodies)
+{
+    public IReadOnlyList<RecordedOrbit> Orbits { get; init; } = [];
+    public IReadOnlyList<RecordedLabel> Labels { get; init; } = [];
+}
 
 /// <summary>Reconstructs the archived single camera against the installed ephemeris.</summary>
 public sealed class LegacyCameraSequence : IObserverReplay
@@ -35,7 +39,8 @@ public sealed class LegacyCameraSequence : IObserverReplay
         RecordedSceneGeometry? previousGeometry = null;
         RecordedBodyGeometry[]? previousBodies = null;
         int retainedBodies = 0;
-        FrameCount = LegacyFrameInspection.Inspect(stream, AddFrame, default).Frames;
+        var overlays = new LegacyFrameOverlays();
+        FrameCount = LegacyFrameInspection.Inspect(stream, AddFrame, default, overlays.AddOrbitGeometry).Frames;
 
         void AddFrame(ReadOnlySpan<byte> data, int minor, IReadOnlyList<string> strings)
         {
@@ -123,13 +128,18 @@ public sealed class LegacyCameraSequence : IObserverReplay
                     throw new InvalidDataException("Invalid archived body lighting or basis.");
                 geometry[index] = new(strings[(int)id], key, position, radius, polarScale, basis, light);
             }
+            var (orbits, labels) = overlays.Read(data, cursor, minor, strings);
             if (previousGeometry is null || previousGeometry.KilometersPerUnit != scale ||
-                !geometry.AsSpan().SequenceEqual(previousBodies))
+                !geometry.AsSpan().SequenceEqual(previousBodies) ||
+                !ReferenceEquals(orbits, previousGeometry.Orbits) || !ReferenceEquals(labels, previousGeometry.Labels))
             {
-                retainedBodies += geometry.Length;
+                if (!geometry.AsSpan().SequenceEqual(previousBodies))
+                    retainedBodies += geometry.Length;
                 if (retainedBodies > MaximumRetainedBodies)
                     throw new InvalidDataException("Archived replay exceeds the body geometry budget.");
-                previousGeometry = new(scale, Array.AsReadOnly(geometry));
+                var savedBodies = previousGeometry is not null && geometry.AsSpan().SequenceEqual(previousBodies)
+                    ? previousGeometry.Bodies : Array.AsReadOnly(geometry);
+                previousGeometry = new(scale, savedBodies) { Orbits = orbits, Labels = labels };
                 previousBodies = geometry;
             }
             _geometry.Add(previousGeometry);

@@ -40,6 +40,8 @@ internal partial class SimulationViewport
 
     internal bool Draw(ObserverView observer, WorldSnapshot snapshot, DeltaTModel deltaT)
     {
+        if (ArchivedGeometry is not null)
+            observer = observer with { Sky = observer.Sky with { Labels = false } };
         PrepareGalacticSky(observer, snapshot, deltaT);
         bool available = DrawScene(observer, snapshot, deltaT);
         if (_spaceSky is not null)

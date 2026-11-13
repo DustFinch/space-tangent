@@ -17,9 +17,10 @@ public static class LegacyFrameInspection
     public static LegacyFrameSummary Inspect(Stream stream, CancellationToken cancellation = default) =>
         Inspect(stream, null, cancellation);
 
-    internal delegate void FrameVisitor(ReadOnlySpan<byte> prefix, int minor, IReadOnlyList<string> strings);
+    internal delegate void FrameVisitor(ReadOnlySpan<byte> payload, int minor, IReadOnlyList<string> strings);
+    internal delegate void GeometryVisitor(ReadOnlySpan<byte> payload);
 
-    internal static LegacyFrameSummary Inspect(Stream stream, FrameVisitor? visitor, CancellationToken cancellation)
+    internal static LegacyFrameSummary Inspect(Stream stream, FrameVisitor? visitor, CancellationToken cancellation, GeometryVisitor? geometryVisitor = null)
     {
         ArgumentNullException.ThrowIfNull(stream);
         Span<byte> file = stackalloc byte[24];
@@ -35,6 +36,7 @@ public static class LegacyFrameInspection
         Span<byte> record = stackalloc byte[5];
         Span<byte> digest = stackalloc byte[4];
         byte[] buffer = new byte[64 * 1024];
+        byte[]? largeFrame = null;
         List<string>? names = visitor is null ? null : [];
         int frames = 0, strings = 0, geometries = 0, starFields = 0;
         long? firstSequence = null, lastSequence = null;
@@ -56,27 +58,28 @@ public static class LegacyFrameInspection
             };
             if (length < 0 || length > maximum)
                 throw new InvalidDataException("Archived frame record exceeds its length limit.");
-            int read = Math.Min(length, buffer.Length);
-            stream.ReadExactly(buffer.AsSpan(0, read));
+            byte[] payload = kind == 3 && visitor is not null && length > buffer.Length
+                ? largeFrame ??= new byte[1024 * 1024] : buffer;
+            int read = Math.Min(length, payload.Length);
+            stream.ReadExactly(payload.AsSpan(0, read));
             uint crc = Update(0xffffffffu, record);
-            crc = Update(crc, buffer.AsSpan(0, read));
+            crc = Update(crc, payload.AsSpan(0, read));
             if (kind == 3)
             {
                 if (length < 41 || frames >= 1_000_000)
                     throw new InvalidDataException("Archived frame count or header exceeds its limits.");
-                long sequence = BinaryPrimitives.ReadInt64LittleEndian(buffer);
+                long sequence = BinaryPrimitives.ReadInt64LittleEndian(payload);
                 firstSequence ??= sequence;
                 lastSequence = sequence;
-                if (buffer[40] == 0)
+                if (payload[40] == 0)
                 {
-                    long day = BinaryPrimitives.ReadInt64LittleEndian(buffer.AsSpan(24));
-                    long nanos = BinaryPrimitives.ReadInt64LittleEndian(buffer.AsSpan(32));
+                    long day = BinaryPrimitives.ReadInt64LittleEndian(payload.AsSpan(24));
+                    long nanos = BinaryPrimitives.ReadInt64LittleEndian(payload.AsSpan(32));
                     if (nanos is < 0 or >= 86_400_000_000_000L)
                         throw new InvalidDataException("Archived frame epoch is invalid.");
                     lastTdb = day + nanos / 86_400_000_000_000d;
                     firstTdb ??= lastTdb;
                 }
-                visitor?.Invoke(buffer.AsSpan(0, read), minor, names!);
                 frames++;
             }
             else if (kind == 4 && (length != 12 || BinaryPrimitives.ReadInt32LittleEndian(buffer) != frames ||
@@ -108,6 +111,10 @@ public static class LegacyFrameInspection
             stream.ReadExactly(digest);
             if (BinaryPrimitives.ReadUInt32LittleEndian(digest) != ~crc)
                 throw new InvalidDataException("Archived frame record checksum differs.");
+            if (kind == 3)
+                visitor?.Invoke(payload.AsSpan(0, length), minor, names!);
+            else if (kind == 2)
+                geometryVisitor?.Invoke(payload.AsSpan(0, length));
             if (kind == 4)
             {
                 if (stream.ReadByte() != -1)

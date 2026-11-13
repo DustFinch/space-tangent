@@ -69,7 +69,7 @@ public sealed record ObserverPluginManifest(string Root, string Id, string Name,
         }
     }
 
-    internal static bool ValidId(string? id) => id is { Length: > 0 and <= 64 } &&
+    public static bool ValidId(string? id) => id is { Length: > 0 and <= 64 } &&
         id.All(character => character is >= 'a' and <= 'z' or >= '0' and <= '9' or '-');
 
     private static bool Label(string? value) => !string.IsNullOrWhiteSpace(value) && value.Length <= 160 &&

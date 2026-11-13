@@ -78,6 +78,12 @@ public partial class EarthOrbitProbe : Node
                 result = 0;
                 return;
             }
+            if (System.Environment.GetEnvironmentVariable("SPACETANGENT_LEGACY_DISABLED_PLUGINS_PROBE") is { Length: > 0 } pluginManifest)
+            {
+                await ExerciseLegacyDisabledPlugins(scene, directory, pluginManifest);
+                result = 0;
+                return;
+            }
             if (System.Environment.GetEnvironmentVariable("SPACETANGENT_SKY_MARKINGS_PROBE") == "only")
             {
                 await ExerciseSkyMarkings(scene, directory);

@@ -11,16 +11,36 @@ public partial class SolarSystemScene
     private readonly Dictionary<long, Action> _pluginMenuActions = new();
     private FileDialog _tourConversionSource = null!;
 
-    internal ObserverLuaPlugin? OpenPlugin(string file)
+    internal ObserverLuaPlugin? OpenPlugin(string file, bool reenable = false)
     {
         try
         {
             var manifest = ObserverPluginManifest.Load(file);
+            bool wasDisabled = _localAddons.DisabledPlugins.Contains(manifest.Id, StringComparer.Ordinal);
+            if (wasDisabled && !reenable)
+            {
+                _status.Text = $"Plugin disabled · {manifest.Name}";
+                return null;
+            }
             if (_plugins.Count >= 8 && !_plugins.ContainsKey(manifest.Id))
                 throw new InvalidOperationException("At most eight plugins can run at once.");
             var media = new ScriptMediaPlayer(Renderer(_active));
             var plugin = new ObserverLuaPlugin(manifest, Session!, _active, _surfaceTextures is not null,
                 line => GD.Print($"Plugin {manifest.Id}: {line}"), request => media.Present(manifest.Root, request), media.Clear);
+            if (wasDisabled)
+            {
+                var settings = _localAddons with
+                {
+                    DisabledPlugins = _localAddons.DisabledPlugins.Where(id => id != manifest.Id).ToArray()
+                };
+                try { _localAddonFile.Save(settings); }
+                catch
+                {
+                    plugin.Disable();
+                    throw;
+                }
+                _localAddons = settings;
+            }
             if (_plugins.Remove(manifest.Id, out var previous) && previous.Disable())
                 Refresh();
             _plugins.Add(manifest.Id, plugin);
@@ -87,6 +107,9 @@ public partial class SolarSystemScene
                 Add(command.Title, () => plugin.RunCommand(command.Id));
             Add("Disable " + name, () =>
             {
+                var settings = _localAddons with { DisabledPlugins = [.. _localAddons.DisabledPlugins, plugin.Manifest.Id] };
+                _localAddonFile.Save(settings);
+                _localAddons = settings;
                 _plugins.Remove(plugin.Manifest.Id);
                 if (plugin.Disable())
                     Refresh();

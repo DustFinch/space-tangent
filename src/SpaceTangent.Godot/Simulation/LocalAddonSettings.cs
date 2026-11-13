@@ -2,6 +2,7 @@
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using Godot;
+using SpaceTangent.Application;
 
 namespace SpaceTangent.Godot.Simulation;
 
@@ -18,6 +19,8 @@ internal sealed record LocalAddonSource(Guid Id, LocalAddonKind Kind, string Pat
 
 internal sealed record LocalAddonSettings(LocalAddonKind[] DisabledDefaults, LocalAddonSource[] Sources)
 {
+    internal string[] DisabledPlugins { get; init; } = [];
+
     internal static LocalAddonSettings Empty { get; } = new([], []);
 
     internal static bool AllowsMultiple(LocalAddonKind kind) => kind is LocalAddonKind.Science or LocalAddonKind.BodyCatalog;
@@ -32,7 +35,7 @@ internal sealed record LocalAddonSettings(LocalAddonKind[] DisabledDefaults, Loc
         LocalAddonSource[] sources = enabled && !AllowsMultiple(kind)
             ? Sources.Select(source => source.Kind == kind ? source with { Enabled = false } : source).ToArray()
             : Sources;
-        return new(defaults.ToArray(), sources);
+        return this with { DisabledDefaults = defaults.ToArray(), Sources = sources };
     }
 
     internal LocalAddonSettings SetSource(LocalAddonSource selected, bool enabled)
@@ -94,7 +97,10 @@ internal sealed class LocalAddonSettingsFile
             ?? throw new InvalidDataException("The local add-on settings are empty.");
         if (data.Version != 1 || data.DisabledDefaults is null || data.Sources is null)
             throw new InvalidDataException("Unsupported local add-on settings.");
-        var settings = new LocalAddonSettings(data.DisabledDefaults, data.Sources);
+        var settings = new LocalAddonSettings(data.DisabledDefaults, data.Sources)
+        {
+            DisabledPlugins = data.DisabledPlugins ?? []
+        };
         Validate(settings);
         return settings;
     }
@@ -102,7 +108,7 @@ internal sealed class LocalAddonSettingsFile
     internal void Save(LocalAddonSettings settings)
     {
         Validate(settings);
-        byte[] bytes = JsonSerializer.SerializeToUtf8Bytes(new Document(1, settings.DisabledDefaults, settings.Sources), Json);
+        byte[] bytes = JsonSerializer.SerializeToUtf8Bytes(new Document(1, settings.DisabledDefaults, settings.Sources, settings.DisabledPlugins.Length == 0 ? null : settings.DisabledPlugins), Json);
         if (bytes.Length > MaximumBytes)
             throw new InvalidDataException("The local add-on settings are too large.");
         string directory = Path.GetDirectoryName(_file)!;
@@ -153,6 +159,9 @@ internal sealed class LocalAddonSettingsFile
 
     private void Validate(LocalAddonSettings settings)
     {
+        if (settings.DisabledPlugins.Length > 128 || settings.DisabledPlugins.Any(id => !ObserverPluginManifest.ValidId(id)) ||
+            settings.DisabledPlugins.Distinct(StringComparer.Ordinal).Count() != settings.DisabledPlugins.Length)
+            throw new InvalidDataException("The local add-on settings contain an invalid disabled plugin list.");
         if (settings.Sources.Length > MaximumSources ||
             settings.Sources.Any(source => source is null || source.Id == Guid.Empty || string.IsNullOrWhiteSpace(source.Path)) ||
             settings.Sources.Select(source => source.Id).Distinct().Count() != settings.Sources.Length)
@@ -167,5 +176,6 @@ internal sealed class LocalAddonSettingsFile
         }
     }
 
-    private sealed record Document(int Version, LocalAddonKind[] DisabledDefaults, LocalAddonSource[] Sources);
+    private sealed record Document(int Version, LocalAddonKind[] DisabledDefaults, LocalAddonSource[] Sources,
+        [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] string[]? DisabledPlugins);
 }

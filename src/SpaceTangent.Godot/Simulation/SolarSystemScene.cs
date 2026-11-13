@@ -1183,7 +1183,7 @@ public partial class SolarSystemScene : Control
         open.FileSelected += path =>
         {
             if (Path.GetFileName(path).Equals("plugin.json", StringComparison.OrdinalIgnoreCase))
-                OpenPlugin(path);
+                OpenPlugin(path, reenable: true);
             else
                 RunScript(path);
         };

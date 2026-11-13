@@ -87,6 +87,16 @@ public partial class SolarSystemScene
         var profile = LegacyObserverProfiles.Read(path, session[_active], session.DeltaT);
         var saved = AddonLoader.SavedEarthPlacePath();
         int sites = LegacySavedEarthPlaces.Merge(saved.Explicit ?? saved.User, profile.SavedSites);
+        if (profile.DisabledPlugins is { } disabled && !_localAddons.DisabledPlugins.SequenceEqual(disabled))
+        {
+            var settings = _localAddons with { DisabledPlugins = disabled.ToArray() };
+            _localAddonFile.Save(settings);
+            _localAddons = settings;
+            foreach (string id in disabled)
+                if (_plugins.Remove(id, out var plugin))
+                    plugin.Disable();
+            UpdatePluginMenu();
+        }
         var current = session.CaptureScenario(_active);
         ObserverView[] views = current.Views.ToArray();
         views[_active] = profile.Observer;

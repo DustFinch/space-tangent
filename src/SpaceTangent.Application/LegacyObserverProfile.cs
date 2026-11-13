@@ -9,6 +9,7 @@ namespace SpaceTangent.Application;
 public sealed record LegacyObserverProfile(ObserverView Observer, DeltaTModel DeltaT)
 {
     public bool? NightMode { get; init; }
+    public IReadOnlyList<string>? DisabledPlugins { get; init; }
     public IReadOnlyList<EarthPlace> SavedSites { get; init; } = [];
 }
 
@@ -186,6 +187,9 @@ public static class LegacyObserverProfiles
         return new(observer, deltaT)
         {
             SavedSites = EarthPlaceCatalogue.ParseSavedText(Word(root, "SavedSites")),
+            DisabledPlugins = Word(root, "DisabledPlugins") is { } disabled
+                ? disabled.Split(',', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries)
+                    .Where(ObserverPluginManifest.ValidId).Distinct(StringComparer.Ordinal).Take(128).ToArray() : null,
             NightMode = Flag(root, "NightMode")
         };
     }

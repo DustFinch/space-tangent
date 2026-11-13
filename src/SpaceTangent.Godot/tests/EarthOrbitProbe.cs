@@ -78,6 +78,12 @@ public partial class EarthOrbitProbe : Node
                 result = 0;
                 return;
             }
+            if (System.Environment.GetEnvironmentVariable("SPACETANGENT_LEGACY_SURFACE_BODY_PROBE") == "only")
+            {
+                await ExerciseLegacySurfaceBody(scene, directory);
+                result = 0;
+                return;
+            }
             if (System.Environment.GetEnvironmentVariable("SPACETANGENT_LEGACY_DISABLED_PACKS_PROBE") is { Length: > 0 } packRoot)
             {
                 await ExerciseLegacyDisabledPacks(scene, directory, packRoot);

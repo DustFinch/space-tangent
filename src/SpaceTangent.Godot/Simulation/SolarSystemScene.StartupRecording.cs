@@ -102,7 +102,7 @@ public partial class SolarSystemScene
         }
         var current = session.CaptureScenario(_active);
         ObserverView[] views = current.Views.ToArray();
-        views[_active] = profile.Observer;
+        views[_active] = LegacyObserverProfiles.RestoreSurfaceBody(profile, session.World);
         ApplyScenario(current with
         {
             Views = Array.AsReadOnly(views), DeltaT = profile.DeltaT,

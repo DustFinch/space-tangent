@@ -9,12 +9,13 @@ namespace SpaceTangent.Application;
 public sealed record LegacyObserverProfile(ObserverView Observer, DeltaTModel DeltaT)
 {
     public bool? NightMode { get; init; }
+    public string? SiteBody { get; init; }
     public IReadOnlyList<string>? DisabledPlugins { get; init; }
     public IReadOnlyList<string>? DisabledPacks { get; init; }
     public IReadOnlyList<EarthPlace> SavedSites { get; init; } = [];
 }
 
-public static class LegacyObserverProfiles
+public static partial class LegacyObserverProfiles
 {
     /// <summary>Applies archived functional settings to an existing observer.</summary>
     public static LegacyObserverProfile Read(string file, ObserverView current, DeltaTModel deltaT)
@@ -31,7 +32,8 @@ public static class LegacyObserverProfiles
         if (Enum.TryParse(Word(root, "DeltaT"), out DeltaTModel model) && Enum.IsDefined(model))
             deltaT = model;
         EarthObserverCamera camera = current.EarthObserver ?? EarthObserverCamera.Moscow;
-        if (Word(root, "SiteBody") is null or "Sol/Earth" && root.TryGetProperty("Site", out var position) &&
+        string? siteBody = Word(root, "SiteBody");
+        if (root.TryGetProperty("Site", out var position) &&
             position.ValueKind == JsonValueKind.Object)
         {
             var site = new EarthSite(Number(position, "LatitudeDegrees") ?? camera.Site.LatitudeDegrees,
@@ -188,6 +190,7 @@ public static class LegacyObserverProfiles
         return new(observer, deltaT)
         {
             SavedSites = EarthPlaceCatalogue.ParseSavedText(Word(root, "SavedSites")),
+            SiteBody = siteBody,
             DisabledPacks = Word(root, "DisabledPacks") is { } packs
                 ? packs.Split(',', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries)
                     .Where(ValidPackKey).Distinct(StringComparer.Ordinal).Take(128).ToArray() : null,

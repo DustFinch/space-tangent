@@ -98,7 +98,17 @@ internal partial class SimulationViewport
             if (!_planetGlobes[id].Visible || !snapshot.TryState(id, out CartesianState state))
                 continue;
             Vector3d direction = sun - state.PositionKilometers;
-            atmosphere.Update(ToGodot(direction / direction.Length, 1), _navigationCamera.Position, snapshot.Epoch);
+            Vector3d occluder = default;
+            double radius = 0;
+            if (NaturalBodyCatalogue.Find(id) is { Kind: CatalogueKind.Moon } moon &&
+                snapshot.TryState(moon.Parent, out var parent))
+            {
+                occluder = (parent - state).PositionKilometers;
+                double parentRadius = NavigationCamera.BodyRadiusKilometers(moon.Parent);
+                if (SolarOccultation.VisibleFraction(direction, occluder, parentRadius + moon.RadiusKilometers + 1000) < 1)
+                    radius = parentRadius;
+            }
+            atmosphere.Update(direction, _navigationCamera.Position, snapshot.Epoch, occluder, radius);
         }
     }
 

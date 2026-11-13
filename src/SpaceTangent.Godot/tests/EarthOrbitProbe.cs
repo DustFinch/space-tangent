@@ -62,6 +62,7 @@ public partial class EarthOrbitProbe : Node
             if (System.Environment.GetEnvironmentVariable("SPACETANGENT_ECLIPSE_PROBE") == "only")
             {
                 await ExerciseEclipses(scene, directory);
+                await ExerciseTitanEclipse(scene, directory);
                 result = 0;
                 return;
             }
@@ -155,6 +156,7 @@ public partial class EarthOrbitProbe : Node
             }
             await ExercisePlanetAtmospheres(scene, epoch, directory);
             await ExerciseEclipses(scene, directory);
+            await ExerciseTitanEclipse(scene, directory);
             await ExercisePlanets(scene, epoch, directory);
             await ExerciseTileSampling(scene, directory);
             await ExerciseMarsMoonModels(scene, epoch, directory);

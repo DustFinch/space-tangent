@@ -83,7 +83,8 @@ internal sealed class WorldOrbitAtmosphere
     internal (bool Visible, float Offset)? CloudState => _clouds is null ? null :
         (_clouds.IsVisibleInTree(), _cloudMaterial!.GetShaderParameter("cloud_offset").AsSingle());
 
-    internal void Update(Vector3 light, Vector3 eye, JulianInstant epoch)
+    internal void Update(Vector3d sunward, Vector3 eye, JulianInstant epoch,
+        Vector3d occluder = default, double occluderRadius = 0)
     {
         float radius = _globe.Scale.X;
         bool showAir = _shell is not null && radius > .1f && radius > eye.DistanceTo(_globe.Position) * .007f;
@@ -96,7 +97,22 @@ internal sealed class WorldOrbitAtmosphere
             _globe.MaterialOverride = _surface;
             return;
         }
-        var local = _globe.Transform.Basis.Orthonormalized().Inverse() * light;
+        Basis bodyFromWorld = _globe.Transform.Basis.Orthonormalized().Inverse();
+        Vector3 local = BodyVector(sunward / sunward.Length);
+        SetOccultation(_ground);
+        if (showAir)
+            SetOccultation(_limb!);
+
+        Vector3 BodyVector(Vector3d vector) => bodyFromWorld * new Vector3((float)vector.X, (float)vector.Z, (float)-vector.Y);
+
+        void SetOccultation(ShaderMaterial material)
+        {
+            material.SetShaderParameter("occulting_radius_km", (float)occluderRadius);
+            if (occluderRadius <= 0)
+                return;
+            material.SetShaderParameter("to_occluder_km", BodyVector(occluder));
+            material.SetShaderParameter("to_sun_km", BodyVector(sunward));
+        }
         if (_clouds is not null)
         {
             _clouds.Visible = showAir && eye.DistanceTo(_globe.Position) >= radius * _clouds.Scale.X;

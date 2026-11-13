@@ -1,5 +1,15 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
 #include "res://Shaders/atmosphere_lookup.gdshaderinc"
+#include "res://Shaders/solar_occultation.gdshaderinc"
+
+uniform float occulting_radius_km = 0.0;
+uniform vec3 to_occluder_km;
+uniform vec3 to_sun_km;
+
+float world_solar_visibility(vec3 point) {
+    return occulting_radius_km > 0.0 ?
+        solar_visibility(to_sun_km - point, to_occluder_km - point, occulting_radius_km) : 1.0;
+}
 
 uniform vec3 light_in_body = vec3(1.0, 0.0, 0.0);
 uniform float ground_radius_km;
@@ -29,6 +39,21 @@ void world_orbit_air_to(vec3 eye, vec3 ray, float solid_radius_km, out vec3 tran
     if (use_atmosphere_lookup) {
         vec3 entry;
         sample_atmosphere_lookup(eye, ray, light_in_body, ground_radius_km, transmission, radiance, entry);
+        if (occulting_radius_km > 0.0) {
+            vec2 shell = air_span(eye, ray, ground_radius_km + shell_height_km);
+            vec2 ground = air_span(eye, ray, solid_radius_km);
+            float start = max(0.0, shell.x);
+            float end = ground.x >= 0.0 ? min(shell.y, ground.x) : shell.y;
+            float lit = 0.0;
+            float density = 0.0;
+            for (int index = 0; index < 8; index++) {
+                vec3 point = eye + ray * mix(start, end, (float(index) + 0.5) / 8.0);
+                float weight = exp(-max(length(point) - ground_radius_km, 0.0) / air_scale_height_km);
+                lit += weight * world_solar_visibility(point);
+                density += weight;
+            }
+            if (end > start && density > 0.0) radiance *= lit / density;
+        }
         return;
     }
     if (venus_scattering) {

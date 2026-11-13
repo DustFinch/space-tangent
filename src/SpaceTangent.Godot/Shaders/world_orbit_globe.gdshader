@@ -34,7 +34,7 @@ void fragment() {
     if (draw_air) {
         world_orbit_air(air_eye * ground_radius_km, normalize(air_surface - air_eye), transmission, radiance);
     }
-    vec3 illumination = vec3(sun);
+    vec3 illumination = vec3(sun * world_solar_visibility(normalize(air_surface) * ground_radius_km));
     if (draw_air && venus_scattering) {
         vec3 point = normalize(air_surface) * ground_radius_km;
         illumination = sun * exp(-venus_extinction(venus_columns(point, light_in_body))) + venus_diffuse(point, sun);

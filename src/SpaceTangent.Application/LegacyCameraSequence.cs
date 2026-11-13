@@ -8,7 +8,8 @@ using SpaceTangent.Core.World;
 namespace SpaceTangent.Application;
 
 public readonly record struct RecordedBodyGeometry(string Name, ObjectId? Id, Vector3d CameraPosition, double Radius,
-    double PolarScale, Basis3d CameraBasis, Vector3d LightDirection);
+    double PolarScale, Basis3d CameraBasis, Vector3d LightDirection,
+    Vector3d LightColor, Vector3d SecondLightDirection, Vector3d SecondLightColor);
 
 public sealed record RecordedSceneGeometry(double KilometersPerUnit, IReadOnlyList<RecordedBodyGeometry> Bodies)
 {
@@ -126,7 +127,13 @@ public sealed class LegacyCameraSequence : IObserverReplay
                 Vector3d light = Vector(body[36..]);
                 if (!light.IsFinite || !basis.X.IsFinite || !basis.Y.IsFinite || !basis.Z.IsFinite)
                     throw new InvalidDataException("Invalid archived body lighting or basis.");
-                geometry[index] = new(strings[(int)id], key, position, radius, polarScale, basis, light);
+                Vector3d lightColor = minor >= 5 ? ReadLightColor(body[93..]) : new(1, 1, 1);
+                Vector3d secondDirection = minor >= 5 ? Vector(body[105..]) : default;
+                Vector3d secondColor = minor >= 5 ? ReadLightColor(body[117..]) : default;
+                if (!secondDirection.IsFinite)
+                    throw new InvalidDataException("Invalid archived secondary light direction.");
+                geometry[index] = new(strings[(int)id], key, position, radius, polarScale, basis,
+                    light, lightColor, secondDirection, secondColor);
             }
             var (orbits, labels) = overlays.Read(data, cursor, minor, strings);
             if (previousGeometry is null || previousGeometry.KilometersPerUnit != scale ||
@@ -196,6 +203,15 @@ public sealed class LegacyCameraSequence : IObserverReplay
         _views.Clear();
         _geometry.Clear();
         _next = 0;
+    }
+
+    private static Vector3d ReadLightColor(ReadOnlySpan<byte> value)
+    {
+        var color = Vector(value);
+        if (color.X is not (>= 0 and <= 1000) || color.Y is not (>= 0 and <= 1000) ||
+            color.Z is not (>= 0 and <= 1000))
+            throw new InvalidDataException("Invalid archived light color.");
+        return color;
     }
 
     private static float Single(ReadOnlySpan<byte> value) => BinaryPrimitives.ReadSingleLittleEndian(value);

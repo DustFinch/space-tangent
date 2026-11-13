@@ -47,6 +47,16 @@ public partial class EarthOrbitProbe
         await ToSignal(GetTree(), SceneTree.SignalName.ProcessFrame);
         await ToSignal(RenderingServer.Singleton, RenderingServer.SignalName.FramePostDraw);
         using var overlays = renderer.GetViewport().GetTexture().GetImage();
+        if (renderer.ArchivedBody("Sol/Earth")?.MaterialOverride is not ShaderMaterial earth ||
+            !earth.GetShaderParameter("has_map").AsBool() || !earth.GetShaderParameter("has_night_map").AsBool() ||
+            !earth.GetShaderParameter("has_cloud_map").AsBool())
+            throw new InvalidOperationException("The replay Earth did not bind day, night and cloud maps.");
+        var savedEarth = renderer.ArchivedGeometry!.Bodies.Single(body => body.Name == "Sol/Earth");
+        var savedLight = savedEarth.LightColor;
+        if (earth.GetShaderParameter("light_color").AsVector3().DistanceTo(
+            new((float)savedLight.X, (float)savedLight.Y, (float)savedLight.Z)) > .000001f)
+            throw new InvalidOperationException("The replay material did not retain the recorded light color.");
+        GD.Print("Archived Earth material GPU: bound day, night and cloud maps and applied recorded light colors.");
         var symbols = renderer.ArchivedSymbols;
         if (symbols.Count == 0)
             throw new InvalidOperationException("The original recording has no projected deep-sky symbols.");

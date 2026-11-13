@@ -22,8 +22,11 @@ internal partial class SimulationViewport
     private EarthOrbitRenderer? _earthOrbit;
     private ShaderMaterial _navigationMoonMaterial = null!;
 
-    internal void SetEarthOrbitTextures(EarthOrbitTextures textures, OrbitAtmosphereTextures? lookup) =>
+    internal void SetEarthOrbitTextures(EarthOrbitTextures textures, OrbitAtmosphereTextures? lookup)
+    {
         _earthOrbit = new(_navigationEarth, textures, lookup);
+        _archivedEarthMaps = textures;
+    }
 
     internal bool EarthOrbitAtmosphereActive => _earthOrbit?.Active == true;
     internal bool NavigationCameraCurrent => _navigationCamera.Current;

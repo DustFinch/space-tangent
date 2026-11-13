@@ -13,6 +13,7 @@ internal partial class SimulationViewport
     private readonly SphereMesh _archivedSphere = new() { Radius = 1, Height = 2, RadialSegments = 48, Rings = 24 };
     private Shader? _archivedBodyShader;
     private Texture2D? _archivedMoonMap;
+    private EarthOrbitTextures? _archivedEarthMaps;
     private int _archivedUsed;
 
     internal RecordedSceneGeometry? ArchivedGeometry { get; set; }
@@ -80,7 +81,14 @@ internal partial class SimulationViewport
                 basis *= new Basis(Vector3.Up, Mathf.Pi / 2);
             }
             node.Transform = new(camera * basis.Scaled(Vector3.One * radius), center);
-            Texture2D? texture = id == SolarSystemSample.MoonId ? _archivedMoonMap : globeMaterial?.AlbedoTexture;
+            EarthOrbitTextures? earth = id == SolarSystemSample.EarthId ? _archivedEarthMaps : null;
+            Texture2D? texture = id == SolarSystemSample.MoonId ? _archivedMoonMap : earth?.Day ?? globeMaterial?.AlbedoTexture;
+            material.SetShaderParameter("has_night_map", earth?.Night is not null);
+            material.SetShaderParameter("has_cloud_map", earth?.Clouds is not null);
+            if (earth?.Night is { } night)
+                material.SetShaderParameter("night_map", night);
+            if (earth?.Clouds is { } clouds)
+                material.SetShaderParameter("cloud_map", clouds);
             material.SetShaderParameter("has_map", texture is not null);
             if (texture is not null)
                 material.SetShaderParameter("surface_map", texture);
@@ -88,6 +96,9 @@ internal partial class SimulationViewport
                 id == SolarSystemSample.EarthId ? new Color("4a76ad") : globeMaterial?.AlbedoColor ?? new Color("b8b0a6"));
             material.SetShaderParameter("emissive", id == SolarSystemSample.SunId);
             material.SetShaderParameter("camera_light", Column(body.LightDirection));
+            material.SetShaderParameter("light_color", Column(body.LightColor));
+            material.SetShaderParameter("camera_secondary_light", Column(body.SecondLightDirection));
+            material.SetShaderParameter("secondary_light_color", Column(body.SecondLightColor));
             node.Show();
         }
 

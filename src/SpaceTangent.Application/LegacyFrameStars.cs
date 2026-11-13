@@ -75,9 +75,6 @@ internal sealed class LegacyFrameStars
     internal RecordedStellarView? ReadView(ReadOnlySpan<byte> frame, int offset)
     {
         if (offset >= frame.Length || frame[offset] > 1)
-            throw new InvalidDataException("Invalid archived lens flag before stellar view.");
-        offset += frame[offset] == 0 ? 1 : 58;
-        if (offset >= frame.Length || frame[offset] > 1)
             throw new InvalidDataException("Invalid archived stellar view flag.");
         if (frame[offset++] == 0)
             return null;

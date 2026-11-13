@@ -20,6 +20,9 @@ public readonly record struct RecordedBodyPoint(string Name, double Magnitude, V
 public readonly record struct RecordedCometTail(string Name, Vector3d Head, Vector3d Direction, Vector3d Trail,
     double Length, double Width, double Brightness, Vector3d Color, double ComaRadius);
 
+public readonly record struct RecordedLens(string Name, Vector3d CameraPosition, double Radius,
+    Vector3d DiskNormal, Vector3d DiskReference, double DiskOuter, double DiskTemperature, bool Cinematic, double Spin);
+
 public readonly record struct RecordedShadow(string Receiver, Vector3d Center, double Radius);
 
 internal sealed class LegacyFrameOverlays
@@ -55,7 +58,7 @@ internal sealed class LegacyFrameOverlays
         _geometry.Add(Array.AsReadOnly(points));
     }
 
-    internal (IReadOnlyList<RecordedStarPoint>, IReadOnlyList<RecordedOrbit>, IReadOnlyList<RecordedLabel>, IReadOnlyDictionary<string, RecordedBodyPoint>, IReadOnlyList<RecordedCometTail>, IReadOnlyList<RecordedShadow>, int StellarOffset) Read(ReadOnlySpan<byte> data,
+    internal (IReadOnlyList<RecordedStarPoint>, IReadOnlyList<RecordedOrbit>, IReadOnlyList<RecordedLabel>, IReadOnlyDictionary<string, RecordedBodyPoint>, IReadOnlyList<RecordedCometTail>, IReadOnlyList<RecordedShadow>, RecordedLens?, int StellarOffset) Read(ReadOnlySpan<byte> data,
         int offset, int minor, IReadOnlyList<string> strings)
     {
         int stars = Count(data, 100, 256), orbitCount = Count(data, 102, 128);
@@ -171,13 +174,44 @@ internal sealed class LegacyFrameOverlays
             Charge(tails.Length);
             _tails = Array.AsReadOnly(_lastTails = tails);
         }
-        return (_starPoints, _orbits, _labels, _points, _tails, _shadows, data.Length - reader.Remaining);
+        var lens = minor >= 1 ? ReadLens(ref reader, minor, strings) : null;
+        return (_starPoints, _orbits, _labels, _points, _tails, _shadows, lens, data.Length - reader.Remaining);
 
         Vector3d Turn(Vector3d value)
         {
             Vector3d twice = Vector3d.Cross(imaginary, value) * 2;
             return value + twice * real + Vector3d.Cross(imaginary, twice);
         }
+    }
+
+    private static RecordedLens? ReadLens(ref Reader reader, int minor, IReadOnlyList<string> strings)
+    {
+        byte present = reader.Byte();
+        if (present == 0)
+            return null;
+        if (present != 1)
+            throw new InvalidDataException("Invalid archived lens flag.");
+        string name = reader.Text(strings);
+        var position = reader.Vector();
+        double radius = reader.Float();
+        var normal = minor >= 2 ? reader.Vector() : default;
+        double outer = minor >= 2 ? reader.Float() : 0;
+        double temperature = minor >= 2 ? reader.Float() : 0;
+        var reference = minor >= 3 ? reader.Vector() : default;
+        byte style = minor >= 3 ? reader.Byte() : (byte)0;
+        double spin = minor >= 7 ? reader.Float() : 0;
+        bool hasDisk = normal != default;
+        if (hasDisk && minor < 3)
+        {
+            var tangent = Vector3d.Cross(normal, Math.Abs(normal.X) < .75 ? new(1, 0, 0) : new(0, 1, 0));
+            reference = tangent / tangent.Length;
+        }
+        if (position == default || radius <= 0 || style > 1 || spin is < 0 or > .99900002 ||
+            (hasDisk && (outer <= 3 || temperature <= 0 || Math.Abs(Vector3d.Dot(normal, normal) - 1) > 2e-6 ||
+                Math.Abs(Vector3d.Dot(reference, reference) - 1) > 2e-6 || Math.Abs(Vector3d.Dot(normal, reference)) > .001)) ||
+            (!hasDisk && (outer != 0 || temperature != 0 || reference != default || spin != 0)))
+            throw new InvalidDataException("Invalid archived lens geometry.");
+        return new(name, position, radius, normal, reference, outer, temperature, style == 1, spin);
     }
 
     private void Charge(int entries)

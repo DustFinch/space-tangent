@@ -48,8 +48,8 @@ void vertex() {
     float scintillation = max(0.0, 1.0 + amplitude * (0.6 * sin(animation_time * 21.0 + phase)
         + 0.4 * sin(animation_time * 34.0 + 2.3 * phase)));
     opacity = clamp(alpha, 0.0, 1.0) * scintillation;
-    POSITION = PROJECTION_MATRIX * vec4(view, 0.0);
-    POSITION.z = 0.0;
+    POSITION = PROJECTION_MATRIX * vec4(mat3(MODELVIEW_MATRIX) * view, 0.0);
+    POSITION.z = POSITION.w * CLIP_SPACE_FAR;
     POINT_SIZE = alpha > 0.0 ? 10.0 * disc : 0.0;
 }
 

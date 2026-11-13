@@ -115,6 +115,55 @@ public partial class EarthOrbitProbe
         }
     }
 
+    private async Task ExerciseArchivedLens(SolarSystemScene scene, string directory, string recording)
+    {
+        string saved = Path.Combine(directory, "before-archived-lens.stscene");
+        scene.SetProcess(false);
+        if (!scene.SaveScenario(saved) || !scene.StartReplay(recording))
+            throw new InvalidOperationException("Could not open the original compact-object recording.");
+        var renderer = scene.Renderer(0);
+        if (renderer.ArchivedGeometry?.Lens is not { Name: "bh/cyg-x1", Spin: > .997 and < .999, DiskOuter: > 3 } lens ||
+            !renderer.CompactLensVisible || renderer.ArchivedStarCount < 100_000)
+            throw new InvalidOperationException("The recording did not restore the saved lens, disc and stellar field.");
+
+        await ToSignal(RenderingServer.Singleton, RenderingServer.SignalName.FramePostDraw);
+        await ToSignal(RenderingServer.Singleton, RenderingServer.SignalName.FramePostDraw);
+        using var active = renderer.GetViewport().GetTexture().GetImage();
+        var lensMesh = renderer.GetChildren().OfType<MeshInstance3D>().Single(node => node.Visible &&
+            node.MaterialOverride is ShaderMaterial material && material.Shader.ResourcePath.EndsWith("/compact_object_lens.gdshader"));
+        var shader = (ShaderMaterial)lensMesh.MaterialOverride;
+        if (Math.Abs(shader.GetShaderParameter("hole_spin").AsSingle() - lens.Spin) > 1e-6 ||
+            Math.Abs(shader.GetShaderParameter("disk_outer").AsSingle() - lens.DiskOuter) > 1e-5 ||
+            Math.Abs(shader.GetShaderParameter("disk_temperature").AsSingle() - lens.DiskTemperature) > .1 ||
+            shader.GetShaderParameter("disk_normal").AsVector3().DistanceTo(new(
+                (float)lens.DiskNormal.X, (float)lens.DiskNormal.Y, (float)lens.DiskNormal.Z)) > 1e-6)
+            throw new InvalidOperationException("The GPU did not receive the saved disk parameters.");
+        shader.SetShaderParameter("disk_exposure", 0f);
+        await ToSignal(RenderingServer.Singleton, RenderingServer.SignalName.FramePostDraw);
+        using var unlit = renderer.GetViewport().GetTexture().GetImage();
+        lensMesh.Hide();
+        await ToSignal(RenderingServer.Singleton, RenderingServer.SignalName.FramePostDraw);
+        using var noLens = renderer.GetViewport().GetTexture().GetImage();
+        int affected = 0, glowing = 0;
+        for (int y = 0; y < active.GetHeight(); y += 2)
+        for (int x = 0; x < active.GetWidth(); x += 2)
+        {
+            float bare = unlit.GetPixel(x, y).Luminance;
+            if (Math.Abs(bare - noLens.GetPixel(x, y).Luminance) > .025f)
+                affected++;
+            if (active.GetPixel(x, y).Luminance - bare > .025f)
+                glowing++;
+        }
+        if (affected < 100 || glowing < 20 ||
+            active.SavePng(Path.Combine(directory, "cygnus-replay.png")) != Error.Ok ||
+            unlit.SavePng(Path.Combine(directory, "cygnus-replay-no-emission.png")) != Error.Ok ||
+            noLens.SavePng(Path.Combine(directory, "cygnus-replay-no-lens.png")) != Error.Ok)
+            throw new InvalidOperationException($"The original lens changed {affected} samples and its disk lit {glowing}.");
+        if (!scene.LoadScenario(saved) || renderer.ArchivedGeometry is not null)
+            throw new InvalidOperationException("The archived lens persisted outside replay.");
+        GD.Print($"Archived Cygnus lens GPU: spin {lens.Spin:F3}, disk radius {lens.DiskOuter:F2}, {affected} lensed and {glowing} glowing samples.");
+    }
+
     private async Task ExerciseArchivedModelMaterial(SolarSystemScene scene, string directory, string mode)
     {
         scene.SetProcess(false);

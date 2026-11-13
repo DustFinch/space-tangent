@@ -26,6 +26,9 @@ internal sealed class CompactLensRenderer
     private (JulianInstant Epoch, SkyLayerSettings Sky, Texture2D? MilkyWay, bool Spatial)? _captured;
 
     private ulong _lastCaptureMilliseconds;
+    private RecordedStellarView? _capturedArchiveStars;
+    private IReadOnlyList<RecordedStarPoint>? _capturedArchivePoints;
+    private Basis _capturedArchiveBasis;
 
     internal CompactLensRenderer(SimulationViewport parent, BrightSkyData data, CompactLensTables tables)
     {
@@ -93,14 +96,16 @@ internal sealed class CompactLensRenderer
     internal int Captures { get; private set; }
     internal void Hide() => _mesh.Hide();
 
-    internal void Draw(Camera3D camera, BlackHole hole, Vector3 center, float radius,
+    internal void Draw(Camera3D camera, BlackHole? hole, Vector3 center, float radius,
         JulianInstant epoch, SkyLayerSettings sky, Texture2D? milkyWay, bool spatial, bool cinematic,
-        Vector3? companionCenter, float companionRadius, bool diskEmission)
+        Vector3? companionCenter, float companionRadius, bool diskEmission, RecordedSceneGeometry? archive = null)
     {
         var key = (epoch, sky, milkyWay, spatial);
         ulong now = Time.GetTicksMsec();
         bool refresh = _captured is not { } previous || !Visible || previous.Sky != sky ||
             previous.MilkyWay != milkyWay || previous.Spatial != spatial ||
+            _capturedArchiveStars != archive?.StellarView || !ReferenceEquals(_capturedArchivePoints, archive?.StarPoints) ||
+            (archive?.StarPoints.Count > 0 && _capturedArchiveBasis != camera.GlobalBasis) ||
             Math.Abs((double)epoch.DifferenceNanoseconds(previous.Epoch)) >= JulianInstant.NanosecondsPerDay ||
             previous.Epoch != epoch && now - _lastCaptureMilliseconds >= 250;
         if (refresh)
@@ -116,6 +121,9 @@ internal sealed class CompactLensRenderer
                 face.Viewport.RenderTargetUpdateMode = SubViewport.UpdateMode.Once;
             }
             _captured = key;
+            _capturedArchiveStars = archive?.StellarView;
+            _capturedArchivePoints = archive?.StarPoints;
+            _capturedArchiveBasis = camera.GlobalBasis;
             _lastCaptureMilliseconds = now;
             Captures++;
         }
@@ -129,11 +137,11 @@ internal sealed class CompactLensRenderer
         _material.SetShaderParameter("pixel_angle", 2 * MathF.Tan(camera.Fov * MathF.PI / 360) /
             Math.Max(1, camera.GetViewport().GetVisibleRect().Size.Y));
 
-        Vector3d? diskAxis = hole.DiskAxis();
+        Vector3d? diskAxis = hole?.DiskAxis();
         bool disk = diskAxis.HasValue;
         Vector3 axis = disk ? SceneAxis(diskAxis.GetValueOrDefault()) : Vector3.Zero;
         _material.SetShaderParameter("disk_normal", inverse * axis);
-        _material.SetShaderParameter("hole_spin", disk ? (float)hole.Spin : 0);
+        _material.SetShaderParameter("hole_spin", disk ? (float)hole!.Spin : 0);
         if (disk)
         {
             var reference = axis.Cross(Vector3.Up);
@@ -141,9 +149,20 @@ internal sealed class CompactLensRenderer
                 reference = axis.Cross(Vector3.Right);
             _material.SetShaderParameter("disk_reference", inverse * reference.Normalized());
             _material.SetShaderParameter("disk_outer", 30f);
-            _material.SetShaderParameter("disk_temperature", cinematic ? 5000f : PeakTemperature(hole));
+            _material.SetShaderParameter("disk_temperature", cinematic ? 5000f : PeakTemperature(hole!));
             _material.SetShaderParameter("disk_cinematic", cinematic ? 1f : 0f);
             _material.SetShaderParameter("disk_exposure", diskEmission ? (cinematic ? 1.3f : .4f) : 0);
+        }
+
+        if (archive?.Lens is { } saved)
+        {
+            _material.SetShaderParameter("disk_normal", Column(saved.DiskNormal));
+            _material.SetShaderParameter("hole_spin", (float)saved.Spin);
+            _material.SetShaderParameter("disk_reference", Column(saved.DiskReference));
+            _material.SetShaderParameter("disk_outer", (float)saved.DiskOuter);
+            _material.SetShaderParameter("disk_temperature", (float)saved.DiskTemperature);
+            _material.SetShaderParameter("disk_cinematic", saved.Cinematic ? 1f : 0f);
+            _material.SetShaderParameter("disk_exposure", diskEmission ? (saved.Cinematic ? 1.3f : .4f) : 0);
         }
 
         _material.SetShaderParameter("glare_strength", companionCenter.HasValue ? 1f : 0f);
@@ -155,6 +174,8 @@ internal sealed class CompactLensRenderer
         }
         _mesh.Show();
     }
+
+    private static Vector3 Column(Vector3d value) => new((float)value.X, (float)value.Y, (float)value.Z);
 
     private static Vector3 Equatorial(Vector3 value) => new(value.X, -value.Z, value.Y);
     private static Vector3 SceneAxis(Vector3d value) => new((float)value.X, (float)value.Z, (float)-value.Y);

@@ -30,6 +30,27 @@ internal partial class SimulationViewport
         if (CatalogueWorld is not { } world || _compactSky is null || CompactTables is null || DisplayServer.GetName() == "headless")
             return;
 
+        if (ArchivedGeometry is { } archive)
+        {
+            if (!CompactLensAllowed || archive.Lens is not { } lens)
+            {
+                _compactLens?.Hide();
+                return;
+            }
+            double factor = archive.KilometersPerUnit / units;
+            double distance = lens.CameraPosition.Length * factor;
+            if (distance > NavigationFar * .8)
+                factor *= NavigationFar * .8 / distance;
+            var position = lens.CameraPosition * factor;
+            var center = _navigationCamera.Position + _navigationCamera.Basis *
+                new Vector3((float)position.X, (float)position.Y, (float)position.Z);
+            _compactLens ??= new(this, _compactSky, CompactTables);
+            _compactLens.Draw(_navigationCamera, null, center, (float)(lens.Radius * factor), snapshot.Epoch, sky,
+                _galacticTexture, archive.StellarView is not null || archive.StarPoints.Count != 0,
+                lens.Cinematic, null, 0, CompactDiskEmission, archive);
+            return;
+        }
+
         Vector3? companion = null;
         float companionRadius = 0;
         if (snapshot.TryState(SimulationWorld.CygnusCompanionId, out var star))

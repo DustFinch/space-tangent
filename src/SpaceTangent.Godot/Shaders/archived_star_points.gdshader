@@ -3,7 +3,7 @@ shader_type spatial;
 render_mode unshaded, depth_draw_never, cull_disabled, shadows_disabled;
 
 void vertex() {
-    POSITION = PROJECTION_MATRIX * vec4(VERTEX, 0.0);
+    POSITION = PROJECTION_MATRIX * vec4(mat3(MODELVIEW_MATRIX) * VERTEX, 0.0);
     POSITION.z = POSITION.w * CLIP_SPACE_FAR;
 }
 

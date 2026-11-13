@@ -98,6 +98,7 @@ public sealed class RecordingTests
         var first = replay.ReadNext()!;
         var geometry = Assert.IsType<RecordedSceneGeometry>(replay.CurrentGeometry);
         Assert.Equal(65, geometry.Bodies.Count);
+        Assert.Null(geometry.Lens);
         var stars = Assert.IsType<RecordedStellarView>(geometry.StellarView);
         Assert.Equal(182625, stars.Background.Count);
         Assert.Equal(622, stars.Periodic!.Count);
@@ -183,6 +184,36 @@ public sealed class RecordingTests
         Assert.NotNull(replay.ReadNext());
         Assert.Empty(replay.CurrentGeometry!.StarPoints);
         Assert.Null(replay.ReadNext());
+    }
+
+    [ArchivedLensFact]
+    [Trait("Category", "ExternalData")]
+    public void ReadsTheArchivedCygnusLensAndItsCatalogueAnchor()
+    {
+        using var file = File.OpenRead(Environment.GetEnvironmentVariable("SPACETANGENT_LEGACY_LENS")!);
+        var world = new SimulationWorld(De440Ephemeris.Load(Environment.GetEnvironmentVariable("SPACETANGENT_DE440")!), []);
+        using var replay = new LegacyCameraSequence(file, world, DeltaTModel.MorrisonStephenson2004);
+        var first = Assert.Single(replay.ReadNext()!.Views);
+        Assert.Equal("black-hole/cyg-x1", first.Navigation!.Value.Target!.Value.Value);
+        var geometry = Assert.IsType<RecordedSceneGeometry>(replay.CurrentGeometry);
+        var lens = Assert.IsType<RecordedLens>(geometry.Lens);
+        Assert.Equal("bh/cyg-x1", lens.Name);
+        Assert.InRange(lens.Spin, .99799, .99801);
+        Assert.InRange(lens.Radius * geometry.KilometersPerUnit, 62, 63);
+        Assert.Equal(30, lens.DiskOuter);
+        Assert.True(lens.DiskTemperature > 0);
+        Assert.InRange(Vector3d.Dot(lens.DiskNormal, lens.DiskReference), -1e-6, 1e-6);
+        Assert.NotNull(geometry.StellarView);
+    }
+
+    private sealed class ArchivedLensFactAttribute : FactAttribute
+    {
+        public ArchivedLensFactAttribute()
+        {
+            if (string.IsNullOrWhiteSpace(Environment.GetEnvironmentVariable("SPACETANGENT_LEGACY_LENS")) ||
+                string.IsNullOrWhiteSpace(Environment.GetEnvironmentVariable("SPACETANGENT_DE440")))
+                Skip = "Set the original compact-object recording and the ephemeris.";
+        }
     }
 
     private sealed class RecordedStarPointsFactAttribute : FactAttribute

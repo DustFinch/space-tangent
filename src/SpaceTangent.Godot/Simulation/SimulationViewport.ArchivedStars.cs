@@ -130,6 +130,7 @@ internal partial class SimulationViewport
         {
             MaterialOverride = new ShaderMaterial { Shader = GD.Load<Shader>($"res://Shaders/{shader}.gdshader"), RenderPriority = -10 },
             Name = name,
+            Layers = 3,
             CustomAabb = new Aabb(-Vector3.One * 2, Vector3.One * 4),
             CastShadow = GeometryInstance3D.ShadowCastingSetting.Off
         };

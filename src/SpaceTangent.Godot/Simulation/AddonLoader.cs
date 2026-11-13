@@ -366,7 +366,7 @@ internal static partial class AddonLoader
                 Surface = texture,
                 StellarHost = body.StellarHost,
                 PhotometricParent = body.Kind is (CatalogueKind.Planet or CatalogueKind.Moon or
-                    CatalogueKind.DwarfPlanet or CatalogueKind.Asteroid or CatalogueKind.Comet) ? body.Parent : null,
+                    CatalogueKind.DwarfPlanet or CatalogueKind.Asteroid or CatalogueKind.Comet or CatalogueKind.Spacecraft) ? body.Parent : null,
                 GeometricAlbedo = definition.GeometricAlbedo ?? .5,
                 PhotometricStars = body.StellarHost is { } host ? PhotometricStars(decoded.World, host) : null,
                 Rings = definition.Rings is { } rings && input.RingMap is { } ringMap

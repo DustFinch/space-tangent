@@ -2,6 +2,7 @@
 using Godot;
 using SpaceTangent.Application;
 using SpaceTangent.Contracts;
+using SpaceTangent.Core.Observing;
 using SpaceTangent.Godot.Simulation;
 
 namespace SpaceTangent.Godot.Tests;
@@ -45,6 +46,7 @@ public partial class EarthOrbitProbe
             await CheckPair("earth-spacecraft",
                 View("ssc/sol/earth/hubble", 2458849.5, .048),
                 View("ssc/sol/earth/mir", 2451544.5, .095));
+            await CheckHubblePhotometry();
             await CheckPair("moon-and-mars-spacecraft",
                 View("ssc/sol/earth/moon/apollo-11", 2440423.0, .042),
                 View("ssc/sol/mars/mars-odyssey", 2452623.5, .061));
@@ -98,6 +100,58 @@ public partial class EarthOrbitProbe
                 await CheckPair("huygens-carried-and-landed",
                     View("ssc/sol/saturn/titan/huygens", 2453300.5, .006),
                     View("ssc/sol/saturn/titan/huygens", 2453385.5, .006));
+            }
+
+            async Task CheckHubblePhotometry()
+            {
+                if (DisplayServer.GetName() == "headless")
+                    return;
+                var id = new ObjectId("ssc/sol/earth/hubble");
+                var original = session.World.SscBodies.Single(body => body.Id == id);
+                double radius = original.Definition.RadiusKilometers;
+                var renderer = scene.Renderer(0);
+                double focal = renderer.GetViewport().GetVisibleRect().Size.Y / (2 * Math.Tan(49 * Math.PI / 360));
+                double range = radius * (1 + focal / .6);
+                var epoch = JulianInstant.FromJulianDate(2458849.5, TimeScale.Tdb);
+                for (int minute = 0; minute <= 100; minute += 2)
+                {
+                    var at = epoch.AddSeconds(minute * 60);
+                    var snapshot = session.World.Graph.Evaluate(at);
+                    if (!snapshot.TryState(id, out var state) || snapshot.SolarSystem is not { } solar)
+                        continue;
+                    Vector3d sunward = (solar.Sun - state).PositionKilometers;
+                    Vector3d radial = (state - solar.Earth).PositionKilometers;
+                    if (Vector3d.Dot(sunward, radial) <= 0)
+                        continue;
+                    var eye = sunward / sunward.Length;
+                    var up = new Vector3d(0, 0, 1) - eye * eye.Z;
+                    var pose = new NavigationCamera(state.PositionKilometers, range, 0, 0, id, true)
+                    {
+                        Placement = new NavigationPlacement(eye * range, eye * -1, up / up.Length)
+                    };
+                    var far = new ObserverView(at, CameraMode.Solar, id, false) { Navigation = pose };
+                    var near = View("ssc/sol/earth/hubble", 2458849.5, .048);
+                    string path = Path.Combine(directory, "hubble-point-and-model.stscene");
+                    ScenarioFile.Save(path, new([far, near], false, 0, 0, session.DeltaT));
+                    if (!scene.LoadScenario(path))
+                        throw new InvalidOperationException("Could not open Hubble's distant photometry view.");
+                    if (renderer.BodyPoint(id) is not { Visible: true, MaterialOverride: ShaderMaterial material } point ||
+                        renderer.ImportedBodyNode(id) is not { Visible: false } ||
+                        scene.Renderer(1).ImportedBodyNode(id) is not { Visible: true })
+                        throw new InvalidOperationException("Hubble must use a point at subpixel size and retain its nearby model.");
+                    double ratio = radius / sunward.Length * 149597870.7 / range;
+                    double expected = -26.74 - 2.5 * Math.Log10((original.Definition.GeometricAlbedo ?? .5) * ratio * ratio);
+                    if (Math.Abs(material.GetShaderParameter("magnitude").AsSingle() - expected) > 1e-4 ||
+                        renderer.PickObject(renderer.NavigationCameraNode.UnprojectPosition(point.Position)) != id)
+                        throw new InvalidOperationException("Hubble's point must match its reflected-light magnitude and remain selectable.");
+                    await ToSignal(RenderingServer.Singleton, RenderingServer.SignalName.FramePostDraw);
+                    using var image = GetViewport().GetTexture().GetImage();
+                    if (image.SavePng(Path.ChangeExtension(path, ".png")) != Error.Ok)
+                        throw new IOException("Could not capture Hubble's original point and model.");
+                    GD.Print($"SSC spacecraft photometry GPU: original Hubble magnitude {expected:F5}, point picking and near model.");
+                    return;
+                }
+                throw new InvalidOperationException("No sunlit Hubble sample at the original SSC epoch.");
             }
 
             ObserverView View(string path, double day, double range)

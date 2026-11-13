@@ -26,6 +26,34 @@ internal sealed record PlanetTextures(IReadOnlyDictionary<ObjectId, Texture2D> S
         return new(surfaces, rings, Read(root, "venus-clouds.jpg"));
     }
 
+    internal Texture2D? CreateGroundRingAtlas()
+    {
+        if (Rings.Count == 0)
+            return null;
+        const int width = 2048;
+        var profiles = PlanetRingRendering.Profiles;
+        using var atlas = Image.CreateEmpty(width, profiles.Length, false, Image.Format.Rgba8);
+        for (int row = 0; row < profiles.Length; row++)
+        {
+            if (!Rings.TryGetValue(profiles[row].Id, out var texture))
+                continue;
+            using var source = texture.GetImage();
+            if (source.IsCompressed() && source.Decompress() != Error.Ok)
+                continue;
+            int sourceWidth = source.GetWidth();
+            int center = source.GetHeight() / 2;
+            for (int x = 0; x < width; x++)
+            {
+                float position = (float)x / (width - 1) * (sourceWidth - 1);
+                int start = (int)position;
+                var color = source.GetPixel(start, center).Lerp(
+                    source.GetPixel(Math.Min(start + 1, sourceWidth - 1), center), position - start);
+                atlas.SetPixel(x, row, color);
+            }
+        }
+        return ImageTexture.CreateFromImage(atlas);
+    }
+
     internal static Texture2D? Read(string root, string file)
     {
         string path = Path.Combine(root, file);

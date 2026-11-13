@@ -182,9 +182,9 @@ internal partial class SimulationViewport : Node3D
         Transparency = BaseMaterial3D.TransparencyEnum.Alpha
     };
 
-    internal void SetSurfaceTextures(SurfaceTextures textures)
+    internal void SetSurfaceTextures(SurfaceTextures textures, Texture2D? groundRingAtlas = null)
     {
-        _surface = new SurfaceProjection(this, textures);
+        _surface = new SurfaceProjection(this, textures, groundRingAtlas);
         _archivedMoonMap = textures.Moon;
         _navigationMoonMaterial.SetShaderParameter("surface_map", textures.Moon);
         _navigationMoonMaterial.SetShaderParameter("has_surface_map", true);

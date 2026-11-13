@@ -31,7 +31,7 @@ internal sealed partial class SurfaceProjection
     private float _tanHalfField = .087488664f;
     internal double? PitchDegrees { get; set; }
 
-    internal SurfaceProjection(Node owner, SurfaceTextures textures)
+    internal SurfaceProjection(Node owner, SurfaceTextures textures, Texture2D? groundRingAtlas)
     {
         var layer = new CanvasLayer();
         owner.AddChild(layer);
@@ -39,6 +39,9 @@ internal sealed partial class SurfaceProjection
         SimulationViewport.ConfigureGalacticAxes(_material);
         _material.SetShaderParameter("cloud_texture", textures.Clouds);
         _material.SetShaderParameter("moon_texture", textures.Moon);
+        _hasGroundRings = groundRingAtlas is not null;
+        if (groundRingAtlas is not null)
+            _material.SetShaderParameter("ground_ring_atlas", groundRingAtlas);
         _surface = new ColorRect { Material = _material, MouseFilter = Control.MouseFilterEnum.Ignore, Visible = false };
         layer.AddChild(_surface);
         _surface.SetAnchorsAndOffsetsPreset(Control.LayoutPreset.FullRect);

@@ -38,6 +38,9 @@ uniform int ground_planet_count = 0;
 uniform vec4 ground_planet_discs[7];
 uniform vec3 ground_planet_sun[7];
 uniform vec3 ground_planet_color[7];
+uniform vec4 ground_planet_poles[7];
+uniform vec3 ground_planet_rings[7];
+uniform sampler2D ground_ring_atlas : source_color, filter_linear, repeat_disable;
 
 float cloud_hash(vec3 lattice) {
     lattice = fract(lattice * 0.3183099 + vec3(0.13, 0.27, 0.41));
@@ -92,6 +95,32 @@ vec3 lunar_disc(vec3 ray, vec3 moon_dir, float moon_distance, vec3 background) {
     return pow(max(lunar, vec3(0.0)), vec3(0.58)) * (0.035 + 1.35 * diffuse);
 }
 
+vec3 ground_ring(vec3 center, vec3 offset, vec4 pole, vec3 rings, vec3 sun,
+    float globe_coverage, float globe_depth, vec3 background) {
+    float cosine = dot(center, pole.xyz);
+    if (rings.y <= 0.0 || abs(cosine) < 0.0001) {
+        return background;
+    }
+    float depth = -dot(offset, pole.xyz) / cosine;
+    vec3 point = offset + depth * center;
+    float radius = length(point);
+    if (radius < rings.x || radius > rings.y) {
+        return background;
+    }
+
+    float u = (radius - rings.x) / (rings.y - rings.x);
+    vec4 ring = texture(ground_ring_atlas, vec2(u, rings.z));
+    // Test the Sun ray against the oblate planet in equatorial-radius units.
+    float flattening = 1.0 / pole.w - 1.0;
+    vec3 oblate_point = point + flattening * dot(point, pole.xyz) * pole.xyz;
+    vec3 oblate_sun = normalize(sun + flattening * dot(sun, pole.xyz) * pole.xyz);
+    float along = max(0.0, -dot(oblate_point, oblate_sun));
+    float visibility = smoothstep(0.99, 1.01, length(oblate_point + along * oblate_sun));
+    float alpha = ring.a * (depth > globe_depth ? 1.0 - globe_coverage : 1.0);
+    vec3 color = air_srgb_to_linear(ring.rgb) * (0.035 + 0.965 * visibility);
+    return mix(background, air_linear_to_srgb(color), alpha);
+}
+
 vec3 planet_discs(vec3 ray, vec3 background) {
     float pixel_angle = max(length(dFdx(ray)), length(dFdy(ray)));
     for (int index = 0; index < ground_planet_count; index++) {
@@ -105,11 +134,16 @@ vec3 planet_discs(vec3 ray, vec3 background) {
         float radius = max(disc.w, pixel_angle * 0.55);
         float coverage = 1.0 - smoothstep(max(0.0, radius - pixel_angle * 0.5),
             radius + pixel_angle * 0.5, angular_distance);
+        vec3 offset = transverse / radius;
+        float globe_depth = -sqrt(max(0.0, 1.0 - dot(offset, offset)));
         if (coverage > 0.0) {
-            vec3 offset = transverse / radius;
-            vec3 normal = offset - sqrt(max(0.0, 1.0 - dot(offset, offset))) * disc.xyz;
+            vec3 normal = offset + globe_depth * disc.xyz;
             float sunlight = max(0.0, dot(normal, ground_planet_sun[index]));
             background = mix(background, ground_planet_color[index] * (0.015 + 1.6 * sunlight), coverage);
+        }
+        if (angular_distance <= disc.w * ground_planet_rings[index].y && disc.w >= 0.5 * pixel_angle) {
+            background = ground_ring(disc.xyz, transverse / disc.w, ground_planet_poles[index],
+                ground_planet_rings[index], ground_planet_sun[index], coverage, globe_depth, background);
         }
     }
     return background;

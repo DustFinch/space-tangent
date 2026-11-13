@@ -89,6 +89,7 @@ public partial class EarthOrbitProbe
             if (first < 15 || second < 1 || first <= second * 5)
                 throw new InvalidOperationException($"Expected enlarged Venus at the same Paranal epoch, got {first}/{second} samples.");
             GD.Print($"Ground planets GPU: original Venus at Paranal, 10x/1x lit samples {first}/{second}, both views restored.");
+            await ExerciseGroundSaturnRings(scene, site, directory);
             return;
         }
         throw new InvalidOperationException("No dark Venus observation was found for the original Paranal site.");
@@ -103,6 +104,56 @@ public partial class EarthOrbitProbe
                     count++;
             return count;
         }
+    }
+
+    private async Task ExerciseGroundSaturnRings(SolarSystemScene scene, EarthSite site, string directory)
+    {
+        if (string.IsNullOrWhiteSpace(System.Environment.GetEnvironmentVariable("SPACETANGENT_RING_TEXTURES")))
+            return;
+        var session = scene.Session!;
+        var start = JulianInstant.FromJulianDate(2460575.5, TimeScale.Tdb);
+        var saturn = PlanetCatalogue.Find(PlanetCatalogue.SaturnId)!;
+        for (int hour = 0; hour < 48; hour++)
+        {
+            var epoch = start.AddSeconds(hour * 3600);
+            var snapshot = session.World.Graph.Evaluate(epoch);
+            if (snapshot.SolarSystem is not { } solar || !snapshot.TryState(saturn.Id, out var state))
+                continue;
+            var lighting = EarthSurfaceLighting.Sample(solar, site, session.DeltaT);
+            var relative = (state - solar.Earth).PositionKilometers;
+            if (lighting.SolarAltitudeRadians > -.20 ||
+                EarthObserving.Horizontal(lighting, relative) is not { AzimuthDegrees: { } azimuth, AltitudeDegrees: > 30 } point)
+                continue;
+            var camera = new EarthObserverCamera(site, azimuth, point.AltitudeDegrees) { PlanetScale = 10 };
+            var observer = new ObserverView(epoch, CameraMode.Surface, saturn.Id, false)
+                { EarthObserver = camera, FieldOfViewDegrees = 2, Sky = new() { HideClouds = true } };
+            string path = Path.Combine(directory, "paranal-saturn-rings.stscene");
+            ScenarioFile.Save(path, new([observer], false, 0, 0, session.DeltaT));
+            if (!scene.LoadScenario(path))
+                throw new InvalidOperationException("Could not open the original ground Saturn scenario.");
+            await ToSignal(GetTree(), SceneTree.SignalName.ProcessFrame);
+            await ToSignal(RenderingServer.Singleton, RenderingServer.SignalName.FramePostDraw);
+            using var image = scene.Renderer(0).GetViewport().GetTexture().GetImage();
+            var center = image.GetSize() / 2;
+            double radius = image.GetHeight() * 10 * saturn.RadiusKilometers /
+                (2 * Math.Tan(Math.PI / 180) * (relative - lighting.PositionKilometers).Length);
+            int ringPixels = 0;
+            for (int y = center.Y - 70; y < center.Y + 70; y++)
+            for (int x = center.X - 70; x < center.X + 70; x++)
+            {
+                double dx = x + .5 - image.GetWidth() * .5, dy = y + .5 - image.GetHeight() * .5;
+                double distance = Math.Sqrt(dx * dx + dy * dy);
+                if (distance > 1.15 * radius && distance < 2.34 * radius && image.GetPixel(x, y).R > .3f)
+                    ringPixels++;
+            }
+            if (image.SavePng(Path.ChangeExtension(path, ".png")) != Error.Ok)
+                throw new IOException("Could not capture ground Saturn.");
+            if (ringPixels < 12)
+                throw new InvalidOperationException($"Expected the original rings outside Saturn's globe, got {ringPixels} pixels.");
+            GD.Print($"Ground Saturn rings GPU: {ringPixels} illuminated ring pixels outside the disc at Paranal.");
+            return;
+        }
+        throw new InvalidOperationException("No dark Saturn observation was found at Paranal.");
     }
 
     private async Task ExerciseGroundSky(SolarSystemScene scene, string directory)

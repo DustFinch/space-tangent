@@ -11,6 +11,7 @@ namespace SpaceTangent.Application;
 public sealed record InstalledSscBody(ObjectId Id, ObjectId Parent, SscBodyDefinition Definition)
 {
     public ObjectId? StellarHost { get; init; }
+    public (ObjectId Center, IReadOnlyList<Vector3d> Points)? Orbit { get; init; }
     public CatalogueKind Kind => (StellarHost.HasValue && Definition.Class == "asteroid" ?
         Parent == StellarHost ? "planet" : "moon" : Definition.Class.ToLowerInvariant()) switch
     {
@@ -89,6 +90,7 @@ public sealed record InstalledSscBody(ObjectId Id, ObjectId Parent, SscBodyDefin
         foreach (var (id, definition) in bodies)
         {
             ObjectId parent = Resolve(definition.Parent);
+            (ObjectId Center, IReadOnlyList<Vector3d> Points)? orbit = null;
             if (definition.BindTimeline is { } timeline)
                 graph.AddSampledMission(timeline(id, Resolve));
             else
@@ -100,8 +102,13 @@ public sealed record InstalledSscBody(ObjectId Id, ObjectId Parent, SscBodyDefin
                     if (exoplanets.Find(center) is { } planet && installedHostRules.Add(planet.Id))
                         graph.AddTrajectory(planet.Id, epoch => planet.ParentRelativeState(epoch), star.Id);
                 }
-                var sample = hosts.TryGetValue(id, out var host) && definition.BindExtrasolarOrbit is { } bind
-                    ? bind(center == host.Id) : definition.Sample;
+                var sample = definition.Sample;
+                if (hosts.TryGetValue(id, out var host) && definition.BindExtrasolarOrbit is { } bind)
+                {
+                    var conic = bind(center == host.Id);
+                    sample = conic.Sample;
+                    orbit = (center, conic.Points);
+                }
                 graph.AddTrajectory(id, sample, center);
                 if (definition.SampleRotation is { } rotation)
                     graph.AddOrientation(id, rotation);
@@ -112,7 +119,7 @@ public sealed record InstalledSscBody(ObjectId Id, ObjectId Parent, SscBodyDefin
                     graph.AddOrientation(id, _ => new(Basis3d.Identity, default(Vector3d)));
             }
             var hostId = hosts.TryGetValue(id, out var stellarHost) ? (ObjectId?)stellarHost.Id : null;
-            installed.Add(new(id, parent, definition) { StellarHost = hostId });
+            installed.Add(new(id, parent, definition) { StellarHost = hostId, Orbit = orbit });
         }
         return installed.AsReadOnly();
 

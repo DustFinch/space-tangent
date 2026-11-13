@@ -36,6 +36,11 @@ public sealed class ExtrasolarSscTests
             Assert.Equal(planet, world.Catalogue.Find(moon)!.Parent);
             Assert.InRange(Separation(snapshot, planet, star), 747_989_353, 747_989_354);
             Assert.InRange(Separation(snapshot, moon, planet), 399_999.98, 400_000.02);
+            var lunarOrbit = world.SscBodies.Single(body => body.Id == moon).Orbit!.Value;
+            Assert.Equal(planet, lunarOrbit.Center);
+            Assert.Equal(121, lunarOrbit.Points.Count);
+            Assert.Equal(lunarOrbit.Points[0], lunarOrbit.Points[^1]);
+            Assert.All(lunarOrbit.Points, point => Assert.InRange(point.Length, 399_999.98, 400_000.02));
             var later = world.Graph.Evaluate(epoch.AddSeconds(86_400));
             Assert.InRange(Separation(later, moon, planet), 399_999.98, 400_000.02);
             Assert.True(later.TryState(moon, out var next) && snapshot.TryState(moon, out var initial) &&

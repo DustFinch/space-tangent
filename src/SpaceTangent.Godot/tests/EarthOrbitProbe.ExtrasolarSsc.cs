@@ -55,6 +55,8 @@ public partial class EarthOrbitProbe
             if (scene.Renderer(0).ImportedBodyNode(ringed)?.MaterialOverride is not ShaderMaterial globe ||
                 expected.DistanceTo(globe.GetShaderParameter("light_in_body").AsVector3()) > 1e-5f)
                 throw new InvalidOperationException("The planet illumination must follow Sirius.");
+            if (scene.Renderer(0).VisibleExtrasolarOrbits < 2 || scene.Renderer(1).VisibleExtrasolarOrbits < 2)
+                throw new InvalidOperationException("The external system's orbit lines must appear in both views.");
             await ToSignal(GetTree(), SceneTree.SignalName.ProcessFrame);
             await ToSignal(RenderingServer.Singleton, RenderingServer.SignalName.FramePostDraw);
             using var image = GetViewport().GetTexture().GetImage();

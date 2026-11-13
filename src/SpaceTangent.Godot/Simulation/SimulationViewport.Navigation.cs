@@ -130,6 +130,7 @@ internal partial class SimulationViewport
         DrawPlanetGlobes(snapshot, pose, units, ProjectWithScale);
         DrawWorldAtmospheres(snapshot, solar.Sun.PositionKilometers);
         DrawStellarObjects(pose, snapshot, sky, units, ProjectWithScale);
+        DrawExtrasolarOrbits(pose, snapshot, units, ProjectWithScale);
         DrawCompactObjects(snapshot, sky, units, ProjectWithScale);
         DrawImportedBodies(snapshot, pose, units, ProjectWithScale);
         DrawLocalSatellite(snapshot, pose, units, ProjectWithScale);
@@ -257,6 +258,7 @@ internal partial class SimulationViewport
         HidePlanetGlobes();
         HideStellarObjects();
         HideCompactObjects();
+        HideExtrasolarOrbits();
         HideImportedBodies();
         _localSatelliteMarker?.Hide();
         HideComets();

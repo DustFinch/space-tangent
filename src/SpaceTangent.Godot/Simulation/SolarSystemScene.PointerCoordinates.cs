@@ -1,13 +1,14 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
 using Godot;
+using SpaceTangent.Application;
 
 namespace SpaceTangent.Godot.Simulation;
 
 public partial class SolarSystemScene
 {
-    private static void UpdatePointerReadout(ViewControls controls, bool enabled)
+    private void UpdatePointerReadout(ViewControls controls, SkyLayerSettings sky)
     {
-        if (!enabled || controls.PointerPosition is not { } at || Input.MouseMode == Input.MouseModeEnum.Captured ||
+        if (!sky.PointerCoordinates || controls.PointerPosition is not { } at || Input.MouseMode == Input.MouseModeEnum.Captured ||
             !new Rect2(Vector2.Zero, controls.Canvas.Size).HasPoint(at) ||
             controls.Renderer.PointerDirection(at) is not { } pointer)
         {
@@ -21,6 +22,13 @@ public partial class SolarSystemScene
         int tenths = (int)Math.Round(ra * 2400) % 864000;
         string hours = FormattableString.Invariant($"{tenths / 36000:00}h{tenths / 600 % 60:00}m{tenths % 600 / 10d:00.0}s");
         string text = $"α {hours}  δ {PointerAngle(dec, signed: true)} (J2000)";
+        if (_brightSky?.BoundaryMap?.At(pointer.Ray) is { } abbreviation)
+        {
+            var figures = _brightSky.Cultures.Find(sky.CultureId ?? "western")?.Figures;
+            string id = abbreviation is "SER1" or "SER2" ? "Ser" : abbreviation;
+            var figure = figures?.FirstOrDefault(item => item.Id.EndsWith(" " + id, StringComparison.OrdinalIgnoreCase));
+            text += "  · " + (figure?.DisplayName(sky.CultureNames) ?? abbreviation);
+        }
         if (pointer.Horizon is { } horizon)
         {
             string azimuth = horizon.AzimuthDegrees is { } az ? PointerAngle(az, signed: false) : "—";

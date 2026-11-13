@@ -57,6 +57,31 @@ public partial class EarthOrbitProbe
         {
             EarthObserver = new EarthObserverCamera(paranal.ObserverSite, 120, 55)
         };
+        string boundariesPath = LocalDataPaths.Find("SPACETANGENT_CONSTELLATION_BOUNDARIES", "sky/boundaries.txt");
+        using var input = File.OpenText(boundariesPath);
+        var boundaries = SkyBoundaryMap.Read(input);
+        if (boundaries.Segments.Count != 12959)
+            throw new InvalidOperationException("The original constellation boundary rendering segments changed.");
+        static SpaceTangent.Contracts.Vector3d Ray(double hours, double declination)
+        {
+            double ra = hours * Math.PI / 12;
+            double dec = declination * Math.PI / 180;
+            return new(Math.Cos(dec) * Math.Cos(ra), Math.Cos(dec) * Math.Sin(ra), Math.Sin(dec));
+        }
+        foreach (var (hours, degrees, expected) in new[]
+        {
+            (18.6156, 38.7837, "LYR"), (2.5303, 89.2641, "UMI"), (6.7525, -16.7161, "CMA"),
+            (5.2423, -8.2016, "ORI"), (16.4901, -26.4320, "SCO"), (12.4433, -63.0991, "CRU"),
+            (0.1398, 29.0904, "AND"), (3.0, -89.9, "OCT"), (18.0, 66.56, "DRA"),
+            (15.5, 3.0, "SER1"), (18.3, -2.0, "SER2")
+        })
+            if (boundaries.At(Ray(hours, degrees)) != expected)
+                throw new InvalidOperationException($"Expected constellation {expected}.");
+        for (double dec = -87.5; dec < 90; dec += 5)
+            for (double hours = .1; hours < 24; hours += 1d / 3)
+                if (boundaries.At(Ray(hours, dec)) is null)
+                    throw new InvalidOperationException($"Missing constellation at {hours} h, {dec}°.");
+
         string profile = Path.Combine(directory, "archived-pointer-coordinates.json");
         File.WriteAllText(profile, """{"Site":{},"PointerCoordinates":true}""");
         var imported = LegacyObserverProfiles.Read(profile, ordinary, session.DeltaT).Observer;
@@ -75,10 +100,12 @@ public partial class EarthOrbitProbe
         Move(left, left.Size / 2);
         Move(right, right.Size / 2);
         if (left.GetNodeOrNull<Label>("PointerCoordinates") is not { Visible: true } label ||
-            !label.Text.Contains("(J2000)  A 120°00′00″  h +55°00′00″", StringComparison.Ordinal) ||
+            !label.Text.Contains("(J2000)  · ", StringComparison.Ordinal) ||
+            !label.Text.EndsWith("A 120°00′00″  h +55°00′00″", StringComparison.Ordinal) ||
             right.GetNodeOrNull<Label>("PointerCoordinates") is { Visible: true })
             throw new InvalidOperationException($"Expected the pointing direction only on the enabled view: {left.GetNodeOrNull<Label>("PointerCoordinates")?.Text}");
 
+        string groundText = label.Text;
         for (int frameIndex = 0; frameIndex < 3; frameIndex++)
         {
             await ToSignal(GetTree(), SceneTree.SignalName.ProcessFrame);
@@ -117,9 +144,11 @@ public partial class EarthOrbitProbe
         left = (SubViewportContainer)scene.FindChild("ViewCanvas0", recursive: true, owned: false);
         Move(left, left.Size / 2);
         if (left.GetNodeOrNull<Label>("PointerCoordinates") is not { Visible: true } perspective ||
-            !perspective.Text.EndsWith("(J2000)", StringComparison.Ordinal))
+            !perspective.Text.EndsWith("(J2000)  · Orion", StringComparison.Ordinal) ||
+            perspective.Text.Contains("  A ", StringComparison.Ordinal))
             throw new InvalidOperationException("The perspective view must report J2000 coordinates without a horizon.");
-        GD.Print("Pointer coordinates GPU: Paranal, center altitude and azimuth, perspective, independent views and Alt+C after reload.");
+        GD.Print($"Pointer coordinates GPU: Paranal, perspective and independent views after reload; {groundText}; {perspective.Text}.");
+        GD.Print("Original constellation boundaries: 12959 segments, 11 landmark directions and 2592 sky samples.");
     }
 
     private async Task ExerciseGroundPlanets(SolarSystemScene scene, string directory)

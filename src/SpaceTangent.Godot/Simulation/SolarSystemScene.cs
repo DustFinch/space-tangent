@@ -1492,7 +1492,7 @@ public partial class SolarSystemScene : Control
         if (input is InputEventMouseMotion pointer)
         {
             controls.PointerPosition = pointer.Position;
-            UpdatePointerReadout(controls, Session![view].Sky.PointerCoordinates);
+            UpdatePointerReadout(controls, Session![view].Sky);
         }
         if (input is InputEventMouseButton { ButtonIndex: MouseButton.Right } right)
         {
@@ -1883,7 +1883,7 @@ public partial class SolarSystemScene : Control
             controls.Renderer.SetLandscape(ViewLandscape(view), view.EarthObserver?.HideLandscapeFog != true);
             controls.Renderer.ArchivedGeometry = index == 0 ? (_replay as LegacyCameraSequence)?.CurrentGeometry : null;
             bool available = controls.Renderer.Draw(view, snapshot, session.DeltaT);
-            UpdatePointerReadout(controls, view.Sky.PointerCoordinates);
+            UpdatePointerReadout(controls, view.Sky);
             controls.Renderer.DrawShip(ship, view.Navigation);
             controls.Renderer.SetScriptNotice(session.Notice(index));
             controls.Renderer.DrawScriptMarkers(view, snapshot, session.Markers(index), session.DeltaT);

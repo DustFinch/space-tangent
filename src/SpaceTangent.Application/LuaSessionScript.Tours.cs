@@ -39,8 +39,15 @@ public sealed partial class LuaSessionScript
         }
         catch (InvalidDataException)
         {
-            Log($"Tour target unavailable: {query}");
-            return DynValue.False;
+            string name = query.Replace('/', ' ');
+            var planet = name != query ? _session.World.Exoplanets.Bodies.FirstOrDefault(body =>
+                body.Names.Contains(name, StringComparer.OrdinalIgnoreCase)) : null;
+            if (planet is null)
+            {
+                Log($"Tour target unavailable: {query}");
+                return DynValue.False;
+            }
+            id = planet.Id;
         }
         var snapshot = _session.World.Graph.Evaluate(_session[View].Epoch);
         if (!_session.World.TryNavigationState(id, snapshot, out _))

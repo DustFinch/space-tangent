@@ -9,3 +9,5 @@ Each converted file records unapplied commands and flags in comments. Long scrip
 The classic converter carries explicit TDB Julian dates, framed up vectors, longitude and latitude approaches, relative and encoded absolute camera poses, and turns about arbitrary axes. Unsupported commands are listed in the conversion report.
 
 The existing script runner can open the original distance, absolute magnitude and year-stepping Lua scripts. Position and magnitude are resolved against the selected observer's epoch and local catalogue. Their flash messages are sent to the script log.
+
+Guide files use successive blocks with Target, Name and Description. Distances can be in km, AU or light-years. A distance without a unit is read as kilometres. Stops whose targets are unavailable in the active catalogue are skipped with a log message.

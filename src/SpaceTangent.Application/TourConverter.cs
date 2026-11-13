@@ -2,14 +2,13 @@
 using System.Globalization;
 using System.Security.Cryptography;
 using System.Text;
-using System.Text.Json;
 using System.Text.RegularExpressions;
 
 namespace SpaceTangent.Application;
 
 public sealed record TourConversion(string Lua, int Commands, IReadOnlyList<string> Unapplied);
 
-public static class TourConverter
+public static partial class TourConverter
 {
     private const int MaximumBytes = 32 * 1024;
     private const string RecursiveTourSha256 = "bd3f8522a7854b51cbdb1ea8a00f22b0b13a955a38bdc4095bf10070e55f182c";
@@ -42,7 +41,11 @@ public static class TourConverter
             return ConvertRecursiveTour(input);
         if (!extension.Equals(".cel", StringComparison.OrdinalIgnoreCase))
             throw new NotSupportedException("Choose a CEL or CELX tour.");
-        Command[] commands = Parse(input);
+        var words = Tokenize(input);
+        if (words.Count >= 2 && words[0] == "{" &&
+            words[1].ToLowerInvariant() is "name" or "target" or "description" or "distance" or "distanceunits")
+            return ConvertGuide(words);
+        Command[] commands = Parse(words);
         var unapplied = new SortedSet<string>(StringComparer.Ordinal);
         double wait = commands.Where(command => command.Name is "wait" or "orbit" or "rotate" or "changedistance")
             .Sum(command => Duration(command.Number("duration", command.Name == "wait" ? 0 : 1)));
@@ -211,7 +214,7 @@ public static class TourConverter
         return new(lua, 1, Array.Empty<string>());
     }
 
-    private static Command[] Parse(string input)
+    private static List<string> Tokenize(string input)
     {
         var words = new List<string>();
         int offset = 0;
@@ -225,6 +228,11 @@ public static class TourConverter
         }
         if (offset != input.Length)
             throw new InvalidDataException("The tour contains a truncated token.");
+        return words;
+    }
+
+    private static Command[] Parse(IReadOnlyList<string> words)
+    {
         int at = 0;
         Expect("{");
         var commands = new List<Command>();
@@ -248,7 +256,7 @@ public static class TourConverter
                     value = string.Join(' ', vector);
                 }
                 else if (value.StartsWith('"'))
-                    value = JsonSerializer.Deserialize<string>(value) ?? "";
+                    value = DecodeValue(value);
                 if (!fields.TryAdd(key, value))
                     throw new InvalidDataException("A tour field is repeated.");
             }

@@ -64,6 +64,16 @@ public partial class WorkspaceInputSmoke
         Require(tourTargets.Count >= 18 && tourTargets.Contains(new("sol/titan")) && tourTargets.Contains(new("sol/neptune")),
             "The converted recursive tour must visit the loaded Solar System including Titan and Neptune.");
 
+        var guide = TourConverter.ConvertFile(Path.Combine(sources, "guide.cel"));
+        Require(guide.Commands == 11 && guide.Unapplied.Count == 0 && guide.Lua.Contains("13463808362", StringComparison.Ordinal),
+            "The original guide must retain its eleven stops and convert AU distances to kilometres.");
+        string guidePath = Path.Combine(directory, "guide.lua");
+        File.WriteAllText(guidePath, guide.Lua);
+        var (guideTargets, _) = RunToEnd(guidePath);
+        Require(guideTargets.Contains(new("sol/jupiter")) && guideTargets.Contains(new("sol/pluto")),
+            "The original guide must complete and visit Jupiter and Pluto.");
+        GD.Print($"UI: converted the original eleven-stop guide and visited {guideTargets.Count} loaded targets.");
+
         LuaSessionScript stopping = _scene.RunScript(tour) ?? throw new InvalidOperationException("Could not start the tour to test Escape.");
         stopping.Step(.05);
         Require(Session.IsFlying(0), "The running tour must have begun a flight before Escape.");
@@ -72,6 +82,7 @@ public partial class WorkspaceInputSmoke
         if (System.Environment.GetEnvironmentVariable("SPACETANGENT_CONVERTED_TOURS") is { Length: > 0 } output)
         {
             Directory.CreateDirectory(output);
+            File.Copy(guidePath, Path.Combine(output, "guide.lua"), overwrite: true);
             File.Copy(demo, Path.Combine(output, "demo.lua"), overwrite: true);
             File.Copy(tour, Path.Combine(output, "tour-system.lua"), overwrite: true);
             File.WriteAllLines(Path.Combine(output, "conversion-notes.txt"),

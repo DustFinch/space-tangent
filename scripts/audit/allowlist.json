@@ -43,5 +43,10 @@
     "path": "src/SpaceTangent.Godot/tests/WorkspaceInputSmoke.Plugins.cs",
     "sha256": "3689cc5bbe8ec5a0e62a4cbef23281b7d89caede0b3f5a7dc64faa4e931e125e",
     "reason": "Exercises the exact upstream Lua observer API global name."
+  },
+  {
+    "path": "src/SpaceTangent.Application/TourConverter.Guide.cs",
+    "sha256": "12fb7452a2e242cca26d07abc371453875cc49ebc04082229cb972de73293542",
+    "reason": "Required upstream Lua observer API global in generated guide scripts."
   }
 ]

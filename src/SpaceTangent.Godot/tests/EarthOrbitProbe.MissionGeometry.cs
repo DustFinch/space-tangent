@@ -8,6 +8,63 @@ namespace SpaceTangent.Godot.Tests;
 
 public partial class EarthOrbitProbe
 {
+    private async Task ExerciseFollowSpin(SolarSystemScene scene, string directory)
+    {
+        var session = scene.Session!;
+        var witness = new ObjectId("mission/jason-spin-witness");
+        var offset = new ObjectId("mission/jason-spin-offset");
+        var jason = new ObjectId("norad/26997");
+        var first = JulianInstant.FromJulianDate(2455755, TimeScale.Tdb);
+        var second = first.AddSeconds(600);
+        string path = Path.Combine(directory, "archived-follow-spin.stscene");
+        var views = new[] { Observer(first), Observer(second) };
+        ScenarioFile.Save(path, new(views, false, 0, 0, session.DeltaT));
+        if (!scene.LoadScenario(path))
+            throw new InvalidOperationException("The archived spin views did not open.");
+        Check();
+        var before = session.CaptureScenario(0);
+        if (!await scene.ReloadAddOns() || !session.CaptureScenario(0).Views.SequenceEqual(before.Views) ||
+            session.DeltaT != before.DeltaT)
+            throw new InvalidOperationException("Reloading the archived spin lost the observer state.");
+        Check();
+        await ToSignal(GetTree(), SceneTree.SignalName.ProcessFrame);
+        await ToSignal(RenderingServer.Singleton, RenderingServer.SignalName.FramePostDraw);
+        using var image = GetViewport().GetTexture().GetImage();
+        if (image.SavePng(Path.ChangeExtension(path, ".png")) != Error.Ok)
+            throw new IOException("Could not capture the archived spin views.");
+        GD.Print("Archived follow spin: original 28-surface model, quarter turn in 600 s and moving offset verified after reload.");
+
+        ObserverView Observer(JulianInstant epoch)
+        {
+            if (!session.World.Graph.Evaluate(epoch).TryState(witness, out var state))
+                throw new InvalidOperationException("The archived spin witness is unavailable.");
+            var pose = new NavigationCamera(state.PositionKilometers, .045, .48, .14, witness, true);
+            return new(epoch, CameraMode.Solar, witness, false) { Navigation = pose };
+        }
+
+        void Check()
+        {
+            Vector3d[] axes = new Vector3d[2];
+            for (int index = 0; index < axes.Length; index++)
+            {
+                var epoch = session[index].Epoch;
+                var world = session.World.Graph.Evaluate(epoch);
+                if (!world.TryOrientation(witness, out var attitude) ||
+                    attitude.AngularVelocityRadiansPerSecond is not { } omega ||
+                    Math.Abs(omega.Length - Math.Tau / 2400) > 1e-10 ||
+                    !world.TryMissionReferenceFrame(witness, false, epoch, out _, out var reference) ||
+                    !world.TryState(offset, out var marker) || !world.TryState(jason, out var center) ||
+                    Math.Abs((marker - center).PositionKilometers.Length - Math.Sqrt(140000)) > 1e-6 ||
+                    scene.Renderer(index).ImportedBodyNode(witness) is not { Visible: true, Mesh: ArrayMesh mesh } ||
+                    mesh.GetSurfaceCount() != 28)
+                    throw new InvalidOperationException("The archived spin model or its offset was not restored.");
+                axes[index] = reference.ToWorld.Transpose().Transform(attitude.ToWorld.X);
+            }
+            if (Math.Abs(Vector3d.Dot(axes[0], axes[1])) > 1e-6)
+                throw new InvalidOperationException("The archived model must turn by a quarter revolution relative to Jason-1.");
+        }
+    }
+
     private async Task ExerciseCompoundMission(SolarSystemScene scene, string directory)
     {
         var session = scene.Session!;

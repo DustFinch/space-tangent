@@ -37,5 +37,22 @@ public partial class EarthOrbitProbe
         if (image.SavePng(Path.Combine(directory, "surface-location-olympus.png")) != Error.Ok)
             throw new IOException("Could not capture the Olympus Mons view.");
         GD.Print("Surface location rendered: Olympus Mons with a Mars-fixed camera.");
+
+        var untargetedSite = view with
+        {
+            Selection = null,
+            Navigation = camera with
+            {
+                Target = site.Body, Tracking = false,
+                Placement = camera.ResolvePlacement(snapshot, deltaT)
+            }
+        };
+        var places = untargetedSite with { Sky = untargetedSite.Sky with { SurfacePlaces = true } };
+        string layers = Path.Combine(directory, "surface-location-layer.stscene");
+        ScenarioFile.Save(layers, new([places, untargetedSite], false, 0, 0, deltaT));
+        if (!scene.LoadScenario(layers) || !await scene.ReloadAddOns() ||
+            !scene.Renderer(0).SiteLabelVisible(olympus) || scene.Renderer(1).SiteLabelVisible(olympus))
+            throw new InvalidOperationException("The Olympus Mons label must obey the independent place layers after reload.");
+        GD.Print("Archived place layers GPU: unselected Olympus Mons is visible only with Places enabled.");
     }
 }

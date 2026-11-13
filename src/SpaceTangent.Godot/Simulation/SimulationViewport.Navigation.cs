@@ -137,7 +137,8 @@ internal partial class SimulationViewport
         DrawImportedBodies(snapshot, pose, placement.OffsetKilometers, units, sky, selection, ProjectWithScale);
         DrawLocalSatellites(snapshot, pose, placement.OffsetKilometers, units, sky, selection, ProjectWithScale);
         HideComets();
-        DrawComets(snapshot, solar.Sun, units, ProjectWithScale);
+        if (!sky.HideCometTails)
+            DrawComets(snapshot, solar.Sun, units, ProjectWithScale);
 
         (Vector3 Position, double Scale) ProjectWithScale(Vector3d position)
         {

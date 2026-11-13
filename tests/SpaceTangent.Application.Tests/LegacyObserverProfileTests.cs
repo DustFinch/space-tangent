@@ -231,6 +231,31 @@ public sealed class LegacyObserverProfileTests
         finally { File.Delete(path); }
     }
 
+    [Fact]
+    public void ArchivedBodyLayersRoundTripForOneView()
+    {
+        string path = Path.GetTempFileName();
+        try
+        {
+            var view = new ObserverView(new(2451545, 0, TimeScale.Tdb), CameraMode.Solar, null, false);
+            File.WriteAllText(path, """{"Site":{},"Orbits":false,"CometTails":false,"Places":true}""");
+            var profile = LegacyObserverProfiles.Read(path, view, DeltaTModel.MorrisonStephenson2004);
+            Assert.True(profile.Observer.Sky.HideOrbits);
+            Assert.True(profile.Observer.Sky.HideCometTails);
+            Assert.True(profile.Observer.Sky.SurfacePlaces);
+
+            var scenario = new SimulationScenario([profile.Observer, view], false, 0, 0, profile.DeltaT);
+            ScenarioFile.Save(path, scenario);
+            Assert.Equal(scenario.Views, ScenarioFile.Load(path).Views);
+            var json = System.Text.Json.Nodes.JsonNode.Parse(File.ReadAllText(path))!.AsObject();
+            Assert.Equal(29, json["version"]!.GetValue<int>());
+            json["version"] = 28;
+            File.WriteAllText(path, json.ToJsonString());
+            Assert.Throws<InvalidDataException>(() => ScenarioFile.Load(path));
+        }
+        finally { File.Delete(path); }
+    }
+
     private sealed class ArchiveSettingsFactAttribute : FactAttribute
     {
         public ArchiveSettingsFactAttribute()

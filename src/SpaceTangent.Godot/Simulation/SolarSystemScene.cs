@@ -285,8 +285,8 @@ public partial class SolarSystemScene : Control
         _showPlanetOrbits = new CheckButton { Text = "Planet orbits", ButtonPressed = true };
         _showPlanetOrbits.Toggled += visible =>
         {
-            foreach (ViewControls view in _views)
-                view.Renderer.ShowPlanetOrbits = visible;
+            var session = Session!;
+            session.SetSkyLayers(_active, session[_active].Sky with { HideOrbits = !visible });
             Refresh();
         };
         layers.AddChild(_showPlanetOrbits);
@@ -521,8 +521,6 @@ public partial class SolarSystemScene : Control
         GetViewport().SetInputAsHandled();
     }
 
-    private bool _showSurfaceSites;
-
     public override void _UnhandledKeyInput(InputEvent input)
     {
         if (Session is null || input is not InputEventKey { Pressed: true } key)
@@ -562,8 +560,10 @@ public partial class SolarSystemScene : Control
                 MeasureSelectedDistance(key.ShiftPressed);
                 break;
             case Key.L when key.CtrlPressed:
-                _showSurfaceSites = !_showSurfaceSites;
-                _status.Text = _showSurfaceSites ? "Surface locations visible at their map scale." : "Surface location labels hidden.";
+                var layers = Session![_active].Sky;
+                bool visible = !layers.SurfacePlaces;
+                Session.SetSkyLayers(_active, layers with { SurfacePlaces = visible });
+                _status.Text = visible ? "Surface locations visible at their map scale." : "Surface location labels hidden.";
                 Refresh();
                 break;
             case Key.E when key.CtrlPressed && key.ShiftPressed:
@@ -1445,7 +1445,6 @@ public partial class SolarSystemScene : Control
         renderer.SetWorldAtmospheres(_orbitAtmospheres, _surfaceTiles);
         renderer.SetExoplanetTextures(_exoplanetTextures);
         renderer.PlanetEphemeris = Session!.World.Ephemeris;
-        renderer.ShowPlanetOrbits = _showPlanetOrbits.ButtonPressed;
         if (_brightSky is { } sky)
             renderer.SetSkyData(sky);
         var measurements = new MeasurementOverlay { Name = "Measurements" };
@@ -1776,6 +1775,7 @@ public partial class SolarSystemScene : Control
         _playFromPanel.Text = active.Playing ? "Pause" : "Play";
         _earthObserver.Update(_active, active, _views[_active].Snapshot, Session.World.Ephemeris, Session.DeltaT,
             Session.World.BrightStars, CurrentObserverNight(), Session.World.EarthPlaces);
+        _showPlanetOrbits.SetPressedNoSignal(!active.Sky.HideOrbits);
         _stars.SetPressedNoSignal(active.Sky.Stars);
         _starLabels.SetPressedNoSignal(active.Sky.Labels);
         _equatorialGrid.SetPressedNoSignal(active.Sky.EquatorialGrid);
@@ -1847,7 +1847,8 @@ public partial class SolarSystemScene : Control
             ShipView? ship = session.Ship(index);
             ObserverView view = session[index];
             controls.Snapshot = snapshot;
-            controls.Renderer.ShowSurfaceSiteLabels = _showSurfaceSites;
+            controls.Renderer.ShowPlanetOrbits = !view.Sky.HideOrbits;
+            controls.Renderer.ShowSurfaceSiteLabels = view.Sky.SurfacePlaces;
             controls.Renderer.SetLandscape(ViewLandscape(view), view.EarthObserver?.HideLandscapeFog != true);
             controls.Renderer.ArchivedGeometry = index == 0 ? (_replay as LegacyCameraSequence)?.CurrentGeometry : null;
             bool available = controls.Renderer.Draw(view, snapshot, session.DeltaT);

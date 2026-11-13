@@ -221,6 +221,19 @@ public partial class EarthOrbitProbe
         var comet = NaturalBodyCatalogue.CometId;
         var activityEpoch = JulianInstant.FromJulianDate(2459526.5, TimeScale.Tdb);
         await CheckActivity("comet-67p", comet, activityEpoch);
+        var cometScene = ScenarioFile.Load(Path.Combine(directory, "comet-67p.stscene"));
+        var visible = cometScene.Views[0];
+        string legacyLayers = Path.Combine(directory, "legacy-body-layers.json");
+        File.WriteAllText(legacyLayers, """{"Site":{},"Orbits":false,"CometTails":false,"Places":true}""");
+        var hidden = LegacyObserverProfiles.Read(legacyLayers, visible, cometScene.DeltaT).Observer;
+        string layerScene = Path.Combine(directory, "comet-67p-layer.stscene");
+        ScenarioFile.Save(layerScene, cometScene with { Views = [visible, hidden] });
+        if (!scene.LoadScenario(layerScene) || !await scene.ReloadAddOns() ||
+            scene.Renderer(0).RenderedComet(comet) is null || scene.Renderer(1).RenderedComet(comet) is not null ||
+            scene.Renderer(0).ShowSurfaceSiteLabels || !scene.Renderer(1).ShowSurfaceSiteLabels ||
+            !scene.Renderer(0).ShowPlanetOrbits || scene.Renderer(1).ShowPlanetOrbits)
+            throw new InvalidOperationException("Archived orbit, comet-tail and surface-place layers must remain independent after reload.");
+        GD.Print("Archived body layers GPU: independent 67P comet activity, orbit and place preferences after reload.");
         await CheckActivity("comet-atlas", new("ssc/sol/3i/atlas"),
             JulianInstant.FromJulianDate(2460977.9825, TimeScale.Tdb), required: false);
         await Capture("comet-67p-inactive", comet, new Vector3(.3f, .2f, .93f).Normalized(), 60);

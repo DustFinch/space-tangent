@@ -85,6 +85,9 @@ public static class LegacyObserverProfiles
         {
             Labels = Flag(root, "Labels") ?? sky.Labels,
             MinorBodyLabels = Flag(root, "MinorLabels") ?? sky.MinorBodyLabels,
+            HideOrbits = Flag(root, "Orbits") is { } orbits ? !orbits : sky.HideOrbits,
+            HideCometTails = Flag(root, "CometTails") is { } tails ? !tails : sky.HideCometTails,
+            SurfacePlaces = Flag(root, "Places") ?? sky.SurfacePlaces,
             HideSatellites = Flag(root, "Satellites") is { } satellites ? !satellites : sky.HideSatellites,
             Meteors = Flag(root, "Meteors") ?? sky.Meteors,
             MeteorRadiants = Flag(root, "Radiants") ?? sky.MeteorRadiants,

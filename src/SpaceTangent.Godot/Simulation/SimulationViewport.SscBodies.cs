@@ -17,6 +17,8 @@ internal sealed record PreparedImportedBody(ObjectId Id, CatalogueKind Kind, Vec
     internal Vector3d? EllipsoidRadiiKilometers { get; init; }
     internal Texture2D? Surface { get; init; }
     internal ObjectId? StellarHost { get; init; }
+    internal ObjectId? PhotometricParent { get; init; }
+    internal double GeometricAlbedo { get; init; }
     internal PreparedSscRings? Rings { get; init; }
     internal Vector3d? MeshSpan { get; init; }
     internal (Vector3d Center, Vector3d Span)? ModelBounds { get; init; }
@@ -148,7 +150,7 @@ internal partial class SimulationViewport
 
     internal MeshInstance3D? ImportedBodyNode(ObjectId id) => _importedNodes.TryGetValue(id, out var entry) ? entry.Node : null;
 
-    private void DrawImportedBodies(WorldSnapshot snapshot, NavigationCamera pose, double units,
+    private void DrawImportedBodies(WorldSnapshot snapshot, NavigationCamera pose, Vector3d eyeOffset, double units,
         Func<Vector3d, (Vector3 Position, double Scale)> project)
     {
         _missionParticleRendering?.Hide();
@@ -236,8 +238,17 @@ internal partial class SimulationViewport
                     node.MaterialOverride = material;
                 }
             }
-            double radius = (active?.RadiusKilometers ?? body.RadiusKilometers) * projection / units;
-            if (radius < .035 && pose.Target != body.Id)
+            double physicalRadius = active?.RadiusKilometers ?? body.RadiusKilometers;
+            double radius = physicalRadius * projection / units;
+            if (body.PhotometricParent is { } parent)
+            {
+                var tint = new Color((float)body.Color.X, (float)body.Color.Y, (float)body.Color.Z);
+                Vector3d towardEye = (pose.AnchorKilometers - state.PositionKilometers) + eyeOffset;
+                if (!DrawReflectedBody(body.Id, parent, physicalRadius, body.GeometricAlbedo, tint,
+                    snapshot, towardEye, state.PositionKilometers, position, (float)radius))
+                    continue;
+            }
+            else if (radius < .035 && pose.Target != body.Id)
                 continue;
             if ((active?.EllipsoidRadiiKilometers ?? ((active?.Model ?? asset.Model) is null ? asset.EllipsoidRadiiKilometers : null)) is { } radii)
             {

@@ -173,7 +173,7 @@ internal partial class SimulationViewport
             float radius = (float)(planet.RadiusKilometers * scale / units);
             Vector3d towardEye = (pose.AnchorKilometers - state.PositionKilometers) + eyeOffset;
             if (!DrawReflectedBody(planet.Id, SolarSystemSample.SunId, planet.RadiusKilometers, PlanetAlbedo(planet.NaifId),
-                planet.Color, snapshot, towardEye, state.PositionKilometers, position, radius))
+                new Color(planet.Color), snapshot, towardEye, state.PositionKilometers, position, radius))
                 continue;
             float pole = (float)(planet.PolarRadiusKilometers / planet.RadiusKilometers);
             bool oriented = PlaceWorldGlobe(globe, snapshot, planet.Id, position, new(radius, radius * pole, radius));

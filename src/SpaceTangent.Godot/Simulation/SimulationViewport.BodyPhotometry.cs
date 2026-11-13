@@ -15,7 +15,7 @@ internal partial class SimulationViewport
 
     internal MeshInstance3D? BodyPoint(ObjectId id) => _bodyPoints.GetValueOrDefault(id);
 
-    private bool DrawReflectedBody(ObjectId id, ObjectId parentId, double radius, double albedo, string tint, WorldSnapshot snapshot, Vector3d towardEye,
+    private bool DrawReflectedBody(ObjectId id, ObjectId parentId, double radius, double albedo, Color tint, WorldSnapshot snapshot, Vector3d towardEye,
         Vector3d bodyPosition, Vector3 position, float projectedRadius)
     {
         const double au = 149_597_870.7;
@@ -56,9 +56,10 @@ internal partial class SimulationViewport
         double magnitude = sunMagnitudeAtAu - 2.5 * Math.Log10(flux);
         if (magnitude < faintestMagnitude)
         {
-            MeshInstance3D point = GetBodyPoint(id, tint);
+            MeshInstance3D point = GetBodyPoint(id);
             var material = (ShaderMaterial)point.MaterialOverride;
             material.SetShaderParameter("magnitude", (float)magnitude);
+            material.SetShaderParameter("point_color", new Vector3(tint.R, tint.G, tint.B));
             material.SetShaderParameter("fade", (float)Math.Min(1, (blendPixels - disc) / (blendPixels - pointPixels)));
             Vector3 toCamera = _navigationCamera.Position - position;
             point.Position = position + toCamera.Normalized() * Math.Min(toCamera.Length() * .9f, 1.01f * projectedRadius);
@@ -67,7 +68,7 @@ internal partial class SimulationViewport
         return disc >= pointPixels;
     }
 
-    private MeshInstance3D GetBodyPoint(ObjectId id, string tint)
+    private MeshInstance3D GetBodyPoint(ObjectId id)
     {
         if (_bodyPoints.TryGetValue(id, out var existing))
             return existing;
@@ -81,8 +82,6 @@ internal partial class SimulationViewport
             _bodyPointShader = GD.Load<Shader>("res://Shaders/body_photometric_point.gdshader");
         }
         var material = new ShaderMaterial { Shader = _bodyPointShader };
-        Color color = new(tint);
-        material.SetShaderParameter("point_color", new Vector3(color.R, color.G, color.B));
         var point = new MeshInstance3D
         {
             Mesh = _bodyPointMesh, MaterialOverride = material, Visible = false,

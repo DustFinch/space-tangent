@@ -354,6 +354,9 @@ internal static partial class AddonLoader
                 EllipsoidRadiiKilometers = definition.EllipsoidRadiiKilometers,
                 Surface = texture,
                 StellarHost = body.StellarHost,
+                PhotometricParent = body.StellarHost is null && body.Kind is (CatalogueKind.Planet or CatalogueKind.Moon or
+                    CatalogueKind.DwarfPlanet or CatalogueKind.Asteroid or CatalogueKind.Comet) ? body.Parent : null,
+                GeometricAlbedo = definition.GeometricAlbedo ?? .5,
                 Rings = definition.Rings is { } rings && input.RingMap is { } ringMap
                     ? new(rings, PublishMissionTexture(rings.TexturePath, ringMap)) : null,
                 MeshSpan = definition.EllipsoidRadiiKilometers is not null ? bounds?.Span : null,

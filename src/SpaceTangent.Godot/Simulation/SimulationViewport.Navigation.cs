@@ -134,7 +134,7 @@ internal partial class SimulationViewport
         DrawStellarObjects(pose, snapshot, sky, units, ProjectWithScale);
         DrawExtrasolarOrbits(pose, snapshot, units, ProjectWithScale);
         DrawCompactObjects(snapshot, sky, units, ProjectWithScale);
-        DrawImportedBodies(snapshot, pose, units, ProjectWithScale);
+        DrawImportedBodies(snapshot, pose, placement.OffsetKilometers, units, ProjectWithScale);
         DrawLocalSatellite(snapshot, pose, units, ProjectWithScale);
         HideComets();
         DrawComets(snapshot, solar.Sun, units, ProjectWithScale);
@@ -173,7 +173,7 @@ internal partial class SimulationViewport
             node.Scale = Vector3.One * radius;
             Vector3d towardEye = (pose.AnchorKilometers - position) + placement.OffsetKilometers;
             node.Visible = parentId is not { } parent ||
-                DrawReflectedBody(id, parent, physicalRadius, albedo, tint, snapshot, towardEye, position, node.Position, radius);
+                DrawReflectedBody(id, parent, physicalRadius, albedo, new Color(tint), snapshot, towardEye, position, node.Position, radius);
         }
 
         Vector3 Project(Vector3d position, out double scale) => ProjectNavigation((position - pose.AnchorKilometers) - _navigationEyeOffset, units, out scale);

@@ -78,6 +78,52 @@ public partial class EarthOrbitProbe
             }
         }
         GD.Print("Small-body photometry GPU: points and picking for Pluto, Ceres, Vesta and comet 67P.");
+        string? packed = System.Environment.GetEnvironmentVariable("SPACETANGENT_ASTEROIDS_SSC");
+        if (!string.IsNullOrEmpty(packed))
+        {
+            const string input = "SPACETANGENT_SSC_ADDON_ROOT";
+            string? previous = System.Environment.GetEnvironmentVariable(input);
+            try
+            {
+                var id = new ObjectId("sol/vesta");
+                float? looseMagnitude = null;
+                foreach (string source in new[] { packed.Replace("-packed", "", StringComparison.Ordinal), packed })
+                {
+                    System.Environment.SetEnvironmentVariable(input, source);
+                    if (!await scene.ReloadAddOns())
+                        throw new InvalidOperationException($"Could not load the original Vesta catalogue: {scene.LastAddonDiagnostic}.");
+                    var vesta = session.World.SscBodies.Single(body => body.Id == id);
+                    var current = session.World.Graph.Evaluate(epoch);
+                    if (vesta.Definition.GeometricAlbedo != .38 || !current.TryState(id, out var asteroid))
+                        throw new InvalidOperationException("The original SSC Vesta must keep its albedo and identity.");
+                    double vestaRadius = vesta.Definition.RadiusKilometers;
+                    double range = vestaRadius * (1 + focal / .7);
+                    Save(View(id, asteroid, range), View(id, asteroid, vestaRadius * 4));
+                    var left = scene.Renderer(0);
+                    if (left.BodyPoint(id) is not { Visible: true, MaterialOverride: ShaderMaterial material } pointNode ||
+                        left.ImportedBodyNode(id) is not { Visible: false } ||
+                        scene.Renderer(1).ImportedBodyNode(id) is not { Visible: true } ||
+                        left.PickObject(left.NavigationCameraNode.UnprojectPosition(pointNode.Position)) != id)
+                        throw new InvalidOperationException("Vesta must render as a selectable point and as a nearby SSC model.");
+                    Vector3d sun = (solar.Sun - asteroid).PositionKilometers;
+                    Vector3d eye = session[0].Navigation!.Value.ResolvePlacement(current, session.DeltaT).OffsetKilometers;
+                    double lit = (1 + Vector3d.Dot(sun / sun.Length, eye / eye.Length)) / 2;
+                    double ratio = vestaRadius / sun.Length * (149597870.7 / range);
+                    double expected = -26.74 - 2.5 * Math.Log10(.38 * lit * ratio * ratio);
+                    float actual = material.GetShaderParameter("magnitude").AsSingle();
+                    if (Math.Abs(expected - actual) > 1e-4 || (looseMagnitude is { } earlier && earlier != actual))
+                        throw new InvalidOperationException("Vesta's source and packed apparent magnitudes must match the original albedo.");
+                    looseMagnitude = actual;
+                }
+                GD.Print($"SSC photometry GPU: original Vesta source and packed point magnitude {looseMagnitude:F5}, selectable point and near model.");
+            }
+            finally
+            {
+                System.Environment.SetEnvironmentVariable(input, previous);
+                if (!await scene.ReloadAddOns())
+                    throw new InvalidOperationException("Could not restore the prior SSC sources.");
+            }
+        }
 
         ObserverView SmallBodyView(ObjectId id)
         {

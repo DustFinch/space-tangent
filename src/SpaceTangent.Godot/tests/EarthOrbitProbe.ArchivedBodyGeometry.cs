@@ -115,6 +115,57 @@ public partial class EarthOrbitProbe
         }
     }
 
+    private async Task ExerciseArchivedTimedModel(SolarSystemScene scene, string directory, string recording)
+    {
+        scene.SetProcess(false);
+        if (!scene.StartReplay(recording))
+            throw new InvalidOperationException("Could not open the timed model recording.");
+        var renderer = scene.Renderer(0);
+        var id = new ObjectId("mission/timeswitchmodel");
+        const string name = "TimeSwitchModel";
+        ArrayMesh? initial = null;
+        foreach (var (stage, surfaces, day) in new (string, int?, double)[]
+        {
+            ("first", 28, 2455755.005), ("nested", 20, 2455755.015), ("gap", null, 2455755.025),
+            ("recovered", 28, 2455755.035), ("ended", null, 2455755.045)
+        })
+        {
+            if (scene.Session![0].Epoch != JulianInstant.FromJulianDate(day, TimeScale.Tdb) ||
+                renderer.ArchivedGeometry!.Bodies.Single().Id != id)
+                throw new InvalidOperationException($"The replay did not restore the saved mission epoch or object at {stage}.");
+            var node = renderer.ArchivedBody(name);
+            var model = node?.Mesh as ArrayMesh;
+            if (model?.GetSurfaceCount() != surfaces ||
+                (surfaces.HasValue ? node is not { Visible: true } : node is not null))
+                throw new InvalidOperationException($"Unexpected archived geometry at {stage}: {node?.Mesh}.");
+            if (stage == "first")
+                initial = model;
+            if (stage == "recovered" && model != initial)
+                throw new InvalidOperationException("The original model was not restored after the explicit gap.");
+
+            if (node is not null)
+            {
+                await ToSignal(RenderingServer.Singleton, RenderingServer.SignalName.FramePostDraw);
+                using var visible = renderer.GetViewport().GetTexture().GetImage();
+                node.Hide();
+                await ToSignal(RenderingServer.Singleton, RenderingServer.SignalName.FramePostDraw);
+                using var control = renderer.GetViewport().GetTexture().GetImage();
+                int samples = 0;
+                for (int y = 0; y < visible.GetHeight(); y += 4)
+                for (int x = 0; x < visible.GetWidth(); x += 4)
+                    if (Math.Abs(visible.GetPixel(x, y).Luminance - control.GetPixel(x, y).Luminance) > .025f)
+                        samples++;
+                if (samples < 30 || visible.SavePng(Path.Combine(directory, stage + "-replay.png")) != Error.Ok)
+                    throw new InvalidOperationException($"The archived model changed only {samples} samples at {stage}.");
+                GD.Print($"Archived timed model GPU: {stage}, {surfaces} surfaces, {samples} changed samples.");
+            }
+            scene._Process(1d / 30);
+        }
+        if (renderer.ArchivedGeometry is not null || renderer.ArchivedBody(name) is not null)
+            throw new InvalidOperationException("The archived geometry persisted after replay ended.");
+        GD.Print("Archived timed model GPU: explicit gap, recovery and end verified.");
+    }
+
     private async Task ExerciseArchivedHuygens(SolarSystemScene scene, string directory, string recordings)
     {
         var settings = new LocalAddonSettingsFile().Load();

@@ -103,6 +103,13 @@ internal partial class SimulationViewport
             if (radius < .001f)
                 continue;
 
+            PreparedImportedBody? asset = body.Id is { } importedId && _importedNodes.TryGetValue(importedId, out var imported)
+                ? imported.Asset : null;
+            PreparedMissionGeometry? phase = asset?.Geometry?.FirstOrDefault(span =>
+                epoch.CompareTo(span.Start) >= 0 && epoch.CompareTo(span.End) < 0);
+            if (asset?.Geometry is not null && phase is null)
+                continue;
+
             if (_archivedBodies.Count == _archivedUsed)
             {
                 _archivedBodyShader ??= GD.Load<Shader>("res://Shaders/archived_body.gdshader");
@@ -114,8 +121,7 @@ internal partial class SimulationViewport
             _archivedVisible.TryAdd(body.Name, node);
             var basis = new Basis(Column(rotation.X), Column(rotation.Y) * (float)body.PolarScale, Column(rotation.Z));
             var id = body.Id;
-            if (id is { } importedId && _importedNodes.TryGetValue(importedId, out var imported) &&
-                PlaceArchivedModel(node, imported.Asset, epoch, camera * basis, center, radius))
+            if (asset is not null && PlaceArchivedModel(node, asset, phase, camera * basis, center, radius))
             {
                 BindArchivedModelMaterials(node, scene, body, radius);
                 node.Show();
@@ -196,16 +202,9 @@ internal partial class SimulationViewport
         static Vector3 Column(Vector3d value) => new((float)value.X, (float)value.Y, (float)value.Z);
     }
 
-    private static bool PlaceArchivedModel(MeshInstance3D node, PreparedImportedBody asset, JulianInstant epoch,
+    private static bool PlaceArchivedModel(MeshInstance3D node, PreparedImportedBody asset, PreparedMissionGeometry? phase,
         Basis bodyBasis, Vector3 center, float radius)
     {
-        PreparedMissionGeometry? phase = null;
-        if (asset.Geometry is { } intervals)
-        {
-            phase = intervals.FirstOrDefault(span => epoch.CompareTo(span.Start) >= 0 && epoch.CompareTo(span.End) < 0);
-            if (phase is null)
-                return false;
-        }
         if ((phase is null ? asset.Model : phase.Model) is not { } model)
             return false;
         var rotation = phase?.MeshRotation ?? asset.MeshRotation;

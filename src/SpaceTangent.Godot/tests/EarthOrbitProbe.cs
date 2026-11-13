@@ -76,6 +76,12 @@ public partial class EarthOrbitProbe : Node
                 result = 0;
                 return;
             }
+            if (System.Environment.GetEnvironmentVariable("SPACETANGENT_ARCHIVED_TIMED_MODEL") is { Length: > 0 } timedRecording)
+            {
+                await ExerciseArchivedTimedModel(scene, directory, timedRecording);
+                result = 0;
+                return;
+            }
             if (System.Environment.GetEnvironmentVariable("SPACETANGENT_MISSION_GEOMETRY_PROBE") == "only")
             {
                 await ExerciseMissionGeometry(scene, directory);

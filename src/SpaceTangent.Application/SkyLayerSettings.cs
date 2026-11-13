@@ -9,6 +9,14 @@ public readonly record struct SkyLayerSettings(bool Stars, bool Labels, bool Equ
 {
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingDefault)]
     public bool DeepSky { get; init; }
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public DeepSkyVisibility? DeepSkyFilter { get; init; }
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public bool? OpenClusterLabels { get; init; }
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public bool? NebulaLabels { get; init; }
+    [JsonIgnore]
+    internal bool HasDeepSkyPreferences => DeepSkyFilter.HasValue || OpenClusterLabels.HasValue || NebulaLabels.HasValue;
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingDefault)]
     public bool MinorBodyLabels { get; init; }
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingDefault)]
@@ -78,5 +86,5 @@ public readonly record struct SkyLayerSettings(bool Stars, bool Labels, bool Equ
 
     internal bool IsValid() =>         (CultureId is null || SkyCultureLibrary.ValidId(CultureId)) && Enum.IsDefined(CultureNames) &&
                 (SurveyId is null || LocalSkySurvey.ValidId(SurveyId)) && SurveyBrightness is null or (>= 0 and <= 2) &&
-        (MeteorRateMultiplier is not { } rate || ValidMeteorRate(rate));
+        (MeteorRateMultiplier is not { } rate || ValidMeteorRate(rate)) && (DeepSkyFilter is not { } filter || filter.IsValid());
 }

@@ -17,7 +17,7 @@ public sealed record SimulationScenario(IReadOnlyList<ObserverView> Views, bool 
 /// <summary>Persists observer settings with exact TDB epochs and stable catalog IDs.</summary>
 public static class ScenarioFile
 {
-    private const int Version = 30;
+    private const int Version = 31;
     internal const int MaximumBytes = 32 * 1024;
     private static readonly JsonSerializerOptions Json = new()
     {
@@ -62,7 +62,8 @@ public static class ScenarioFile
             throw new InvalidDataException("The scenario has an invalid camera sensitivity.");
         var document = new Document
         {
-            Version = scenario.Views.Any(view => view.Sky.CinematicBlackHoles) ? 30 :
+            Version = scenario.Views.Any(view => view.Sky.HasDeepSkyPreferences) ? 31 :
+                scenario.Views.Any(view => view.Sky.CinematicBlackHoles) ? 30 :
                 scenario.Views.Any(view => view.Sky.HasBodyLayerSettings) ? 29 :
                 scenario.Views.Any(view => view.Sky.HideSatellites) ? 28 :
                 scenario.Views.Any(view => view.Sky.MinorBodyLabels) ? 27 :
@@ -106,7 +107,7 @@ public static class ScenarioFile
                 PlaybackRate = view.PlaybackRate,
                 Navigation = view.Navigation is { } pose ? Camera.From(pose) : null,
                 EarthObserver = view.EarthObserver,
-                Sky = view.Sky.Visible || view.Sky.HasCultureSettings || view.Sky.HasSurveySettings || view.Sky.HasMeteorSettings || view.Sky.MinorBodyLabels || view.Sky.HideSatellites || view.Sky.HasBodyLayerSettings || view.Sky.CinematicBlackHoles ? view.Sky : null,
+                Sky = view.Sky.Visible || view.Sky.HasCultureSettings || view.Sky.HasSurveySettings || view.Sky.HasMeteorSettings || view.Sky.MinorBodyLabels || view.Sky.HideSatellites || view.Sky.HasBodyLayerSettings || view.Sky.CinematicBlackHoles || view.Sky.HasDeepSkyPreferences ? view.Sky : null,
                 ReferenceMarks = view.ReferenceMarks,
                 Optics = view.Optics,
                 LightTimeDelayed = view.LightTimeDelayed
@@ -185,6 +186,8 @@ public static class ScenarioFile
                 (document.Version < 3 || !earth.IsValid() || (document.Version < 11 && earth.Conditions is not null) ||
                     (document.Version < 13 && earth.LandscapeId is not null) || (document.Version < 23 && earth.HideLandscapeFog)))
                 throw new InvalidDataException("The scenario has an invalid Earth observer camera.");
+            if (data.Sky is { HasDeepSkyPreferences: true } && document.Version < 31)
+                throw new InvalidDataException("Deep-sky preferences require scenario version 31.");
             if (data.Sky is { CinematicBlackHoles: true } && document.Version < 30)
                 throw new InvalidDataException("Cinematic black holes require scenario version 30.");
             if (data.Sky is { HasBodyLayerSettings: true } && document.Version < 29)

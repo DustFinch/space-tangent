@@ -256,6 +256,31 @@ public sealed class LegacyObserverProfileTests
         finally { File.Delete(path); }
     }
 
+    [Fact]
+    public void ArchivedDeepSkyFiltersRoundTripIndependently()
+    {
+        string path = Path.GetTempFileName();
+        try
+        {
+            var view = new ObserverView(new(2451545, 0, TimeScale.Tdb), CameraMode.Solar, null, false);
+            File.WriteAllText(path, """{"Site":{},"DeepSkyKinds":9,"DeepSkyCatalogs":"NGC, M, NGC, other","OpenClusterLabels":false,"NebulaLabels":true}""");
+            var profile = LegacyObserverProfiles.Read(path, view, DeltaTModel.MorrisonStephenson2004);
+            Assert.Equal(new DeepSkyVisibility(9, "M,NGC"), profile.Observer.Sky.DeepSkyFilter);
+            Assert.False(profile.Observer.Sky.OpenClusterLabels);
+            Assert.True(profile.Observer.Sky.NebulaLabels);
+
+            var scenario = new SimulationScenario([profile.Observer, view], false, 0, 0, profile.DeltaT);
+            ScenarioFile.Save(path, scenario);
+            Assert.Equal(scenario.Views, ScenarioFile.Load(path).Views);
+            var json = System.Text.Json.Nodes.JsonNode.Parse(File.ReadAllText(path))!.AsObject();
+            Assert.Equal(31, json["version"]!.GetValue<int>());
+            json["version"] = 30;
+            File.WriteAllText(path, json.ToJsonString());
+            Assert.Throws<InvalidDataException>(() => ScenarioFile.Load(path));
+        }
+        finally { File.Delete(path); }
+    }
+
     private sealed class ArchiveSettingsFactAttribute : FactAttribute
     {
         public ArchiveSettingsFactAttribute()

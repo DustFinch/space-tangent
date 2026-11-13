@@ -152,6 +152,35 @@ public partial class EarthOrbitProbe
         if (scene.Renderer(0).DeepSkyVisible(galaxy.Id))
             throw new InvalidOperationException("Disabling the deep-sky layer must hide untargeted objects.");
 
+        if (world.DeepSky.Objects.Count > DeepSkyCatalogue.Objects.Count)
+        {
+            string profile = Path.Combine(directory, "archived-deep-sky-settings.json");
+            File.WriteAllText(profile, """{"DeltaT":"MorrisonStephenson2004","DeepSkyKinds":12,"DeepSkyCatalogs":"M","OpenClusterLabels":false,"NebulaLabels":true}""");
+            var imported = LegacyObserverProfiles.Read(profile, new(epoch, CameraMode.Solar, null, false)
+                { Sky = sky with { Labels = true } }, scene.Session.DeltaT).Observer.Sky;
+            await Capture("deep-sky-galaxy-filtered", galaxy.Id, galaxyCenter, galaxy.RadiusKilometers * 4.2, imported);
+            if (scene.Renderer(0).DeepSkyVisible(galaxy.Id))
+                throw new InvalidOperationException("The archived kind filter must hide even the tracked galaxy.");
+            var cluster = world.DeepSky.Find(new("dso/m45"))!;
+            await Capture("deep-sky-cluster-unlabelled", cluster.Id, cluster.PositionKilometers + world.StellarOrigin,
+                cluster.RadiusKilometers * 4.2, imported);
+            if (!scene.Renderer(0).DeepSkyVisible(cluster.Id) || scene.Renderer(0).DeepSkyLabelVisible(cluster.Id))
+                throw new InvalidOperationException("The original open cluster must remain visible with its label hidden.");
+            var nebula = world.DeepSky.Find(new("dso/m42"))!;
+            await Capture("deep-sky-nebula-labelled", nebula.Id, nebula.PositionKilometers + world.StellarOrigin,
+                nebula.RadiusKilometers * 4.2, imported);
+            var observer = scene.Session[0];
+            if (!scene.Renderer(0).DeepSkyVisible(nebula.Id) || !scene.Renderer(0).DeepSkyLabelVisible(nebula.Id) ||
+                !await scene.ReloadAddOns() || scene.Session[0] != observer)
+                throw new InvalidOperationException("The original Messier nebula and its label must survive catalogue reload.");
+            var onlyCaldwell = imported with { DeepSkyFilter = new DeepSkyVisibility(12, "C") };
+            await Capture("deep-sky-nebula-filtered", nebula.Id, nebula.PositionKilometers + world.StellarOrigin,
+                nebula.RadiusKilometers * 4.2, onlyCaldwell);
+            if (scene.Renderer(0).DeepSkyVisible(nebula.Id))
+                throw new InvalidOperationException("The Caldwell filter must hide the original Messier nebula.");
+            GD.Print("Deep-sky settings: original M31, M45 and M42, catalogue and kind filters, independent labels and reload.");
+        }
+
         async Task Capture(string name, ObjectId? id, Vector3d center, double range, SkyLayerSettings layers, Vector3d? eye = null)
         {
             double azimuth = eye is { } direction ? Math.Atan2(direction.X, -direction.Y) : -.7;

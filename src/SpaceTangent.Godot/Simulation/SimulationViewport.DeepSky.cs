@@ -18,13 +18,19 @@ internal partial class SimulationViewport
 
     internal bool DeepSkyVisible(ObjectId id) => _deepSkyObjects.GetValueOrDefault(id)?.Visible == true;
 
+    internal bool DeepSkyLabelVisible(ObjectId id) => _deepSkyObjects.TryGetValue(id, out var mesh) &&
+        _deepSkyPool.Any(item => item.Mesh == mesh && item.Label.Visible);
+
     private void CacheDeepSky(SimulationWorld world) => _deepSkyPositions = world.DeepSky.Objects
         .Select(body => (body, body.PositionKilometers + world.StellarOrigin, body.RadiusKilometers)).ToArray();
 
     private void DrawDeepSky(SimulationWorld world, NavigationCamera pose, SkyLayerSettings sky, Vector3d eye,
         double units, Func<Vector3d, (Vector3 Position, double Scale)> project)
     {
+        var filter = sky.DeepSkyFilter ?? DeepSkyVisibility.All;
         var target = pose.Target is { } id ? world.DeepSky.Find(id) : null;
+        if (target is not null && !filter.Allows(target))
+            target = null;
         if (!sky.DeepSky && target is null)
             return;
         _deepSkyCandidates.Clear();
@@ -44,7 +50,7 @@ internal partial class SimulationViewport
                     continue;
                 Vector3d offset = center - eye;
                 double distance = offset.Length;
-                if (distance <= radius || radius < distance * .0012 || Vector3d.Dot(offset, direction) < distance * limit)
+                if (distance <= radius || radius < distance * .0012 || Vector3d.Dot(offset, direction) < distance * limit || !filter.Allows(body))
                     continue;
                 _deepSkyCandidates.Add((body, center, radius / distance));
             }
@@ -80,7 +86,13 @@ internal partial class SimulationViewport
                 profile.SetShaderParameter("concentration", (float)body.KingConcentration);
             }
             mesh.Show();
-            if (sky.Labels)
+            bool labelEnabled = body.Kind switch
+            {
+                DeepSkyKind.OpenCluster => sky.OpenClusterLabels ?? true,
+                DeepSkyKind.Nebula => sky.NebulaLabels ?? true,
+                _ => true
+            };
+            if (sky.Labels && labelEnabled)
             {
                 label.Text = body.Designation;
                 label.Position = position - facing.Y * radius * (aspect + .18f);

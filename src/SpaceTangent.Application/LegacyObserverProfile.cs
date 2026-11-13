@@ -95,6 +95,17 @@ public static class LegacyObserverProfiles
             MeteorRateMultiplier = meteorRate is { } rate && SkyLayerSettings.ValidMeteorRate(rate)
                 ? (rate == 1 ? null : rate) : sky.MeteorRateMultiplier
         };
+        var filter = sky.DeepSkyFilter ?? DeepSkyVisibility.All;
+        if (Integer(root, "DeepSkyKinds") is >= 0 and <= 15 and var kinds)
+            filter = filter with { Kinds = kinds };
+        if (Word(root, "DeepSkyCatalogs") is { } catalogues)
+            filter = filter with { Catalogues = DeepSkyVisibility.NormalizeCatalogues(catalogues) };
+        sky = sky with
+        {
+            DeepSkyFilter = filter == DeepSkyVisibility.All ? null : filter,
+            OpenClusterLabels = Flag(root, "OpenClusterLabels") ?? sky.OpenClusterLabels,
+            NebulaLabels = Flag(root, "NebulaLabels") ?? sky.NebulaLabels
+        };
         var marks = Integer(root, "BodyMarks") is { } flags ? (BodyReferenceMarks)flags & BodyReferenceMarks.All : current.ReferenceMarks;
         double? field = Number(root, "FieldOfViewDegrees") is { } degrees && ObserverView.ValidFieldOfView(degrees)
             ? degrees : current.FieldOfViewDegrees;

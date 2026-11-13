@@ -15,5 +15,8 @@ public enum SkyMarkings
     Poles = 128,
     EquinoxesAndSolstices = 256,
     ZenithAndNadir = 512,
-    ArchaeoLines = 1024
+    ArchaeoLines = 1024,
+    NavigationalStars = 2048,
+    Pulsars = 4096,
+    Quasars = 8192
 }

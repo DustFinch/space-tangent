@@ -13,6 +13,8 @@ internal sealed record BrightSkyData(BrightStarCatalogue Catalogue, IReadOnlyLis
     internal IReadOnlyList<(Vector3 From, Vector3 To)> Boundaries => BoundaryMap?.Segments ?? [];
     internal SkyBoundaryMap? BoundaryMap { get; init; }
     internal Texture2D? ZodiacalMap { get; init; }
+    internal SkyCatalogueMarker[] Pulsars { get; init; } = [];
+    internal SkyCatalogueMarker[] Quasars { get; init; } = [];
     internal MinorBodyEntry[] MinorBodies { get; init; } = [];
     internal IReadOnlyDictionary<ObjectId, double> SatelliteMagnitudes { get; init; } = new Dictionary<ObjectId, double>();
 
@@ -101,6 +103,8 @@ internal sealed record BrightSkyData(BrightStarCatalogue Catalogue, IReadOnlyLis
         {
             BoundaryMap = LoadBoundaries(),
             ZodiacalMap = ZodiacalGlow.LoadMap(),
+            Pulsars = SkyMarkerCatalogue.Load("SPACETANGENT_PULSARS", "sky/pulsars.txt", pulsars: true),
+            Quasars = SkyMarkerCatalogue.Load("SPACETANGENT_QUASARS", "sky/quasars.txt", pulsars: false),
             MinorBodies = LoadMinorBodies(),
             SatelliteMagnitudes = LoadSatelliteMagnitudes()
         };

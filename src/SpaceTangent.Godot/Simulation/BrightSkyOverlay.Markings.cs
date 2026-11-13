@@ -33,6 +33,7 @@ internal partial class BrightSkyOverlay
         }
         Vector3? pole = CelestialPoleOfDate.Direction(_frame.Epoch) is { } datePole ? Convert(datePole) : null;
         DrawDateMarkings(marks, pole);
+        DrawCatalogueMarkings(marks);
         if (_frame.SiteAxes is not { } axes)
             return;
         Vector3 zenith = Convert(axes.Z);
@@ -54,6 +55,54 @@ internal partial class BrightSkyOverlay
         {
             MarkPoint(zenith, "Zenith");
             MarkPoint(-zenith, "Nadir");
+        }
+    }
+
+    private void DrawCatalogueMarkings(SkyMarkings marks)
+    {
+        if (marks.HasFlag(SkyMarkings.NavigationalStars))
+            DrawNavigationalStars();
+        if (marks.HasFlag(SkyMarkings.Pulsars))
+            DrawMarkers(_data.Pulsars, pulsars: true);
+        if (marks.HasFlag(SkyMarkings.Quasars))
+            DrawMarkers(_data.Quasars, pulsars: false);
+    }
+
+    private void DrawNavigationalStars()
+    {
+        Color color = new(.75f, .9f, 1, .9f);
+        foreach (uint hip in SkyMarkerCatalogue.NavigationalStars)
+        {
+            if (CultureDirection(hip) is not { } direction || !Project(direction, out Vector2 at) ||
+                !new Rect2(Vector2.Zero, Size).Grow(8).HasPoint(at))
+                continue;
+            DrawPolyline([at + new Vector2(0, -6), at + new Vector2(6, 0), at + new Vector2(0, 6),
+                at + new Vector2(-6, 0), at + new Vector2(0, -6)], color, 1.2f, true);
+            var id = new SpaceTangent.Contracts.ObjectId(FormattableString.Invariant($"hip/{hip}"));
+            string? name = _cultureWorld?.Catalogue.Find(id)?.Name ?? _data.Catalogue.Find(id)?.Name;
+            if (string.IsNullOrWhiteSpace(name))
+                name = FormattableString.Invariant($"HIP {hip}");
+            DrawString(ThemeDB.FallbackFont, at + new Vector2(8, 12), name, fontSize: 12, modulate: color);
+        }
+    }
+
+    private void DrawMarkers(SkyCatalogueMarker[] entries, bool pulsars)
+    {
+        double field = 360 / Math.PI * Math.Atan(_frame.TangentHalfField);
+        double faintest = 12 + 5 * Math.Log10(Math.Max(50 / Math.Max(field, .001), 1));
+        Color color = pulsars ? new(.45f, 1, .6f, .85f) : new(1, .65f, .35f, .85f);
+        var rect = new Rect2(Vector2.Zero, Size).Grow(20);
+        foreach (var marker in entries)
+        {
+            if ((!pulsars && !(marker.Magnitude <= faintest)) || !Project(marker.Direction, out Vector2 at) ||
+                !rect.HasPoint(at))
+                continue;
+            if (pulsars)
+                DrawArc(at, 3.5f, 0, Mathf.Tau, 12, color, 1.2f, true);
+            else
+                DrawCircle(at, 2, color, antialiased: true);
+            if (field < 10)
+                DrawString(ThemeDB.FallbackFont, at + new Vector2(6, -4), marker.Name, fontSize: 11, modulate: color);
         }
     }
 

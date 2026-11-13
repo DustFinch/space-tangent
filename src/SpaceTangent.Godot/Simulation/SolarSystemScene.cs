@@ -243,7 +243,7 @@ public partial class SolarSystemScene : Control
         _split.Name = "SplitViews";
 
         var search = _workspace.AddPage("Search", "Search");
-        _objectSearch = new(search, Session!.World.Catalogue, SelectObject);
+        _objectSearch = new(search, Session!.World.Catalogue, SelectObject, AimAtSkyMarker);
         var time = _workspace.AddPage("Time", "Time");
         _timeHeading = new Label { ThemeTypeVariation = "WorkspaceTitle" };
         time.AddChild(_timeHeading);
@@ -327,7 +327,8 @@ public partial class SolarSystemScene : Control
             (SkyMarkings.EquatorOfDate, "Equator of date"), (SkyMarkings.GalacticEquator, "Galactic equator"),
             (SkyMarkings.Colures, "Colures"), (SkyMarkings.Poles, "Celestial, ecliptic and galactic poles"),
             (SkyMarkings.EquinoxesAndSolstices, "Equinoxes and solstices"), (SkyMarkings.ArchaeoLines, "Archaeoastronomy lines"),
-            (SkyMarkings.Meridian, "Local meridian"),
+            (SkyMarkings.NavigationalStars, "Navigational stars"), (SkyMarkings.Pulsars, "Pulsars"),
+            (SkyMarkings.Quasars, "Quasars"), (SkyMarkings.Meridian, "Local meridian"),
             (SkyMarkings.PrimeVertical, "Prime vertical"), (SkyMarkings.PrecessionCircles, "Precession circles"),
             (SkyMarkings.CircumpolarCircles, "Circumpolar circles"), (SkyMarkings.ZenithAndNadir, "Zenith and nadir")
         })

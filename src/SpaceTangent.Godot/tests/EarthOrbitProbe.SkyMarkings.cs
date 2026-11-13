@@ -9,6 +9,69 @@ namespace SpaceTangent.Godot.Tests;
 
 public partial class EarthOrbitProbe
 {
+    private async Task ExerciseCatalogueMarkings(SolarSystemScene scene, string directory, JulianInstant epoch)
+    {
+        var pulsars = SkyMarkerCatalogue.Load("SPACETANGENT_PULSARS", "sky/pulsars.txt", true);
+        var quasars = SkyMarkerCatalogue.Load("SPACETANGENT_QUASARS", "sky/quasars.txt", false);
+        if (pulsars.Length != 3604 || quasars.Length != 6514 || SkyMarkerCatalogue.NavigationalStars.Length != 58)
+            throw new InvalidOperationException($"Unexpected original catalogue counts {pulsars.Length}/{quasars.Length}.");
+        var marker = pulsars.Single(item => item.Alias == "CTA 1");
+        var session = scene.Session!;
+        var solar = session.World.Graph.Evaluate(epoch).SolarSystem!.Value;
+        var first = new ObserverView(epoch, CameraMode.Solar, null, false)
+        {
+            Navigation = new(solar.Earth.PositionKilometers, 30000, 0, 0, null, false)
+        };
+        string path = Path.Combine(directory, "catalogue-sky-markings.stscene");
+        ScenarioFile.Save(path, new([first, first], false, 0, 0, session.DeltaT));
+        if (!scene.LoadScenario(path))
+            throw new InvalidOperationException("Could not open catalogue search scene.");
+        var field = (LineEdit)scene.FindChild("ObjectQuery", recursive: true, owned: false);
+        field.Text = "CTA 1";
+        field.EmitSignal(LineEdit.SignalName.TextSubmitted, field.Text);
+        if (!session[0].Sky.Markings.HasFlag(SkyMarkings.Pulsars) || session[1] != first)
+            throw new InvalidOperationException("Pulsar alias search must mark only the active view.");
+        var forward = session[0].Navigation!.Value.Placement!.Value.Forward;
+        if ((forward - new Vector3d(marker.Direction.X, marker.Direction.Y, marker.Direction.Z)).Length > 1e-6)
+            throw new InvalidOperationException("The active camera must point to the archived pulsar.");
+        ScenarioFile.Save(path, session.CaptureScenario(0));
+        if (!scene.LoadScenario(path) || !await scene.ReloadAddOns() ||
+            session[0].Sky.Markings != SkyMarkings.Pulsars || session[1] != first)
+            throw new InvalidOperationException("Catalogue marks did not survive reload.");
+
+        for (int frame = 0; frame < 4; frame++)
+        {
+            await ToSignal(GetTree(), SceneTree.SignalName.ProcessFrame);
+            await ToSignal(RenderingServer.Singleton, RenderingServer.SignalName.FramePostDraw);
+        }
+        using var a = scene.Renderer(0).GetViewport().GetTexture().GetImage();
+        int green = 0;
+        for (int y = a.GetHeight() / 2 - 18; y <= a.GetHeight() / 2 + 18; y++)
+            for (int x = a.GetWidth() / 2 - 18; x <= a.GetWidth() / 2 + 18; x++)
+            {
+                Color color = a.GetPixel(x, y);
+                if (color.G > .35f && color.G > color.R + .1f)
+                    green++;
+            }
+        if (green < 5 || a.SavePng(Path.ChangeExtension(path, ".png")) != Error.Ok)
+            throw new InvalidOperationException($"Expected the pulsar ring at the centre of the view ({green} green pixels).");
+        var quasar = quasars.First(item => item.Magnitude < 14);
+        field.Text = quasar.Name;
+        field.EmitSignal(LineEdit.SignalName.TextSubmitted, field.Text);
+        if (!session[0].Sky.Markings.HasFlag(SkyMarkings.Quasars) || session[1] != first)
+            throw new InvalidOperationException("Quasar search must mark only the active view.");
+        for (int frame = 0; frame < 3; frame++)
+        {
+            await ToSignal(GetTree(), SceneTree.SignalName.ProcessFrame);
+            await ToSignal(RenderingServer.Singleton, RenderingServer.SignalName.FramePostDraw);
+        }
+        using var quasarImage = scene.Renderer(0).GetViewport().GetTexture().GetImage();
+        var center = quasarImage.GetPixel(quasarImage.GetWidth() / 2, quasarImage.GetHeight() / 2);
+        if (!(center.R > center.B + .2f))
+            throw new InvalidOperationException($"Expected a quasar at the centre of the view: {center}.");
+        GD.Print($"Catalogue marks GPU: {pulsars.Length} pulsars, {quasars.Length} quasars, 58 navigational HIP IDs, CTA 1 and {quasar.Name} search, {green} ring pixels after reload.");
+    }
+
     private async Task ExerciseSkyMarkings(SolarSystemScene scene, string directory)
     {
         var session = scene.Session!;
@@ -20,11 +83,11 @@ public partial class EarthOrbitProbe
             FieldOfViewDegrees = 75
         };
         string profile = Path.Combine(directory, "sky-markings.json");
-        File.WriteAllText(profile, """{"Site":{},"SkyMarks":2047}""");
+        File.WriteAllText(profile, """{"Site":{},"SkyMarks":4095}""");
         var marked = LegacyObserverProfiles.Read(profile, view, session.DeltaT).Observer;
         const SkyMarkings expected = SkyMarkings.Meridian | SkyMarkings.PrimeVertical | SkyMarkings.GalacticEquator |
             SkyMarkings.PrecessionCircles | SkyMarkings.CircumpolarCircles | SkyMarkings.ZenithAndNadir |
-            SkyMarkings.EquatorOfDate | SkyMarkings.Colures | SkyMarkings.Poles | SkyMarkings.EquinoxesAndSolstices | SkyMarkings.ArchaeoLines;
+            SkyMarkings.EquatorOfDate | SkyMarkings.Colures | SkyMarkings.Poles | SkyMarkings.EquinoxesAndSolstices | SkyMarkings.ArchaeoLines | SkyMarkings.NavigationalStars;
         var j2000 = JulianInstant.FromJulianDate(JulianInstant.J2000Day, TimeScale.Tdb);
         var poleAtEpoch = CelestialPoleOfDate.Direction(j2000)!.Value;
         var poleAfter = CelestialPoleOfDate.Direction(j2000.AddSeconds(36525d * 86400))!.Value;
@@ -68,6 +131,7 @@ public partial class EarthOrbitProbe
         menu.EmitSignal(PopupMenu.SignalName.IdPressed, (long)SkyMarkings.Meridian);
         if (session[0].Sky.Markings != (expected & ~SkyMarkings.Meridian) || session[1].Sky.Markings != SkyMarkings.None)
             throw new InvalidOperationException("The markings menu must affect only the active view.");
-        GD.Print($"Sky markings GPU: Paranal, eleven archived flags and independent views, {vertical}/{horizontal} bright horizon-circle samples after reload.");
+        await ExerciseCatalogueMarkings(scene, directory, epoch);
+        GD.Print($"Sky markings GPU: Paranal, twelve archived flags and independent views, {vertical}/{horizontal} bright horizon-circle samples after reload.");
     }
 }

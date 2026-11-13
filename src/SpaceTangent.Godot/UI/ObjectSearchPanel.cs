@@ -18,15 +18,17 @@ internal sealed class ObjectSearchPanel
     private ObjectId? _selection;
     private int _filter;
 
-    internal ObjectSearchPanel(VBoxContainer panel, ObjectCatalogue catalogue, Action<ObjectId> select)
+    internal ObjectSearchPanel(VBoxContainer panel, ObjectCatalogue catalogue, Action<ObjectId> select, Func<string, bool> aimAtMarker)
     {
         _catalogue = catalogue;
         _select = select;
         _query = new LineEdit { Name = "ObjectQuery", PlaceholderText = "Name or catalogue ID", ClearButtonEnabled = true };
         _query.TextChanged += _ => Refresh();
-        _query.TextSubmitted += _ =>
+        _query.TextSubmitted += text =>
         {
-            if (_first is { } match)
+            if (aimAtMarker(text))
+                _query.ReleaseFocus();
+            else if (_first is { } match)
             {
                 _select(match.Id);
                 _query.ReleaseFocus();

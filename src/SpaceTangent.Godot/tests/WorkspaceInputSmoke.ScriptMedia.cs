@@ -80,6 +80,30 @@ public partial class WorkspaceInputSmoke
         running.Step(0);
         Require(running.Error?.Contains("relative to the script folder", StringComparison.Ordinal) == true,
             "The media request must stay in the script folder.");
+        if (System.Environment.GetEnvironmentVariable("SPACETANGENT_MEDIA_FORMATS") is { Length: > 0 } formats)
+        {
+            string[] audioNames = ["collect.ogg", "collect.mp3"];
+            foreach (string name in audioNames)
+                File.Copy(Path.Combine(formats, name), Path.Combine(convertedDirectory, name));
+            using (var original = GD.Load<Texture2D>("res://UI/space-tangent.png").GetImage())
+                Require(original.SaveWebp(Path.Combine(convertedDirectory, "icon.webp")) == Error.Ok, "Prepare a WebP image.");
+            File.WriteAllText(script, """
+                st.overlay('icon.webp', 10, 0.5, 0.5, 48, 48)
+                st.play('collect.ogg', 1, 4, true)
+                st.play('collect.mp3', 1, 5, true)
+                st.wait(20)
+                """);
+            running = _scene.RunScript(script) ?? throw new InvalidOperationException("Could not open the media format check.");
+            running.Step(0);
+            Require(running.Error is null, running.Error ?? "");
+            Require(view.FindChild("ScriptImage", true, false) is TextureRect { Texture: not null } &&
+                view.FindChild("ScriptSound4", true, false) is AudioStreamPlayer { Playing: true, Stream: AudioStreamOggVorbis } &&
+                view.FindChild("ScriptSound5", true, false) is AudioStreamPlayer { Playing: true, Stream: AudioStreamMP3 },
+                "WebP, Ogg and MP3 must load using their own decoders.");
+            await KeyPress(Key.Escape);
+            await Until(() => view.FindChild("ScriptSound5", true, false) is null, "Stopping the decoded media");
+            GD.Print("UI: decoded WebP and played local Ogg and MP3 on independent channels.");
+        }
         GD.Print("UI: converted and played classic media in one view, stopped it with Escape, and rejected an outside path.");
     }
 }

@@ -79,6 +79,50 @@ public partial class EarthOrbitProbe
             throw new IOException("Could not capture the Hyperion point and mesh.");
         GD.Print("Moon photometry GPU: original Hyperion mesh, 2.5-pixel blend, unresolved point, picking and reload.");
 
+        const double orbitRadius = 1500934 * 1.0274;
+        var hidden = WithLabel(At(focal * orbitRadius / 15));
+        var faded = WithLabel(At(focal * orbitRadius / 30));
+        Save([faded, hidden]);
+        var label = scene.Renderer(0).MoonLabel(id)!;
+        if (!label.Visible || Math.Abs(label.Modulate.A - .5f) > .01f ||
+            scene.Renderer(1).MoonLabel(id)?.Visible != false)
+            throw new InvalidOperationException("Hyperion labels must fade between 20 and 40 projected orbit pixels.");
+        await ToSignal(RenderingServer.Singleton, RenderingServer.SignalName.FramePostDraw);
+        using var labeled = renderer.GetViewport().GetTexture().GetImage();
+        label.Hide();
+        await ToSignal(RenderingServer.Singleton, RenderingServer.SignalName.FramePostDraw);
+        using var unlabeled = renderer.GetViewport().GetTexture().GetImage();
+        var screen = renderer.NavigationCameraNode.UnprojectPosition(label.Position);
+        int changed = 0;
+        for (int y = Math.Max(0, (int)screen.Y - 16); y < Math.Min(labeled.GetHeight(), (int)screen.Y + 16); y++)
+        for (int x = Math.Max(0, (int)screen.X - 64); x < Math.Min(labeled.GetWidth(), (int)screen.X + 64); x++)
+            if (!labeled.GetPixel(x, y).IsEqualApprox(unlabeled.GetPixel(x, y)))
+                changed++;
+        if (changed < 20)
+            throw new InvalidOperationException($"The Hyperion label changed only {changed} pixels.");
+        label.Show();
+
+        if (!snapshot.TryState(body.Parent, out var parent))
+            throw new InvalidOperationException("The original Saturn state is required.");
+        Vector3d towardParent = parent.PositionKilometers - state.PositionKilometers;
+        Vector3d direction = towardParent / towardParent.Length;
+        Vector3d occultedUp = new Vector3d(0, 0, 1) - direction * direction.Z;
+        var occulted = WithLabel(At(2 * towardParent.Length));
+        occulted = occulted with
+        {
+            Navigation = occulted.Navigation!.Value with
+            {
+                Placement = new NavigationPlacement(towardParent * 2, direction * -1, occultedUp / occultedUp.Length)
+            }
+        };
+        Save([occulted, faded with { Sky = default }]);
+        if (scene.Renderer(0).MoonLabel(id)?.Visible != false ||
+            scene.Renderer(1).MoonLabel(id)?.Visible != false)
+            throw new InvalidOperationException("Saturn occultation and the independent Labels layer must each hide Hyperion.");
+        GD.Print($"Moon labels GPU: original Hyperion fade, {changed} label pixels, Saturn occultation and independent visibility.");
+
+        static ObserverView WithLabel(ObserverView observer) => observer with { Sky = new(false, true, false, false) };
+
         void Save(ObserverView[] views)
         {
             ScenarioFile.Save(path, new(views, false, 0, 0, session.DeltaT));

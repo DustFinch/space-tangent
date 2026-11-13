@@ -161,7 +161,7 @@ internal partial class SimulationViewport
         _planetPathNode.Hide();
     }
 
-    private void DrawPlanetGlobes(WorldSnapshot snapshot, NavigationCamera pose, Vector3d eyeOffset, double units,
+    private void DrawPlanetGlobes(WorldSnapshot snapshot, NavigationCamera pose, Vector3d eyeOffset, double units, bool labels,
         Func<Vector3d, (Vector3 Position, double Scale)> project)
     {
         foreach (PlanetDefinition planet in PlanetCatalogue.Planets)
@@ -182,7 +182,7 @@ internal partial class SimulationViewport
                 rings.Update(ToGodot(toSun / distance, 1), distance, oriented);
             }
         }
-        DrawSmallBodies(snapshot, pose, eyeOffset, units, project);
+        DrawSmallBodies(snapshot, pose, eyeOffset, units, labels, project);
     }
 
     private static bool PlaceWorldGlobe(MeshInstance3D globe, WorldSnapshot snapshot, ObjectId id, Vector3 position, Vector3 radii)

@@ -127,7 +127,7 @@ internal partial class SimulationViewport
         _navigationMoonMaterial.SetShaderParameter("sun_from_moon", ToGodot((solar.Sun - solar.Moon).PositionKilometers, 1));
         _navigationMoonMaterial.SetShaderParameter("earth_from_moon", ToGodot((solar.Earth - solar.Moon).PositionKilometers, 1));
         HidePlanetGlobes();
-        DrawPlanetGlobes(snapshot, pose, placement.OffsetKilometers, units, ProjectWithScale);
+        DrawPlanetGlobes(snapshot, pose, placement.OffsetKilometers, units, sky.Labels, ProjectWithScale);
         DrawWorldAtmospheres(snapshot, solar.Sun.PositionKilometers);
         DrawStellarObjects(pose, snapshot, sky, units, ProjectWithScale);
         DrawExtrasolarOrbits(pose, snapshot, units, ProjectWithScale);

@@ -42,13 +42,30 @@ public partial class EarthOrbitProbe
             var along = tangent - outward * Vector3d.Dot(tangent, outward);
             along /= along.Length;
             await Capture("inside", state.PositionKilometers + outward * (radius + insideHeight), along, outward);
+            if (id == SolarSystemSample.VenusId && scene.Renderer(0).VenusCloudState is { } first)
+            {
+                if (!first.Visible)
+                    throw new InvalidOperationException("The original Venus clouds must be visible at 85 km.");
+                var later = epoch.AddSeconds(86400);
+                if (!scene.Session.World.Graph.Evaluate(later).TryState(id, out var laterState))
+                    throw new InvalidOperationException("Venus must have a state one day later.");
+                await Capture("cloud-drift", laterState.PositionKilometers + outward * (radius * 3.5), outward * -1, up, later);
+                var drift = scene.Renderer(0).VenusCloudState;
+                if (drift is not { Visible: true } || Math.Abs(Math.Abs(drift.Value.Offset - first.Offset) % 1 - .25) > 1e-6 &&
+                    Math.Abs(Math.Abs(drift.Value.Offset - first.Offset) % 1 - .75) > 1e-6)
+                    throw new InvalidOperationException("Venus clouds must drift by 90 degrees per TDB day.");
+                await Capture("below-clouds", state.PositionKilometers + outward * (radius + 55), along, outward);
+                if (scene.Renderer(0).VenusCloudState is not { Visible: false })
+                    throw new InvalidOperationException("The opaque Venus cloud layer must be hidden below 65 km.");
+                GD.Print("Venus clouds: original texture at 65 km, 90 degrees per TDB day, visible above and hidden below.");
+            }
 
-            async Task Capture(string place, Vector3d eye, Vector3d direction, Vector3d vertical)
+            async Task Capture(string place, Vector3d eye, Vector3d direction, Vector3d vertical, JulianInstant? instant = null)
             {
                 string basename = $"atmosphere-{name}-{place}";
                 var camera = new NavigationCamera(eye, radius * 2.5, 0, 0, null, false)
                     { Placement = new(default, direction, vertical) };
-                var view = new ObserverView(epoch, CameraMode.Solar, id, false) { Navigation = camera };
+                var view = new ObserverView(instant ?? epoch, CameraMode.Solar, id, false) { Navigation = camera };
                 string path = Path.Combine(directory, basename + ".stscene");
                 ScenarioFile.Save(path, new([view], false, 0, 0, DeltaTModel.MorrisonStephenson2004));
                 if (!scene.LoadScenario(path) || !scene.Renderer(0).WorldAtmosphereActive(id, lookup))

@@ -48,8 +48,11 @@ internal partial class SimulationViewport
         InitializeSmallBodies();
     }
 
+    private Texture2D? _venusClouds;
+
     internal void SetPlanetTextures(PlanetTextures textures)
     {
+        _venusClouds = textures.VenusClouds;
         _marsSurface = textures.Surfaces.GetValueOrDefault(PlanetCatalogue.MarsId);
         foreach (var (id, texture) in textures.Surfaces)
         {
@@ -68,7 +71,7 @@ internal partial class SimulationViewport
     {
         _marsTiles = tiles.GetValueOrDefault(PlanetCatalogue.MarsId);
         ObjectId venus = SolarSystemSample.VenusId;
-        _worldAtmospheres.Add(venus, new(_planetGlobes[venus], 6051.8f, null, tiles.GetValueOrDefault(venus), hasAtmosphere: true));
+        _worldAtmospheres.Add(venus, new(_planetGlobes[venus], 6051.8f, null, tiles.GetValueOrDefault(venus), hasAtmosphere: true, venusClouds: _venusClouds));
         foreach (var (id, lookup) in lookups)
             if (_planetGlobes.TryGetValue(id, out MeshInstance3D? globe))
                 _worldAtmospheres.Add(id, new(globe, lookup.RadiusKilometers, lookup, tiles.GetValueOrDefault(id), hasAtmosphere: true));
@@ -86,6 +89,8 @@ internal partial class SimulationViewport
         ? _earthOrbit is { Active: true } air && air.UsesLookup == lookup
         : _worldAtmospheres.TryGetValue(id, out var atmosphere) && atmosphere.Active && atmosphere.UsesLookup == lookup;
 
+    internal (bool Visible, float Offset)? VenusCloudState => _worldAtmospheres.GetValueOrDefault(SolarSystemSample.VenusId)?.CloudState;
+
     private void DrawWorldAtmospheres(WorldSnapshot snapshot, Vector3d sun)
     {
         foreach (var (id, atmosphere) in _worldAtmospheres)
@@ -93,7 +98,7 @@ internal partial class SimulationViewport
             if (!_planetGlobes[id].Visible || !snapshot.TryState(id, out CartesianState state))
                 continue;
             Vector3d direction = sun - state.PositionKilometers;
-            atmosphere.Update(ToGodot(direction / direction.Length, 1), _navigationCamera.Position);
+            atmosphere.Update(ToGodot(direction / direction.Length, 1), _navigationCamera.Position, snapshot.Epoch);
         }
     }
 

@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
 using Godot;
+using SpaceTangent.Contracts;
 
 namespace SpaceTangent.Godot.Simulation;
 
@@ -11,10 +12,14 @@ internal sealed class WorldOrbitAtmosphere
     private readonly ShaderMaterial _ground;
     private readonly ShaderMaterial? _limb;
     private readonly OrbitAtmosphereTextures? _lookup;
+    private readonly MeshInstance3D? _clouds;
+    private readonly ShaderMaterial? _cloudMaterial;
+    private const float VenusCloudHeight = 65;
+    private const double VenusCloudDegreesPerDay = 90;
     internal BodyTileTextures? Tiles { get; }
 
     internal WorldOrbitAtmosphere(MeshInstance3D globe, float radius, OrbitAtmosphereTextures? lookup,
-        BodyTileTextures? tiles, bool hasAtmosphere)
+        BodyTileTextures? tiles, bool hasAtmosphere, Texture2D? venusClouds = null)
     {
         _globe = globe;
         _surface = (StandardMaterial3D)globe.MaterialOverride;
@@ -31,7 +36,7 @@ internal sealed class WorldOrbitAtmosphere
             return;
 
         _limb = new ShaderMaterial { Shader = GD.Load<Shader>("res://Shaders/world_orbit_limb.gdshader") };
-        float shellHeight = lookup?.HeightKilometers ?? 105;
+        float shellHeight = lookup?.HeightKilometers ?? (venusClouds is null ? 105 : 200);
         float groundRadius = lookup?.RadiusKilometers ?? radius;
         foreach (ShaderMaterial material in new[] { _ground, _limb })
         {
@@ -49,13 +54,34 @@ internal sealed class WorldOrbitAtmosphere
             Visible = false
         };
         _globe.AddChild(_shell);
+        if (venusClouds is not null)
+        {
+            _cloudMaterial = new() { Shader = GD.Load<Shader>("res://Shaders/venus_orbit_clouds.gdshader") };
+            _cloudMaterial.SetShaderParameter("cloud_map", venusClouds);
+            _cloudMaterial.SetShaderParameter("cloud_radius_km", groundRadius + VenusCloudHeight);
+            _cloudMaterial.SetShaderParameter("ground_radius_km", groundRadius);
+            _cloudMaterial.SetShaderParameter("shell_height_km", shellHeight);
+            _cloudMaterial.SetShaderParameter("air_base_km", VenusCloudHeight);
+            _clouds = new()
+            {
+                Mesh = globe.Mesh,
+                Scale = Vector3.One * (1 + VenusCloudHeight / groundRadius),
+                MaterialOverride = _cloudMaterial,
+                CastShadow = GeometryInstance3D.ShadowCastingSetting.Off,
+                Visible = false
+            };
+            _globe.AddChild(_clouds);
+        }
     }
 
     internal bool Active => _globe.Visible && _shell?.Visible == true;
     internal bool UsesLookup => _lookup is not null;
     internal bool Textured => _surface.AlbedoTexture is not null || Tiles?.Color is not null;
 
-    internal void Update(Vector3 light, Vector3 eye)
+    internal (bool Visible, float Offset)? CloudState => _clouds is null ? null :
+        (_clouds.IsVisibleInTree(), _cloudMaterial!.GetShaderParameter("cloud_offset").AsSingle());
+
+    internal void Update(Vector3 light, Vector3 eye, JulianInstant epoch)
     {
         float radius = _globe.Scale.X;
         bool showAir = _shell is not null && radius > .1f && radius > eye.DistanceTo(_globe.Position) * .007f;
@@ -63,10 +89,19 @@ internal sealed class WorldOrbitAtmosphere
             _shell.Visible = showAir;
         if (!showAir && Tiles is null)
         {
+            if (_clouds is not null)
+                _clouds.Hide();
             _globe.MaterialOverride = _surface;
             return;
         }
         var local = _globe.Transform.Basis.Orthonormalized().Inverse() * light;
+        if (_clouds is not null)
+        {
+            _clouds.Visible = showAir && eye.DistanceTo(_globe.Position) >= radius * _clouds.Scale.X;
+            double turns = epoch.ToJulianDate() * VenusCloudDegreesPerDay / 360;
+            _cloudMaterial!.SetShaderParameter("cloud_offset", (float)-(turns - Math.Floor(turns)));
+            _cloudMaterial.SetShaderParameter("light_in_body", local);
+        }
         _ground.SetShaderParameter("light_in_body", local);
         _ground.SetShaderParameter("draw_air", showAir);
         if (showAir)

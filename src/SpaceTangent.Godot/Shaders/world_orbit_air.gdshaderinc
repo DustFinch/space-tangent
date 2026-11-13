@@ -22,7 +22,7 @@ vec2 air_span(vec3 eye, vec3 ray, float radius) {
     return vec2(-nearest - width, -nearest + width);
 }
 
-void world_orbit_air(vec3 eye, vec3 ray, out vec3 transmission, out vec3 radiance) {
+void world_orbit_air_to(vec3 eye, vec3 ray, float solid_radius_km, out vec3 transmission, out vec3 radiance) {
     if (use_atmosphere_lookup) {
         vec3 entry;
         sample_atmosphere_lookup(eye, ray, light_in_body, ground_radius_km, transmission, radiance, entry);
@@ -30,7 +30,7 @@ void world_orbit_air(vec3 eye, vec3 ray, out vec3 transmission, out vec3 radianc
     }
     // Approximate cloud-top haze in the visible band. The deck is opaque below its top.
     vec2 outer = air_span(eye, ray, ground_radius_km + shell_height_km);
-    vec2 inner = air_span(eye, ray, ground_radius_km);
+    vec2 inner = air_span(eye, ray, solid_radius_km);
     float start = max(0.0, outer.x);
     float end = inner.x >= 0.0 ? min(outer.y, inner.x) : outer.y;
     float step_km = max(0.0, end - start) / 24.0;
@@ -41,13 +41,17 @@ void world_orbit_air(vec3 eye, vec3 ray, out vec3 transmission, out vec3 radianc
         vec3 point = eye + ray * (start + (float(index) + 0.5) * step_km);
         float altitude = length(point) - ground_radius_km;
         float depth = exp(-max(0.0, altitude - air_base_km) / air_scale_height_km) * air_extinction_per_km * step_km;
-        vec2 occlusion = air_span(point, light_in_body, ground_radius_km);
+        vec2 occlusion = air_span(point, light_in_body, solid_radius_km);
         if (occlusion.x <= 0.0) {
             radiance += exp(-optical_depth - depth * 0.5) * depth * phase * air_color;
         }
         optical_depth += depth;
     }
     transmission = vec3(exp(-optical_depth));
+}
+
+void world_orbit_air(vec3 eye, vec3 ray, out vec3 transmission, out vec3 radiance) {
+    world_orbit_air_to(eye, ray, ground_radius_km, transmission, radiance);
 }
 
 vec3 air_linear_srgb(vec3 value) {

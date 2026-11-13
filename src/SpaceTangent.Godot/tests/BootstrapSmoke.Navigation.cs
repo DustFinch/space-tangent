@@ -112,14 +112,17 @@ public partial class BootstrapSmoke
         scene.SetMode(0, CameraMode.Solar);
         session.StartFreeFlight(0);
         session.SetFieldOfView(0, 10);
+        const double sensitivity = 2.5;
+        var beforeSensitivity = session.CaptureScenario(0);
+        session.RestoreScenario(beforeSensitivity with { Views = [session[0] with { MouseSensitivity = sensitivity }, lunar] });
         var free = session[0].Navigation!.Value;
         viewport.EmitSignal(Control.SignalName.GuiInput, drag);
         var turned = session[0].Navigation!.Value;
         double freeScale = Math.Tan(5 * Math.PI / 180) / Math.Tan(25 * Math.PI / 180);
         Require(turned.AnchorKilometers == free.AnchorKilometers && turned.RangeKilometers == free.RangeKilometers &&
                 turned.Placement!.Value.Forward != free.Placement!.Value.Forward && session[1] == lunar &&
-                Math.Abs(Math.IEEERemainder(turned.AzimuthRadians - free.AzimuthRadians, Math.Tau) + .12 * freeScale) < 1e-12,
-            "A free drag must turn at its own field of view without translating the eye or the second view.");
+                Math.Abs(Math.IEEERemainder(turned.AzimuthRadians - free.AzimuthRadians, Math.Tau) + .12 * freeScale * sensitivity) < 1e-12,
+            "A free drag must use its own field of view and sensitivity without translating the eye or the second view.");
 
         session.SetFieldOfView(0, priorField);
         JulianInstant beforeJason = session[0].Epoch;

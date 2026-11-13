@@ -130,8 +130,14 @@ public static class LegacyObserverProfiles
                 Clockwise = clockwise ?? previous.Clockwise
             };
         }
-        var observer = current with { EarthObserver = camera.IsValid() ? camera : current.EarthObserver,
-            Sky = sky, ReferenceMarks = marks, FieldOfViewDegrees = field, Optics = optics, AutoOrbit = autoOrbit };
+        double? sensitivity = Number(root, "MouseSensitivity");
+        var observer = current with
+        {
+            EarthObserver = camera.IsValid() ? camera : current.EarthObserver,
+            Sky = sky, ReferenceMarks = marks, FieldOfViewDegrees = field, Optics = optics, AutoOrbit = autoOrbit,
+            MouseSensitivity = sensitivity is { } value && ObserverView.ValidMouseSensitivity(value)
+                ? (value == 1 ? null : value) : current.MouseSensitivity
+        };
         return new(observer, deltaT) { SavedSites = EarthPlaceCatalogue.ParseSavedText(Word(root, "SavedSites")) };
     }
 

@@ -124,6 +124,34 @@ public sealed class LegacyObserverProfileTests
         finally { File.Delete(path); }
     }
 
+    [Fact]
+    public void ArchivedMouseSensitivityAppliesToOneViewAndRoundTrips()
+    {
+        string path = Path.GetTempFileName();
+        try
+        {
+            File.WriteAllText(path, """{"DeltaT":"MorrisonStephenson2004","MouseSensitivity":2.5}""");
+            var view = new ObserverView(new(2451545, 0, TimeScale.Tdb), CameraMode.Solar, null, false);
+            var profile = LegacyObserverProfiles.Read(path, view, DeltaTModel.EspenakMeeus2006);
+            Assert.Equal(2.5, profile.Observer.MouseSensitivity);
+
+            var scene = new SimulationScenario([profile.Observer, view], false, 0, 0, profile.DeltaT);
+            ScenarioFile.Save(path, scene);
+            Assert.Equal(scene.Views, ScenarioFile.Load(path).Views);
+            var json = System.Text.Json.Nodes.JsonNode.Parse(File.ReadAllText(path))!.AsObject();
+            Assert.Equal(21, json["version"]!.GetValue<int>());
+            json["version"] = 20;
+            File.WriteAllText(path, json.ToJsonString());
+            Assert.Throws<InvalidDataException>(() => ScenarioFile.Load(path));
+
+            File.WriteAllText(path, """{"DeltaT":"MorrisonStephenson2004","MouseSensitivity":6}""");
+            Assert.Equal(2.5, LegacyObserverProfiles.Read(path, profile.Observer, profile.DeltaT).Observer.MouseSensitivity);
+            File.WriteAllText(path, """{"DeltaT":"MorrisonStephenson2004","MouseSensitivity":1}""");
+            Assert.Null(LegacyObserverProfiles.Read(path, profile.Observer, profile.DeltaT).Observer.MouseSensitivity);
+        }
+        finally { File.Delete(path); }
+    }
+
     private sealed class ArchiveSettingsFactAttribute : FactAttribute
     {
         public ArchiveSettingsFactAttribute()

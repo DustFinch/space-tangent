@@ -1433,16 +1433,15 @@ public partial class SolarSystemScene : Control
         var session = Session!;
         if (!pixels.IsFinite())
             return false;
-        if (session.InShip(view))
-            return session.AdjustCamera(view, -.006 * pixels.X, .006 * pixels.Y, 1);
-
         var observer = session[view];
+        double sensitivity = observer.MouseSensitivity ?? 1;
+        if (session.InShip(view))
+            return session.AdjustCamera(view, -.006 * pixels.X * sensitivity, .006 * pixels.Y * sensitivity, 1);
         bool ground = observer is { Mode: CameraMode.Surface, Navigation: null };
         bool look = ground || observer.Navigation is { Target: null };
         const double radiansPerPixel = .003;
-        double sensitivity = look
-            ? Math.Tan(observer.EffectiveFieldOfView * Math.PI / 360) / Math.Tan(50 * Math.PI / 360)
-            : 1;
+        if (look)
+            sensitivity *= Math.Tan(observer.EffectiveFieldOfView * Math.PI / 360) / Math.Tan(50 * Math.PI / 360);
         double yaw = Math.Clamp(-pixels.X * radiansPerPixel * sensitivity, -1, 1);
         double pitch = Math.Clamp(-pixels.Y * radiansPerPixel * sensitivity, -1, 1);
         if (!ground)

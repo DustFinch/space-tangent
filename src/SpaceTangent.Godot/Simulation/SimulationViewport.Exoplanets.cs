@@ -20,23 +20,31 @@ internal partial class SimulationViewport
         material.GetShaderParameter("has_globe_map").AsBool();
 
     private void DrawExoplanets(SimulationWorld world, NavigationCamera pose, WorldSnapshot snapshot,
-        double units, Func<Vector3d, (Vector3 Position, double Scale)> project)
+        Vector3d eyeOffset, double units, Func<Vector3d, (Vector3 Position, double Scale)> project)
     {
         if (pose.Target is not { } target)
             return;
         ObjectId host = world.Exoplanets.Find(target)?.Host ?? target;
         if (!world.TryNavigationState(host, snapshot, out var hostState))
             return;
+        var lights = AddonLoader.PhotometricStars(world, host);
+        int count = 0;
         foreach (ExoplanetEntry planet in world.Exoplanets.BodiesOf(host))
         {
-            if (_visibleExoplanets.Count >= 32 || !world.TryNavigationState(planet.Id, snapshot, out var state))
+            if (count >= 32 || !world.TryNavigationState(planet.Id, snapshot, out var state))
                 continue;
             var (center, projection) = project(state.PositionKilometers);
             float radius = (float)(planet.RadiusKilometers * projection / units);
-            if (planet.Id != target && (radius < .03f || _navigationCamera.IsPositionBehind(center)))
+            if (planet.Id != target && _navigationCamera.IsPositionBehind(center))
                 continue;
             Vector3d toLight = (hostState - state).PositionKilometers;
             if (!(toLight.Length > 0))
+                continue;
+            count++;
+            Color tint = SurfaceColor(planet.TextureClass);
+            Vector3d towardEye = (pose.AnchorKilometers - state.PositionKilometers) + eyeOffset;
+            if (!DrawReflectedBody(planet.Id, world.Exoplanets.CanonicalHost(planet.Parent), planet.RadiusKilometers,
+                planet.GeometricAlbedo, tint, snapshot, towardEye, state.PositionKilometers, center, radius, lights))
                 continue;
             int index = _visibleExoplanets.Count;
             if (_exoplanetGlobePool.Count == index)
@@ -48,7 +56,7 @@ internal partial class SimulationViewport
             var map = _exoplanetTextures.GetValueOrDefault(planet.TextureClass);
             material.SetShaderParameter("globe_map", map is null ? default : (Variant)map);
             material.SetShaderParameter("has_globe_map", map is not null);
-            material.SetShaderParameter("globe_color", SurfaceColor(planet.TextureClass));
+            material.SetShaderParameter("globe_color", tint);
             material.SetShaderParameter("prime_meridian_offset", .25f);
             material.SetShaderParameter("light_in_body", ToGodot(orientation.Transpose().Transform(toLight / toLight.Length), 1));
             globe.Show();

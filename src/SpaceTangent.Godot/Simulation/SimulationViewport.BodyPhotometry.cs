@@ -77,7 +77,9 @@ internal partial class SimulationViewport
             Vector3d sunDirection = towardSun / sunRange;
             double phase = Math.Clamp((1 + Vector3d.Dot(sunDirection, eyeDirection)) / 2, 0, 1);
             if (parentId != lightId && CatalogueWorld?.FindStellarTarget(parentId) is null &&
-                snapshot.TryState(parentId, out var parent))
+                (CatalogueWorld is { } parentWorld
+                    ? parentWorld.TryNavigationState(parentId, snapshot, out var parent)
+                    : snapshot.TryState(parentId, out parent)))
             {
                 Vector3d parentOffset = bodyPosition - parent.PositionKilometers;
                 double alongSun = Vector3d.Dot(parentOffset, sunDirection);

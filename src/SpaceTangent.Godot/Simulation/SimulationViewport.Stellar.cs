@@ -57,7 +57,7 @@ internal partial class SimulationViewport
         AddChild(_stellarField);
     }
 
-    private void DrawStellarObjects(NavigationCamera pose, WorldSnapshot snapshot, SkyLayerSettings sky,
+    private void DrawStellarObjects(NavigationCamera pose, WorldSnapshot snapshot, SkyLayerSettings sky, Vector3d placementOffset,
         double units, Func<Vector3d, (Vector3 Position, double Scale)> project)
     {
         HideStellarObjects();
@@ -66,10 +66,11 @@ internal partial class SimulationViewport
         if (pose.Target is { } starId && world.FindStellarTarget(world.Exoplanets.Find(starId)?.Host ?? starId) is { } star)
             DrawStellarSystem(star, world, snapshot, units, project);
         Vector3 localEye = _navigationCamera.Position;
-        Vector3d eye = pose.AnchorKilometers + (_navigationEyeOffset +
-            new Vector3d(localEye.X, -localEye.Z, localEye.Y) * units);
+        Vector3d eyeOffset = _navigationEyeOffset +
+            new Vector3d(localEye.X, -localEye.Z, localEye.Y) * units;
+        Vector3d eye = pose.AnchorKilometers + eyeOffset;
         DrawDeepSky(world, pose, sky, eye, units, project);
-        DrawExoplanets(world, pose, snapshot, units, project);
+        DrawExoplanets(world, pose, snapshot, placementOffset, units, project);
         DrawDemoWorlds(pose, snapshot, units, project);
         if (sky.Stars && (_fieldStars.Count != 0 || world.DistantStars is not null) && (eye - world.StellarOrigin).Length > StellarEntry.KilometersPerLightYear * .025)
             DrawSpatialField(eye, snapshot.Epoch, world, pose.Target);

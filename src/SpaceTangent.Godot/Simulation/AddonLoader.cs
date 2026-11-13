@@ -321,7 +321,7 @@ internal static partial class AddonLoader
         }
     }
 
-    private static IReadOnlyList<StellarEntry> PhotometricStars(SimulationWorld world, ObjectId host)
+    internal static IReadOnlyList<StellarEntry> PhotometricStars(SimulationWorld world, ObjectId host)
     {
         var primary = world.FindStellarTarget(host);
         if (primary is null)

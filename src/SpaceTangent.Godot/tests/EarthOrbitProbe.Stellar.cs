@@ -83,6 +83,29 @@ public partial class EarthOrbitProbe
             await Capture("dimidium", exoplanet.Id, state.PositionKilometers, exoplanet.RadiusKilometers * 4.2, sky, eye / eye.Length);
             if (!scene.Renderer(0).ExoplanetVisible(exoplanet.Id) || !scene.Renderer(0).ExoplanetTextured(exoplanet.Id))
                 throw new InvalidOperationException("The original Dimidium map must be visible in the planet view.");
+            if (DisplayServer.GetName() != "headless")
+            {
+                var renderer = scene.Renderer(0);
+                double focal = renderer.GetViewport().GetVisibleRect().Size.Y / (2 * Math.Tan(49 * Math.PI / 360));
+                double range = exoplanet.RadiusKilometers * (1 + focal / .8);
+                await Capture("dimidium-point", exoplanet.Id, state.PositionKilometers, range, sky, eye / eye.Length);
+                if (renderer.BodyPoint(exoplanet.Id) is not { Visible: true, MaterialOverride: ShaderMaterial pointMaterial } point ||
+                    renderer.ExoplanetVisible(exoplanet.Id))
+                    throw new InvalidOperationException("The distant original Dimidium must use a photometric point.");
+                Vector2 pixel = renderer.NavigationCameraNode.UnprojectPosition(point.Position);
+                if (renderer.PickObject(pixel) != exoplanet.Id)
+                    throw new InvalidOperationException("The original Dimidium point must remain selectable.");
+                var dimidiumHost = world.FindStellarTarget(exoplanet.Host)!;
+                double absolute = dimidiumHost.AbsoluteMagnitude ?? dimidiumHost.VisualMagnitude - 5 * Math.Log10(dimidiumHost.DistanceParsecs / 10);
+                double phase = (1 + Vector3d.Dot(light, eye / eye.Length)) / 2;
+                double ratio = exoplanet.RadiusKilometers / (host - state).PositionKilometers.Length * 149597870.7 / range;
+                double expected = -26.74 - 2.5 * Math.Log10(Math.Pow(10, .4 * (4.83 - absolute)) *
+                    exoplanet.GeometricAlbedo * phase * ratio * ratio);
+                float actual = pointMaterial.GetShaderParameter("magnitude").AsSingle();
+                if (Math.Abs(expected - actual) > 1e-4)
+                    throw new InvalidOperationException($"Dimidium magnitude differs from the catalogue ({expected:F5} vs {actual:F5}).");
+                GD.Print($"Catalogue exoplanet photometry GPU: original Dimidium point magnitude {actual:F5}, picking and near texture.");
+            }
         }
         if (world.Stellar.FindByName("Kepler-931 A") is { } primary &&
             world.Exoplanets.Find(new("exo/4294958019/kepler-931-ab")) is { } kepler)

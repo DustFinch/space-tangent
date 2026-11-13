@@ -80,6 +80,18 @@ float venus_phase(float cosine, float asymmetry) {
         (8.0 * (2.0 + asymmetry * asymmetry) * pow(max(1e-4, 1.0 + asymmetry * asymmetry - 2.0 * asymmetry * cosine), 1.5));
 }
 
+vec3 venus_sky_transmission(vec3 eye, vec3 ray) {
+    vec2 outer = air_span(eye, ray, ground_radius_km + shell_height_km);
+    vec2 ground = air_span(eye, ray, ground_radius_km);
+    float begin = max(0.0, outer.x);
+    float end = ground.x >= 0.0 ? min(outer.y, ground.x) : outer.y;
+    if (end <= begin) {
+        return vec3(1.0);
+    }
+    vec4 column = venus_columns(eye + begin * ray, ray) - venus_columns(eye + end * ray, ray);
+    return exp(-max(venus_extinction(column), vec3(0.0)));
+}
+
 void venus_air(vec3 eye, vec3 ray, float solid_radius, out vec3 transmission, out vec3 radiance) {
     float shell_radius = ground_radius_km + shell_height_km;
     vec2 outer = air_span(eye, ray, shell_radius);

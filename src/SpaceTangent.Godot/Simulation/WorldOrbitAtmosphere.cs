@@ -47,11 +47,26 @@ internal sealed class WorldOrbitAtmosphere
             material.SetShaderParameter("venus_scattering", venusScattering);
             lookup?.Bind(material);
         }
+        Material shellMaterial = _limb;
+        if (venusScattering)
+        {
+            _limb.RenderPriority = -1;
+            var transmission = new ShaderMaterial
+            {
+                Shader = GD.Load<Shader>("res://Shaders/venus_orbit_transmission.gdshader"),
+                RenderPriority = -2,
+                NextPass = _limb
+            };
+            transmission.SetShaderParameter("ground_radius_km", groundRadius);
+            transmission.SetShaderParameter("shell_height_km", shellHeight);
+            shellMaterial = transmission;
+        }
+
         _shell = new MeshInstance3D
         {
             Mesh = globe.Mesh,
             Scale = Vector3.One * (1 + shellHeight / groundRadius),
-            MaterialOverride = _limb,
+            MaterialOverride = shellMaterial,
             CastShadow = GeometryInstance3D.ShadowCastingSetting.Off,
             Visible = false
         };

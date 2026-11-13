@@ -1,0 +1,42 @@
+// SPDX-License-Identifier: GPL-2.0-or-later
+using Godot;
+using SpaceTangent.Godot.Simulation;
+
+namespace SpaceTangent.Godot.Tests;
+
+public partial class EarthOrbitProbe
+{
+    private async Task ExerciseArchivedBodyGeometry(SolarSystemScene scene, string directory)
+    {
+        if (System.Environment.GetEnvironmentVariable("SPACETANGENT_ARCHIVED_BODY_GPU") != "1")
+            return;
+        string archive = System.Environment.GetEnvironmentVariable("SPACETANGENT_LEGACY_RECORDING")!;
+        string saved = Path.Combine(directory, "before-archived-geometry.stscene");
+        if (!scene.SaveScenario(saved) || !scene.StartReplay(archive))
+            throw new InvalidOperationException("Could not open the original geometry recording.");
+        var renderer = scene.Renderer(0);
+        var camera = renderer.NavigationCameraNode;
+        if (renderer.ArchivedGeometry is not { } geometry ||
+            renderer.ArchivedBody("Sol/Earth/Moon") is not { Visible: true } moon)
+            throw new InvalidOperationException("The original recorded lunar body is unavailable.");
+
+        var record = geometry.Bodies.Single(body => body.Name == "Sol/Earth/Moon");
+        Vector3 local = camera.Basis.Inverse() * (moon.Position - camera.Position);
+        double scale = moon.Basis.X.Length() / record.Radius;
+        if ((local / (float)scale).DistanceTo(new((float)record.CameraPosition.X, (float)record.CameraPosition.Y,
+            (float)record.CameraPosition.Z)) > .0002f)
+            throw new InvalidOperationException("The rendered lunar geometry diverged from the recorded transform.");
+        await ToSignal(GetTree(), SceneTree.SignalName.ProcessFrame);
+        await ToSignal(RenderingServer.Singleton, RenderingServer.SignalName.FramePostDraw);
+        using var image = renderer.GetViewport().GetTexture().GetImage();
+        Vector2 center = camera.UnprojectPosition(moon.Position);
+        Color disk = image.GetPixel((int)center.X, (int)center.Y);
+        if (disk.R + disk.G + disk.B < .2f)
+            throw new InvalidOperationException("The recorded lunar disc is absent at its projected center.");
+        if (image.SavePng(Path.Combine(directory, "archived-lunar-geometry.png")) != Error.Ok)
+            throw new IOException("Could not capture the recorded lunar geometry.");
+        if (!scene.LoadScenario(saved) || renderer.ArchivedBody("Sol/Earth/Moon") is not null)
+            throw new InvalidOperationException("Leaving replay did not restore live geometry.");
+        GD.Print("Archived geometry GPU: rendered the recorded lunar transform and visible disc, then restored the live view.");
+    }
+}

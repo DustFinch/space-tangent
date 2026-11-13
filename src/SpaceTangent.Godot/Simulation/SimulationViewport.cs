@@ -185,6 +185,7 @@ internal partial class SimulationViewport : Node3D
     internal void SetSurfaceTextures(SurfaceTextures textures)
     {
         _surface = new SurfaceProjection(this, textures);
+        _archivedMoonMap = textures.Moon;
         _navigationMoonMaterial.SetShaderParameter("surface_map", textures.Moon);
         _navigationMoonMaterial.SetShaderParameter("has_surface_map", true);
     }

@@ -605,7 +605,10 @@ public partial class SolarSystemScene : Control
                 break;
             case Key.Escape:
                 if (Replaying)
+                {
                     CloseReplay();
+                    Refresh();
+                }
                 else if (_script is { Finished: false })
                     StopScript();
                 else if (Session.CancelFlight(_active))
@@ -1584,6 +1587,7 @@ public partial class SolarSystemScene : Control
             controls.Snapshot = snapshot;
             controls.Renderer.ShowSurfaceSiteLabels = _showSurfaceSites;
             controls.Renderer.SetLandscape(ViewLandscape(view));
+            controls.Renderer.ArchivedGeometry = index == 0 ? (_replay as LegacyCameraSequence)?.CurrentGeometry : null;
             bool available = controls.Renderer.Draw(view, snapshot, session.DeltaT);
             controls.Renderer.DrawShip(ship, view.Navigation);
             controls.Renderer.SetScriptNotice(session.Notice(index));

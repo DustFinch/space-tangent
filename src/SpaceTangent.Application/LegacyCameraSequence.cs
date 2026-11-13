@@ -7,10 +7,17 @@ using SpaceTangent.Core.World;
 
 namespace SpaceTangent.Application;
 
+public readonly record struct RecordedBodyGeometry(string Name, ObjectId? Id, Vector3d CameraPosition, double Radius,
+    double PolarScale, Basis3d CameraBasis, Vector3d LightDirection);
+
+public sealed record RecordedSceneGeometry(double KilometersPerUnit, IReadOnlyList<RecordedBodyGeometry> Bodies);
+
 /// <summary>Reconstructs the archived single camera against the installed ephemeris.</summary>
 public sealed class LegacyCameraSequence : IObserverReplay
 {
     private readonly List<ObserverView> _views = [];
+    private readonly List<RecordedSceneGeometry> _geometry = [];
+    private const int MaximumRetainedBodies = 1_000_000;
     private readonly DeltaTModel _deltaT;
     private int _next;
     private bool _disposed;
@@ -25,6 +32,9 @@ public sealed class LegacyCameraSequence : IObserverReplay
         WorldSnapshot? snapshot = null;
         JulianInstant? lastEpoch = null;
         var anchors = new Dictionary<uint, ObjectId?>();
+        RecordedSceneGeometry? previousGeometry = null;
+        RecordedBodyGeometry[]? previousBodies = null;
+        int retainedBodies = 0;
         FrameCount = LegacyFrameInspection.Inspect(stream, AddFrame, default).Frames;
 
         void AddFrame(ReadOnlySpan<byte> data, int minor, IReadOnlyList<string> strings)
@@ -60,6 +70,7 @@ public sealed class LegacyCameraSequence : IObserverReplay
             if (bodies > 192)
                 throw new InvalidDataException("Archived camera replay exceeds the body limit.");
             int bodyLength = 69 + (minor >= 4 ? 24 : 0) + (minor >= 5 ? 36 : 0) + (minor >= 6 ? 8 : 0);
+            var geometry = new RecordedBodyGeometry[bodies];
             int cursor = bodyStart;
             for (int index = 0; index < bodies; index++)
             {
@@ -75,8 +86,23 @@ public sealed class LegacyCameraSequence : IObserverReplay
                     catch (InvalidDataException) { key = null; }
                     anchors.Add(id, key);
                 }
+                Vector3d position = Vector(body[4..]);
                 if (key is { } known)
-                    Consider(known, Vector(body[4..]));
+                    Consider(known, position);
+                double radius = Single(body[16..]), polarScale = Single(body[65..]);
+                if (!position.IsFinite || !double.IsFinite(radius) || radius <= 0 ||
+                    !double.IsFinite(polarScale) || polarScale <= 0)
+                    throw new InvalidDataException("Invalid archived body position or radius.");
+                Vector3d imaginary = Vector(body[20..]);
+                double real = Single(body[32..]);
+                if (!imaginary.IsFinite || !double.IsFinite(real))
+                    throw new InvalidDataException("Invalid archived body orientation.");
+                Vector3d Column(Vector3d v)
+                {
+                    Vector3d twice = Vector3d.Cross(imaginary, v) * 2;
+                    return v + twice * real + Vector3d.Cross(imaginary, twice);
+                }
+                var basis = new Basis3d(Column(new(1, 0, 0)), Column(new(0, 1, 0)), Column(new(0, 0, 1)));
                 cursor += bodyLength;
                 if (minor >= 8)
                 {
@@ -84,9 +110,29 @@ public sealed class LegacyCameraSequence : IObserverReplay
                     if (native > 1 || native == 1 && data.Length - cursor < 36)
                         throw new InvalidDataException("An archived camera body has an invalid native transform.");
                     if (native == 1)
+                    {
+                        var transform = data[cursor..];
+                        basis = new(Vector(transform), Vector(transform[12..]), Vector(transform[24..]));
+                        if (!basis.X.IsFinite || !basis.Y.IsFinite || !basis.Z.IsFinite)
+                            throw new InvalidDataException("Invalid archived native body orientation.");
                         cursor += 36;
+                    }
                 }
+                Vector3d light = Vector(body[36..]);
+                if (!light.IsFinite || !basis.X.IsFinite || !basis.Y.IsFinite || !basis.Z.IsFinite)
+                    throw new InvalidDataException("Invalid archived body lighting or basis.");
+                geometry[index] = new(strings[(int)id], key, position, radius, polarScale, basis, light);
             }
+            if (previousGeometry is null || previousGeometry.KilometersPerUnit != scale ||
+                !geometry.AsSpan().SequenceEqual(previousBodies))
+            {
+                retainedBodies += geometry.Length;
+                if (retainedBodies > MaximumRetainedBodies)
+                    throw new InvalidDataException("Archived replay exceeds the body geometry budget.");
+                previousGeometry = new(scale, Array.AsReadOnly(geometry));
+                previousBodies = geometry;
+            }
+            _geometry.Add(previousGeometry);
             if (target is null && Single(data[93..]) > 0)
                 Consider(SolarSystemSample.SunId, Vector(data[81..]));
             if (target is null)
@@ -126,6 +172,7 @@ public sealed class LegacyCameraSequence : IObserverReplay
 
     public int FramesPerSecond => 30;
     public int FrameCount { get; }
+    public RecordedSceneGeometry? CurrentGeometry => _next == 0 ? null : _geometry[_next - 1];
 
     public SimulationScenario? ReadNext()
     {
@@ -137,6 +184,8 @@ public sealed class LegacyCameraSequence : IObserverReplay
     {
         _disposed = true;
         _views.Clear();
+        _geometry.Clear();
+        _next = 0;
     }
 
     private static float Single(ReadOnlySpan<byte> value) => BinaryPrimitives.ReadSingleLittleEndian(value);

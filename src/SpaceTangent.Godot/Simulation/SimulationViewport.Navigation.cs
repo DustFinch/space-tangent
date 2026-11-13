@@ -156,6 +156,8 @@ internal partial class SimulationViewport
             node.Show();
         }
 
+        DrawArchivedBodies(units);
+
         void PlaceBody(MeshInstance3D node, Vector3d position, ObjectId id)
         {
             node.Position = Project(position, out double scale);
@@ -244,6 +246,7 @@ internal partial class SimulationViewport
 
     private void HideNavigation()
     {
+        HideArchivedBodies();
         _navigationLight.Hide();
         _navigationSun.Hide();
         _navigationEarth.Hide();

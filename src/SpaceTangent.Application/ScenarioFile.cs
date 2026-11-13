@@ -17,7 +17,7 @@ public sealed record SimulationScenario(IReadOnlyList<ObserverView> Views, bool 
 /// <summary>Persists observer settings with exact TDB epochs and stable catalog IDs.</summary>
 public static class ScenarioFile
 {
-    private const int Version = 24;
+    private const int Version = 25;
     internal const int MaximumBytes = 32 * 1024;
     private static readonly JsonSerializerOptions Json = new()
     {
@@ -62,7 +62,8 @@ public static class ScenarioFile
             throw new InvalidDataException("The scenario has an invalid camera sensitivity.");
         var document = new Document
         {
-            Version = scenario.Views.Any(view => view.Sky.HasAlternateGrids) ? 24 :
+            Version = scenario.Views.Any(view => view.Sky.ConstellationBoundaries) ? 25 :
+                scenario.Views.Any(view => view.Sky.HasAlternateGrids) ? 24 :
                 scenario.Views.Any(view => view.EarthObserver?.HideLandscapeFog == true) ? 23 :
                 scenario.Views.Any(view => view.CameraInertia) ? 22 :
                 scenario.Views.Any(view => view.MouseSensitivity is not null) ? 21 :
@@ -183,6 +184,8 @@ public static class ScenarioFile
                 throw new InvalidDataException("This scenario version does not support meteor layers.");
             if (data.Sky is { } sky && (!sky.IsValid() || sky.HasCultureSettings && document.Version < 15 || sky.HasSurveySettings && document.Version < 16))
                 throw new InvalidDataException("The scene sky culture settings are invalid or unsupported.");
+            if (data.Sky is { ConstellationBoundaries: true } && document.Version < 25)
+                throw new InvalidDataException("Constellation boundaries require scenario version 25.");
             if (data.Sky is { HasAlternateGrids: true } && document.Version < 24)
                 throw new InvalidDataException("Ecliptic and galactic layers require scenario version 24.");
             if (data.Sky is not null && document.Version < 4)

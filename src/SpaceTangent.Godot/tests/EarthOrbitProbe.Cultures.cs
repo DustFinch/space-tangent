@@ -34,11 +34,16 @@ public partial class EarthOrbitProbe
         if (!scene.LoadScenario(file))
             throw new InvalidOperationException("The baseline sky grid scenario could not open.");
         using var baseline = await Screenshot();
-        foreach (int mask in new[] { 8, 16, 32 })
+        int[] masks = string.IsNullOrEmpty(System.Environment.GetEnvironmentVariable("SPACETANGENT_CONSTELLATION_BOUNDARIES"))
+            ? [8, 16, 32] : [8, 16, 32, 4];
+        foreach (int mask in masks)
         {
             File.WriteAllText(profile, $$"""{"Site":{},"SkyLayers":{{mask}}}""");
             var imported = LegacyObserverProfiles.Read(profile, clear, session.DeltaT);
             var withGrids = clear with { Sky = imported.Observer.Sky };
+            if (mask == 4 && !withGrids.Sky.ConstellationBoundaries)
+                throw new InvalidOperationException("The archived boundary flag was not restored.");
+            file = Path.Combine(directory, $"sky-grid-{mask}.stscene");
             ScenarioFile.Save(file, scenario with { Views = [withGrids, clear] });
             if (!scene.LoadScenario(file) || session[0] != withGrids || session[1] != clear)
                 throw new InvalidOperationException("The archived grid must apply only to its saved observer.");

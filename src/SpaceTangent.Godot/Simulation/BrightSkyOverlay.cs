@@ -129,6 +129,8 @@ internal partial class BrightSkyOverlay : Control
             DrawRect(new Rect2(Vector2.Zero, Size), new Color(.02745f, .03529f, .04706f));
         var occupied = new List<Rect2>();
         bool customConstellations = DrawCulture(occupied);
+        if (_frame.Layers.ConstellationBoundaries)
+            DrawSegments(_data.Boundaries, new(.38f, .55f, .73f, .6f));
         if (_frame.Layers.EclipticLine)
             DrawSegments(EclipticLine, new(.75f, .52f, .22f, .72f));
         if (_frame.Layers.EclipticGrid)

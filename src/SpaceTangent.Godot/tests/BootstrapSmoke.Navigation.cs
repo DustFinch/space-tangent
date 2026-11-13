@@ -99,6 +99,26 @@ public partial class BootstrapSmoke
         Require(Math.Abs(session[0].EffectiveFieldOfView - surface.EffectiveFieldOfView * .85) < 1e-12 &&
                 session[0].EarthObserver == surface.EarthObserver && session[1] == lunar,
             "The observatory wheel must narrow its field without changing the observing site or other view.");
+        using var narrower = new InputEventKey { Pressed = true, PhysicalKeycode = Key.Comma };
+        using var wider = new InputEventKey { Pressed = true, PhysicalKeycode = Key.Period };
+        double groundField = session[0].EffectiveFieldOfView;
+        scene._UnhandledKeyInput(narrower);
+        Require(Math.Abs(session[0].EffectiveFieldOfView - groundField * .8) < 1e-12 && session[1] == lunar,
+            "Comma must narrow the active view independently.");
+        scene._UnhandledKeyInput(wider);
+        Require(Math.Abs(session[0].EffectiveFieldOfView - groundField) < 1e-12, "Period must restore the field.");
+        var beforeOptics = session.CaptureScenario(0);
+        session.SetOptics(0, new(ObserverOpticsLibrary.Default, true));
+        scene._UnhandledKeyInput(narrower);
+        Require(session[0].ActiveOptics?.Eyepiece.FocalMillimeters == 15 && session[1] == lunar &&
+                session[0].EffectiveFieldOfView == beforeOptics.Views[0].EffectiveFieldOfView,
+            "Comma must select the next higher magnification while the eyepiece is active.");
+        using var eyepieceWheel = new InputEventMouseButton { Pressed = true, ButtonIndex = MouseButton.WheelUp };
+        viewport.EmitSignal(Control.SignalName.GuiInput, eyepieceWheel);
+        Require(session[0].ActiveOptics?.Eyepiece.FocalMillimeters == 10, "Wheel up must step to a stronger eyepiece.");
+        scene._UnhandledKeyInput(wider);
+        Require(session[0].ActiveOptics?.Eyepiece.FocalMillimeters == 15, "Period must step to a weaker eyepiece.");
+        session.RestoreScenario(beforeOptics);
         var ground = session[0].EarthObserver ?? EarthObserverCamera.Moscow;
         using var drag = new InputEventMouseMotion { ButtonMask = MouseButtonMask.Right, Relative = new(40, -20) };
         viewport.EmitSignal(Control.SignalName.GuiInput, drag);

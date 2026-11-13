@@ -867,6 +867,13 @@ public partial class SolarSystemScene : Control
 
     private bool TryObserverFrameKey(InputEventKey key)
     {
+        Key physical = key.PhysicalKeycode == Key.None ? key.Keycode : key.PhysicalKeycode;
+        if (physical is Key.Comma or Key.Period && !Session!.InShip(_active))
+        {
+            ChangeViewMagnification(_active, physical == Key.Comma, .8);
+            Refresh();
+            return true;
+        }
         if (key.Keycode == Key.O && !Session!.InShip(_active))
         {
             _status.Text = Session.ToggleAutoOrbit(_active)
@@ -1532,10 +1539,10 @@ public partial class SolarSystemScene : Control
         var session = Session!;
         var observer = session[view];
         bool inward = wheel.ButtonIndex == MouseButton.WheelUp;
-        if (wheel.CtrlPressed || observer is { Mode: CameraMode.Surface, Navigation: null })
+        if (!session.InShip(view) && observer.ActiveOptics is not null ||
+            wheel.CtrlPressed || observer is { Mode: CameraMode.Surface, Navigation: null })
         {
-            double factor = inward ? .85 : 1 / .85;
-            session.SetFieldOfView(view, Math.Clamp(observer.EffectiveFieldOfView * factor, 2, 120));
+            ChangeViewMagnification(view, inward, .85);
             return true;
         }
 

@@ -11,7 +11,7 @@ public partial class EarthOrbitProbe
     private async Task ExerciseMissionGeometry(SolarSystemScene scene, string directory)
     {
 
-        if (System.Environment.GetEnvironmentVariable("SPACETANGENT_MISSION_GEOMETRY_PROBE") != "1")
+        if (System.Environment.GetEnvironmentVariable("SPACETANGENT_MISSION_GEOMETRY_PROBE") is not ("1" or "only"))
             return;
         var session = scene.Session!;
         var id = new ObjectId("mission/timeswitchmodel");

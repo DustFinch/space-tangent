@@ -60,6 +60,7 @@ public partial class SolarSystemScene : Control
     private int _loadGeneration;
     private CancellationTokenSource? _loadCancellation;
     private LuaSessionScript? _script;
+    private ScriptMediaPlayer? _scriptMedia;
     private PopupMenu _scriptMenu = null!;
     internal SimulationSession? Session { get; private set; }
     internal bool InitializationFinished { get; private set; }
@@ -609,7 +610,7 @@ public partial class SolarSystemScene : Control
                     CloseReplay();
                     Refresh();
                 }
-                else if (_script is { Finished: false })
+                else if (_script is { Finished: false } || _scriptMedia?.Active == true)
                     StopScript();
                 else if (Session.CancelFlight(_active))
                 {
@@ -634,6 +635,7 @@ public partial class SolarSystemScene : Control
         DisconnectCapture();
         DisablePlugins(updateMenu: false);
         _script?.Stop();
+        _scriptMedia?.Clear();
         _loadGeneration++;
         _loadCancellation?.Cancel();
         _loadCancellation?.Dispose();
@@ -666,8 +668,20 @@ public partial class SolarSystemScene : Control
             {
                 _script = null;
                 _scriptMenu.SetItemDisabled(1, true);
+                if (script.Error is not null)
+                    _scriptMedia?.Clear();
                 _status.Text = script.Error ?? "Lua script finished.";
             }
+        }
+        if (_scriptMedia is { } media)
+        {
+            if (!media.Attached)
+            {
+                _scriptMedia = null;
+                _scriptMenu.SetItemDisabled(1, true);
+            }
+            else if (_script is null)
+                _scriptMenu.SetItemDisabled(1, !media.Active);
         }
         if (changed || Session is { } session && (session.AnyFlight || session.HasShips))
             Refresh(delta);
@@ -1053,7 +1067,12 @@ public partial class SolarSystemScene : Control
     {
         try
         {
-            LuaSessionScript next = LuaSessionScript.Load(path, Session!, _active, _surfaceTextures is not null, line => GD.Print(line));
+            string directory = Path.GetDirectoryName(Path.GetFullPath(path))!;
+            var media = new ScriptMediaPlayer(Renderer(_active));
+            LuaSessionScript next = LuaSessionScript.Load(path, Session!, _active, _surfaceTextures is not null,
+                line => GD.Print(line), request => media.Present(directory, request));
+            _scriptMedia?.Clear();
+            _scriptMedia = media;
             if (_script is { } previous)
             {
                 previous.Stop();
@@ -1087,6 +1106,8 @@ public partial class SolarSystemScene : Control
         }
         _script = null;
         _scriptMenu.SetItemDisabled(1, true);
+        _scriptMedia?.Clear();
+        _scriptMedia = null;
         _status.Text = "Lua script stopped.";
     }
 

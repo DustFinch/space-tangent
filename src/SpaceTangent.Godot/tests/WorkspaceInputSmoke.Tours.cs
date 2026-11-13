@@ -152,6 +152,7 @@ public partial class WorkspaceInputSmoke
                 new[] { $"demo.cel: {demoConversion.Commands} converted command blocks." }.Concat(demoConversion.Unapplied)
                 .Concat(new[] { "", "tour-system.celx: verified recursive tour." }).Concat(system.Unapplied));
         }
+        await ExerciseScriptMedia(directory);
         Require(_scene.LoadScenario(restore), "The scene before the tour must be restorable.");
         GD.Print($"UI: converted original demo ({demoConversion.Commands} command blocks) and recursive tour ({tourTargets.Count} targets), completed both, and stopped a rerun with Escape");
 

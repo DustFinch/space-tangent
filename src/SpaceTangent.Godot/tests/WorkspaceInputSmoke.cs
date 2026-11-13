@@ -49,6 +49,17 @@ public partial class WorkspaceInputSmoke : Node
                 "DE440 and the original Jason-1 add-on must load.");
             Tree.Root.NotifyMouseEntered();
 
+            if (System.Environment.GetEnvironmentVariable("SPACETANGENT_MEDIA_SMOKE_ONLY") == "1")
+            {
+                var view = Session[0] with { Playing = false };
+                string path = Path.Combine(scratch.FullName, "media-smoke.stscene");
+                ScenarioFile.Save(path, new([view, view], false, 0, 0, Session.DeltaT));
+                Require(_scene.LoadScenario(path), "The media test must open two independent views.");
+                await ExerciseScriptMedia(scratch.FullName);
+                exitCode = 0;
+                return;
+            }
+
             if (System.Environment.GetEnvironmentVariable("SPACETANGENT_PLUGIN_SMOKE_ONLY") == "1")
             {
                 var left = Session[0] with { Playing = false };

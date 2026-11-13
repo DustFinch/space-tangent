@@ -16,12 +16,12 @@ public partial class SolarSystemScene
             FileMode = FileDialog.FileModeEnum.SaveFile, DeletingEnabled = false };
         destination.AddFilter("*.lua", "SpaceTangent Lua");
         AddChild(destination);
-        TourConversion? pending = null;
+        (TourConversion Conversion, string Source)? pending = null;
         source.FileSelected += path =>
         {
             try
             {
-                pending = ConvertTourFile(path);
+                pending = (ConvertTourFile(path), path);
                 destination.CurrentFile = Path.GetFileNameWithoutExtension(path) + ".lua";
                 destination.PopupCentered(new(700, 460));
             }
@@ -32,10 +32,12 @@ public partial class SolarSystemScene
         };
         destination.FileSelected += path =>
         {
-            if (pending is not { } conversion)
+            if (pending is not { } selected)
                 return;
             try
             {
+                var conversion = selected.Conversion;
+                ScriptMediaPlayer.CopyAssets(selected.Source, path, conversion.MediaFiles);
                 File.WriteAllText(path, conversion.Lua);
                 _status.Text = conversion.Unapplied.Count == 0 ? "Tour saved as Lua."
                     : $"Tour saved as Lua with {conversion.Unapplied.Count} conversion notes in the file.";

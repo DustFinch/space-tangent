@@ -7,7 +7,10 @@ using MoonSharp.Interpreter;
 
 namespace SpaceTangent.Application;
 
-public sealed record TourConversion(string Lua, int Commands, IReadOnlyList<string> Unapplied);
+public sealed record TourConversion(string Lua, int Commands, IReadOnlyList<string> Unapplied)
+{
+    public IReadOnlyList<string> MediaFiles { get; init; } = [];
+}
 
 public static partial class TourConverter
 {
@@ -69,6 +72,7 @@ public static partial class TourConverter
             end
 
             """);
+        var mediaFiles = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         int converted = 0;
         foreach (Command command in commands)
         {
@@ -84,6 +88,21 @@ public static partial class TourConverter
                     double seconds = Math.Clamp(command.Number("duration", 600), 0, 600) * scale;
                     lua.AppendLine($"st.notice({Quote(command.Fields.GetValueOrDefault("text") ?? "")}, {Number(seconds)}, " +
                         $"{horizontal}, {vertical}, {Number(Math.Truncate(command.Number("column")))}, {Number(Math.Truncate(command.Number("row")))})");
+                    break;
+                case "overlay":
+                    mediaFiles.Add(command.Get("filename"));
+                    lua.AppendLine($"st.overlay({Quote(command.Get("filename"))}, {Number(command.Number("duration", 3) * scale)}, " +
+                        $"{Number(.5 + command.Number("xoffset"))}, {Number(.5 - command.Number("yoffset"))}, " +
+                        $"{Number(command.Number("width"))}, {Number(command.Number("height"))}, {Number(command.Number("alpha", 1))})");
+                    break;
+                case "play":
+                    if (command.Fields.GetValueOrDefault("filename") is { Length: > 0 } sound)
+                        mediaFiles.Add(sound);
+                    string loop = command.Fields.GetValueOrDefault("loop") is "true" or "1" ? "true" : "false";
+                    lua.AppendLine($"st.play({Quote(command.Fields.GetValueOrDefault("filename") ?? "")}, " +
+                        $"{Number(command.Number("volume", 1))}, {Number(command.Number("channel"))}, {loop})");
+                    foreach (string field in new[] { "pan", "nopause" }.Where(command.Fields.ContainsKey))
+                        unapplied.Add("play " + field);
                     break;
                 case "cls":
                     lua.AppendLine("st.notice(\"\", 0)");
@@ -157,7 +176,7 @@ public static partial class TourConverter
         }
         foreach (string item in unapplied.Reverse())
             lua.Insert(0, "-- Unapplied: " + item + "\n");
-        return new(lua.ToString(), converted, Array.AsReadOnly(unapplied.ToArray()));
+        return new(lua.ToString(), converted, Array.AsReadOnly(unapplied.ToArray())) { MediaFiles = Array.AsReadOnly(mediaFiles.ToArray()) };
 
         void AppendFlags(Command command, bool enabled)
         {

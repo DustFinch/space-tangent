@@ -25,14 +25,14 @@ public sealed partial class LuaSessionScript
     {
         internal Coroutine Coroutine { get; } = coroutine;
         internal DynValue[]? Arguments = arguments;
-        internal int Steps, Messages, CatalogueReads;
+        internal int Steps, Messages, CatalogueReads, MediaRequests;
         internal long Allocated;
         internal double WaitRemaining, TotalWait, DollyRate;
         internal bool Complete, Yielded;
         internal string? Error, LastNotice;
     }
 
-    private LuaSessionScript(string source, string name, SimulationSession session, int view, bool hasSurface, Action<string> log, bool plugin = false)
+    private LuaSessionScript(string source, string name, SimulationSession session, int view, bool hasSurface, Action<string> log, bool plugin = false, Action<ScriptMediaRequest>? media = null)
     {
         _session = session;
         _viewIdentity = session.ViewIdentity(view);
@@ -74,6 +74,8 @@ public sealed partial class LuaSessionScript
         Bind(upstream, "settime", (context, arguments) => SetTime(context, arguments.SkipMethodCall()));
         Bind(upstream, "gettime", (_, _) => DynValue.NewNumber(_session[View].Epoch.ToJulianDate()));
         BindNativeObserver(upstream, plugin);
+        if (media is not null)
+            BindMedia(api, upstream, media);
         script.Globals.Set("celestia", DynValue.NewTable(upstream));
 
         _foreground = NewInvocation(script.LoadString(source, codeFriendlyName: name));
@@ -98,7 +100,8 @@ public sealed partial class LuaSessionScript
     }
     public string? Error { get; private set; }
 
-    public static LuaSessionScript Load(string path, SimulationSession session, int view, bool hasSurface, Action<string> log)
+    public static LuaSessionScript Load(string path, SimulationSession session, int view, bool hasSurface, Action<string> log,
+        Action<ScriptMediaRequest>? media = null)
     {
         using FileStream stream = File.OpenRead(path);
         if (stream.Length > MaximumSourceBytes)
@@ -112,7 +115,7 @@ public sealed partial class LuaSessionScript
             content = content[3..];
         try
         {
-            return new(StrictUtf8.GetString(content), Path.GetFileName(path), session, view, hasSurface, log);
+            return new(StrictUtf8.GetString(content), Path.GetFileName(path), session, view, hasSurface, log, media: media);
         }
         catch (InterpreterException error)
         {

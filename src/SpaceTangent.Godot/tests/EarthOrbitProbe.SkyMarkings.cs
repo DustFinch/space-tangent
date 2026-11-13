@@ -133,7 +133,7 @@ public partial class EarthOrbitProbe
         var direction = sirius.DirectionAt(first.Epoch);
         if (session.World.Stellar.Find(sirius.Id) is { IsBarycenter: false } spatial)
         {
-            var observerFromSun = first.Navigation!.Value.AnchorKilometers - session.World.StellarOrigin;
+            var observerFromSun = first.Navigation!.Value.AnchorKilometers + direction * 30000 - session.World.StellarOrigin;
             var relative = spatial.StateAt(first.Epoch).PositionKilometers - observerFromSun;
             direction = relative / relative.Length;
         }
@@ -142,7 +142,7 @@ public partial class EarthOrbitProbe
         var baseline = first with
         {
             FieldOfViewDegrees = 5,
-            Navigation = first.Navigation!.Value with { Placement = new(default, direction, up) }
+            Navigation = first.Navigation!.Value with { Placement = new(direction * 30000, direction, up) }
         };
         var enabled = baseline with { Sky = baseline.Sky with { Markings = SkyMarkings.NavigationalStars } };
         string path = Path.Combine(directory, "navigational-sirius.stscene");

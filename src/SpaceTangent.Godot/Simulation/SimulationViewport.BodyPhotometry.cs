@@ -101,7 +101,7 @@ internal partial class SimulationViewport
         599 => .510901, 699 => .49974, 799 => .437118, 899 => .409338,
         _ => .1
     };
-    private static double MoonAlbedo(int naif) => naif switch
+    private static double NaturalBodyAlbedo(int naif) => naif switch
     {
         401 => .0683, 402 => .068,
         501 => .63, 502 => .67, 503 => .43, 504 => .22,
@@ -109,6 +109,7 @@ internal partial class SimulationViewport
         606 => .21, 607 => .44, 608 => .27, 609 => .081,
         701 => .53, 702 => .26, 703 => .35, 704 => .31, 705 => .32,
         801 => .719, 802 => .25, 808 => .096,
+        999 => .506, 2000001 => .096, 2000004 => .38, 1000012 => .065,
         _ => .1
     };
 }

@@ -56,6 +56,35 @@ public partial class EarthOrbitProbe
         if (image.SavePng(Path.ChangeExtension(path, ".png")) != Error.Ok)
             throw new IOException("Could not save the unresolved Saturn and Moon.");
         GD.Print("Planet photometry GPU: unresolved Saturn and Moon, selectable point, resolved rings in the independent view.");
+        foreach (var (leftId, rightId) in new (ObjectId, ObjectId)[]
+                 { (NaturalBodyCatalogue.PlutoId, new("sol/ceres")), (new("sol/vesta"), NaturalBodyCatalogue.CometId) })
+        {
+            ObserverView left = SmallBodyView(leftId), right = SmallBodyView(rightId);
+            Save(left, right);
+            if (scene.Renderer(0).BodyPoint(leftId) is not { Visible: true } leftPoint ||
+                scene.Renderer(1).BodyPoint(rightId) is not { Visible: true } rightPoint ||
+                scene.Renderer(0).PlanetGlobeTextured(leftId) || scene.Renderer(1).PlanetGlobeTextured(rightId))
+                throw new InvalidOperationException($"The original {leftId} and {rightId} must become unresolved points.");
+            await ToSignal(RenderingServer.Singleton, RenderingServer.SignalName.FramePostDraw);
+            using var rendered = GetViewport().GetTexture().GetImage();
+            if (rendered.SavePng(Path.Combine(directory, $"small-body-points-{leftId.Value.Split('/')[^1]}.png")) != Error.Ok)
+                throw new IOException("Could not save the original unresolved small bodies.");
+            foreach (var (index, id, node) in new[] { (0, leftId, leftPoint), (1, rightId, rightPoint) })
+            {
+                var view = scene.Renderer(index);
+                Vector2 pixel = view.NavigationCameraNode.UnprojectPosition(node.Position);
+                if (view.PickObject(pixel) != id)
+                    throw new InvalidOperationException($"The unresolved {id} must remain selectable.");
+            }
+        }
+        GD.Print("Small-body photometry GPU: points and picking for Pluto, Ceres, Vesta and comet 67P.");
+
+        ObserverView SmallBodyView(ObjectId id)
+        {
+            if (!snapshot.TryState(id, out var state) || NaturalBodyCatalogue.Find(id) is not { } body)
+                throw new InvalidOperationException($"The original state for {id} is required.");
+            return View(id, state, body.RadiusKilometers * (1 + focal / .85));
+        }
 
         ObserverView View(ObjectId id, CartesianState state, double range)
         {

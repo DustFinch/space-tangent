@@ -23,6 +23,28 @@ public partial class EarthOrbitProbe
         if (!await scene.ReloadAddOns() || session[0] != first || session[1] != second || session.DeltaT != model)
             throw new InvalidOperationException("Packed Cassini reload lost a view, epoch or Delta T.");
         Check();
+        if (System.Environment.GetEnvironmentVariable("SPACETANGENT_TEST_PACKED_CASSINI_ROLLBACK") == "1")
+        {
+            string root = System.Environment.GetEnvironmentVariable("SPACETANGENT_SAMPLED_MISSIONS_ROOT")!;
+            string frames = Path.Combine(root, "99-frames");
+            string moved = Path.Combine(directory, "frames-" + Guid.NewGuid().ToString("N"));
+            var published = session.World;
+            Directory.Move(frames, moved);
+            try
+            {
+                if (await scene.ReloadAddOns() || !ReferenceEquals(published, session.World) ||
+                    session[0] != first || session[1] != second || session.DeltaT != model)
+                    throw new InvalidOperationException("Removing the frame-only pack must keep the previous world and observers.");
+            }
+            finally
+            {
+                Directory.Move(moved, frames);
+            }
+            if (!await scene.ReloadAddOns())
+                throw new InvalidOperationException("Could not restore the frame-only Cassini pack.");
+            Check();
+            GD.Print("Packed Cassini: removing the companion directory triggered rollback and restoring it recovered the catalogue.");
+        }
 
         await ToSignal(GetTree(), SceneTree.SignalName.ProcessFrame);
         await ToSignal(RenderingServer.Singleton, RenderingServer.SignalName.FramePostDraw);

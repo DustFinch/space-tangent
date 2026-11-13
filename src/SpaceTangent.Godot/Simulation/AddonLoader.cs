@@ -407,6 +407,17 @@ internal static partial class AddonLoader
         string directory = Path.Combine(root, "catalog");
         if (AddonDependencies.DirectoryExists(directory))
             catalogues = [.. catalogues, .. AddonDependencies.ListFiles(directory, "*.json")];
+        // Installed mission packs retain their own resource folders under the shared mission root.
+        foreach (string folder in AddonDependencies.ListDirectories(root))
+        {
+            if (folder == directory || (AddonDependencies.GetAttributes(folder) & FileAttributes.ReparsePoint) != 0)
+                continue;
+            string pack = Path.Combine(folder, "pack.json");
+            if (AddonDependencies.FileExists(pack))
+                catalogues = [.. catalogues, pack];
+            if (catalogues.Length > 64)
+                break;
+        }
         if (catalogues.Length > 64)
             throw new InvalidDataException("The sampled mission directory may contain at most 64 catalogues.");
         var tracks = new List<DecodedSampledMission>();

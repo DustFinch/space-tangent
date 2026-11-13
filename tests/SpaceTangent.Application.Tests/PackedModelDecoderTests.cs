@@ -30,6 +30,49 @@ public sealed class PackedModelDecoderTests
         }
     }
 
+    [ArchivedModelsFact]
+    [Trait("Category", "ExternalData")]
+    public void WritesOriginalJasonAndSorceAsSelfContainedGlb()
+    {
+        string input = Environment.GetEnvironmentVariable("SPACETANGENT_SCIENCE_ROOT")!;
+        var output = Directory.CreateTempSubdirectory("space-tangent-glb-");
+        try
+        {
+            foreach (string name in new[] { "jason", "sorce" })
+            {
+                string file = Directory.GetFiles(input, name + ".obj", SearchOption.AllDirectories).Single();
+                var source = ScienceModelDecoder.Decode(file);
+                string target = Path.Combine(output.FullName, name + ".glb");
+                using (var stream = File.Create(target))
+                    PackedModelWriter.Write(source, stream);
+                var restored = PackedModelDecoder.Decode(target);
+                Assert.Equal(source.Surfaces.Count, restored.Surfaces.Count);
+                Assert.InRange(Math.Abs(source.Diameter - restored.Diameter), 0, 1e-4);
+                Assert.Equal(source.Textures.Count, restored.Textures.Count);
+                foreach (var (left, right) in source.Surfaces.Zip(restored.Surfaces))
+                {
+                    Assert.Equal(left.Positions.Length, right.Positions.Length);
+                    Assert.Equal(left.TextureCoordinates.ToArray(), right.TextureCoordinates.ToArray());
+                    for (int corner = 0; corner < left.Positions.Length; corner++)
+                    {
+                        Assert.True((left.Positions.Span[corner] - right.Positions.Span[corner]).Length < 1e-4);
+                        var normal = left.Normals.Span[corner];
+                        if (normal.Length > 0)
+                            Assert.True((normal / normal.Length - right.Normals.Span[corner]).Length < 1e-6);
+                    }
+                    Assert.InRange((left.Material.Color - right.Material.Color).Length, 0, 1e-7);
+                    Assert.Equal(left.Material.Opacity, right.Material.Opacity);
+                    if (left.Material.Texture is { } texture)
+                        Assert.True(source.Textures[texture].Span.SequenceEqual(restored.Textures[right.Material.Texture!].Span));
+                }
+            }
+        }
+        finally
+        {
+            output.Delete(recursive: true);
+        }
+    }
+
     [Fact]
     public void RejectsATruncatedBinaryModel()
     {

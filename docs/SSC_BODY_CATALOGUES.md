@@ -16,3 +16,11 @@ dotnet run --project deps/space-tangent-core/tools/SpaceTangent.PackTool -- chec
 ```
 
 Select the output folder as an SSC body catalogue. Move the entire folder to relocate the pack. The command preserves the relative paths of the model, texture and trajectory files.
+
+## Export a static GLB model
+
+```sh
+dotnet run --project tools/SpaceTangent.ModelTool -- model "/path/to/addon/models/body.cmod" "/path/to/body.glb" --root "/path/to/addon"
+```
+
+The tool accepts OBJ, CMOD, CMS, 3DS, glTF and GLB. It embeds the images resolved by the input decoder. DDS images require support for `MSFT_texture_dds` in the receiving viewer. For CMOD export, lines and camera-facing sprites are reported as unsupported.

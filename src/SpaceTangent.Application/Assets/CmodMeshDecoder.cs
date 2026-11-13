@@ -14,6 +14,10 @@ public static partial class CmodMeshDecoder
     public static DecodedScienceModel Decode(string root, string path, CancellationToken cancellation = default) =>
         AddonDiagnostics.Read(AddonStage.Mesh, path, () => Read(root, path, nativeBody: false, cancellation));
 
+    public static DecodedScienceModel DecodeForTriangleExport(string root, string path) =>
+        AddonDiagnostics.Read(AddonStage.Mesh, path, () => Read(root, path, nativeBody: false,
+            CancellationToken.None, requireTriangles: true));
+
     public static DecodedScienceModel DecodeNativeBody(string root, string path, CancellationToken cancellation = default) =>
         AddonDiagnostics.Read(AddonStage.Mesh, path, () => Read(root, path, nativeBody: true, cancellation));
 
@@ -22,7 +26,7 @@ public static partial class CmodMeshDecoder
             () => Read(Path.GetDirectoryName(path)!, path, nativeBody: false, cancellation, spritesOnly: true).Sprites);
 
     private static DecodedScienceModel Read(string root, string path, bool nativeBody, CancellationToken cancellation,
-        bool spritesOnly = false)
+        bool spritesOnly = false, bool requireTriangles = false)
     {
         using FileStream source = AddonDependencies.OpenRead(path, 32L * 1024 * 1024);
         if (source.Length > 32L * 1024 * 1024)
@@ -213,6 +217,8 @@ public static partial class CmodMeshDecoder
                 if (type is < 0 or > 6 || indexCount > 3 * MaximumTriangles ||
                     (long)indexCount * 4 > stream.Length - stream.Position)
                     throw new InvalidDataException("Invalid CMOD primitive group.");
+                if (requireTriangles && type > 2)
+                    throw new NotSupportedException("The CMOD contains lines, points or sprites outside triangle export.");
                 if (spritesOnly && type is 5 or 6)
                 {
                     DecodedMaterial style = material < materials.Count ? materials[(int)material] : Default;

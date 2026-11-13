@@ -10,7 +10,7 @@ public partial class EarthOrbitProbe
 {
     private async Task CapturePackedScience(SolarSystemScene scene, string directory)
     {
-        if (System.Environment.GetEnvironmentVariable("SPACETANGENT_CAPTURE_PACKED_SCIENCE") != "1" ||
+        if (System.Environment.GetEnvironmentVariable("SPACETANGENT_CAPTURE_PACKED_SCIENCE") is not ("1" or "only") ||
             DisplayServer.GetName() == "headless")
             return;
         var world = scene.Session!.World;

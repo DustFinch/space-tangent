@@ -26,6 +26,43 @@ public partial class EarthOrbitProbe
             var session = scene.Session!;
             await CheckPair("centaur-rings", ("2060-chiron", 341.66, 353.77), ("10199-chariklo", 382.5, 399.9));
             await CheckPair("dwarf-planet-rings", ("haumea", 2252, 2322), ("quaoar", 2515, 4098));
+            if (DisplayServer.GetName() != "headless")
+                await CheckHaumeaLabels();
+
+            async Task CheckHaumeaLabels()
+            {
+                var id = new ObjectId("ssc/sol/haumea");
+                const double axis = 43.1042753471461 * 149_597_870.7, eccentricity = .1949599020093612;
+                const double range = axis * (1 + eccentricity) / .03;
+                var first = LabelObserver(2451545, new(0, 0, 1));
+                var second = LabelObserver(2500000, new(0, 0, 1));
+                string path = Path.Combine(directory, "haumea-label-fade.stscene");
+                ScenarioFile.Save(path, new([first, second], false, 0, 0, session.DeltaT));
+                if (!scene.LoadScenario(path))
+                    throw new InvalidOperationException("Could not open the original Haumea label scene.");
+                await ToSignal(GetTree(), SceneTree.SignalName.ProcessFrame);
+                for (int view = 0; view < 2; view++)
+                {
+                    var renderer = scene.Renderer(view);
+                    double focal = renderer.GetViewport().GetVisibleRect().Size.Y / (2 * Math.Tan(49 * Math.PI / 360));
+                    double opacity = Math.Clamp((focal * .03 - 20) / 20, 0, 1);
+                    if (opacity is <= 0 or >= 1 || renderer.BodyLabel(id) is not { Visible: true } label ||
+                        Math.Abs(label.Modulate.A - opacity) > 1e-4)
+                        throw new InvalidOperationException("Haumea's label must use the original apoapsis in both epochs.");
+                }
+                GD.Print("SSC labels GPU: original Haumea has the same apoapsis-based fade at two independent epochs.");
+
+                ObserverView LabelObserver(double day, Vector3d eye)
+                {
+                    var observer = Observer("haumea", day, 2322);
+                    var pose = observer.Navigation!.Value with
+                    {
+                        RangeKilometers = range,
+                        Placement = new NavigationPlacement(eye * range, eye * -1, new(0, 1, 0))
+                    };
+                    return observer with { Navigation = pose, Sky = new SkyLayerSettings(false, true, false, false) };
+                }
+            }
 
             async Task CheckPair(string name, (string Slug, double Inner, double Outer) a, (string Slug, double Inner, double Outer) b)
             {

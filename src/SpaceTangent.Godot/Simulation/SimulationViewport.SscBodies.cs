@@ -253,11 +253,7 @@ internal partial class SimulationViewport
                     ObjectId? primary = body.PhotometricParent ?? catalogue.Parent;
                     if (primary is null && snapshot.TryStateCenter(body.Id, out var center))
                         primary = center;
-                    double orbitRadius = body.LabelOrbitRadius;
-                    if (!minor && orbitRadius <= 0 && primary is { } primaryId &&
-                        labelWorld.TryNavigationState(primaryId, snapshot, out var primaryState))
-                        orbitRadius = (state - primaryState).PositionKilometers.Length;
-                    DrawBodyLabel(body.Id, catalogue.Name, primary, minor ? 0 : orbitRadius,
+                    DrawBodyLabel(body.Id, catalogue.Name, primary, minor ? 0 : body.LabelOrbitRadius,
                         physicalRadius, snapshot, state.PositionKilometers, towardEye, position, (float)radius);
                 }
             }

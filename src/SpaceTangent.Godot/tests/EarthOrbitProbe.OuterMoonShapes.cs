@@ -34,16 +34,16 @@ public partial class EarthOrbitProbe
         ObserverView far = At(body.RadiusKilometers * (1 + focal / .55));
         ObserverView blend = At(body.RadiusKilometers * (1 + focal / 2.5));
         Save([blend, near]);
-        if (renderer.MoonPoint(id) is not { Visible: true, MaterialOverride: ShaderMaterial blendMaterial } ||
+        if (renderer.BodyPoint(id) is not { Visible: true, MaterialOverride: ShaderMaterial blendMaterial } ||
             renderer.NaturalMoonModel(id) is not { Visible: true } ||
             Math.Abs(blendMaterial.GetShaderParameter("fade").AsSingle() - .5f) > .01f)
             throw new InvalidOperationException("Hyperion must blend its original mesh and magnitude point between one and four pixels.");
 
         Save([far, near]);
-        if (renderer.MoonPoint(id) is not { Visible: true } point ||
+        if (renderer.BodyPoint(id) is not { Visible: true } point ||
             renderer.NaturalMoonModel(id) is not { Visible: false } ||
             scene.Renderer(1).NaturalMoonModel(id) is not { Visible: true } ||
-            scene.Renderer(1).MoonPoint(id)?.Visible == true)
+            scene.Renderer(1).BodyPoint(id)?.Visible == true)
             throw new InvalidOperationException("Only the distant view should replace the original Hyperion mesh with its point.");
         if (renderer.PickObject(renderer.GetViewport().GetVisibleRect().Size / 2) != id)
             throw new InvalidOperationException("The unresolved Hyperion point must remain selectable.");
@@ -70,7 +70,7 @@ public partial class EarthOrbitProbe
                 (actual.Forward - prior.Forward).Length > 1e-9 || (actual.Up - prior.Up).Length > 1e-9)
                 throw new InvalidOperationException($"The Hyperion camera in view {index + 1} changed after reload.");
         }
-        if (scene.Renderer(0).MoonPoint(id)?.Visible != true ||
+        if (scene.Renderer(0).BodyPoint(id)?.Visible != true ||
             scene.Renderer(1).NaturalMoonModel(id)?.Visible != true)
             throw new InvalidOperationException("Reloading must preserve the point and the original mesh in their respective views.");
         await ToSignal(RenderingServer.Singleton, RenderingServer.SignalName.FramePostDraw);
@@ -233,7 +233,7 @@ public partial class EarthOrbitProbe
                 mesh.SurfaceGetMaterial(0) is not ShaderMaterial material)
                 throw new InvalidOperationException($"{id.Value} did not render the original triangle mesh. " +
                     $"Viewport {scene.Renderer(view).GetViewport().GetVisibleRect().Size}, " +
-                    $"point {scene.Renderer(view).MoonPoint(id)?.Visible}, model {scene.Renderer(view).NaturalMoonModel(id)?.Visible}.");
+                    $"point {scene.Renderer(view).BodyPoint(id)?.Visible}, model {scene.Renderer(view).NaturalMoonModel(id)?.Visible}.");
             Aabb bounds = mesh.GetAabb();
             if (bounds.Position.DistanceTo(Vector(expected.GetProperty("minimum"))) > .001 ||
                 bounds.End.DistanceTo(Vector(expected.GetProperty("maximum"))) > .001)

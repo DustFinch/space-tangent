@@ -2,19 +2,20 @@
 using Godot;
 using SpaceTangent.Application;
 using SpaceTangent.Contracts;
+using SpaceTangent.Core.Ephemerides;
 using SpaceTangent.Core.World;
 
 namespace SpaceTangent.Godot.Simulation;
 
 internal partial class SimulationViewport
 {
-    private readonly Dictionary<ObjectId, MeshInstance3D> _moonPoints = new();
-    private ArrayMesh? _moonPointMesh;
-    private Shader? _moonPointShader;
+    private readonly Dictionary<ObjectId, MeshInstance3D> _bodyPoints = new();
+    private ArrayMesh? _bodyPointMesh;
+    private Shader? _bodyPointShader;
 
-    internal MeshInstance3D? MoonPoint(ObjectId id) => _moonPoints.GetValueOrDefault(id);
+    internal MeshInstance3D? BodyPoint(ObjectId id) => _bodyPoints.GetValueOrDefault(id);
 
-    private bool DrawMoonPhotometry(NaturalBodyDefinition body, WorldSnapshot snapshot, Vector3d towardEye,
+    private bool DrawReflectedBody(ObjectId id, ObjectId parentId, double radius, double albedo, string tint, WorldSnapshot snapshot, Vector3d towardEye,
         Vector3d bodyPosition, Vector3 position, float projectedRadius)
     {
         const double au = 149_597_870.7;
@@ -22,7 +23,7 @@ internal partial class SimulationViewport
         const double pointPixels = 1, blendPixels = 4, faintestMagnitude = 7.8;
 
         double range = towardEye.Length;
-        double altitude = range - body.RadiusKilometers;
+        double altitude = range - radius;
         if (altitude <= 0 || snapshot.SolarSystem is not { } solar)
             return true;
 
@@ -31,7 +32,7 @@ internal partial class SimulationViewport
         if (height < 32)
             return true;
         double focalPixels = height / (2 * Math.Tan(Math.PI * _navigationCamera.Fov / 360));
-        double disc = focalPixels * body.RadiusKilometers / altitude;
+        double disc = focalPixels * radius / altitude;
         if (disc >= blendPixels)
             return true;
 
@@ -42,20 +43,20 @@ internal partial class SimulationViewport
         Vector3d sunDirection = towardSun / sunRange;
         Vector3d eyeDirection = towardEye / range;
         double phase = Math.Clamp((1 + Vector3d.Dot(sunDirection, eyeDirection)) / 2, 0, 1);
-        if (snapshot.TryState(body.Parent, out var parent))
+        if (parentId != SolarSystemSample.SunId && snapshot.TryState(parentId, out var parent))
         {
             Vector3d parentOffset = bodyPosition - parent.PositionKilometers;
             double alongSun = Vector3d.Dot(parentOffset, sunDirection);
-            double parentRadius = NavigationCamera.BodyRadiusKilometers(body.Parent);
+            double parentRadius = NavigationCamera.BodyRadiusKilometers(parentId);
             if (alongSun < 0 && (parentOffset - sunDirection * alongSun).Length < parentRadius)
                 phase = 0;
         }
-        double ratio = body.RadiusKilometers / sunRange * (au / range);
-        double flux = MoonAlbedo(body.NaifId) * phase * ratio * ratio;
+        double ratio = radius / sunRange * (au / range);
+        double flux = albedo * phase * ratio * ratio;
         double magnitude = sunMagnitudeAtAu - 2.5 * Math.Log10(flux);
         if (magnitude < faintestMagnitude)
         {
-            MeshInstance3D point = GetMoonPoint(body);
+            MeshInstance3D point = GetBodyPoint(id, tint);
             var material = (ShaderMaterial)point.MaterialOverride;
             material.SetShaderParameter("magnitude", (float)magnitude);
             material.SetShaderParameter("fade", (float)Math.Min(1, (blendPixels - disc) / (blendPixels - pointPixels)));
@@ -66,34 +67,40 @@ internal partial class SimulationViewport
         return disc >= pointPixels;
     }
 
-    private MeshInstance3D GetMoonPoint(NaturalBodyDefinition body)
+    private MeshInstance3D GetBodyPoint(ObjectId id, string tint)
     {
-        if (_moonPoints.TryGetValue(body.Id, out var existing))
+        if (_bodyPoints.TryGetValue(id, out var existing))
             return existing;
-        if (_moonPointMesh is null)
+        if (_bodyPointMesh is null)
         {
             using var arrays = new global::Godot.Collections.Array();
             arrays.Resize((int)Mesh.ArrayType.Max);
             arrays[(int)Mesh.ArrayType.Vertex] = new[] { Vector3.Zero };
-            _moonPointMesh = new ArrayMesh();
-            _moonPointMesh.AddSurfaceFromArrays(Mesh.PrimitiveType.Points, arrays);
-            _moonPointShader = GD.Load<Shader>("res://Shaders/moon_photometric_point.gdshader");
+            _bodyPointMesh = new ArrayMesh();
+            _bodyPointMesh.AddSurfaceFromArrays(Mesh.PrimitiveType.Points, arrays);
+            _bodyPointShader = GD.Load<Shader>("res://Shaders/body_photometric_point.gdshader");
         }
-        var material = new ShaderMaterial { Shader = _moonPointShader };
-        Color color = new(body.Color);
+        var material = new ShaderMaterial { Shader = _bodyPointShader };
+        Color color = new(tint);
         material.SetShaderParameter("point_color", new Vector3(color.R, color.G, color.B));
         var point = new MeshInstance3D
         {
-            Mesh = _moonPointMesh, MaterialOverride = material, Visible = false,
+            Mesh = _bodyPointMesh, MaterialOverride = material, Visible = false,
             CustomAabb = new Aabb(-Vector3.One, Vector3.One * 2),
             CastShadow = GeometryInstance3D.ShadowCastingSetting.Off
         };
-        _moonPoints.Add(body.Id, point);
+        _bodyPoints.Add(id, point);
         AddChild(point);
         return point;
     }
 
     // Geometric albedos from the archived built-in solar system catalogue.
+    private static double PlanetAlbedo(int naif) => naif switch
+    {
+        199 => .14138, 299 => .672604, 399 => .449576, 499 => .174821,
+        599 => .510901, 699 => .49974, 799 => .437118, 899 => .409338,
+        _ => .1
+    };
     private static double MoonAlbedo(int naif) => naif switch
     {
         401 => .0683, 402 => .068,

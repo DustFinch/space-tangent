@@ -171,7 +171,9 @@ internal partial class SimulationViewport
                 continue;
             var (position, scale) = project(state.PositionKilometers);
             float radius = (float)(planet.RadiusKilometers * scale / units);
-            if (radius < .025f && pose.Target != planet.Id)
+            Vector3d towardEye = (pose.AnchorKilometers - state.PositionKilometers) + eyeOffset;
+            if (!DrawReflectedBody(planet.Id, SolarSystemSample.SunId, planet.RadiusKilometers, PlanetAlbedo(planet.NaifId),
+                planet.Color, snapshot, towardEye, state.PositionKilometers, position, radius))
                 continue;
             float pole = (float)(planet.PolarRadiusKilometers / planet.RadiusKilometers);
             bool oriented = PlaceWorldGlobe(globe, snapshot, planet.Id, position, new(radius, radius * pole, radius));
@@ -199,7 +201,7 @@ internal partial class SimulationViewport
 
     private void HidePlanetGlobes()
     {
-        foreach (var point in _moonPoints.Values)
+        foreach (var point in _bodyPoints.Values)
             point.Hide();
         foreach (MeshInstance3D globe in _planetGlobes.Values)
             globe.Hide();

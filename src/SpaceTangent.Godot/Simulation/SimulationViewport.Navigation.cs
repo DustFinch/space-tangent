@@ -116,17 +116,19 @@ internal partial class SimulationViewport
             _navigationLight.LookAt(-light, Math.Abs(light.Y) > .98f ? Vector3.Forward : Vector3.Up);
         }
         _navigationLight.Show();
+        HidePlanetGlobes();
         PlaceBody(_navigationSun, solar.Sun.PositionKilometers, SolarSystemSample.SunId);
-        PlaceBody(_navigationEarth, solar.Earth.PositionKilometers, SolarSystemSample.EarthId);
+        PlaceBody(_navigationEarth, solar.Earth.PositionKilometers, SolarSystemSample.EarthId,
+            SolarSystemSample.SunId, PlanetAlbedo(399), "6fa8ff");
         if (_earthOrbit is not null)
         {
             float projectedDistance = _navigationEarth.Position.DistanceTo(_navigationCamera.Position);
-            _earthOrbit.Update(solar, deltaT, _navigationEarth.Scale.X > projectedDistance * .004f);
+            _earthOrbit.Update(solar, deltaT, _navigationEarth.Visible && _navigationEarth.Scale.X > projectedDistance * .004f);
         }
-        PlaceBody(_navigationMoon, solar.Moon.PositionKilometers, SolarSystemSample.MoonId);
+        PlaceBody(_navigationMoon, solar.Moon.PositionKilometers, SolarSystemSample.MoonId,
+            SolarSystemSample.EarthId, .136, "c9c4b6");
         _navigationMoonMaterial.SetShaderParameter("sun_from_moon", ToGodot((solar.Sun - solar.Moon).PositionKilometers, 1));
         _navigationMoonMaterial.SetShaderParameter("earth_from_moon", ToGodot((solar.Earth - solar.Moon).PositionKilometers, 1));
-        HidePlanetGlobes();
         DrawPlanetGlobes(snapshot, pose, placement.OffsetKilometers, units, sky.Labels, ProjectWithScale);
         DrawWorldAtmospheres(snapshot, solar.Sun.PositionKilometers);
         DrawStellarObjects(pose, snapshot, sky, units, ProjectWithScale);
@@ -162,12 +164,16 @@ internal partial class SimulationViewport
 
         DrawArchivedBodies(units);
 
-        void PlaceBody(MeshInstance3D node, Vector3d position, ObjectId id)
+        void PlaceBody(MeshInstance3D node, Vector3d position, ObjectId id,
+            ObjectId? parentId = null, double albedo = 0, string tint = "")
         {
             node.Position = Project(position, out double scale);
-            float radius = (float)(NavigationCamera.BodyRadiusKilometers(id) * scale / units);
-            node.Scale = Vector3.One * Math.Max(.035f, radius);
-            node.Show();
+            double physicalRadius = NavigationCamera.BodyRadiusKilometers(id);
+            float radius = (float)(physicalRadius * scale / units);
+            node.Scale = Vector3.One * radius;
+            Vector3d towardEye = (pose.AnchorKilometers - position) + placement.OffsetKilometers;
+            node.Visible = parentId is not { } parent ||
+                DrawReflectedBody(id, parent, physicalRadius, albedo, tint, snapshot, towardEye, position, node.Position, radius);
         }
 
         Vector3 Project(Vector3d position, out double scale) => ProjectNavigation((position - pose.AnchorKilometers) - _navigationEyeOffset, units, out scale);
@@ -218,17 +224,20 @@ internal partial class SimulationViewport
             Consider(id, deepSky);
         if (_compactCompanion is { } companion)
             Consider(SimulationWorld.CygnusCompanionId, companion);
-        foreach (var (id, sprite) in _moonPoints)
+        float closestPointPixelsSquared = 25;
+        float pointDepth = nearest;
+        foreach (var (id, sprite) in _bodyPoints)
         {
             if (!sprite.Visible || _navigationCamera.IsPositionBehind(sprite.Position))
                 continue;
             float depth = (sprite.Position - origin).Dot(direction);
-            if (depth >= _navigationCamera.Near && depth < nearest &&
-                _navigationCamera.UnprojectPosition(sprite.Position).DistanceSquaredTo(point) <= 25)
-            {
-                nearest = depth;
-                result = id;
-            }
+            float pixelsSquared = _navigationCamera.UnprojectPosition(sprite.Position).DistanceSquaredTo(point);
+            if (depth < _navigationCamera.Near || depth >= nearest || pixelsSquared > closestPointPixelsSquared ||
+                (pixelsSquared == closestPointPixelsSquared && depth >= pointDepth))
+                continue;
+            closestPointPixelsSquared = pixelsSquared;
+            pointDepth = depth;
+            result = id;
         }
         return result ?? PickCompactObject(point) ?? PickDistantStar(point);
 

@@ -57,6 +57,7 @@ public partial class EarthOrbitProbe : Node
             {
                 await ExerciseOuterMoonShapes(scene, epoch, directory);
                 await ExerciseMoonPhotometry(scene, epoch, directory);
+                await ExercisePlanetPhotometry(scene, epoch, directory);
                 result = 0;
                 return;
             }
@@ -127,6 +128,7 @@ public partial class EarthOrbitProbe : Node
             await ExerciseDemoWorlds(scene, directory);
             await ExerciseProceduralTerrain(scene, directory);
             await ExerciseSmallBodies(scene, epoch, directory);
+            await ExercisePlanetPhotometry(scene, epoch, directory);
             await ExerciseSmallBodyRings(scene, directory);
             await ExerciseExtrasolarSsc(scene, directory);
             if (System.Environment.GetEnvironmentVariable("SPACETANGENT_SPATIAL_SKY_SMOKE") == "1")

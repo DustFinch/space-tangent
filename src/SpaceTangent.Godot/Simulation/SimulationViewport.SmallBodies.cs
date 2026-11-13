@@ -54,7 +54,8 @@ internal partial class SimulationViewport
             float radius = (float)(body.RadiusKilometers * scale / units);
             Vector3d towardEye = (pose.AnchorKilometers - state.PositionKilometers) + eyeOffset;
             bool isMoon = body.Kind == CatalogueKind.Moon;
-            bool resolved = !isMoon || DrawMoonPhotometry(body, snapshot, towardEye, state.PositionKilometers, position, radius);
+            bool resolved = !isMoon || DrawReflectedBody(body.Id, body.Parent, body.RadiusKilometers, MoonAlbedo(body.NaifId),
+                body.Color, snapshot, towardEye, state.PositionKilometers, position, radius);
             if (!isMoon && radius < .035f && pose.Target != body.Id)
                 continue;
             Vector3 radii = body.NaifId switch

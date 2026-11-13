@@ -34,7 +34,7 @@ Search for a system or a component by name or alias. Flying to a barycenter fram
 
 ### Local STC sources
 
-Place `.stc` files in `data/sky/stc` or set `SPACETANGENT_STC_ROOT` to their directory. The files add names, stellar positions, sizes and barycentric orbits to the selected catalogue. Numbered edits use the existing star when it is available. Inspect the Godot log for records with invalid coordinates or missing reference stars.
+Place `.stc` files in `data/sky/stc` or set `SPACETANGENT_STC_ROOT` to their directory. The files add names, stellar positions, sizes and barycentric orbits to the selected catalogue. Numbered edits use the existing star when it is available. Place the matching `stars.dat` in the same directory to supply missing coordinates from the source catalogue. A sky pack carries the file alongside its STC records. Inspect the Godot log for records with invalid coordinates or missing reference stars.
 
 ## Archived exoplanets
 

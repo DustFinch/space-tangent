@@ -30,6 +30,25 @@ public partial class EarthOrbitProbe
             material.SetShaderParameter("archived_shadow_count", 0);
             await ToSignal(RenderingServer.Singleton, RenderingServer.SignalName.FramePostDraw);
             using var lit = renderer.GetViewport().GetTexture().GetImage();
+            if (renderer.ArchivedEarthLimb?.MaterialOverride is not ShaderMaterial air ||
+                air.GetShaderParameter("archived_shadow_count").AsInt32() != 1)
+                throw new InvalidOperationException("The recorded lunar shadow was not bound to Earth's atmosphere.");
+            air.SetShaderParameter("archived_shadow_count", 0);
+            await ToSignal(RenderingServer.Singleton, RenderingServer.SignalName.FramePostDraw);
+            using var unshadowedAir = renderer.GetViewport().GetTexture().GetImage();
+            int limbPixels = 0;
+            float limbContrast = 0;
+            for (int y = 0; y < lit.GetHeight(); y++)
+            for (int x = 0; x < lit.GetWidth(); x++)
+            {
+                float change = unshadowedAir.GetPixel(x, y).Luminance - lit.GetPixel(x, y).Luminance;
+                if (change > .008f)
+                    limbPixels++;
+                limbContrast = Math.Max(limbContrast, change);
+            }
+            if (recording.EndsWith("earth-limb.celframe", StringComparison.Ordinal) && limbPixels < 5)
+                throw new InvalidOperationException($"The recorded shadow darkened only {limbPixels} atmosphere pixels with contrast {limbContrast:F4}.");
+            GD.Print($"Archived atmosphere shadow GPU: Earth, {limbPixels} atmosphere pixels, contrast {limbContrast:F4}.");
             int pixels = 0;
             float darkest = 0;
             for (int y = 0; y < eclipsed.GetHeight(); y++)
@@ -40,10 +59,12 @@ public partial class EarthOrbitProbe
                     pixels++;
                 darkest = Math.Max(darkest, change);
             }
-            if (pixels < 30 || darkest < .15f ||
+            if ((!recording.EndsWith("earth-limb.celframe", StringComparison.Ordinal) && (pixels < 30 || darkest < .15f)) ||
                 eclipsed.SavePng(Path.Combine(directory, "archived-eclipse.png")) != Error.Ok ||
                 lit.SavePng(Path.Combine(directory, "archived-eclipse-control.png")) != Error.Ok)
                 throw new InvalidOperationException($"The recorded Earth shadow changed {pixels} pixels with contrast {darkest:F3}.");
+            if (unshadowedAir.SavePng(Path.Combine(directory, "archived-eclipse-air-control.png")) != Error.Ok)
+                throw new IOException("Could not save the atmosphere control.");
             if (!scene.LoadScenario(saved) || renderer.ArchivedGeometry is not null)
                 throw new InvalidOperationException("The recorded Earth shadow persisted outside replay.");
             GD.Print($"Archived eclipse GPU: original Moon radius {radiusKm:F2} km, {pixels} darkened pixels, contrast {darkest:F3}.");
@@ -129,6 +150,29 @@ public partial class EarthOrbitProbe
                 if (changed < 50 || with.SavePng(Path.Combine(directory, file + "-replay.png")) != Error.Ok)
                     throw new InvalidOperationException($"The {name} rings changed only {changed} GPU samples.");
                 GD.Print($"Archived rings GPU: {name}, {record.RingInnerRadius * geometry.KilometersPerUnit:F1}–{record.RingOuterRadius * geometry.KilometersPerUnit:F1} km, {changed} changed samples.");
+                if (file == "saturn" && rings.MaterialOverride is ShaderMaterial ringMaterial)
+                {
+                    int recordedShadows = geometry.Shadows.Count(item => item.Receiver == name);
+                    if (recordedShadows == 0 || ringMaterial.GetShaderParameter("archived_shadow_count").AsInt32() != recordedShadows)
+                        throw new InvalidOperationException("The original Saturn shadows did not reach the ring material.");
+                    rings.Show();
+                    await ToSignal(RenderingServer.Singleton, RenderingServer.SignalName.FramePostDraw);
+                    using var shadowedRings = renderer.GetViewport().GetTexture().GetImage();
+                    ringMaterial.SetShaderParameter("archived_shadow_count", 0);
+                    await ToSignal(RenderingServer.Singleton, RenderingServer.SignalName.FramePostDraw);
+                    using var litRings = renderer.GetViewport().GetTexture().GetImage();
+                    int ringShadowPixels = 0;
+                    float contrast = 0;
+                    for (int y = 0; y < litRings.GetHeight(); y++)
+                    for (int x = 0; x < litRings.GetWidth(); x++)
+                    {
+                        float difference = litRings.GetPixel(x, y).Luminance - shadowedRings.GetPixel(x, y).Luminance;
+                        if (difference > .003f)
+                            ringShadowPixels++;
+                        contrast = Math.Max(contrast, difference);
+                    }
+                    GD.Print($"Archived ring shadow GPU: Saturn, {recordedShadows} recorded occluders, {ringShadowPixels} darkened pixels, contrast {contrast:F4}.");
+                }
                 if (file == "saturn")
                 {
                     const string nameOfMoon = "Sol/Saturn/Atlas";
@@ -178,7 +222,9 @@ public partial class EarthOrbitProbe
 
         foreach (var (file, name, id) in cases)
         {
-            if (!scene.StartReplay(Path.Combine(recordings, file + ".celframe")))
+            string eclipseRecording = Path.Combine(recordings, "titan-eclipse.celframe");
+            bool testShadow = file == "titan" && File.Exists(eclipseRecording);
+            if (!scene.StartReplay(testShadow ? eclipseRecording : Path.Combine(recordings, file + ".celframe")))
                 throw new InvalidOperationException($"Could not open the original {name} recording.");
             scene.SetProcess(false);
             try
@@ -200,6 +246,22 @@ public partial class EarthOrbitProbe
 
                 await ToSignal(RenderingServer.Singleton, RenderingServer.SignalName.FramePostDraw);
                 using var air = renderer.GetViewport().GetTexture().GetImage();
+                if (testShadow)
+                {
+                    if (scattering.GetShaderParameter("archived_shadow_count").AsInt32() != 1)
+                        throw new InvalidOperationException("Saturn's recorded shadow did not reach Titan's atmosphere.");
+                    scattering.SetShaderParameter("archived_shadow_count", 0);
+                    await ToSignal(RenderingServer.Singleton, RenderingServer.SignalName.FramePostDraw);
+                    using var unshadowed = renderer.GetViewport().GetTexture().GetImage();
+                    int changedAir = 0;
+                    for (int y = 0; y < air.GetHeight(); y += 2)
+                    for (int x = 0; x < air.GetWidth(); x += 2)
+                        if (unshadowed.GetPixel(x, y).Luminance - air.GetPixel(x, y).Luminance > .008f)
+                            changedAir++;
+                    if (changedAir < 25)
+                        throw new InvalidOperationException($"Saturn's recorded shadow affected only {changedAir} atmosphere samples.");
+                    GD.Print($"Archived atmosphere shadow GPU: Titan, {changedAir} atmosphere samples.");
+                }
                 shell.Hide();
                 await ToSignal(RenderingServer.Singleton, RenderingServer.SignalName.FramePostDraw);
                 using var bare = renderer.GetViewport().GetTexture().GetImage();
@@ -211,7 +273,7 @@ public partial class EarthOrbitProbe
                     if (Math.Abs(before.R - after.R) + Math.Abs(before.G - after.G) + Math.Abs(before.B - after.B) > .025)
                         changed++;
                 }
-                if (changed < 25 || air.SavePng(Path.Combine(directory, file + "-replay.png")) != Error.Ok)
+                if ((!testShadow && changed < 25) || air.SavePng(Path.Combine(directory, file + "-replay.png")) != Error.Ok)
                     throw new InvalidOperationException($"The archived {name} atmosphere changed only {changed} GPU samples.");
                 GD.Print($"Archived atmosphere GPU: {name}, recorded shell {height:F2} km, {changed} changed samples.");
             }

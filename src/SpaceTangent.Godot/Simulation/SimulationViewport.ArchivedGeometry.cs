@@ -128,14 +128,14 @@ internal partial class SimulationViewport
             node.Show();
             if (id is { } ringId && body.RingOuterRadius > body.RingInnerRadius &&
                 _archivedPlanetTextures?.Rings.GetValueOrDefault(ringId) is { } ringMap)
-                DrawArchivedRings(ringId, node, body, radius, camera * Column(body.LightDirection), ringMap);
+                DrawArchivedRings(ringId, node, body, scene, radius, camera * Column(body.LightDirection), ringMap);
             if (id is { } atmosphereId && body.AtmosphereRadius > body.Radius && body.LightDirection.Length > 0)
             {
                 Vector3 light = camera * Column(body.LightDirection);
                 if (atmosphereId == SolarSystemSample.EarthId)
-                    DrawArchivedEarthLimb(node, body, scene.KilometersPerUnit, light);
+                    DrawArchivedEarthLimb(node, body, scene, light);
                 else
-                    DrawArchivedWorldAtmosphere(atmosphereId, node, body, scene.KilometersPerUnit, light);
+                    DrawArchivedWorldAtmosphere(atmosphereId, node, body, scene, light);
             }
         }
 
@@ -145,7 +145,7 @@ internal partial class SimulationViewport
         static Vector3 Column(Vector3d value) => new((float)value.X, (float)value.Y, (float)value.Z);
     }
 
-    private void BindArchivedShadows(ShaderMaterial material, RecordedSceneGeometry scene, RecordedBodyGeometry body, float renderRadius)
+    private void BindArchivedShadows(ShaderMaterial material, RecordedSceneGeometry scene, RecordedBodyGeometry body, float renderRadius, Basis? receiverAxes = null)
     {
         int count = 0;
         foreach (var blocker in scene.Shadows)
@@ -153,6 +153,8 @@ internal partial class SimulationViewport
             if (!string.Equals(blocker.Receiver, body.Name, StringComparison.Ordinal))
                 continue;
             Vector3d offset = (blocker.Center - body.CameraPosition) / body.Radius;
+            if (receiverAxes is { } axes)
+                offset = Rotate(offset, axes);
             _archivedBlockers[count++] = new((float)offset.X, (float)offset.Y, (float)offset.Z, (float)(blocker.Radius / body.Radius));
             if (count == _archivedBlockers.Length)
                 break;
@@ -162,18 +164,27 @@ internal partial class SimulationViewport
             return;
         Vector3d sun = (scene.SunPosition - body.CameraPosition) / body.Radius;
         material.SetShaderParameter("archived_blockers", _archivedBlockers);
-        material.SetShaderParameter("archived_render_radius", renderRadius);
+        if (receiverAxes is null)
+            material.SetShaderParameter("archived_render_radius", renderRadius);
+        else
+            sun = Rotate(sun, receiverAxes.Value);
         material.SetShaderParameter("archived_sun", new Vector3((float)sun.X, (float)sun.Y, (float)sun.Z));
         material.SetShaderParameter("archived_sun_radius", (float)(scene.SunRadius / body.Radius));
         material.SetShaderParameter("archived_light_angle", (float)body.LightAngularRadius);
         material.SetShaderParameter("archived_second_angle", (float)body.SecondLightAngularRadius);
+
+        static Vector3d Rotate(Vector3d vector, Basis axes)
+        {
+            var local = axes * new Vector3((float)vector.X, (float)vector.Y, (float)vector.Z);
+            return new(local.X, local.Y, local.Z);
+        }
     }
 
-    private void DrawArchivedEarthLimb(MeshInstance3D surface, RecordedBodyGeometry body, double kilometersPerUnit,
+    private void DrawArchivedEarthLimb(MeshInstance3D surface, RecordedBodyGeometry body, RecordedSceneGeometry scene,
         Vector3 light)
     {
-        double ground = body.Radius * kilometersPerUnit;
-        double height = (body.AtmosphereRadius - body.Radius) * kilometersPerUnit;
+        double ground = body.Radius * scene.KilometersPerUnit;
+        double height = (body.AtmosphereRadius - body.Radius) * scene.KilometersPerUnit;
         if (!float.IsFinite((float)ground) || !float.IsFinite((float)height) ||
             surface.Basis.Determinant() == 0)
             return;
@@ -193,21 +204,23 @@ internal partial class SimulationViewport
         material.SetShaderParameter("earth_radius_km", (float)ground);
         material.SetShaderParameter("shell_height_override_km", (float)height);
         material.SetShaderParameter("sun_direction", (surface.Basis.Orthonormalized().Inverse() * light).Normalized());
+        BindArchivedShadows(material, scene, body, 1, ArchivedReceiverAxes(surface));
+        material.SetShaderParameter("archived_polar_ratio", (float)body.PolarScale);
         ArchivedEarthLimb.Transform = new(surface.Basis.Scaled(Vector3.One * (float)(body.AtmosphereRadius / body.Radius)),
             surface.Position);
         ArchivedEarthLimb.Show();
     }
 
     private void DrawArchivedWorldAtmosphere(ObjectId id, MeshInstance3D surface, RecordedBodyGeometry body,
-        double kilometersPerUnit, Vector3 light)
+        RecordedSceneGeometry scene, Vector3 light)
     {
         bool venus = id == SolarSystemSample.VenusId;
         var lookup = _archivedAtmosphereLookups.GetValueOrDefault(id);
         if (!venus && lookup is null)
             return;
 
-        float ground = (float)(body.Radius * kilometersPerUnit);
-        float height = (float)((body.AtmosphereRadius - body.Radius) * kilometersPerUnit);
+        float ground = (float)(body.Radius * scene.KilometersPerUnit);
+        float height = (float)((body.AtmosphereRadius - body.Radius) * scene.KilometersPerUnit);
         float shellScale = (float)(body.AtmosphereRadius / body.Radius);
         if (!float.IsFinite(ground + height) || !float.IsFinite(shellScale) || surface.Basis.Determinant() == 0)
             return;
@@ -244,12 +257,14 @@ internal partial class SimulationViewport
         scattering.SetShaderParameter("ground_radius_km", ground);
         scattering.SetShaderParameter("shell_height_km", height);
         scattering.SetShaderParameter("light_in_body", (surface.Basis.Orthonormalized().Inverse() * light).Normalized());
+        BindArchivedShadows(scattering, scene, body, 1, ArchivedReceiverAxes(surface));
+        scattering.SetShaderParameter("archived_polar_ratio", (float)body.PolarScale);
         shell.Transform = new(surface.Basis.Scaled(Vector3.One * shellScale), surface.Position);
         shell.Show();
     }
 
     private void DrawArchivedRings(ObjectId id, MeshInstance3D surface, RecordedBodyGeometry body,
-        float radius, Vector3 light, Texture2D texture)
+        RecordedSceneGeometry scene, float radius, Vector3 light, Texture2D texture)
     {
         var radii = new Vector2((float)(body.RingInnerRadius / body.Radius), (float)(body.RingOuterRadius / body.Radius));
         if (surface.Basis.Determinant() == 0)
@@ -275,9 +290,13 @@ internal partial class SimulationViewport
         shader.SetShaderParameter("sun_in_body", rotation.Inverse() * (light == Vector3.Zero ? Vector3.Right : light));
         shader.SetShaderParameter("polar_ratio", (float)body.PolarScale);
         shader.SetShaderParameter("solar_radius_radians", (float)body.LightAngularRadius);
+        BindArchivedShadows(shader, scene, body, 1, ArchivedReceiverAxes(surface));
         rings.Node.Transform = new(rotation.Scaled(Vector3.One * radius), surface.Position);
         rings.Node.Show();
     }
+
+    private Basis ArchivedReceiverAxes(MeshInstance3D surface) =>
+        surface.Basis.Orthonormalized().Inverse() * _navigationCamera.Basis;
 
     private void DrawArchivedPoint(RecordedBodyPoint record, Vector3 center, float radius, RecordedStellarView? sky)
     {

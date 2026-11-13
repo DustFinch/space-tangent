@@ -2,6 +2,8 @@
 shader_type spatial;
 render_mode unshaded, cull_disabled, depth_draw_never;
 
+#include "res://Shaders/archived_occultation.gdshaderinc"
+
 uniform sampler2D rings_map : source_color, filter_linear_mipmap, repeat_disable;
 uniform vec3 sun_in_body;
 uniform float polar_ratio = 0.902;
@@ -23,6 +25,7 @@ void fragment() {
         float penumbra = max(distance * solar_radius_radians / polar_ratio, 0.00005);
         visibility = smoothstep(1.0 - penumbra, 1.0 + penumbra, miss);
     }
+    visibility *= archived_light_visibility(ring_position, sun_in_body, archived_light_angle, true);
     float intensity = 0.035 + 0.965 * visibility;
     ALBEDO = ring.rgb * (OUTPUT_IS_SRGB ? pow(intensity, 1.0 / 2.2) : intensity);
     ALPHA = ring.a;

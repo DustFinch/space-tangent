@@ -127,7 +127,7 @@ void venus_air(vec3 eye, vec3 ray, float solid_radius, out vec3 transmission, ou
         vec3 tau = venus_extinction(column);
         float sun_dot = dot(point, light_in_body);
         float horizon = sqrt(max(0.0, radius * radius - ground_radius_km * ground_radius_km));
-        float lit = smoothstep(-shadow_width, shadow_width, sun_dot + horizon);
+        float lit = smoothstep(-shadow_width, shadow_width, sun_dot + horizon) * world_solar_visibility(point);
         if (lit > 0.0) {
             vec3 rayleigh = venus_rayleigh * column.x;
             vec3 mie = vec3(venus_mie * column.y);

@@ -2,14 +2,11 @@
 #include "res://Shaders/atmosphere_lookup.gdshaderinc"
 #include "res://Shaders/solar_occultation.gdshaderinc"
 
+#include "res://Shaders/archived_occultation.gdshaderinc"
+
 uniform float occulting_radius_km = 0.0;
 uniform vec3 to_occluder_km;
 uniform vec3 to_sun_km;
-
-float world_solar_visibility(vec3 point) {
-    return occulting_radius_km > 0.0 ?
-        solar_visibility(to_sun_km - point, to_occluder_km - point, occulting_radius_km) : 1.0;
-}
 
 uniform vec3 light_in_body = vec3(1.0, 0.0, 0.0);
 uniform float ground_radius_km;
@@ -21,6 +18,18 @@ uniform float air_extinction_per_km = 0.012;
 uniform bool venus_scattering = false;
 varying vec3 air_surface;
 varying flat vec3 air_eye;
+
+uniform float archived_polar_ratio = 1.0;
+
+float world_solar_visibility(vec3 point) {
+    float visibility = occulting_radius_km > 0.0 ?
+        solar_visibility(to_sun_km - point, to_occluder_km - point, occulting_radius_km) : 1.0;
+    if (archived_shadow_count > 0) {
+        visibility *= archived_light_visibility(point * vec3(1.0, archived_polar_ratio, 1.0) / ground_radius_km,
+            light_in_body, archived_light_angle, true);
+    }
+    return visibility;
+}
 
 vec2 air_span(vec3 eye, vec3 ray, float radius) {
     float nearest = dot(eye, ray);
@@ -39,7 +48,7 @@ void world_orbit_air_to(vec3 eye, vec3 ray, float solid_radius_km, out vec3 tran
     if (use_atmosphere_lookup) {
         vec3 entry;
         sample_atmosphere_lookup(eye, ray, light_in_body, ground_radius_km, transmission, radiance, entry);
-        if (occulting_radius_km > 0.0) {
+        if (occulting_radius_km > 0.0 || archived_shadow_count > 0) {
             vec2 shell = air_span(eye, ray, ground_radius_km + shell_height_km);
             vec2 ground = air_span(eye, ray, solid_radius_km);
             float start = max(0.0, shell.x);
@@ -75,7 +84,7 @@ void world_orbit_air_to(vec3 eye, vec3 ray, float solid_radius_km, out vec3 tran
         float depth = exp(-max(0.0, altitude - air_base_km) / air_scale_height_km) * air_extinction_per_km * step_km;
         vec2 occlusion = air_span(point, light_in_body, solid_radius_km);
         if (occlusion.x <= 0.0) {
-            radiance += exp(-optical_depth - depth * 0.5) * depth * phase * air_color;
+            radiance += exp(-optical_depth - depth * 0.5) * depth * phase * air_color * world_solar_visibility(point);
         }
         optical_depth += depth;
     }

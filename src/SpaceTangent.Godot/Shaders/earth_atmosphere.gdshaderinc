@@ -15,11 +15,20 @@ const float AIR_MIE_G = 0.76;
 const float AIR_EXPOSURE = 7.0;
 
 float earth_solar_visibility(vec3 position) {
-    return solar_eclipse_active ? solar_visibility(eclipse_sun_km - position, eclipse_moon_km - position, 1737.4) : 1.0;
+    float visibility = solar_eclipse_active ? solar_visibility(eclipse_sun_km - position, eclipse_moon_km - position, 1737.4) : 1.0;
+#ifdef ARCHIVED_EARTH_LIMB
+    visibility *= archived_light_visibility(position * vec3(1.0, archived_polar_ratio, 1.0) / earth_radius_km,
+        sun_direction, archived_light_angle, true);
+#endif
+    return visibility;
 }
 
 float earth_air_visibility(vec3 eye, vec3 ray, float start, float end, float ground_radius) {
-    if (!solar_eclipse_active || end <= start) {
+    bool eclipsed = solar_eclipse_active;
+#ifdef ARCHIVED_EARTH_LIMB
+    eclipsed = eclipsed || archived_shadow_count > 0;
+#endif
+    if (!eclipsed || end <= start) {
         return 1.0;
     }
     float density = 0.0;

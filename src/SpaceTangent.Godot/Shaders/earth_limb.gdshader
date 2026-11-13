@@ -2,8 +2,11 @@
 shader_type spatial;
 render_mode unshaded, blend_add, cull_front, depth_draw_never;
 
-#include "res://Shaders/earth_atmosphere.gdshaderinc"
+#define ARCHIVED_EARTH_LIMB
+#include "res://Shaders/archived_occultation.gdshaderinc"
+uniform float archived_polar_ratio = 1.0;
 #include "res://Shaders/earth_orbit_geometry.gdshaderinc"
+#include "res://Shaders/earth_atmosphere.gdshaderinc"
 #include "res://Shaders/atmosphere_lookup.gdshaderinc"
 
 uniform float shell_height_override_km = 0.0;

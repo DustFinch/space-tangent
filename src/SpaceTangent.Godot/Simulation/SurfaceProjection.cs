@@ -26,6 +26,8 @@ internal sealed partial class SurfaceProjection
     internal int ActiveMeteorTrailCount => _meteors?.ActiveTrailCount ?? 0;
     internal bool ShowsMeteorRadiant(string code) => _surface.Visible && _meteors?.ShowsRadiant(code) == true;
     private (Vector3 Forward, Vector3 Right, Vector3 Up, Vector3 North, Vector3 East)? _cardinalFrame;
+    private bool _cloudsEnabled = true;
+    private bool _hideObserverClouds;
     private float _tanHalfField = .087488664f;
     internal double? PitchDegrees { get; set; }
 
@@ -128,6 +130,8 @@ internal sealed partial class SurfaceProjection
         }
         _tanHalfField = (float)Math.Tan(fieldOfView * Degrees / 2);
         _material.SetShaderParameter("tan_half_field", _tanHalfField);
+        _hideObserverClouds = sky.HideClouds;
+        _material.SetShaderParameter("show_clouds", _cloudsEnabled && !_hideObserverClouds);
         _material.SetShaderParameter("observer", Convert(lighting.PositionKilometers));
         _material.SetShaderParameter("forward", forward);
         _material.SetShaderParameter("right", right);
@@ -209,7 +213,8 @@ internal sealed partial class SurfaceProjection
 
     internal void SetControls(bool clouds, bool lunarLight)
     {
-        _material.SetShaderParameter("show_clouds", clouds);
+        _cloudsEnabled = clouds;
+        _material.SetShaderParameter("show_clouds", clouds && !_hideObserverClouds);
         _material.SetShaderParameter("lunar_cloud_light", lunarLight);
     }
 

@@ -46,6 +46,20 @@ public partial class EarthOrbitProbe
             {
                 if (!first.Visible)
                     throw new InvalidOperationException("The original Venus clouds must be visible at 85 km.");
+                var session = scene.Session!;
+                var clear = session[0];
+                string profilePath = Path.Combine(directory, "archived-cloud-settings.json");
+                File.WriteAllText(profilePath, """{"Site":{},"Clouds":false}""");
+                var imported = LegacyObserverProfiles.Read(profilePath, clear, session.DeltaT).Observer;
+                string viewsPath = Path.Combine(directory, "venus-independent-clouds.stscene");
+                ScenarioFile.Save(viewsPath, new([imported, clear], false, 0, 0, session.DeltaT));
+                if (!scene.LoadScenario(viewsPath) || !await scene.ReloadAddOns() ||
+                    scene.Session![0] != imported || scene.Session[1] != clear ||
+                    scene.Renderer(0).VenusCloudState is not { Visible: false } ||
+                    scene.Renderer(1).VenusCloudState is not { Visible: true } ||
+                    !scene.Renderer(0).WorldAtmosphereActive(id, lookup: false))
+                    throw new InvalidOperationException("The archived Clouds preference must hide only the cloud deck in its observer.");
+                GD.Print("Cloud settings GPU: original Venus cloud deck independent of atmosphere and second view after reload.");
                 var later = epoch.AddSeconds(86400);
                 if (!scene.Session.World.Graph.Evaluate(later).TryState(id, out var laterState))
                     throw new InvalidOperationException("Venus must have a state one day later.");

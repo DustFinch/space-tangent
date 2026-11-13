@@ -41,7 +41,7 @@ internal partial class SimulationViewport
     internal bool DemoAirVisible(ObjectId id) => _demoGlobes.GetValueOrDefault(id)?.Atmosphere?.Visible == true;
     internal bool DemoRingsVisible(ObjectId id) => _demoGlobes.GetValueOrDefault(id)?.Rings?.Visible == true;
 
-    private void DrawDemoWorlds(NavigationCamera pose, WorldSnapshot snapshot, double units,
+    private void DrawDemoWorlds(NavigationCamera pose, WorldSnapshot snapshot, double units, bool showClouds,
         Func<Vector3d, (Vector3 Position, double Scale)> project)
     {
         if (pose.Target is not { } target || DemoWorlds.Find(target) is null)
@@ -87,10 +87,10 @@ internal partial class SimulationViewport
                     visual.Material.SetShaderParameter("rings_map", rings);
                     visual.RingMaterial?.SetShaderParameter("rings_map", rings);
                 }
-                visual.Material.SetShaderParameter("has_clouds", maps.Clouds is not null);
                 visual.Material.SetShaderParameter("has_emission", maps.Emission is not null);
                 visual.Material.SetShaderParameter("has_rings", maps.Rings is not null);
             }
+            visual.Material.SetShaderParameter("has_clouds", showClouds && visual.Maps?.Clouds is not null);
             var lights = DemoWorlds.Lights(snapshot, body.Id);
             Basis3d inertialToFixed = orientation.ToWorld.Transpose();
             if (visual.Atmosphere is { } shell && body.Atmosphere is { } atmosphere && radius > distance * .01f)

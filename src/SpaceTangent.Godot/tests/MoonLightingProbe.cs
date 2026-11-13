@@ -43,6 +43,28 @@ public partial class MoonLightingProbe : Node
             using Image nightOff = await Capture(renderer, output, "night-off", true, false);
             using Image noCloudOn = await Capture(renderer, output, "no-cloud-on", false, true);
             using Image noCloudOff = await Capture(renderer, output, "no-cloud-off", false, false);
+            var session = scene.Session!;
+            var fullMoon = session.CaptureScenario(0);
+            var observer = fullMoon.Views[0];
+            string archivedSettings = Path.Combine(output, "archived-cloud-settings.json");
+            File.WriteAllText(archivedSettings, """{"Site":{},"Clouds":false}""");
+            var imported = LegacyObserverProfiles.Read(archivedSettings, observer, session.DeltaT).Observer;
+            // Preserve the precise camera and site used by the numerical sky comparison.
+            string cloudScenario = Path.Combine(output, "full-moon-clouds-hidden.stscene");
+            ScenarioFile.Save(cloudScenario, fullMoon with { Views = [observer with { Sky = imported.Sky }] });
+            Require(scene.LoadScenario(cloudScenario), "The archived cloud setting must reopen with the full-Moon scene.");
+            renderer = scene.Renderer(0);
+            using Image hiddenByProfile = await Capture(renderer, output, "clouds-hidden-by-profile", true, true);
+            Require(Difference(hiddenByProfile, noCloudOn).Mean < .00001,
+                "The saved Clouds preference must remove cloud pixels while retaining the full Moon.");
+            Require(Difference(hiddenByProfile, nightOn).Mean > .005,
+                "The archived Clouds preference must change the original cloudy scene.");
+            string visibleScenario = Path.Combine(output, "full-moon-clouds-visible.stscene");
+            ScenarioFile.Save(visibleScenario, fullMoon);
+            Require(scene.LoadScenario(visibleScenario), "Could not restore the original full-Moon scene.");
+            renderer = scene.Renderer(0);
+            GD.Print("Cloud settings GPU: archived ground profile changes cloud pixels and preserves the full Moon.");
+
             JulianInstant dayEpoch = SurfaceProjection.FullMoonEpoch.AddSeconds(43_200);
             scene.Seek(0, dayEpoch);
             using Image dayOn = await Capture(renderer, output, "day-on", true, true);

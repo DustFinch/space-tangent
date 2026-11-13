@@ -110,6 +110,12 @@ public partial class EarthOrbitProbe : Node
                 result = 0;
                 return;
             }
+            if (System.Environment.GetEnvironmentVariable("SPACETANGENT_CLOUD_SETTINGS_PROBE") == "only")
+            {
+                await ExercisePlanetAtmospheres(scene, epoch, directory);
+                result = 0;
+                return;
+            }
             if (System.Environment.GetEnvironmentVariable("SPACETANGENT_SKY_GRIDS_PROBE") == "only")
             {
                 await ExerciseArchivedSkyGrids(scene, epoch, directory);

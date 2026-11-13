@@ -24,6 +24,7 @@ internal sealed class EarthOrbitRenderer
     private readonly MeshInstance3D _globe, _shell;
     private readonly Material? _fallback;
     private readonly ShaderMaterial _ground, _air;
+    private readonly bool _hasCloudMap;
     internal bool UsesLookup { get; }
 
     internal EarthOrbitRenderer(MeshInstance3D globe, EarthOrbitTextures textures, OrbitAtmosphereTextures? lookup)
@@ -34,7 +35,7 @@ internal sealed class EarthOrbitRenderer
         _ground.SetShaderParameter("earth_radius_km", Radius);
         _ground.SetShaderParameter("day_map", textures.Day);
         _ground.SetShaderParameter("has_night_map", textures.Night is not null);
-        _ground.SetShaderParameter("has_cloud_map", textures.Clouds is not null);
+        _hasCloudMap = textures.Clouds is not null;
         if (textures.Night is { } night)
             _ground.SetShaderParameter("night_map", night);
         if (textures.Clouds is { } clouds)
@@ -55,7 +56,7 @@ internal sealed class EarthOrbitRenderer
 
     internal bool Active => _globe.MaterialOverride == _ground && _shell.Visible;
 
-    internal void Update(SolarSystemSample sample, DeltaTModel deltaT, bool useAtmosphere)
+    internal void Update(SolarSystemSample sample, DeltaTModel deltaT, bool useAtmosphere, bool showClouds)
     {
         SurfaceLighting light;
         try
@@ -74,6 +75,7 @@ internal sealed class EarthOrbitRenderer
         _ground.SetShaderParameter("earth_angle", (float)light.EarthRotationRadians);
         _ground.SetShaderParameter("lunar_strength", (float)Math.Clamp(.12 * light.RelativeLunarFlux, 0, 1));
         _ground.SetShaderParameter("show_atmosphere", useAtmosphere);
+        _ground.SetShaderParameter("has_cloud_map", _hasCloudMap && showClouds);
         EclipseRendering.SetEarthShadow(_ground, light, godotAxes: true);
         EclipseRendering.SetEarthShadow(_air, light, godotAxes: true);
         _air.SetShaderParameter("sun_direction", sun);

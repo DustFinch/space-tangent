@@ -22,6 +22,8 @@ public readonly record struct SkyLayerSettings(bool Stars, bool Labels, bool Equ
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingDefault)]
     public bool HideSatellites { get; init; }
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingDefault)]
+    public bool HideClouds { get; init; }
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingDefault)]
     public bool HideOrbits { get; init; }
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingDefault)]
     public bool HideCometTails { get; init; }

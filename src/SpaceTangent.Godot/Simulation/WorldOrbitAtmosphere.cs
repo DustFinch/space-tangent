@@ -99,7 +99,7 @@ internal sealed class WorldOrbitAtmosphere
         (_clouds.IsVisibleInTree(), _cloudMaterial!.GetShaderParameter("cloud_offset").AsSingle());
 
     internal void Update(Vector3d sunward, Vector3 eye, JulianInstant epoch,
-        Vector3d occluder = default, double occluderRadius = 0)
+        bool showClouds, Vector3d occluder = default, double occluderRadius = 0)
     {
         float radius = _globe.Scale.X;
         bool showAir = _shell is not null && radius > .1f && radius > eye.DistanceTo(_globe.Position) * .007f;
@@ -130,7 +130,7 @@ internal sealed class WorldOrbitAtmosphere
         }
         if (_clouds is not null)
         {
-            _clouds.Visible = showAir && eye.DistanceTo(_globe.Position) >= radius * _clouds.Scale.X;
+            _clouds.Visible = showClouds && showAir && eye.DistanceTo(_globe.Position) >= radius * _clouds.Scale.X;
             double turns = epoch.ToJulianDate() * VenusCloudDegreesPerDay / 360;
             _cloudMaterial!.SetShaderParameter("cloud_offset", (float)-(turns - Math.Floor(turns)));
             _cloudMaterial.SetShaderParameter("light_in_body", local);

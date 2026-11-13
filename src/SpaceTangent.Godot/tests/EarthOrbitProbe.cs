@@ -28,6 +28,12 @@ public partial class EarthOrbitProbe : Node
                 await ToSignal(GetTree(), SceneTree.SignalName.ProcessFrame);
             }
             var session = scene.Session ?? throw new InvalidOperationException("The probe needs DE440.");
+            if (System.Environment.GetEnvironmentVariable("SPACETANGENT_PROCEDURAL_TERRAIN_PROBE") == "only")
+            {
+                await ExerciseProceduralTerrain(scene, directory);
+                result = 0;
+                return;
+            }
             var epoch = JulianInstant.FromJulianDate(2460600.5008, TimeScale.Tdb);
             if (session.World.Stellar.Stars.Count > 0)
             {

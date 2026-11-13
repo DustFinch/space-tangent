@@ -12,7 +12,7 @@ public partial class EarthOrbitProbe
 {
     private async Task ExerciseProceduralTerrain(SolarSystemScene scene, string directory)
     {
-        if (System.Environment.GetEnvironmentVariable("SPACETANGENT_PROCEDURAL_TERRAIN_PROBE") != "1")
+        if (System.Environment.GetEnvironmentVariable("SPACETANGENT_PROCEDURAL_TERRAIN_PROBE") is not ("1" or "only"))
             return;
         var session = scene.Session!;
         ObjectId target = DemoWorlds.Aridus;

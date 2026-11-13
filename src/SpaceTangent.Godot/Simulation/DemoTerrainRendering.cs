@@ -123,6 +123,9 @@ internal sealed class DemoTerrainRendering(Node owner, ProceduralTerrain terrain
         var vertices = new Vector3[data.Vertices.Length];
         var normals = new Vector3[vertices.Length];
         var colors = new Color[vertices.Length];
+        var parentOffsets = new float[4 * vertices.Length];
+        var parentNormals = new float[3 * vertices.Length];
+        var parentColors = new float[4 * vertices.Length];
         // Encode the patch centre without per-instance uniforms, whose buffer is shared across Compatibility viewports.
         Vector3 center = Native(data.CenterKilometers / radiusKilometers);
         var uv = Enumerable.Repeat(new Vector2(center.X, center.Y), vertices.Length).ToArray();
@@ -133,6 +136,19 @@ internal sealed class DemoTerrainRendering(Node owner, ProceduralTerrain terrain
             vertices[i] = Native(sample.PositionKilometers / radiusKilometers);
             normals[i] = Native(sample.Normal);
             colors[i] = new(sample.Albedo.Red, sample.Albedo.Green, sample.Albedo.Blue, sample.Albedo.Water);
+            var coarse = data.ParentVertices?[i] ?? sample;
+            var offset = (coarse.PositionKilometers - sample.PositionKilometers) / radiusKilometers;
+            parentOffsets[4 * i] = (float)offset.X;
+            parentOffsets[4 * i + 1] = (float)offset.Y;
+            parentOffsets[4 * i + 2] = (float)offset.Z;
+            parentOffsets[4 * i + 3] = data.ParentVertices is null ? 0 : (float)(data.VertexSpacingKilometers / radiusKilometers);
+            parentNormals[3 * i] = (float)coarse.Normal.X;
+            parentNormals[3 * i + 1] = (float)coarse.Normal.Y;
+            parentNormals[3 * i + 2] = (float)coarse.Normal.Z;
+            parentColors[4 * i] = coarse.Albedo.Red;
+            parentColors[4 * i + 1] = coarse.Albedo.Green;
+            parentColors[4 * i + 2] = coarse.Albedo.Blue;
+            parentColors[4 * i + 3] = coarse.Albedo.Water;
         }
         int[] indices = (int[])data.Indices.Clone();
         for (int i = 0; i < indices.Length; i += 3)
@@ -145,8 +161,14 @@ internal sealed class DemoTerrainRendering(Node owner, ProceduralTerrain terrain
         arrays[(int)global::Godot.Mesh.ArrayType.TexUV] = uv;
         arrays[(int)global::Godot.Mesh.ArrayType.TexUV2] = secondUv;
         arrays[(int)global::Godot.Mesh.ArrayType.Index] = indices;
+        arrays[(int)global::Godot.Mesh.ArrayType.Custom0] = parentOffsets;
+        arrays[(int)global::Godot.Mesh.ArrayType.Custom1] = parentNormals;
+        arrays[(int)global::Godot.Mesh.ArrayType.Custom2] = parentColors;
+        const ulong format = ((ulong)global::Godot.Mesh.ArrayCustomFormat.RgbaFloat << (int)global::Godot.Mesh.ArrayFormat.FormatCustom0Shift) |
+            ((ulong)global::Godot.Mesh.ArrayCustomFormat.RgbFloat << (int)global::Godot.Mesh.ArrayFormat.FormatCustom1Shift) |
+            ((ulong)global::Godot.Mesh.ArrayCustomFormat.RgbaFloat << (int)global::Godot.Mesh.ArrayFormat.FormatCustom2Shift);
         var mesh = new ArrayMesh();
-        mesh.AddSurfaceFromArrays(global::Godot.Mesh.PrimitiveType.Triangles, arrays);
+        mesh.AddSurfaceFromArrays(global::Godot.Mesh.PrimitiveType.Triangles, arrays, flags: (global::Godot.Mesh.ArrayFormat)format);
         return mesh;
     }
 

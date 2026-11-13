@@ -20,6 +20,7 @@ uniform float ring_outer;
 uniform bool use_terrain;
 uniform vec3 terrain_eye;
 varying vec3 terrain_normal;
+varying vec4 terrain_color;
 
 
 vec2 surface_uv(vec3 n) {
@@ -41,10 +42,20 @@ vec3 reflected(vec3 n, vec3 point, vec3 eye, vec3 light, vec3 irradiance, vec3 a
 }
 
 void vertex() {
+    terrain_normal = NORMAL;
+    terrain_color = COLOR;
+    if (use_terrain && CUSTOM0.w > 0.0) {
+        float distance = length(VERTEX + vec3(UV, UV2.x) - terrain_eye);
+        float focal = 0.5 * VIEWPORT_SIZE.y * abs(PROJECTION_MATRIX[1][1]);
+        float pixels = CUSTOM0.w * focal / max(distance, 1e-12);
+        float parent = 1.0 - smoothstep(5.0, 8.0, pixels);
+        VERTEX += CUSTOM0.xyz * parent;
+        terrain_normal = normalize(mix(NORMAL, CUSTOM1.xyz, parent));
+        terrain_color = mix(COLOR, CUSTOM2, parent);
+    }
     mat4 world_to_mesh = inverse(MODEL_MATRIX);
     air_surface = use_terrain ? VERTEX + vec3(UV, UV2.x) : VERTEX;
     air_eye = use_terrain ? terrain_eye : (world_to_mesh * vec4(CAMERA_POSITION_WORLD, 1.0)).xyz;
-    terrain_normal = NORMAL;
 }
 
 void fragment() {
@@ -58,7 +69,7 @@ void fragment() {
     vec3 albedo = has_maps && OUTPUT_IS_SRGB ? air_srgb_linear(material.rgb) : material.rgb;
     vec3 detail = n;
     if (use_terrain) {
-        material = COLOR;
+        material = terrain_color;
         albedo = material.rgb;
         detail = normalize(terrain_normal);
     } else if (has_maps) {

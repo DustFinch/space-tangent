@@ -52,6 +52,7 @@ public static class LegacyObserverProfiles
         camera = camera with
         {
             Conditions = conditions,
+            EquatorialMount = Flag(root, "EquatorialMount") ?? camera.EquatorialMount,
             CardinalPoints = Flag(root, "Cardinals") ?? camera.CardinalPoints,
             HorizonGrid = Flag(root, "HorizonGrid") ?? camera.HorizonGrid,
             HideLandscapeFog = Flag(root, "LandscapeFog") is { } showFog ? !showFog : camera.HideLandscapeFog,

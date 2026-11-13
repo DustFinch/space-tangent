@@ -281,6 +281,42 @@ public sealed class LegacyObserverProfileTests
         finally { File.Delete(path); }
     }
 
+    [Theory]
+    [InlineData(55.7558)]
+    [InlineData(-24.627)]
+    public void ArchivedEquatorialMountTurnsAlongSkyCoordinates(double latitude)
+    {
+        string path = Path.GetTempFileName();
+        try
+        {
+            var camera = new EarthObserverCamera(new(latitude, 0, 0), 100, 30);
+            var view = new ObserverView(new(2451545, 0, TimeScale.Tdb), CameraMode.Surface, null, false)
+                { EarthObserver = camera };
+            File.WriteAllText(path, """{"DeltaT":"MorrisonStephenson2004","EquatorialMount":true}""");
+            var profile = LegacyObserverProfiles.Read(path, view, DeltaTModel.MorrisonStephenson2004);
+            var mounted = profile.Observer.EarthObserver!.Value;
+            Assert.True(mounted.EquatorialMount);
+            Assert.Equal(camera.AzimuthDegrees, mounted.AzimuthDegrees);
+            Assert.Equal(camera.ElevationDegrees, mounted.ElevationDegrees);
+            double before = Declination(mounted);
+            Assert.Equal(before, Declination(mounted.Turn(.15, 0)), 12);
+            Assert.Equal(before + .1, Declination(mounted.Turn(.15, .1)), 12);
+
+            ScenarioFile.Save(path, new([profile.Observer, view], false, 0, 0, profile.DeltaT));
+            Assert.Equal(new[] { profile.Observer, view }, ScenarioFile.Load(path).Views);
+        }
+        finally { File.Delete(path); }
+
+        static double Declination(EarthObserverCamera camera)
+        {
+            const double rad = Math.PI / 180;
+            var (sinAz, cosAz) = Math.SinCos(camera.AzimuthDegrees * rad);
+            var (sinAlt, cosAlt) = Math.SinCos(camera.ElevationDegrees * rad);
+            var direction = new Vector3d(sinAz * cosAlt, cosAz * cosAlt, sinAlt);
+            return Math.Asin(Vector3d.Dot(direction, camera.VisiblePole));
+        }
+    }
+
     private sealed class ArchiveSettingsFactAttribute : FactAttribute
     {
         public ArchiveSettingsFactAttribute()

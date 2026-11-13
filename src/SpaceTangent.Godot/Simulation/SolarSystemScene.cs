@@ -556,6 +556,13 @@ public partial class SolarSystemScene : Control
                 _status.Text = showMarks ? "Reference marks visible in this view." : "Reference marks hidden.";
                 Refresh();
                 break;
+            case Key.M when key.AltPressed && !key.CtrlPressed && !key.ShiftPressed && !key.MetaPressed &&
+                Session[_active] is { Mode: CameraMode.Surface, Navigation: null } surface:
+                var mount = surface.EarthObserver ?? EarthObserverCamera.Moscow;
+                Session.SetEarthObserver(_active, mount with { EquatorialMount = !mount.EquatorialMount });
+                _status.Text = mount.EquatorialMount ? "Altazimuth mount." : "Equatorial mount.";
+                Refresh();
+                break;
             case Key.M when key.CtrlPressed:
                 MeasureSelectedDistance(key.ShiftPressed);
                 break;
@@ -1621,12 +1628,7 @@ public partial class SolarSystemScene : Control
 
         var camera = observer.EarthObserver ?? EarthObserverCamera.Moscow;
         double direction = observer.ActiveOptics?.Inverted == true ? -1 : 1;
-        double azimuth = (camera.AzimuthDegrees - direction * yaw * (180 / Math.PI)) % 360;
-        session.SetEarthObserver(view, camera with
-        {
-            AzimuthDegrees = azimuth < 0 ? azimuth + 360 : azimuth,
-            ElevationDegrees = Math.Clamp(camera.ElevationDegrees + direction * pitch * (180 / Math.PI), -89, 89)
-        });
+        session.SetEarthObserver(view, camera.Turn(direction * yaw, direction * pitch));
         return true;
     }
 

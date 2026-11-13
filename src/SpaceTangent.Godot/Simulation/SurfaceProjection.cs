@@ -122,6 +122,12 @@ internal sealed partial class SurfaceProjection
         double pitch = (PitchDegrees ?? observer.ElevationDegrees) * Degrees;
         Vector3 forward = horizontal * (float)Math.Cos(pitch) + up * (float)Math.Sin(pitch);
         Vector3 right = horizontal.Cross(up).Normalized();
+        if (observer.EquatorialMount)
+        {
+            Vector3 pole = Convert(lighting.EastNorthUp.Transform(observer.VisiblePole));
+            if (Math.Abs(pole.Dot(forward)) < .9995)
+                right = forward.Cross(pole).Normalized();
+        }
         Vector3 cameraUp = right.Cross(forward);
         if (optics?.Inverted == true)
         {

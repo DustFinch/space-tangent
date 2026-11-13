@@ -10,6 +10,44 @@ namespace SpaceTangent.Godot.Tests;
 
 public partial class EarthOrbitProbe
 {
+    private async Task ExerciseEquatorialMount(SolarSystemScene scene, string directory)
+    {
+        var session = scene.Session!;
+        var time = TimeConversion.FromUtc(new(new(2024, 3, 10), 4, 30), TimeScale.Tdb);
+        var paranal = session.World.EarthPlaces.Places.Single(place => place.EnglishName == "Paranal Observatory");
+        var camera = new EarthObserverCamera(paranal.ObserverSite, 120, 55, HorizonGrid: true);
+        var ordinary = new ObserverView(time, CameraMode.Surface, null, false) { EarthObserver = camera };
+        string profile = Path.Combine(directory, "archived-equatorial-mount.json");
+        File.WriteAllText(profile, """{"DeltaT":"MorrisonStephenson2004","EquatorialMount":true}""");
+        var equatorial = LegacyObserverProfiles.Read(profile, ordinary, session.DeltaT).Observer;
+        string path = Path.Combine(directory, "paranal-equatorial-mount.stscene");
+        ScenarioFile.Save(path, new([equatorial, ordinary], false, 0, 0, session.DeltaT));
+        if (!scene.LoadScenario(path) || !await scene.ReloadAddOns() ||
+            session[0] != equatorial || session[1] != ordinary)
+            throw new InvalidOperationException("The two archived mount modes must survive reload with independent cameras.");
+
+        var material = scene.Renderer(0).GetChildren().OfType<CanvasLayer>()
+            .SelectMany(layer => layer.GetChildren().OfType<ColorRect>())
+            .Select(rect => rect.Material).OfType<ShaderMaterial>()
+            .Single(shader => shader.Shader.ResourcePath.EndsWith("/earth_observer.gdshader", StringComparison.Ordinal));
+        Vector3 forward = material.GetShaderParameter("forward").AsVector3();
+        Vector3 pole = Vector3.Forward;
+        Vector3 expected = (pole - forward * forward.Dot(pole)).Normalized();
+        if (material.GetShaderParameter("camera_up").AsVector3().DistanceTo(expected) > 1e-5)
+            throw new InvalidOperationException("At Paranal the camera up axis must point toward the south celestial pole.");
+
+        await ToSignal(GetTree(), SceneTree.SignalName.ProcessFrame);
+        await ToSignal(RenderingServer.Singleton, RenderingServer.SignalName.FramePostDraw);
+        using var frame = GetViewport().GetTexture().GetImage();
+        if (frame.SavePng(Path.ChangeExtension(path, ".png")) != Error.Ok)
+            throw new IOException("Could not capture the two ground mount modes.");
+        GetWindow().PushInput(new InputEventKey { Keycode = Key.M, AltPressed = true, Pressed = true });
+        GetWindow().PushInput(new InputEventKey { Keycode = Key.M, AltPressed = true, Pressed = false });
+        if (session[0].EarthObserver?.EquatorialMount != false || session[1] != ordinary)
+            throw new InvalidOperationException("Alt+M must change only the active ground observer.");
+        GD.Print("Equatorial mount GPU: original Paranal site, south pole alignment, independent views and Alt+M after reload.");
+    }
+
     private async Task ExerciseGroundSky(SolarSystemScene scene, string directory)
     {
         var session = scene.Session!;

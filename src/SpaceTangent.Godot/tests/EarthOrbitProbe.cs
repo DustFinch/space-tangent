@@ -110,6 +110,12 @@ public partial class EarthOrbitProbe : Node
                 result = 0;
                 return;
             }
+            if (System.Environment.GetEnvironmentVariable("SPACETANGENT_EQUATORIAL_MOUNT_PROBE") == "only")
+            {
+                await ExerciseEquatorialMount(scene, directory);
+                result = 0;
+                return;
+            }
             if (System.Environment.GetEnvironmentVariable("SPACETANGENT_NIGHT_MODE_PROBE") == "only")
             {
                 await ExerciseNightMode(scene, directory);

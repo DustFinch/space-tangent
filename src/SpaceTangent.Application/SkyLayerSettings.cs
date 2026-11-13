@@ -22,6 +22,9 @@ public readonly record struct SkyLayerSettings(bool Stars, bool Labels, bool Equ
 
     [JsonIgnore]
     internal bool HasBodyLayerSettings => HideOrbits || HideCometTails || SurfacePlaces;
+
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingDefault)]
+    public bool CinematicBlackHoles { get; init; }
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingDefault)]
     public bool EclipticLine { get; init; }
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingDefault)]

@@ -10,7 +10,7 @@ public partial class EarthOrbitProbe
 {
     private async Task ExerciseCompactLens(SolarSystemScene scene, string directory)
     {
-        if (System.Environment.GetEnvironmentVariable("SPACETANGENT_COMPACT_LENS_PROBE") != "1")
+        if (System.Environment.GetEnvironmentVariable("SPACETANGENT_COMPACT_LENS_PROBE") is not ("1" or "only"))
             return;
         var session = scene.Session!;
         ObjectId id = SimulationWorld.CygnusLensId;
@@ -65,6 +65,36 @@ public partial class EarthOrbitProbe
         if (pixels < 120 || disk < 40 || center.R + center.G + center.B > .06)
             throw new InvalidOperationException($"The compact lens only changed {pixels} samples and emitted {disk} disk samples with shadow center {center}.");
         GD.Print($"Compact lens: original Cygnus X-1 and HDE 226868, 60 Schwarzschild radii and 16 million km, {pixels} altered GPU samples and {disk} disk samples, independent reload.");
+
+        string profile = Path.Combine(directory, "cinematic-legacy.json");
+        File.WriteAllText(profile, """{"Site":{},"CinematicBlackHoles":true}""");
+        var imported = LegacyObserverProfiles.Read(profile, near, session.DeltaT).Observer;
+        var cinematic = near with { Sky = imported.Sky };
+        var modes = new SimulationScenario([cinematic, near], false, 0, 0, session.DeltaT);
+        string modesPath = Path.Combine(directory, "cygnus-disk-modes.stscene");
+        ScenarioFile.Save(modesPath, modes);
+        if (!scene.LoadScenario(modesPath) || !await scene.ReloadAddOns() ||
+            !session.CaptureScenario(0).Views.SequenceEqual(modes.Views))
+            throw new InvalidOperationException("The archived cinematic mode must survive reload in only one view.");
+        await WaitForFrame();
+        using var stylized = left.GetViewport().GetTexture().GetImage();
+
+        int different = 0;
+        Vector2I stylizedCenter = stylized.GetSize() / 2, physicalCenter = changed.GetSize() / 2;
+        for (int y = -110; y <= 110; y += 2)
+        for (int x = -110; x <= 110; x += 2)
+        {
+            Color a = stylized.GetPixel(stylizedCenter.X + x, stylizedCenter.Y + y);
+            Color b = changed.GetPixel(physicalCenter.X + x, physicalCenter.Y + y);
+            if (Math.Abs(a.R - b.R) + Math.Abs(a.G - b.G) + Math.Abs(a.B - b.B) > .07)
+                different++;
+        }
+        if (different < 200)
+            throw new InvalidOperationException($"The two Cygnus X-1 modes differed in only {different} sampled pixels.");
+        using var comparison = GetViewport().GetTexture().GetImage();
+        if (comparison.SavePng(Path.ChangeExtension(modesPath, ".png")) != Error.Ok)
+            throw new IOException("Could not save the two compact lens modes.");
+        GD.Print($"Cinematic lens GPU: original Cygnus X-1 modes differ in {different} samples after reload.");
 
         ObserverView Observer(JulianInstant at, Vector3d outward, double distance)
         {

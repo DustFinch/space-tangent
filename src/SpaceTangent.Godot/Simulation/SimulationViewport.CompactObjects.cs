@@ -77,7 +77,7 @@ internal partial class SimulationViewport
         }
         _compactLens ??= new(this, _compactSky, CompactTables);
         _compactLens.Draw(_navigationCamera, strongest, location, physicalRadius, snapshot.Epoch, sky,
-            _galacticTexture, SpatialStarFieldVisible, CinematicCompactLens, companion, companionRadius, CompactDiskEmission);
+            _galacticTexture, SpatialStarFieldVisible, CinematicCompactLens || sky.CinematicBlackHoles, companion, companionRadius, CompactDiskEmission);
         _compactFocus = (strongest.Id, location, physicalRadius);
     }
 

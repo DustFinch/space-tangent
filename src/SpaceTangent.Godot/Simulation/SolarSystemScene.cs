@@ -596,6 +596,11 @@ public partial class SolarSystemScene : Control
             case Key.G when key.CtrlPressed && !key.ShiftPressed:
                 ChangeGroundSky(key.AltPressed);
                 break;
+            case Key.N when key.AltPressed && !key.CtrlPressed && !key.ShiftPressed && !key.MetaPressed:
+                Session.NightMode = !Session.NightMode;
+                _status.Text = Session.NightMode ? "Red night mode enabled." : "Red night mode disabled.";
+                UpdateNightMode(Session.NightMode);
+                break;
             case Key.N when key.CtrlPressed && key.AltPressed && !key.ShiftPressed:
                 ExportObserverNight();
                 break;
@@ -1830,6 +1835,7 @@ public partial class SolarSystemScene : Control
         RefreshMissionViewpoints();
         SimulationSession session = Session!;
         _deltaT.Select((int)session.DeltaT);
+        UpdateNightMode(session.NightMode);
         for (int index = 0; index < _views.Count; index++)
         {
             ViewControls controls = _views[index];

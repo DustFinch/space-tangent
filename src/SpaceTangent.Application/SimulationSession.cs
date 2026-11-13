@@ -243,6 +243,7 @@ public sealed partial class SimulationSession
     public SimulationWorld World { get; private set; }
     public DeltaTModel DeltaT { get; private set; }
     public bool Synchronized { get; private set; } = true;
+    public bool NightMode { get; set; }
     public ViewSplit SplitLayout { get; private set; }
     public ObserverLayout Layout { get; private set; } = ObserverLayout.Leaf(0);
     public int ViewCount => _views.Count;
@@ -254,7 +255,7 @@ public sealed partial class SimulationSession
     public SimulationScenario CaptureScenario(int activeView)
     {
         return new(Array.AsReadOnly(_views.ToArray()), Synchronized, _clockOwner, activeView, DeltaT)
-            { SplitLayout = SplitLayout, Layout = Layout.IsDefault ? null : Layout };
+            { SplitLayout = SplitLayout, Layout = Layout.IsDefault ? null : Layout, NightMode = NightMode };
     }
 
     public void RestoreScenario(SimulationScenario scenario)
@@ -326,6 +327,7 @@ public sealed partial class SimulationSession
         }
         Layout = layout;
         Synchronized = scenario.Synchronized;
+        NightMode = scenario.NightMode;
         _clockOwner = scenario.ClockOwner;
         SplitLayout = scenario.SplitLayout;
         DeltaT = scenario.DeltaT;

@@ -12,12 +12,13 @@ public sealed record SimulationScenario(IReadOnlyList<ObserverView> Views, bool 
 {
     public ViewSplit SplitLayout { get; init; }
     public ObserverLayout? Layout { get; init; }
+    public bool NightMode { get; init; }
 }
 
 /// <summary>Persists observer settings with exact TDB epochs and stable catalog IDs.</summary>
 public static class ScenarioFile
 {
-    private const int Version = 34;
+    private const int Version = 35;
     internal const int MaximumBytes = 32 * 1024;
     private static readonly JsonSerializerOptions Json = new()
     {
@@ -62,7 +63,8 @@ public static class ScenarioFile
             throw new InvalidDataException("The scenario has an invalid camera sensitivity.");
         var document = new Document
         {
-            Version = scenario.Views.Any(view => view.Sky.HideTerrain) ? 34 :
+            Version = scenario.NightMode ? 35 :
+                scenario.Views.Any(view => view.Sky.HideTerrain) ? 34 :
                 scenario.Views.Any(view => view.Sky.HideAtmospheres) ? 33 :
                 scenario.Views.Any(view => view.Sky.HideClouds) ? 32 :
                 scenario.Views.Any(view => view.Sky.HasDeepSkyPreferences) ? 31 :
@@ -90,6 +92,7 @@ public static class ScenarioFile
                 scenario.Views.Any(view => view.ReferenceMarks != BodyReferenceMarks.None) ? 9 :
                 scenario.Layout is not null || scenario.Views.Any(view => view.Navigation?.Placement?.Reference is not null) ? 8 : 7,
             Synchronized = scenario.Synchronized,
+            NightMode = scenario.NightMode,
             ClockOwner = scenario.ClockOwner,
             ActiveView = scenario.ActiveView,
             SplitLayout = scenario.SplitLayout,
@@ -166,6 +169,8 @@ public static class ScenarioFile
             ?? throw new InvalidDataException("The scenario is empty.");
         if (document.Version is < 1 or > Version)
             throw new InvalidDataException($"Unsupported scenario version {document.Version}.");
+        if (document.NightMode && document.Version < 35)
+            throw new InvalidDataException("Night mode requires scenario version 35.");
         if (!Enum.IsDefined(document.SplitLayout) || (document.Version < 6 && document.SplitLayout != ViewSplit.SideBySide))
             throw new InvalidDataException("The scenario has an invalid layout.");
         if (document.Layout is not null && document.Version < 8)
@@ -261,13 +266,15 @@ public static class ScenarioFile
             };
         }
         return new(Array.AsReadOnly(views), document.Synchronized, document.ClockOwner, document.ActiveView, document.DeltaT)
-            { SplitLayout = document.SplitLayout, Layout = layout.IsDefault ? null : layout };
+            { SplitLayout = document.SplitLayout, Layout = layout.IsDefault ? null : layout, NightMode = document.NightMode };
     }
 
     private sealed class Document
     {
         public required int Version { get; init; }
         public required bool Synchronized { get; init; }
+        [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingDefault)]
+        public bool NightMode { get; init; }
         public required int ClockOwner { get; init; }
         public required int ActiveView { get; init; }
         [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingDefault)]

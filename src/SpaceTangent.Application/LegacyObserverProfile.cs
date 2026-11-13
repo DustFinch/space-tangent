@@ -8,6 +8,7 @@ namespace SpaceTangent.Application;
 
 public sealed record LegacyObserverProfile(ObserverView Observer, DeltaTModel DeltaT)
 {
+    public bool? NightMode { get; init; }
     public IReadOnlyList<EarthPlace> SavedSites { get; init; } = [];
 }
 
@@ -172,7 +173,11 @@ public static class LegacyObserverProfiles
             MouseSensitivity = sensitivity is { } value && ObserverView.ValidMouseSensitivity(value)
                 ? (value == 1 ? null : value) : current.MouseSensitivity
         };
-        return new(observer, deltaT) { SavedSites = EarthPlaceCatalogue.ParseSavedText(Word(root, "SavedSites")) };
+        return new(observer, deltaT)
+        {
+            SavedSites = EarthPlaceCatalogue.ParseSavedText(Word(root, "SavedSites")),
+            NightMode = Flag(root, "NightMode")
+        };
     }
 
     private static double? Number(JsonElement element, string name) => element.TryGetProperty(name, out var value) &&

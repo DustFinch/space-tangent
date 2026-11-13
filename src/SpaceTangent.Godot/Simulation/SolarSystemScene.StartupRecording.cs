@@ -90,7 +90,11 @@ public partial class SolarSystemScene
         var current = session.CaptureScenario(_active);
         ObserverView[] views = current.Views.ToArray();
         views[_active] = profile.Observer;
-        ApplyScenario(current with { Views = Array.AsReadOnly(views), DeltaT = profile.DeltaT });
+        ApplyScenario(current with
+        {
+            Views = Array.AsReadOnly(views), DeltaT = profile.DeltaT,
+            NightMode = profile.NightMode ?? current.NightMode
+        });
         if (sites > 0 && !await ReloadAddOns())
             throw new InvalidDataException("The archived sites were saved, but the add-ons could not be reloaded.");
         GD.Print($"Legacy observer profile applied to the active view. Added {sites} observing sites.");

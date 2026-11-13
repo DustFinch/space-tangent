@@ -334,12 +334,16 @@ internal static partial class AddonLoader
             if (model is not null && !publishedSscMeshes.TryGetValue((model, definition.SurfaceMap, lit), out mesh))
                 publishedSscMeshes.Add((model, definition.SurfaceMap, lit),
                     mesh = ScienceMeshLoader.Publish(model, definition.Mesh!, litBody: lit, bodySurface: texture));
+            var bounds = model is not null &&
+                (definition.EllipsoidRadiiKilometers is not null || body.Kind == CatalogueKind.Spacecraft)
+                ? ReadMeshBounds(model) : ((Vector3d Center, Vector3d Span)?)null;
             return new PreparedImportedBody(body.Id, body.Kind, definition.Color, definition.RadiusKilometers,
                 definition.MeshRotation, definition.MeshCenter, mesh, model?.Diameter ?? 2)
             {
                 EllipsoidRadiiKilometers = definition.EllipsoidRadiiKilometers,
                 Surface = texture,
-                MeshSpan = model is null || definition.EllipsoidRadiiKilometers is null ? null : MeshSpan(model)
+                MeshSpan = definition.EllipsoidRadiiKilometers is not null ? bounds?.Span : null,
+                ModelBounds = body.Kind == CatalogueKind.Spacecraft ? bounds : null
             };
         });
         var textures = new Dictionary<string, global::Godot.Texture2D>(StringComparer.Ordinal);
@@ -467,7 +471,7 @@ internal static partial class AddonLoader
         }).ToArray());
     }
 
-    private static Vector3d MeshSpan(DecodedScienceModel model)
+    private static (Vector3d Center, Vector3d Span) ReadMeshBounds(DecodedScienceModel model)
     {
         Vector3d lower = new(double.PositiveInfinity, double.PositiveInfinity, double.PositiveInfinity);
         Vector3d upper = lower * -1;
@@ -477,7 +481,7 @@ internal static partial class AddonLoader
             lower = new(Math.Min(lower.X, p.X), Math.Min(lower.Y, p.Y), Math.Min(lower.Z, p.Z));
             upper = new(Math.Max(upper.X, p.X), Math.Max(upper.Y, p.Y), Math.Max(upper.Z, p.Z));
         }
-        return upper - lower;
+        return ((lower + upper) * .5, upper - lower);
     }
 
     private static DecodedScienceModel ReadAddonMesh(string root, string file, CancellationToken cancellation, bool nativeBody = false) =>

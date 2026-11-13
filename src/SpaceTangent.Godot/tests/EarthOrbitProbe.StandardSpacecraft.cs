@@ -8,6 +8,22 @@ namespace SpaceTangent.Godot.Tests;
 
 public partial class EarthOrbitProbe
 {
+    private static void CheckMirBounds(MeshInstance3D node, double rangeKilometers)
+    {
+        // Reference bounds from the archived model decoder and its SSC center offset.
+        var referenceMin = new Vector3(-1f, -.43728074f, -.9256078f);
+        var referenceMax = new Vector3(1f, .49503687f, .9256078f);
+        const float radiusKilometers = .0165f;
+        var physicalScale = node.Transform.Basis.X.Length() * (float)(rangeKilometers / 48);
+        var sourceOrigin = node.Transform.AffineInverse() * Vector3.Zero;
+        var bounds = node.GetAabb();
+        var min = (bounds.Position - sourceOrigin) * (physicalScale / radiusKilometers);
+        var max = (bounds.End - sourceOrigin) * (physicalScale / radiusKilometers);
+        if (min.DistanceTo(referenceMin) > 1e-5f || max.DistanceTo(referenceMax) > 1e-5f)
+            throw new InvalidOperationException($"Mir model bounds differ from the archived renderer: {min}, {max}.");
+        GD.Print("Mir GPU: centered bounds match the archived model, 33 m along the longest dimension.");
+    }
+
     private async Task ExerciseStandardSpacecraft(SolarSystemScene scene, string directory)
     {
         if (System.Environment.GetEnvironmentVariable("SPACETANGENT_STANDARD_CONIC") is not { Length: > 0 } source)
@@ -59,10 +75,12 @@ public partial class EarthOrbitProbe
                 for (int view = 0; view < 2; view++)
                 {
                     var id = (view == 0 ? first : second).Navigation!.Value.Target!.Value;
-                    if (scene.Renderer(view).ImportedBodyNode(id) is not { Visible: true, Mesh: ArrayMesh mesh } ||
+                    if (scene.Renderer(view).ImportedBodyNode(id) is not MeshInstance3D { Visible: true, Mesh: ArrayMesh mesh } node ||
                         mesh.GetSurfaceCount() == 0)
                         throw new InvalidOperationException($"The original model for {id.Value} is not visible.");
                     GD.Print($"Standard spacecraft GPU: {id.Value}, {mesh.GetSurfaceCount()} material surfaces.");
+                    if (id.Value == "ssc/sol/earth/mir")
+                        CheckMirBounds(node, second.Navigation!.Value.RangeKilometers);
                 }
 
                 await ToSignal(GetTree(), SceneTree.SignalName.ProcessFrame);

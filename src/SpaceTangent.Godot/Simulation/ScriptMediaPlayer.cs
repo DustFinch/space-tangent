@@ -10,11 +10,21 @@ internal sealed class ScriptMediaPlayer(SimulationViewport renderer)
     private readonly Dictionary<int, AudioStreamPlayer> _audio = [];
     private readonly Dictionary<TextureRect, ImageTexture> _images = [];
     private CanvasLayer? _layer;
+    private long _requestSecond = -1;
+    private int _requestsThisSecond;
     internal bool Attached => GodotObject.IsInstanceValid(renderer) && renderer.IsInsideTree();
     internal bool Active => _images.Count > 0 || _audio.Count > 0;
 
     internal void Present(string directory, ScriptMediaRequest request)
     {
+        long second = System.Environment.TickCount64 / 1000;
+        if (second != _requestSecond)
+        {
+            _requestSecond = second;
+            _requestsThisSecond = 0;
+        }
+        if (++_requestsThisSecond > 32)
+            throw new InvalidOperationException("Script media requests are too frequent.");
         if (request is ScriptMediaRequest.Sound { File.Length: 0 } stop)
         {
             StopSound(stop.Channel);

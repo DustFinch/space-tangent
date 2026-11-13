@@ -18,8 +18,9 @@ public partial class SolarSystemScene
             var manifest = ObserverPluginManifest.Load(file);
             if (_plugins.Count >= 8 && !_plugins.ContainsKey(manifest.Id))
                 throw new InvalidOperationException("At most eight plugins can run at once.");
+            var media = new ScriptMediaPlayer(Renderer(_active));
             var plugin = new ObserverLuaPlugin(manifest, Session!, _active, _surfaceTextures is not null,
-                line => GD.Print($"Plugin {manifest.Id}: {line}"));
+                line => GD.Print($"Plugin {manifest.Id}: {line}"), request => media.Present(manifest.Root, request), media.Clear);
             if (_plugins.Remove(manifest.Id, out var previous) && previous.Disable())
                 Refresh();
             _plugins.Add(manifest.Id, plugin);

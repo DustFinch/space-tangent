@@ -38,6 +38,14 @@ public partial class WorkspaceInputSmoke
 
             string root = Path.Combine(directory, "Plugin с пробелами");
             Directory.CreateDirectory(root);
+            string? texture = System.Environment.GetEnvironmentVariable("SPACETANGENT_PLUGIN_MEDIA_JPEG");
+            if (texture is not null)
+                File.Copy(texture, Path.Combine(root, "image.jpg"));
+            else
+            {
+                using var icon = GD.Load<Texture2D>("res://UI/space-tangent.png").GetImage();
+                Require(icon.SaveJpg(Path.Combine(root, "image.jpg")) == Error.Ok, "Prepare a local plugin image.");
+            }
             File.WriteAllText(Path.Combine(root, "plugin.json"), """
                 {"format":1,"api":1,"id":"local-tools","name":"Local tools","version":"1","main":"main.lua"}
                 """);
@@ -51,6 +59,12 @@ public partial class WorkspaceInputSmoke
                 plugin.command("step", "Step one hour", function()
                     st.wait(0.2)
                     st.settime(st.gettime() + settings.hours / 24)
+                end)
+                plugin.command("media", "Show local image", function()
+                    st.overlay("image.jpg", 20, 0.5, 0.5, 64, 64)
+                end)
+                plugin.command("denied-media", "Open outside image", function()
+                    st.overlay("../icon.png")
                 end)
                 plugin.command("denied", "Read outside plugin", function()
                     plugin.read("../unrelated.lua")
@@ -87,7 +101,18 @@ public partial class WorkspaceInputSmoke
             _ = Complete(local);
             Require(Math.Abs((double)Session[0].Epoch.DifferenceNanoseconds(epoch) / JulianInstant.NanosecondsPerSecond - 7200) < .01 &&
                 Session[1] == other, "Selection events and spawned work must belong to the plugin's observer.");
+            await Invoke("Open outside image");
+            _ = Complete(local);
+            Require(local.Error?.Contains("relative to the script folder", StringComparison.Ordinal) == true,
+                "Plugin media must stay inside its own folder.");
+            await Invoke("Show local image");
+            _ = Complete(local);
+            Require(_scene.Renderer(0).FindChild("ScriptImage", true, false) is TextureRect &&
+                _scene.Renderer(1).FindChild("ScriptImage", true, false) is null,
+                "Plugin media must appear only in the plugin observer.");
             await Invoke("Disable Local tools");
+            await Until(() => _scene.Renderer(0).FindChild("ScriptImage", true, false) is null, "Clearing disabled plugin media");
+            GD.Print("UI: displayed local plugin media, isolated the view, and cleared it on disable.");
             Require(!local.Enabled && local.Commands.Count() == 0 && local.Importers.Count() == 0,
                 "Disabling a plugin must remove its commands and importers.");
             GD.Print("UI: ran the original tour plugin and checked local commands, waits, events, importer, folder isolation and disable.");

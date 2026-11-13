@@ -13,3 +13,5 @@ The existing script runner can open the original distance, absolute magnitude an
 Guide files use successive blocks with Target, Name and Description. Distances can be in km, AU or light-years. A distance without a unit is read as kilometres. Stops whose targets are unavailable in the active catalogue are skipped with a log message.
 
 Classic overlay and play commands use image and audio files relative to the script folder. Converting a classic script copies its referenced files beside the exported Lua file. Compatible Lua scripts can call the same functions directly. Images appear in the originating view. Escape clears the overlay and stops the audio. Supported images are PNG, JPEG and WebP. Supported sounds are WAV, MP3 and Ogg.
+
+Plugins can present the same media from files under their manifest directory. The image belongs to the plugin's observer. Disabling the plugin or closing that observer clears its images and audio channels.

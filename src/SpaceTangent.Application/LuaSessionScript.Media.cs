@@ -22,7 +22,7 @@ public sealed partial class LuaSessionScript
 
         DynValue Overlay(CallbackArguments args)
         {
-            if (++_running!.MediaRequests > 32)
+            if (_running is null || ++_running.MediaRequests > 32)
                 throw new ScriptRuntimeException("The script exceeded its media quota.");
             present(new ScriptMediaRequest.Overlay(Text(args[0]), Read(args, 1, 3, .01, 600),
                 Read(args, 2, .5, -4, 4), Read(args, 3, .5, -4, 4),
@@ -35,7 +35,7 @@ public sealed partial class LuaSessionScript
             double channel = Read(args, 2, 0, 0, 15);
             if (channel != Math.Truncate(channel))
                 throw new ScriptRuntimeException("Audio channels must be whole numbers.");
-            if (++_running!.MediaRequests > 32)
+            if (_running is null || ++_running.MediaRequests > 32)
                 throw new ScriptRuntimeException("The script exceeded its media quota.");
             present(new ScriptMediaRequest.Sound(Text(args[0]), Read(args, 1, 1, 0, 1), (int)channel,
                 !args[3].IsNil() && Boolean(args[3])));

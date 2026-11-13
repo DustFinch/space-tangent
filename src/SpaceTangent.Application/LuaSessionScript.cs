@@ -85,9 +85,10 @@ public sealed partial class LuaSessionScript
     public bool Finished => _foreground is null;
     internal Script Interpreter => _vm;
 
-    internal static LuaSessionScript PluginRuntime(SimulationSession session, int view, bool hasSurface, Action<string> log)
+    internal static LuaSessionScript PluginRuntime(SimulationSession session, int view, bool hasSurface, Action<string> log,
+        Action<ScriptMediaRequest>? media = null)
     {
-        var runtime = new LuaSessionScript("", "plugin", session, view, hasSurface, log, plugin: true);
+        var runtime = new LuaSessionScript("", "plugin", session, view, hasSurface, log, plugin: true, media: media);
         runtime.Stop();
         return runtime;
     }

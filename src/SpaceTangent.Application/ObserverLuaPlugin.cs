@@ -15,6 +15,7 @@ public sealed class ObserverLuaPlugin
     private readonly LuaSessionScript _runtime;
     private readonly SimulationSession _session;
     private readonly Script _vm;
+    private readonly Action? _clearMedia;
     private readonly List<Job> _jobs = [];
     private readonly Dictionary<string, Command> _commands = new(StringComparer.Ordinal);
     private readonly Dictionary<string, DynValue> _events = new(StringComparer.Ordinal);
@@ -33,11 +34,12 @@ public sealed class ObserverLuaPlugin
     public IEnumerable<(string Extension, string Title)> Importers => _importers.Select(pair => (pair.Key, pair.Value.Title));
 
     public ObserverLuaPlugin(ObserverPluginManifest manifest, SimulationSession session, int view, bool hasSurface,
-        Action<string> log)
+        Action<string> log, Action<ScriptMediaRequest>? media = null, Action? clearMedia = null)
     {
         Manifest = manifest;
         _session = session;
-        _runtime = LuaSessionScript.PluginRuntime(session, view, hasSurface, log);
+        _clearMedia = clearMedia;
+        _runtime = LuaSessionScript.PluginRuntime(session, view, hasSurface, log, media);
         _vm = _runtime.Interpreter;
         _selection = session[view].Selection;
         InstallApi();
@@ -94,6 +96,7 @@ public sealed class ObserverLuaPlugin
         {
             _jobs.Clear();
             _enabled = false;
+            _clearMedia?.Invoke();
             Error = "The plugin observer was closed.";
             return false;
         }
@@ -140,6 +143,7 @@ public sealed class ObserverLuaPlugin
             else if (!work.Complete)
                 Error = "Plugin cleanup must finish without waiting.";
         }
+        _clearMedia?.Invoke();
         _commands.Clear();
         _events.Clear();
         _importers.Clear();

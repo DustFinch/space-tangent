@@ -8,12 +8,13 @@ using SpaceTangent.Core.World;
 namespace SpaceTangent.Godot.Simulation;
 
 internal readonly record struct MissionSensorRenderResult(int SurfaceRays, int RangeClips, int Misses, int GridLines,
-    double NadirError);
+    double NadirError, int FootprintLines);
 
 internal sealed class MissionSensorRendering
 {
     private readonly ImmediateMesh _faces = new();
     private readonly ImmediateMesh _grid = new();
+    private readonly ImmediateMesh _footprints = new();
     private readonly StandardMaterial3D _material = new()
     {
         ShadingMode = BaseMaterial3D.ShadingModeEnum.Unshaded,
@@ -22,12 +23,13 @@ internal sealed class MissionSensorRendering
         CullMode = BaseMaterial3D.CullModeEnum.Back
     };
     private readonly Dictionary<ObjectId, MissionSensorRenderResult> _drawn = new();
-    private bool _hasFaces, _hasGrid;
+    private bool _hasFaces, _hasGrid, _hasFootprints;
 
     public MissionSensorRendering(Node3D viewport)
     {
         Add("MissionSensorFaces", _faces);
         Add("MissionSensorGrid", _grid);
+        Add("MissionSensorFootprints", _footprints);
 
         void Add(string name, Mesh mesh) => viewport.AddChild(new MeshInstance3D
         {
@@ -45,7 +47,9 @@ internal sealed class MissionSensorRendering
             _faces.ClearSurfaces();
         if (_hasGrid)
             _grid.ClearSurfaces();
-        _hasFaces = _hasGrid = false;
+        if (_hasFootprints)
+            _footprints.ClearSurfaces();
+        _hasFaces = _hasGrid = _hasFootprints = false;
         _drawn.Clear();
     }
 
@@ -55,6 +59,8 @@ internal sealed class MissionSensorRendering
             _faces.SurfaceEnd();
         if (_hasGrid)
             _grid.SurfaceEnd();
+        if (_hasFootprints)
+            _footprints.SurfaceEnd();
     }
 
     public void Draw(ObjectId id, MissionSensor sensor, Vector3d position, Basis3d attitude, WorldSnapshot snapshot,
@@ -73,14 +79,19 @@ internal sealed class MissionSensorRendering
         var axes = new Vector3d(radius, radius, polar);
         Vector3d origin = toFixed.Transform(position - target.PositionKilometers);
         var rim = new Vector3[sensor.Boundary.Count];
+        Vector3?[]? footprint = sensor.FootprintOpacity > 0 ? new Vector3?[rim.Length] : null;
         int surfaceRays = 0, rangeClips = 0, misses = 0;
         for (int index = 0; index < rim.Length; index++)
         {
             Vector3d direction = toFixed.Transform(attitude.Transform(sensor.Boundary[index]));
             var ray = MissionSensorProjection.Project(origin, direction, axes, sensor.RangeKilometers);
             rim[index] = project(target.PositionKilometers + toWorld.Transform(ray.FrustumEnd)).Position;
-            if (ray.SurfacePoint.HasValue)
+            if (ray.SurfacePoint is { } surface)
+            {
                 surfaceRays++;
+                if (footprint is not null)
+                    footprint[index] = project(target.PositionKilometers + toWorld.Transform(surface * 1.00005)).Position;
+            }
             else if (MissionSensorProjection.TryCrossing(origin, direction, axes, out _))
                 rangeClips++;
             else
@@ -90,6 +101,8 @@ internal sealed class MissionSensorRendering
         var color = new Color((float)sensor.Color.X, (float)sensor.Color.Y, (float)sensor.Color.Z);
         var fill = color with { A = (float)sensor.Opacity };
         var lattice = color with { A = .15f };
+        var trace = color with { A = (float)sensor.FootprintOpacity };
+        int footprintLines = 0;
         const int rings = 8;
         for (int index = 0; index < rim.Length; index++)
         {
@@ -97,6 +110,17 @@ internal sealed class MissionSensorRendering
             if (sensor.Opacity > 0)
                 Face(apex, first, second, fill);
             Line(first, second, color);
+            if (footprint is not null && footprint[index] is { } start && footprint[(index + 1) % rim.Length] is { } end)
+            {
+                if (!_hasFootprints)
+                {
+                    _footprints.SurfaceBegin(Mesh.PrimitiveType.Lines, _material);
+                    _hasFootprints = true;
+                }
+                Vertex(_footprints, start, trace);
+                Vertex(_footprints, end, trace);
+                footprintLines++;
+            }
             for (int ring = 1; ring < rings; ring++)
             {
                 float fraction = ring / (float)rings;
@@ -108,7 +132,7 @@ internal sealed class MissionSensorRendering
 
         Vector3d nadir = target.PositionKilometers - position;
         double nadirError = (attitude.Transform(sensor.Boresight) - nadir / nadir.Length).Length;
-        _drawn[id] = new(surfaceRays, rangeClips, misses, (rings - 1) * rim.Length + sensor.GridSpokes, nadirError);
+        _drawn[id] = new(surfaceRays, rangeClips, misses, (rings - 1) * rim.Length + sensor.GridSpokes, nadirError, footprintLines);
     }
 
     private void Face(Vector3 a, Vector3 b, Vector3 c, Color color)

@@ -13,7 +13,8 @@ public partial class EarthOrbitProbe
         var session = scene.Session!;
         ObjectId cassini = new("mission/cassini-soi"), narrow = new("mission/iss-nac"), wide = new("mission/iss-wac");
         var first = Observer(141917558.4203589, .025);
-        var second = Observer(141918830.41202343, 140_000);
+        // The original CK points both instrument fields at Saturn at this epoch.
+        var second = Observer(141915780, 140_000);
         var model = session.DeltaT;
         string path = Path.Combine(directory, "packed-cassini");
         ScenarioFile.Save(path + ".stscene", new([first, second], false, 0, 0, model));
@@ -73,8 +74,9 @@ public partial class EarthOrbitProbe
             var view = scene.Renderer(1);
             var nac = view.MissionSensorResult(narrow);
             var wac = view.MissionSensorResult(wide);
-            if (nac is not { GridLines: 340 } || wac is not { GridLines: 340 } ||
-                view.GetNode<MeshInstance3D>("MissionSensorFaces").Mesh.GetSurfaceCount() != 1)
+            if (nac is not { GridLines: 340, SurfaceRays: 48, FootprintLines: 48 } || wac is not { GridLines: 340, SurfaceRays: 45, FootprintLines: 44 } ||
+                view.GetNode<MeshInstance3D>("MissionSensorFaces").Mesh.GetSurfaceCount() != 1 ||
+                view.GetNode<MeshInstance3D>("MissionSensorFootprints").Mesh.GetSurfaceCount() != 1)
                 throw new InvalidOperationException($"The packed instrument fields were not drawn: NAC {nac}, WAC {wac}.");
             GD.Print($"Packed Cassini GPU: {geometry.GetSurfaceCount()} GLB surfaces, NAC {nac}, WAC {wac}.");
         }

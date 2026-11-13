@@ -95,6 +95,32 @@ public partial class EarthOrbitProbe
             await ToSignal(GetTree(), SceneTree.SignalName.ProcessFrame);
         }
         int obliquePixels = await Capture("procedural-terrain-oblique");
+        var renderer = scene.Renderer(0);
+        var nativeUp = new Vector3((float)local.OffsetKilometers.X, (float)local.OffsetKilometers.Z,
+            (float)-local.OffsetKilometers.Y).Normalized();
+        var tangentLight = Vector3.Up.Cross(nativeUp).Normalized();
+        renderer.SetDemoTerrainProbeLight(target, (tangentLight + .018f * nativeUp).Normalized());
+        scene.Seek(0, epoch);
+        await Capture("procedural-terrain-shadows", requireLit: false);
+        using var shaded = renderer.GetViewport().GetTexture().GetImage();
+        renderer.SetDemoTerrainShadows(target, false);
+        await Capture("procedural-terrain-no-shadows", requireLit: false);
+        using var unshaded = renderer.GetViewport().GetTexture().GetImage();
+        renderer.SetDemoTerrainShadows(target, true);
+        renderer.SetDemoTerrainProbeLight(target, null);
+        int darkened = 0;
+        double strongest = 0;
+        for (int y = 0; y < shaded.GetHeight(); y += 2)
+        for (int x = 0; x < shaded.GetWidth(); x += 2)
+        {
+            double difference = unshaded.GetPixel(x, y).R - shaded.GetPixel(x, y).R;
+            strongest = Math.Max(strongest, difference);
+            if (difference > .008)
+                darkened++;
+        }
+        if (darkened < 8)
+            throw new InvalidOperationException($"Expected terrain shadows at the matched camera. Darkened samples {darkened}, peak delta {strongest:F4}.");
+        GD.Print(FormattableString.Invariant($"Terrain shadows: {darkened} darkened samples, peak red delta {strongest:F4}."));
 
         GD.Print(FormattableString.Invariant(
             $"Procedural terrain: Shift+G, {highClearance:F3}/{nearClearance:F3} km, LOD {high}/{near}, {highPixels}/{nearPixels}/{obliquePixels} lit samples including oblique; two epochs and Delta T restored."));
@@ -108,7 +134,7 @@ public partial class EarthOrbitProbe
             return offset.Length - terrain.GroundRadiusKilometers(native);
         }
 
-        async Task<int> Capture(string name)
+        async Task<int> Capture(string name, bool requireLit = true)
         {
             await ToSignal(GetTree(), SceneTree.SignalName.ProcessFrame);
             await ToSignal(RenderingServer.Singleton, RenderingServer.SignalName.FramePostDraw);
@@ -124,7 +150,7 @@ public partial class EarthOrbitProbe
                 if (pixel.R > .12f && pixel.R > pixel.B * 1.2f)
                     colored++;
             }
-            if (colored < 100)
+            if (requireLit && colored < 100)
                 throw new InvalidOperationException($"Expected an illuminated desert across the viewport in {name}, sampled {colored} pixels.");
             return colored;
         }

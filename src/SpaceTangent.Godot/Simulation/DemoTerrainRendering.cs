@@ -8,13 +8,17 @@ namespace SpaceTangent.Godot.Simulation;
 internal sealed class DemoTerrainRendering(Node owner, ProceduralTerrain terrain, double radiusKilometers, ShaderMaterial globeMaterial)
 {
     private sealed record Patch(Vector3d Center, MeshInstance3D Node);
-    private sealed record Work(ProceduralPatchKey[] Selected, Dictionary<ProceduralPatchKey, ProceduralTerrainPatch> Built);
+    private sealed record PatchData(ProceduralTerrainPatch Surface, float[] FirstHorizons, float[] LastHorizons);
+    private sealed record Work(ProceduralPatchKey[] Selected, Dictionary<ProceduralPatchKey, PatchData> Built);
     private readonly Dictionary<ProceduralPatchKey, Patch> _cache = new();
     private readonly HashSet<ProceduralPatchKey> _shown = [];
     private ProceduralPatchKey[] _ready = [];
     private Task<Work>? _pending;
     private (Vector3d Eye, Vector3d Look, float Fov, Vector2 Size)? _requested;
     private ShaderMaterial? _material;
+
+    internal Vector3? ProbeLightDirection { get; set; }
+    internal void SetShadows(bool enabled) => _material?.SetShaderParameter("terrain_shadows", enabled);
 
     internal bool Visible => _shown.Count != 0;
     internal int Level => _shown.Count == 0 ? -1 : _shown.Max(key => key.Level);
@@ -37,7 +41,7 @@ internal sealed class DemoTerrainRendering(Node owner, ProceduralTerrain terrain
             _pending = Task.Run(() =>
             {
                 var selected = terrain.Select(eye, look, cone, focal).ToArray();
-                return new Work(selected, selected.Where(key => !cached.Contains(key)).ToDictionary(key => key, terrain.Build));
+                return new Work(selected, selected.Where(key => !cached.Contains(key)).ToDictionary(key => key, BuildPatch));
             });
         }
 
@@ -45,6 +49,12 @@ internal sealed class DemoTerrainRendering(Node owner, ProceduralTerrain terrain
             return false;
         _material ??= (ShaderMaterial)globeMaterial.Duplicate();
         CopyUniforms();
+        if (ProbeLightDirection is { } light)
+        {
+            _material.SetShaderParameter("first_direction", light);
+            _material.SetShaderParameter("first_irradiance", Vector3.One);
+            _material.SetShaderParameter("second_irradiance", Vector3.Zero);
+        }
         _material.SetShaderParameter("use_terrain", true);
         _material.SetShaderParameter("terrain_eye", Native(eye / radiusKilometers));
         var basis = rotation.Scaled(Vector3.One * (float)(radiusKilometers / units));
@@ -76,7 +86,7 @@ internal sealed class DemoTerrainRendering(Node owner, ProceduralTerrain terrain
             var node = new MeshInstance3D { Mesh = Mesh(data), Visible = false,
                 CastShadow = GeometryInstance3D.ShadowCastingSetting.Off };
             owner.AddChild(node);
-            _cache.Add(key, new(data.CenterKilometers, node));
+            _cache.Add(key, new(data.Surface.CenterKilometers, node));
         }
         _ready = work.Selected;
         if (_cache.Count > ProceduralTerrain.MaximumLeaves * 2)
@@ -118,18 +128,83 @@ internal sealed class DemoTerrainRendering(Node owner, ProceduralTerrain terrain
         }
     }
 
-    private ArrayMesh Mesh(ProceduralTerrainPatch data)
+    private PatchData BuildPatch(ProceduralPatchKey key)
     {
+        var data = terrain.Build(key);
+        const int grid = ProceduralTerrain.Grid;
+        const int row = grid + 1;
+        const int stride = 4;
+        const int coarseStride = 2 * stride;
+        var fine = Sample(data.Vertices, stride, data.VertexSpacingKilometers);
+        var coarse = data.ParentVertices is { } parent
+            ? Sample(parent, coarseStride, 2 * data.VertexSpacingKilometers) : fine;
+        var first = new float[4 * data.Vertices.Length];
+        var last = new float[4 * data.Vertices.Length];
+        for (int i = 0; i < data.Vertices.Length; i++)
+        {
+            var (x, y) = GridPoint(i);
+            for (int a = 0; a < ProceduralTerrain.HorizonAzimuths; a++)
+            {
+                float low = Interpolate(fine, stride, x, y, a);
+                float high = data.ParentVertices is null ? low : Interpolate(coarse, coarseStride, x, y, a);
+                (a < 4 ? first : last)[4 * i + a % 4] = Quantize(low) * 256 + Quantize(high);
+            }
+        }
+        return new(data, first, last);
+
+        float[] Sample(ProceduralTerrainVertex[] vertices, int interval, double spacing)
+        {
+            int samples = grid / interval + 1;
+            const int azimuths = ProceduralTerrain.HorizonAzimuths;
+            var heights = new float[samples * samples * azimuths];
+            for (int y = 0; y < samples; y++)
+            for (int x = 0; x < samples; x++)
+                terrain.SampleHorizon(vertices[y * interval * row + x * interval].PositionKilometers +
+                    data.CenterKilometers, spacing, heights.AsSpan((y * samples + x) * azimuths, azimuths));
+            return heights;
+        }
+
+        static (int X, int Y) GridPoint(int vertex)
+        {
+            if (vertex < row * row)
+                return (vertex % row, vertex / row);
+            int skirt = vertex - row * row, offset = skirt % grid;
+            return (skirt / grid) switch
+            {
+                0 => (offset, 0), 1 => (grid, offset), 2 => (grid - offset, grid), _ => (0, grid - offset)
+            };
+        }
+
+        static float Interpolate(float[] values, int interval, int x, int y, int azimuth)
+        {
+            int samples = grid / interval + 1;
+            int left = Math.Min(x / interval, samples - 2), top = Math.Min(y / interval, samples - 2);
+            float sx = (float)x / interval - left, sy = (float)y / interval - top;
+            return Mathf.Lerp(Mathf.Lerp(Read(left, top), Read(left + 1, top), sx),
+                Mathf.Lerp(Read(left, top + 1), Read(left + 1, top + 1), sx), sy);
+
+            float Read(int column, int line) => values[(line * samples + column) * ProceduralTerrain.HorizonAzimuths + azimuth];
+        }
+
+        static int Quantize(float value) => Mathf.RoundToInt(Mathf.Clamp((value + .25f) / 1.25f, 0, 1) * 255);
+    }
+
+    private ArrayMesh Mesh(PatchData patch)
+    {
+        var data = patch.Surface;
         var vertices = new Vector3[data.Vertices.Length];
         var normals = new Vector3[vertices.Length];
         var colors = new Color[vertices.Length];
+        // Custom attributes carry the parent position, octahedral normal and material.
+        // Each horizon component packs the fine and parent samples in two bytes.
         var parentOffsets = new float[4 * vertices.Length];
-        var parentNormals = new float[3 * vertices.Length];
+        var parentNormals = new float[4 * vertices.Length];
         var parentColors = new float[4 * vertices.Length];
+
         // Encode the patch centre without per-instance uniforms, whose buffer is shared across Compatibility viewports.
         Vector3 center = Native(data.CenterKilometers / radiusKilometers);
         var uv = Enumerable.Repeat(new Vector2(center.X, center.Y), vertices.Length).ToArray();
-        var secondUv = Enumerable.Repeat(new Vector2(center.Z, 0), vertices.Length).ToArray();
+        var secondUv = new Vector2[vertices.Length];
         for (int i = 0; i < vertices.Length; i++)
         {
             var sample = data.Vertices[i];
@@ -142,13 +217,20 @@ internal sealed class DemoTerrainRendering(Node owner, ProceduralTerrain terrain
             parentOffsets[4 * i + 1] = (float)offset.Y;
             parentOffsets[4 * i + 2] = (float)offset.Z;
             parentOffsets[4 * i + 3] = data.ParentVertices is null ? 0 : (float)(data.VertexSpacingKilometers / radiusKilometers);
-            parentNormals[3 * i] = (float)coarse.Normal.X;
-            parentNormals[3 * i + 1] = (float)coarse.Normal.Y;
-            parentNormals[3 * i + 2] = (float)coarse.Normal.Z;
+            float normalX = (float)coarse.Normal.X, normalY = (float)coarse.Normal.Y, normalZ = (float)coarse.Normal.Z;
+            var normal = new Vector2(normalX, normalY) / (Mathf.Abs(normalX) + Mathf.Abs(normalY) + Mathf.Abs(normalZ));
+            if (normalZ < 0)
+                normal = new((1 - Mathf.Abs(normal.Y)) * (normal.X < 0 ? -1 : 1),
+                    (1 - Mathf.Abs(normal.X)) * (normal.Y < 0 ? -1 : 1));
+            parentNormals[4 * i] = normal.X;
+            parentNormals[4 * i + 1] = normal.Y;
+            secondUv[i] = new(center.Z, patch.LastHorizons[4 * i]);
+            parentNormals[4 * i + 3] = patch.LastHorizons[4 * i + 1];
             parentColors[4 * i] = coarse.Albedo.Red;
             parentColors[4 * i + 1] = coarse.Albedo.Green;
-            parentColors[4 * i + 2] = coarse.Albedo.Blue;
-            parentColors[4 * i + 3] = coarse.Albedo.Water;
+            parentColors[4 * i + 3] = patch.LastHorizons[4 * i + 2];
+            parentColors[4 * i + 2] = Mathf.RoundToInt(coarse.Albedo.Blue * 255) * 256 + Mathf.RoundToInt(coarse.Albedo.Water * 255);
+            parentNormals[4 * i + 2] = patch.LastHorizons[4 * i + 3];
         }
         int[] indices = (int[])data.Indices.Clone();
         for (int i = 0; i < indices.Length; i += 3)
@@ -164,9 +246,11 @@ internal sealed class DemoTerrainRendering(Node owner, ProceduralTerrain terrain
         arrays[(int)global::Godot.Mesh.ArrayType.Custom0] = parentOffsets;
         arrays[(int)global::Godot.Mesh.ArrayType.Custom1] = parentNormals;
         arrays[(int)global::Godot.Mesh.ArrayType.Custom2] = parentColors;
+        arrays[(int)global::Godot.Mesh.ArrayType.Custom3] = patch.FirstHorizons;
         const ulong format = ((ulong)global::Godot.Mesh.ArrayCustomFormat.RgbaFloat << (int)global::Godot.Mesh.ArrayFormat.FormatCustom0Shift) |
-            ((ulong)global::Godot.Mesh.ArrayCustomFormat.RgbFloat << (int)global::Godot.Mesh.ArrayFormat.FormatCustom1Shift) |
-            ((ulong)global::Godot.Mesh.ArrayCustomFormat.RgbaFloat << (int)global::Godot.Mesh.ArrayFormat.FormatCustom2Shift);
+            ((ulong)global::Godot.Mesh.ArrayCustomFormat.RgbaFloat << (int)global::Godot.Mesh.ArrayFormat.FormatCustom1Shift) |
+            ((ulong)global::Godot.Mesh.ArrayCustomFormat.RgbaFloat << (int)global::Godot.Mesh.ArrayFormat.FormatCustom2Shift) |
+            ((ulong)global::Godot.Mesh.ArrayCustomFormat.RgbaFloat << (int)global::Godot.Mesh.ArrayFormat.FormatCustom3Shift);
         var mesh = new ArrayMesh();
         mesh.AddSurfaceFromArrays(global::Godot.Mesh.PrimitiveType.Triangles, arrays, flags: (global::Godot.Mesh.ArrayFormat)format);
         return mesh;

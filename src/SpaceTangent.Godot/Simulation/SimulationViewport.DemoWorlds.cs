@@ -20,6 +20,14 @@ internal partial class SimulationViewport
     internal bool DemoWorldVisible(ObjectId id) => _demoGlobes.TryGetValue(id, out var visual) &&
         (visual.Globe.Visible || visual.Terrain?.Visible == true);
 
+    internal void SetDemoTerrainProbeLight(ObjectId id, Vector3? direction)
+    {
+        if (_demoGlobes.GetValueOrDefault(id)?.Terrain is { } terrain)
+            terrain.ProbeLightDirection = direction;
+    }
+
+    internal void SetDemoTerrainShadows(ObjectId id, bool enabled) => _demoGlobes.GetValueOrDefault(id)?.Terrain?.SetShadows(enabled);
+
     internal int DemoTerrainLevel(ObjectId id) => _demoGlobes.GetValueOrDefault(id)?.Terrain?.Level ?? -1;
 
     internal bool PublishDemoTerrain()

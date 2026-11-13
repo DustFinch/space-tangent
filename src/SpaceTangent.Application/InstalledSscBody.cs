@@ -24,6 +24,7 @@ public sealed record InstalledSscBody(ObjectId Id, ObjectId Parent, SscBodyDefin
         var paths = new Dictionary<string, ObjectId>(StringComparer.OrdinalIgnoreCase)
         {
             ["Sol"] = SolarSystemSample.SunId,
+            ["SSB"] = SolarSystemSample.BarycenterId,
             ["Sol/Earth/Moon"] = SolarSystemSample.MoonId
         };
         var primaryPaths = new Dictionary<ObjectId, string> { [SolarSystemSample.SunId] = "Sol" };

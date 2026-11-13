@@ -7,12 +7,15 @@ using SpaceTangent.Core.World;
 
 namespace SpaceTangent.Godot.Simulation;
 
+internal sealed record PreparedSscRings(SscRings Geometry, Texture2D Texture);
+
 internal sealed record PreparedImportedBody(ObjectId Id, CatalogueKind Kind, Vector3d Color, double RadiusKilometers,
     Basis3d MeshRotation, Vector3d MeshCenter, ArrayMesh? Model, double ModelDiameter,
     IReadOnlyList<PreparedMissionGeometry>? Geometry = null, PreparedMissionObservation? Observation = null)
 {
     internal Vector3d? EllipsoidRadiiKilometers { get; init; }
     internal Texture2D? Surface { get; init; }
+    internal PreparedSscRings? Rings { get; init; }
     internal Vector3d? MeshSpan { get; init; }
     internal (Vector3d Center, Vector3d Span)? ModelBounds { get; init; }
 }
@@ -52,6 +55,10 @@ internal partial class SimulationViewport
     };
     private readonly Dictionary<ObjectId, (PreparedImportedBody Asset, MeshInstance3D Node)> _importedNodes = new();
 
+    private readonly Dictionary<ObjectId, MeshInstance3D> _importedRings = new();
+
+    internal MeshInstance3D? ImportedRingNode(ObjectId id) => _importedRings.GetValueOrDefault(id);
+
     internal void ReplaceImportedBodies(IReadOnlyList<PreparedImportedBody> assets)
     {
         if (ReferenceEquals(_importedAssets, assets))
@@ -65,6 +72,12 @@ internal partial class SimulationViewport
             node.QueueFree();
         }
         _importedNodes.Clear();
+        foreach (var ring in _importedRings.Values)
+        {
+            RemoveChild(ring);
+            ring.QueueFree();
+        }
+        _importedRings.Clear();
         _missionObservations.Clear();
         foreach (var mesh in _missionVectorMeshes.Values)
             mesh.Dispose();
@@ -97,6 +110,23 @@ internal partial class SimulationViewport
             if (asset.Observation is { } observation)
                 _missionObservations.Add(asset.Id, new(node, observation));
             _importedNodes.Add(asset.Id, (asset, node));
+            if (asset.Rings is { } rings)
+            {
+                var ringShader = new ShaderMaterial { Shader = GD.Load<Shader>("res://Shaders/planet_rings.gdshader") };
+                ringShader.SetShaderParameter("rings_map", rings.Texture);
+                ringShader.SetShaderParameter("polar_ratio", (float)((asset.EllipsoidRadiiKilometers?.Z ?? asset.RadiusKilometers)
+                    / asset.RadiusKilometers));
+                var ring = new MeshInstance3D
+                {
+                    Mesh = PlanetRingRendering.RingMesh((float)(rings.Geometry.InnerKilometers / asset.RadiusKilometers),
+                        (float)(rings.Geometry.OuterKilometers / asset.RadiusKilometers), ringShader),
+                    MaterialOverride = ringShader,
+                    Visible = false,
+                    CastShadow = GeometryInstance3D.ShadowCastingSetting.Off
+                };
+                _importedRings.Add(asset.Id, ring);
+                AddChild(ring);
+            }
         }
     }
 
@@ -110,6 +140,7 @@ internal partial class SimulationViewport
         foreach (var (asset, node) in _importedNodes.Values)
         {
             node.Hide();
+            _importedRings.GetValueOrDefault(asset.Id)?.Hide();
             if (_missionDirectionLabels.TryGetValue(node, out var directionLabel))
                 directionLabel.Hide();
             var body = asset;
@@ -230,6 +261,19 @@ internal partial class SimulationViewport
                 node.Transform = new(basis, position + offset);
             }
             node.Show();
+            if (_importedRings.TryGetValue(asset.Id, out var ring) && snapshot.SolarSystem is { } ringSolar)
+            {
+                Vector3d towardSun = ringSolar.Sun.PositionKilometers - state.PositionKilometers;
+                if (towardSun.Length > 0)
+                {
+                    Basis basis = PlanetBasis(frame.ToWorld);
+                    var ringMaterial = (ShaderMaterial)ring.MaterialOverride;
+                    ringMaterial.SetShaderParameter("sun_in_body", basis.Inverse() * ToGodot(towardSun, towardSun.Length));
+                    ringMaterial.SetShaderParameter("solar_radius_radians", (float)Math.Asin(Math.Min(1, SpaceTangent.Core.Observing.SolarOccultation.SunRadiusKilometers / towardSun.Length)));
+                    ring.Transform = new(basis * Basis.FromScale(Vector3.One * (float)radius), position);
+                    ring.Show();
+                }
+            }
         }
         _missionSensorRendering?.Finish();
     }
@@ -260,6 +304,8 @@ internal partial class SimulationViewport
         _missionSensorRendering?.Clear();
         foreach (var (_, node) in _importedNodes.Values)
             node.Hide();
+        foreach (var ring in _importedRings.Values)
+            ring.Hide();
         foreach (var label in _missionDirectionLabels.Values)
             label.Hide();
     }

@@ -20,7 +20,7 @@ internal static partial class AddonLoader
     internal sealed record DecodedTimeline(SscSampledSpacecraft Track, DecodedScienceModel Model, HuygensMission? Probe,
         DecodedScienceModel? ProbeModel);
     internal sealed record SscInstallation(LocalDataPath[] Paths, AddonDependencies Dependencies, IReadOnlyList<DecodedSscBody> Bodies);
-    internal sealed record DecodedSscBody(SscBodyDefinition Body, DecodedScienceModel? Geometry, byte[]? Surface);
+    internal sealed record DecodedSscBody(SscBodyDefinition Body, DecodedScienceModel? Geometry, byte[]? Surface, byte[]? RingMap);
     internal sealed record DecodedSampledMission(SampledMission Track,
         IReadOnlyDictionary<string, DecodedScienceModel> Meshes, IReadOnlyDictionary<string, byte[]> Textures, IReadOnlyDictionary<string, byte[]> Tiles);
     internal sealed record DecodedMissionContent(IReadOnlyList<DecodedSampledMission> Tracks, IReadOnlyList<MissionAnnotation> Annotations, IReadOnlyList<MissionViewpoint> Viewpoints);
@@ -342,6 +342,8 @@ internal static partial class AddonLoader
             {
                 EllipsoidRadiiKilometers = definition.EllipsoidRadiiKilometers,
                 Surface = texture,
+                Rings = definition.Rings is { } rings && input.RingMap is { } ringMap
+                    ? new(rings, PublishMissionTexture(rings.TexturePath, ringMap)) : null,
                 MeshSpan = definition.EllipsoidRadiiKilometers is not null ? bounds?.Span : null,
                 ModelBounds = body.Kind == CatalogueKind.Spacecraft ? bounds : null
             };
@@ -467,7 +469,13 @@ internal static partial class AddonLoader
                 pixels = ReadMissionTexture(map, ref textureBytes);
                 decodedSurfaces.Add(map, pixels);
             }
-            return new DecodedSscBody(body, mesh, pixels);
+            byte[]? ringMap = null;
+            if (body.Rings is { } rings && !decodedSurfaces.TryGetValue(rings.TexturePath, out ringMap))
+            {
+                ringMap = ReadMissionTexture(rings.TexturePath, ref textureBytes);
+                decodedSurfaces.Add(rings.TexturePath, ringMap);
+            }
+            return new DecodedSscBody(body, mesh, pixels, ringMap);
         }).ToArray());
     }
 

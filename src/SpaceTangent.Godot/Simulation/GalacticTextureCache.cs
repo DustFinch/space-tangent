@@ -8,7 +8,7 @@ namespace SpaceTangent.Godot.Simulation;
 
 internal sealed class GalacticTextureCache : IDisposable
 {
-    private const int Width = 256, Height = 128;
+    private const int Width = 512, Height = 256;
     private const int Capacity = 18;
     private readonly Dictionary<(Vector3d Center, int Neighbours), (ImageTexture Texture, long Use)> _maps = new();
     private CancellationTokenSource? _bake;
@@ -54,8 +54,9 @@ internal sealed class GalacticTextureCache : IDisposable
         var elapsed = System.Diagnostics.Stopwatch.StartNew();
         try
         {
-            float[] pixels = await Task.Run(() => GalacticLight.Bake(key.Center, Width, Height, map: dust,
-                cancellation: pending.Token, neighbourMask: key.Neighbours), pending.Token);
+            int workers = Math.Clamp(System.Environment.ProcessorCount / 4, 1, 6);
+            float[] pixels = await Task.Run(() => GalacticLight.Bake(key.Center, Width, Height, workers, dust,
+                pending.Token, key.Neighbours), pending.Token);
             if (!pending.IsCancellationRequested && !_disposed)
             {
                 byte[] bytes = MemoryMarshal.AsBytes(pixels.AsSpan()).ToArray();

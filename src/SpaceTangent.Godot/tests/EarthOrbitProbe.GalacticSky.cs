@@ -12,7 +12,7 @@ public partial class EarthOrbitProbe
 {
     private async Task ExerciseGalacticSky(SolarSystemScene scene, string directory)
     {
-        if (System.Environment.GetEnvironmentVariable("SPACETANGENT_GALACTIC_SKY_PROBE") != "1")
+        if (System.Environment.GetEnvironmentVariable("SPACETANGENT_GALACTIC_SKY_PROBE") is not ("1" or "only"))
             return;
         var session = scene.Session!;
         var epoch = session[0].Epoch;
@@ -30,7 +30,7 @@ public partial class EarthOrbitProbe
         if (!scene.LoadScenario(path + ".stscene"))
             throw new InvalidOperationException("Could not load the galactic camera positions.");
 
-        ulong deadline = Time.GetTicksMsec() + 25000;
+        ulong deadline = Time.GetTicksMsec() + 60000;
         while (!scene.Renderer(0).GalacticSkyVisible || !scene.Renderer(1).GalacticSkyVisible)
         {
             if (Time.GetTicksMsec() > deadline)
@@ -45,6 +45,22 @@ public partial class EarthOrbitProbe
         using var enabled = GetViewport().GetTexture().GetImage();
         if (enabled.SavePng(path + ".png") != Error.Ok)
             throw new IOException("Could not save both galactic views.");
+
+        double diskCentre = CentreLight(scene.Renderer(1));
+        var directionToRim = axes.Transform(new Vector3d(17, 0, -40));
+        var rim = View(above, directionToRim / directionToRim.Length, axes.Y, 75);
+        string diskPath = Path.Combine(directory, "galactic-centre-and-rim.stscene");
+        ScenarioFile.Save(diskPath, new([outside, rim], false, 0, 0, session.DeltaT));
+        if (!scene.LoadScenario(diskPath))
+            throw new InvalidOperationException("Could not compare the centre and rim of the Galactic disk.");
+        await ToSignal(RenderingServer.Singleton, RenderingServer.SignalName.FramePostDraw);
+        double edge = CentreLight(scene.Renderer(1));
+        if (diskCentre <= edge + .04)
+            throw new InvalidOperationException($"The Galactic disk is missing its bright bar ({diskCentre:R} vs {edge:R}).");
+        GD.Print($"Galactic disk GPU: centre and rim from 40 kpc, luminance {diskCentre:F3} vs {edge:F3}.");
+        using var diskImage = GetViewport().GetTexture().GetImage();
+        if (diskImage.SavePng(Path.ChangeExtension(diskPath, ".png")) != Error.Ok)
+            throw new IOException("Could not capture the Galactic disk comparison.");
 
         string disabled = Path.Combine(directory, "galactic-disabled.stscene");
         ScenarioFile.Save(disabled, new([inside with { Sky = default }, outside with { Sky = default }], false, 0, 0, session.DeltaT));
@@ -108,6 +124,40 @@ public partial class EarthOrbitProbe
         if (neighbours.SavePng(neighbourScene + ".png") != Error.Ok)
             throw new IOException("Could not capture independent galaxy filters.");
         GD.Print($"Nearby galaxies GPU: Andromeda volume from 120 kpc, independent filter and reload, centre luminance {visible:F3} vs {filtered:F3}.");
+
+        foreach (var cloud in GalacticLight.Neighbours.Where(item => item.Name is "LMC" or "SMC"))
+        {
+            var id = new ObjectId("dso/" + cloud.Name.ToLowerInvariant());
+            var catalogue = session.World.DeepSky.Find(id)
+                ?? throw new InvalidOperationException($"Load the original DSC catalogue for {cloud.Name}.");
+            var direction = axes.Transform(cloud.CentreKiloparsecs - sun);
+            var fromSun = View(sun, direction / direction.Length, axes.Z, 20);
+            var excluded = fromSun with { Sky = sky with { DeepSkyFilter = new DeepSkyVisibility(1, "M") } };
+            string cloudPath = Path.Combine(directory, cloud.Name.ToLowerInvariant() + "-from-sun.stscene");
+            ScenarioFile.Save(cloudPath, new([fromSun, excluded], false, 0, 0, session.DeltaT));
+            if (catalogue.Designation != cloud.Name || !scene.LoadScenario(cloudPath))
+                throw new InvalidOperationException($"Could not load the archived {cloud.Name} scene.");
+            deadline = Time.GetTicksMsec() + 60000;
+            while (!scene.Renderer(0).IsVolumetricGalaxy(id) || !scene.Renderer(1).GalacticSkyVisible)
+            {
+                if (Time.GetTicksMsec() > deadline)
+                    throw new TimeoutException($"The filtered maps for {cloud.Name} did not publish.");
+                await ToSignal(GetTree(), SceneTree.SignalName.ProcessFrame);
+            }
+            if (!await scene.ReloadAddOns() || session[0] != fromSun || session[1] != excluded ||
+                !scene.Renderer(0).IsVolumetricGalaxy(id) || scene.Renderer(0).DeepSkySpriteVisible(id) ||
+                scene.Renderer(1).DeepSkyVisible(id))
+                throw new InvalidOperationException($"{cloud.Name} failed to restore its independent catalogue filters.");
+            await ToSignal(RenderingServer.Singleton, RenderingServer.SignalName.FramePostDraw);
+            double bright = CentreLight(scene.Renderer(0));
+            double dim = CentreLight(scene.Renderer(1));
+            if (bright <= dim + .015)
+                throw new InvalidOperationException($"{cloud.Name} did not brighten the visible view ({bright:R} vs {dim:R}).");
+            using var cloudImage = GetViewport().GetTexture().GetImage();
+            if (cloudImage.SavePng(Path.ChangeExtension(cloudPath, ".png")) != Error.Ok)
+                throw new IOException($"Could not capture the views of {cloud.Name}.");
+            GD.Print($"Magellanic clouds GPU: original {cloud.Name}, volume only from the Sun, centre luminance {bright:F3} vs {dim:F3}.");
+        }
 
         static double CentreLight(SimulationViewport renderer)
         {

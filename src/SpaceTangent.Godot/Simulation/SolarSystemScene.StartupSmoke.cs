@@ -44,6 +44,19 @@ public partial class SolarSystemScene
             {
                 if (DisplayServer.GetName() == "headless")
                     throw new InvalidOperationException("A rendering display driver is required to capture a frame.");
+                if (System.Environment.GetEnvironmentVariable("SPACETANGENT_SMOKE_GALACTIC") == "1")
+                {
+                    if (!_views.Any(view => view.Renderer.GalacticCache?.HasDust == true))
+                        throw new InvalidDataException("The galactic capture needs the installed extinction grid.");
+                    ulong deadline = Time.GetTicksMsec() + 60000;
+                    while (_views.Any(view => !view.Renderer.GalacticSkyVisible && !view.Renderer.GroundGalacticSkyVisible))
+                    {
+                        if (Time.GetTicksMsec() > deadline)
+                            throw new InvalidDataException("The galactic maps were not rendered in all views.");
+                        await ToSignal(GetTree(), SceneTree.SignalName.ProcessFrame);
+                    }
+                    GD.Print("SpaceTangent startup rendered all galactic views with the installed dust grid.");
+                }
                 await ToSignal(GetTree(), SceneTree.SignalName.ProcessFrame);
                 await ToSignal(RenderingServer.Singleton, RenderingServer.SignalName.FramePostDraw);
                 foreach (ViewControls controls in _views.Where(view => view.FieldOfView.Visible))

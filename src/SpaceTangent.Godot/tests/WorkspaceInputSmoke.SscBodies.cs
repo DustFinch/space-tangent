@@ -59,6 +59,26 @@ public partial class WorkspaceInputSmoke
         RequireScenario(accepted, Session.CaptureScenario(view), "Reloading the restored SSC source");
         if (System.Environment.GetEnvironmentVariable("SPACETANGENT_ISS_SCENE") is { Length: > 0 } output)
             ScenarioFile.Save(output, accepted);
+        string trajectory = Path.Combine(local, "data", "2008TC3.xyzv");
+        byte[] originalSamples = File.ReadAllBytes(trajectory);
+        try
+        {
+            File.WriteAllText(trajectory, "2451545 1 2");
+            await Click(Find<Button>("ReloadAddOns"));
+            await WaitForAddOns("Reloading with a damaged asteroid trajectory");
+            Require(Session.World.SscBodies.Select(body => body.Id).SequenceEqual([station]),
+                "The damaged asteroid trajectory must be skipped while keeping the original ISS.");
+            RequireScenario(accepted, Session.CaptureScenario(view), "Keeping both observers and ΔT during partial SSC reload");
+        }
+        finally
+        {
+            File.WriteAllBytes(trajectory, originalSamples);
+        }
+        await Click(Find<Button>("ReloadAddOns"));
+        await WaitForAddOns("Restoring the original asteroid trajectory");
+        Require(Session.World.SscBodies.Any(body => body.Id == asteroid),
+            "Restoring the original file must make the asteroid available again after reload.");
+        GD.Print("UI: isolated the damaged original 2008 TC3 trajectory, kept ISS, both views and ΔT, and restored the asteroid.");
         await FlyTo("2008 TC3", asteroid, 2454450.5);
         Require(_scene.Renderer(view).ImportedBodyNode(asteroid) is { Visible: true },
             "The source trajectory must be available for the imported asteroid.");

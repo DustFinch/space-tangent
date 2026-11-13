@@ -1,17 +1,17 @@
-﻿
+
 Microsoft Visual Studio Solution File, Format Version 12.00
 # Visual Studio Version 17
 VisualStudioVersion = 17.0.31903.59
 MinimumVisualStudioVersion = 10.0.40219.1
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "SpaceTangent.Godot", "SpaceTangent.Godot.csproj", "{CAC388B4-4FB1-4684-A114-8E918AB84D46}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "SpaceTangent.Core", "..\deps\space-tangent-core\src\SpaceTangent.Core\SpaceTangent.Core.csproj", "{5A090AC2-51BB-445A-BD3A-AC927DD6FCBF}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "SpaceTangent.Core", "..\..\deps\space-tangent-core\src\SpaceTangent.Core\SpaceTangent.Core.csproj", "{5A090AC2-51BB-445A-BD3A-AC927DD6FCBF}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "SpaceTangent.Contracts", "..\deps\space-tangent-core\src\SpaceTangent.Contracts\SpaceTangent.Contracts.csproj", "{19E38C19-0791-4915-9231-0B02261311F7}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "SpaceTangent.Contracts", "..\..\deps\space-tangent-core\src\SpaceTangent.Contracts\SpaceTangent.Contracts.csproj", "{19E38C19-0791-4915-9231-0B02261311F7}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "SpaceTangent.Application", "..\src\SpaceTangent.Application\SpaceTangent.Application.csproj", "{E42A8F4D-1374-4033-8AC5-490B592CA925}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "SpaceTangent.Application", "..\SpaceTangent.Application\SpaceTangent.Application.csproj", "{E42A8F4D-1374-4033-8AC5-490B592CA925}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "SpaceTangent.Application.Tests", "..\tests\SpaceTangent.Application.Tests\SpaceTangent.Application.Tests.csproj", "{0273DEF9-F756-44FC-9832-12CF068C5F8D}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "SpaceTangent.Application.Tests", "..\..\tests\SpaceTangent.Application.Tests\SpaceTangent.Application.Tests.csproj", "{0273DEF9-F756-44FC-9832-12CF068C5F8D}"
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution

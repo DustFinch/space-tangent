@@ -14,6 +14,7 @@ internal sealed record AddonGeneration(AddonLoader.DecodedAddOns Decoded, IReadO
 
 internal static partial class AddonLoader
 {
+    internal sealed record DecodedDeepSky(DeepSkyIndex Index, IReadOnlyDictionary<ObjectId, IReadOnlyList<DecodedModelSprite>> Sprites);
     internal sealed record DecodedSatellite(ScienceSatellite Track, DecodedScienceModel Model);
     internal sealed record DecodedMission(SpiceSpacecraft Track, DecodedScienceModel Model,
         IReadOnlyList<SpiceSensor> Sensors, SaturnSurface? Surface);
@@ -49,7 +50,7 @@ internal static partial class AddonLoader
         Cached<DecodedMission?>? Mission, Cached<DecodedTimeline?>? Timeline, Cached<DecodedTerrain?>? Terrain,
         PlanetEphemerides Planets, Cached<DecodedBodyTerrain>? MarsTerrain, Cached<StellarCatalogue> Stellar,
         Cached<StellarCatalogue?> StellarArchive, Cached<StellarImport> StellarDefinitions,
-        SscInstallation BodyCatalogues, Cached<IReadOnlyList<SscSurfaceLocation>> Locations, Cached<DeepSkyIndex> DeepSky, Cached<ExoplanetCatalogue> Exoplanets,
+        SscInstallation BodyCatalogues, Cached<IReadOnlyList<SscSurfaceLocation>> Locations, Cached<DecodedDeepSky> DeepSky, Cached<ExoplanetCatalogue> Exoplanets,
         Cached<DecodedMissionContent> SampledMissions, Cached<IReadOnlyList<LocalTleSatellite>> LocalSatellites,
         Cached<EarthPlaceCatalogue> EarthPlaces, LocalDataPath SavedEarthPlacesPath, bool AllowAddonLua,
         IReadOnlyDictionary<ObjectId, PreparedMissionObservation> Observations, Cached<GalacticDustGrid?> GalacticDust, Cached<DistantStarIndex?> DistantStars)
@@ -137,8 +138,8 @@ internal static partial class AddonLoader
 
             var locations = Cached<IReadOnlyList<SscSurfaceLocation>>.Load(previous?.Locations, locationPath, "Surface locations",
                 (path, token) => SscSurfaceLocations.Load(path.Resolve(), token), cancellation);
-            var deepSky = Cached<DeepSkyIndex>.Load(previous?.DeepSky, deepSkyPath, "Deep-sky catalogues",
-                (path, token) => DeepSkyIndex.Load(path.Resolve(), token), cancellation);
+            var deepSky = Cached<DecodedDeepSky>.Load(previous?.DeepSky, deepSkyPath, "Deep-sky catalogues",
+                (path, token) => ReadDeepSky(path.Resolve(), token), cancellation);
             var galacticDust = Cached<GalacticDustGrid?>.Load(previous?.GalacticDust, dustPath, "Galactic dust grid",
                 (path, _) => ReadGalacticDust(path.Resolve()), cancellation);
             var stellar = Cached<StellarCatalogue>.Load(previous?.Stellar, stellarPath, "Spatial star catalogue",
@@ -221,7 +222,7 @@ internal static partial class AddonLoader
                 }
                 var world = AddonDiagnostics.Read(AddonStage.World, null, () => new SimulationWorld(ephemeris, tracks,
                     spice?.Value?.Track, sampled?.Value?.Track, sampled?.Value?.Probe, relief?.Value?.Frame, brightStars, planets, marsTerrain is not null, definitions.Value.Catalogue,
-                    bodies.Bodies.Select(body => body.Body), locations.Value, deepSky.Value, exoplanets.Value, missions.Value.Tracks.Select(mission => mission.Track), tle.Value, earthPlaces.Value, distantStars.Value));
+                    bodies.Bodies.Select(body => body.Body), locations.Value, deepSky.Value.Index, exoplanets.Value, missions.Value.Tracks.Select(mission => mission.Track), tle.Value, earthPlaces.Value, distantStars.Value));
                 var observations = PrepareObservations(world, missions.Value.Tracks, cancellation);
                 var decoded = new DecodedAddOns(world, sameScience ? previous!.Science : satellites, spice, sampled, relief, planets, marsTerrain, stellar, archive, definitions, bodies, locations, deepSky, exoplanets, missions, tle, earthPlaces, savedEarthPlacesPath, allowAddonLua, observations, galacticDust, distantStars);
                 openedDistantStars = null;

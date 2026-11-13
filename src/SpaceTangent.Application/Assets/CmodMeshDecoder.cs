@@ -17,7 +17,12 @@ public static partial class CmodMeshDecoder
     public static DecodedScienceModel DecodeNativeBody(string root, string path, CancellationToken cancellation = default) =>
         AddonDiagnostics.Read(AddonStage.Mesh, path, () => Read(root, path, nativeBody: true, cancellation));
 
-    private static DecodedScienceModel Read(string root, string path, bool nativeBody, CancellationToken cancellation)
+    public static IReadOnlyList<DecodedModelSprite> DecodeSprites(string path, CancellationToken cancellation = default) =>
+        AddonDiagnostics.Read(AddonStage.Mesh, path,
+            () => Read(Path.GetDirectoryName(path)!, path, nativeBody: false, cancellation, spritesOnly: true).Sprites);
+
+    private static DecodedScienceModel Read(string root, string path, bool nativeBody, CancellationToken cancellation,
+        bool spritesOnly = false)
     {
         using FileStream source = AddonDependencies.OpenRead(path, 32L * 1024 * 1024);
         if (source.Length > 32L * 1024 * 1024)
@@ -32,6 +37,7 @@ public static partial class CmodMeshDecoder
         using var input = new BinaryReader(stream);
         var materials = new List<DecodedMaterial>();
         var surfaces = new Dictionary<DecodedMaterial, Surface>();
+        var sprites = new List<DecodedModelSprite>();
         int triangles = 0;
         var min = new Vector3d(double.PositiveInfinity, double.PositiveInfinity, double.PositiveInfinity);
         var max = new Vector3d(double.NegativeInfinity, double.NegativeInfinity, double.NegativeInfinity);
@@ -52,6 +58,21 @@ public static partial class CmodMeshDecoder
                 default:
                     throw new InvalidDataException("Unexpected CMOD block.");
             }
+        }
+
+        if (spritesOnly)
+        {
+            if (sprites.Count == 0)
+                throw new InvalidDataException("The CMOD model contains no point sprites.");
+            var center = (min + max) * .5;
+            var extent = max - min;
+            double longest = Math.Max(extent.X, Math.Max(extent.Y, extent.Z));
+            double scale = longest > 0 ? 2 / longest : 1;
+            return new([], new Dictionary<string, ReadOnlyMemory<byte>>(), 2)
+            {
+                Sprites = sprites.Select(sprite => sprite with
+                    { Position = (sprite.Position - center) * scale, Size = sprite.Size * scale }).ToArray()
+            };
         }
 
         double diameter = (max - min).Length;
@@ -148,6 +169,8 @@ public static partial class CmodMeshDecoder
             if (count is 0 or > MaximumVertices || (long)stride * count > stream.Length - stream.Position)
                 throw new InvalidDataException("Invalid CMOD vertex count.");
             var vertices = new Vertex[count];
+            if (spritesOnly)
+                Array.Fill(vertices, new Vertex { Size = 1, Alpha = 1 });
             Span<float> components = stackalloc float[4];
             for (int vertex = 0; vertex < vertices.Length; vertex++)
             {
@@ -157,7 +180,13 @@ public static partial class CmodMeshDecoder
                 {
                     if (format == 4)
                     {
-                        input.ReadUInt32();
+                        uint packed = input.ReadUInt32();
+                        if (spritesOnly && semantic == 1)
+                        {
+                            vertices[vertex].Color = new((packed & 255) / 255.0,
+                                ((packed >> 8) & 255) / 255.0, ((packed >> 16) & 255) / 255.0);
+                            vertices[vertex].Alpha = (packed >> 24) / 255.0;
+                        }
                         continue;
                     }
                     components.Clear();
@@ -165,6 +194,13 @@ public static partial class CmodMeshDecoder
                         components[i] = Float();
                     if (semantic == 0)
                         vertices[vertex].Position = new(components[0], components[1], components[2]);
+                    else if (spritesOnly && semantic == 1 && format >= 2)
+                    {
+                        vertices[vertex].Color = new(components[0], components[1], components[2]);
+                        vertices[vertex].Alpha = format == 3 ? components[3] : 1;
+                    }
+                    else if (spritesOnly && semantic == 9)
+                        vertices[vertex].Size = Math.Max(0, components[0]);
                     else if (semantic == 3)
                         vertices[vertex].Normal = new(components[0], components[1], components[2]);
                     else if (semantic == 5)
@@ -177,6 +213,32 @@ public static partial class CmodMeshDecoder
                 if (type is < 0 or > 6 || indexCount > 3 * MaximumTriangles ||
                     (long)indexCount * 4 > stream.Length - stream.Position)
                     throw new InvalidDataException("Invalid CMOD primitive group.");
+                if (spritesOnly && type is 5 or 6)
+                {
+                    DecodedMaterial style = material < materials.Count ? materials[(int)material] : Default;
+                    if (sprites.Count + indexCount > MaximumVertices)
+                        throw new InvalidDataException("The CMOD model contains too many point sprites.");
+                    for (uint index = 0; index < indexCount; index++)
+                    {
+                        if ((index & 8191) == 0)
+                            cancellation.ThrowIfCancellationRequested();
+                        Vertex vertex = vertices[Index()];
+                        AddBounds(vertex.Position);
+                        sprites.Add(new(vertex.Position, vertex.Size, vertex.Color ?? style.Color,
+                            Math.Clamp(vertex.Alpha * style.Opacity, 0, 1)));
+                    }
+                    continue;
+                }
+                if (spritesOnly && type <= 2)
+                {
+                    for (uint index = 0; index < indexCount; index++)
+                    {
+                        if ((index & 8191) == 0)
+                            cancellation.ThrowIfCancellationRequested();
+                        AddBounds(vertices[Index()].Position);
+                    }
+                    continue;
+                }
                 if (type > 2)
                 {
                     stream.Seek(indexCount * 4L, SeekOrigin.Current);
@@ -247,9 +309,14 @@ public static partial class CmodMeshDecoder
                 surface.Normals.Add(vertex.Normal.Length > 0 ? vertex.Normal : fallback);
                 surface.Uvs.Add(vertex.U);
                 surface.Uvs.Add(vertex.V);
-                min = new(Math.Min(min.X, point.X), Math.Min(min.Y, point.Y), Math.Min(min.Z, point.Z));
-                max = new(Math.Max(max.X, point.X), Math.Max(max.Y, point.Y), Math.Max(max.Z, point.Z));
+                AddBounds(point);
             }
+        }
+
+        void AddBounds(Vector3d point)
+        {
+            min = new(Math.Min(min.X, point.X), Math.Min(min.Y, point.Y), Math.Min(min.Z, point.Z));
+            max = new(Math.Max(max.X, point.X), Math.Max(max.Y, point.Y), Math.Max(max.Z, point.Z));
         }
 
         void Expect(int token)
@@ -268,6 +335,8 @@ public static partial class CmodMeshDecoder
     private struct Vertex
     {
         internal Vector3d Position, Normal;
+        internal Vector3d? Color;
+        internal double Size, Alpha;
         internal float U, V;
     }
 

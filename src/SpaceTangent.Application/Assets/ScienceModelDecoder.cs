@@ -18,7 +18,12 @@ public sealed record DecodedMaterial(Vector3d Color, double Opacity, string? Tex
 public sealed record DecodedSurface(ReadOnlyMemory<Vector3d> Positions, ReadOnlyMemory<Vector3d> Normals,
     ReadOnlyMemory<float> TextureCoordinates, DecodedMaterial Material);
 public sealed record DecodedScienceModel(IReadOnlyList<DecodedSurface> Surfaces,
-    IReadOnlyDictionary<string, ReadOnlyMemory<byte>> Textures, double Diameter);
+    IReadOnlyDictionary<string, ReadOnlyMemory<byte>> Textures, double Diameter)
+{
+    public IReadOnlyList<DecodedModelSprite> Sprites { get; init; } = [];
+}
+
+public readonly record struct DecodedModelSprite(Vector3d Position, double Size, Vector3d Color, double Opacity);
 
 /// <summary>Decodes the local science OBJ convention into managed data for main-thread publication.</summary>
 public static class ScienceModelDecoder

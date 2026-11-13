@@ -1408,6 +1408,7 @@ public partial class SolarSystemScene : Control
         view.Renderer.ReplaceLunarTerrain(_addOns?.Terrain);
         view.Renderer.ReplaceMarsTerrain(_addOns?.MarsTerrain);
         view.Renderer.SetCatalogueWorld(Session!.World);
+        view.Renderer.SetDeepSkySprites(_addOns?.Decoded.DeepSky.Value.Sprites);
         view.Renderer.ReplaceImportedBodies(_addOns?.ImportedBodies ?? []);
         view.Selection.Clear();
         foreach (PreparedSatellite asset in Assets)

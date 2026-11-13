@@ -9,7 +9,7 @@ namespace SpaceTangent.Godot.Simulation;
 internal partial class SimulationViewport
 {
     private const int MaximumDeepSkyMeshes = 64;
-    private readonly List<(MeshInstance3D Mesh, Label3D Label)> _deepSkyPool = [];
+    private readonly List<(MeshInstance3D Mesh, Label3D Label, ShaderMaterial Profile)> _deepSkyPool = [];
     private readonly Dictionary<ObjectId, MeshInstance3D> _deepSkyObjects = new();
     private readonly List<(DeepSkyObject Body, Vector3d Center, double Score)> _deepSkyCandidates = [];
     private (DeepSkyObject Body, Vector3d Center, double Radius)[] _deepSkyPositions = [];
@@ -60,15 +60,25 @@ internal partial class SimulationViewport
                 continue;
             if (_deepSkyPool.Count == shown)
                 _deepSkyPool.Add(CreateDeepSkyMesh());
-            var (mesh, label) = _deepSkyPool[shown++];
+            var (mesh, label, profile) = _deepSkyPool[shown++];
             Basis facing = _navigationCamera.Basis;
             bool elliptical = body.Morphology is { Length: 2 } form && form[0] == 'E' && char.IsAsciiDigit(form[1]);
             float aspect = elliptical ? 1 - (body.Morphology![1] - '0') * .095f : body.Kind == DeepSkyKind.Galaxy ? .43f : 1;
-            mesh.Transform = new(facing * Basis.FromScale(new(radius, radius * aspect, 1)), position);
-            var material = (ShaderMaterial)mesh.MaterialOverride;
-            material.SetShaderParameter("profile", (int)body.Kind);
-            material.SetShaderParameter("elliptical", elliptical);
-            material.SetShaderParameter("concentration", (float)body.KingConcentration);
+            if (DeepSkySpriteMesh(body.Id, body.Orientation) is { } sprites)
+            {
+                mesh.Mesh = sprites;
+                mesh.MaterialOverride = sprites.SurfaceGetMaterial(0);
+                mesh.Transform = new(Basis.FromScale(Vector3.One * radius), position);
+            }
+            else
+            {
+                mesh.Transform = new(facing * Basis.FromScale(new(radius, radius * aspect, 1)), position);
+                mesh.Mesh = _deepSkyQuad;
+                mesh.MaterialOverride = profile;
+                profile.SetShaderParameter("profile", (int)body.Kind);
+                profile.SetShaderParameter("elliptical", elliptical);
+                profile.SetShaderParameter("concentration", (float)body.KingConcentration);
+            }
             mesh.Show();
             if (sky.Labels)
             {
@@ -82,13 +92,14 @@ internal partial class SimulationViewport
         }
     }
 
-    private (MeshInstance3D Mesh, Label3D Label) CreateDeepSkyMesh()
+    private (MeshInstance3D Mesh, Label3D Label, ShaderMaterial Profile) CreateDeepSkyMesh()
     {
         _deepSkyShader ??= GD.Load<Shader>("res://Shaders/deep_sky.gdshader");
         _deepSkyQuad ??= new QuadMesh { Size = new(2, 2) };
+        var profile = new ShaderMaterial { Shader = _deepSkyShader };
         var mesh = new MeshInstance3D
         {
-            Mesh = _deepSkyQuad, MaterialOverride = new ShaderMaterial { Shader = _deepSkyShader }, Visible = false,
+            Mesh = _deepSkyQuad, MaterialOverride = profile, Visible = false,
             CastShadow = GeometryInstance3D.ShadowCastingSetting.Off
         };
         Label3D label = CreateLabel("", Vector3.Zero);
@@ -98,13 +109,13 @@ internal partial class SimulationViewport
         label.Hide();
         AddChild(mesh);
         AddChild(label);
-        return (mesh, label);
+        return (mesh, label, profile);
     }
 
     private void HideDeepSky()
     {
         _deepSkyObjects.Clear();
-        foreach (var (mesh, label) in _deepSkyPool)
+        foreach (var (mesh, label, _) in _deepSkyPool)
         {
             mesh.Hide();
             label.Hide();

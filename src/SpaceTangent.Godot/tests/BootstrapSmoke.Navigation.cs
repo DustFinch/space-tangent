@@ -53,12 +53,23 @@ public partial class BootstrapSmoke
 
         var viewport = (SubViewportContainer)scene.FindChild("ViewCanvas0", recursive: true, owned: false);
         var pose = session[0].Navigation!.Value;
+        var initialPlacement = pose.ResolvePlacement(movedMoon, session.DeltaT);
         viewport.EmitSignal(Control.SignalName.GuiInput,
             new InputEventMouseMotion { ButtonMask = MouseButtonMask.Right, Relative = new(40, -20) });
         var orbited = session[0].Navigation!.Value;
         Require(Math.Abs(Math.IEEERemainder(orbited.AzimuthRadians - pose.AzimuthRadians, Math.Tau) + .12) < 1e-12 &&
                 Math.Abs(orbited.ElevationRadians - pose.ElevationRadians - .06) < 1e-12,
             "A tracking orbit must use the archived angle per pixel.");
+        var orbitPlacement = orbited.ResolvePlacement(movedMoon, session.DeltaT);
+        var (sin, cos) = Math.SinCos(-.12);
+        Vector3d expectedForward = initialPlacement.Forward * cos +
+            Vector3d.Cross(initialPlacement.Up, initialPlacement.Forward) * sin;
+        Vector3d pitchAxis = Vector3d.Cross(expectedForward, initialPlacement.Up);
+        var (sinPitch, cosPitch) = Math.SinCos(.06);
+        Vector3d expectedUp = initialPlacement.Up * cosPitch + Vector3d.Cross(pitchAxis, initialPlacement.Up) * sinPitch;
+        Require((orbitPlacement.Up - expectedUp).Length < 1e-12 &&
+                (orbitPlacement.OffsetKilometers + orbitPlacement.Forward * pose.RangeKilometers).Length < 1e-6,
+            "Orbiting must rotate the eye and screen up together in camera axes.");
         viewport.EmitSignal(Control.SignalName.GuiInput,
             new InputEventMouseButton { Pressed = true, ButtonIndex = MouseButton.WheelUp });
         var adjusted = session[0].Navigation!.Value;
@@ -81,6 +92,27 @@ public partial class BootstrapSmoke
         scene._UnhandledKeyInput(autoOrbitKey);
         Require(session[0].AutoOrbit is { Enabled: false }, "The same key must stop automatic orbit.");
         adjusted = orbitEnd;
+        var beforeOffCenter = session.CaptureScenario(0);
+        var anchor = adjusted.ResolvePlacement(movedMoon, session.DeltaT);
+        Vector3d screenRight = Vector3d.Cross(anchor.Forward, anchor.Up);
+        var offCenter = anchor with { OffsetKilometers = (anchor.OffsetKilometers + screenRight * (.2 * adjusted.RangeKilometers)) / Math.Sqrt(1.04) };
+        session.RestoreScenario(beforeOffCenter with { Views = [session[0] with { Navigation = adjusted with { Placement = offCenter } }, lunar] });
+        viewport.EmitSignal(Control.SignalName.GuiInput,
+            new InputEventMouseMotion { ButtonMask = MouseButtonMask.Right, Relative = new(30, 21) });
+        var afterOrbit = session[0].Navigation!.Value.Placement!.Value;
+        Vector3d before = CameraCoordinates(offCenter);
+        Vector3d after = CameraCoordinates(afterOrbit);
+        Require((before - after).Length < 1e-12 && session[1] == lunar,
+            "A tracked off-center target must retain its screen position during a combined orbit drag.");
+        session.RestoreScenario(beforeOffCenter);
+
+        static Vector3d CameraCoordinates(NavigationPlacement placement)
+        {
+            Vector3d direction = placement.OffsetKilometers * (-1 / placement.OffsetKilometers.Length);
+            return new(Vector3d.Dot(direction, Vector3d.Cross(placement.Forward, placement.Up)),
+                Vector3d.Dot(direction, placement.Up), Vector3d.Dot(direction, placement.Forward));
+        }
+
         double priorField = session[0].EffectiveFieldOfView;
         viewport.EmitSignal(Control.SignalName.GuiInput,
             new InputEventMouseButton { Pressed = true, ButtonIndex = MouseButton.WheelUp, CtrlPressed = true });

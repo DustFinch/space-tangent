@@ -34,6 +34,11 @@ public readonly record struct NavigationCamera(Vector3d AnchorKilometers, double
             if (TryFrameBasis(snapshot, deltaT, out Basis3d basis))
                 return local.Transform(basis, false);
         }
+        return ResolveOrbitalPlacement();
+    }
+
+    internal NavigationPlacement ResolveOrbitalPlacement()
+    {
         var (sinA, cosA) = Math.SinCos(AzimuthRadians);
         var (sinE, cosE) = Math.SinCos(ElevationRadians);
         Vector3d outward = new(cosE * sinA, -cosE * cosA, sinE);

@@ -152,9 +152,13 @@ public sealed partial class SimulationSession
         double minimum = camera.Target is { } target && !localSurface ? MinimumRange(target) : NavigationCamera.MinRange;
         CancelFlight(view);
         NavigationCamera next = camera.Adjust(azimuth, elevation, zoom, minimum);
-        if (camera.Placement is { } placement)
+        var placement = camera.Placement;
+        bool rotating = azimuth != 0 || elevation != 0;
+        if (placement is null && rotating && camera.Target.HasValue)
+            placement = camera.ResolveOrbitalPlacement();
+        if (placement is { } attitude)
         {
-            var turned = placement.Turn(azimuth, elevation, orbit: camera.Target.HasValue);
+            var turned = rotating ? attitude.Turn(azimuth, elevation, orbit: camera.Target.HasValue) : attitude;
             next = next with { Placement = turned with
                 { OffsetKilometers = turned.OffsetKilometers * (next.RangeKilometers / camera.RangeKilometers) } };
         }

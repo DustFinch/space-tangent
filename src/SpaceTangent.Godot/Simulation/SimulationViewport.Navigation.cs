@@ -149,20 +149,20 @@ internal partial class SimulationViewport
         {
             if (!snapshot.TryState(asset.Track.Id, out var state) || !snapshot.TryOrientation(asset.Track.Id, out var orientation))
                 continue;
-            double radius = NavigationCamera.BodyRadiusKilometers(asset.Track.Id);
+            double radius = asset.Track.SizeKilometers;
             var satelliteId = asset.Track.Id;
             bool label = sky.Labels && (sky.MinorBodyLabels || selection == satelliteId);
-            bool drawModel = _satelliteMagnitudes.ContainsKey(satelliteId) || radius / pose.RangeKilometers >= .0002 ||
-                pose.Target == satelliteId;
-            if (!label && !drawModel)
-                continue;
             Vector3 position = Project(state.PositionKilometers, out double scale);
             float projectedRadius = (float)(radius / units * scale);
             Vector3d towardEye = (pose.AnchorKilometers - state.PositionKilometers) + placement.OffsetKilometers;
             if (label)
                 DrawBodyLabel(satelliteId, asset.Track.Name, SolarSystemSample.EarthId, 0, radius,
                     snapshot, state.PositionKilometers, towardEye, position, projectedRadius);
-            if (!drawModel || !DrawSatellitePoint(satelliteId, snapshot, state.PositionKilometers, towardEye, radius, position, projectedRadius))
+            bool resolved = _satelliteMagnitudes.ContainsKey(satelliteId)
+                ? DrawSatellitePoint(satelliteId, snapshot, state.PositionKilometers, towardEye, radius, position, projectedRadius)
+                : DrawReflectedBody(satelliteId, SolarSystemSample.EarthId, radius, .5, Colors.White,
+                    snapshot, towardEye, state.PositionKilometers, position, projectedRadius);
+            if (!resolved)
                 continue;
             float modelScale = projectedRadius * asset.MarkerScale / 9;
             if (modelScale < 1e-7f)

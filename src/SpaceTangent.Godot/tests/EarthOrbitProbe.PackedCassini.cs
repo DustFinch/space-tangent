@@ -53,6 +53,29 @@ public partial class EarthOrbitProbe
         if (image.SavePng(path + ".png") != Error.Ok)
             throw new IOException("Could not capture the packed Cassini scene.");
 
+        var distant = Observer(141917558.4203589, 60);
+        var snapshot = session.World.Graph.Evaluate(distant.Epoch);
+        if (!snapshot.TryState(cassini, out var craft) || snapshot.SolarSystem is not { } solar)
+            throw new InvalidOperationException("Original Cassini and Sun states are required for photometry.");
+        var towardSun = (solar.Sun - craft).PositionKilometers;
+        var eyeOffset = distant.Navigation!.Value.Placement!.Value.OffsetKilometers;
+        double phase = (1 + Vector3d.Dot(towardSun / towardSun.Length, eyeOffset / eyeOffset.Length)) / 2;
+        double ratio = .006 / eyeOffset.Length * (149_597_870.7 / towardSun.Length);
+        double expectedMagnitude = -26.74 - 2.5 * Math.Log10(.5 * phase * ratio * ratio);
+        string photometricScene = Path.Combine(directory, "cassini-photometry.stscene");
+        ScenarioFile.Save(photometricScene, new([first, distant], false, 0, 0, model));
+        if (!scene.LoadScenario(photometricScene))
+            throw new InvalidOperationException("Could not open the Cassini photometry scene.");
+        var farView = scene.Renderer(1);
+        if (scene.Renderer(0).ImportedBodyNode(cassini)?.Visible != true ||
+            scene.Renderer(0).BodyPoint(cassini)?.Visible == true ||
+            farView.ImportedBodyNode(cassini)?.Visible == true ||
+            farView.BodyPoint(cassini) is not { Visible: true, MaterialOverride: ShaderMaterial pointMaterial } point ||
+            Math.Abs(pointMaterial.GetShaderParameter("magnitude").AsSingle() - expectedMagnitude) > 1e-4 ||
+            farView.PickObject(farView.NavigationCameraNode.UnprojectPosition(point.Position)) != cassini)
+            throw new InvalidOperationException($"Cassini must retain a near model and a selectable far point at magnitude {expectedMagnitude:F5}.");
+        GD.Print($"Mission photometry GPU: packed Cassini point at magnitude {expectedMagnitude:F5} and independent near GLB.");
+
         ObserverView Observer(double seconds, double range)
         {
             var epoch = JulianInstant.FromTdbSeconds(seconds);

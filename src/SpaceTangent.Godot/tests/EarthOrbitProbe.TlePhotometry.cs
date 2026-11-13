@@ -12,22 +12,30 @@ public partial class EarthOrbitProbe
 {
     private async Task ExerciseTlePhotometry(SolarSystemScene scene, string directory)
     {
-        await CheckSatellitePhotometry(scene, directory, new("norad/25544"), "iss-photometry", -2.5);
-        await CheckSatellitePhotometry(scene, directory, new("norad/49271"), "fregat-photometry", null);
+        var world = scene.Session!.World;
+        var iss = world.FindLocalSatellite(new("norad/25544")) ??
+            throw new InvalidOperationException("The original ISS TLE is required.");
+        var fregat = world.FindLocalSatellite(new("norad/49271")) ??
+            throw new InvalidOperationException("The original FREGAT TLE is required.");
+        await CheckSatellitePhotometry(scene, directory, iss.Id, iss.Epoch, "iss-photometry", .005, .3, -2.5);
+        await CheckSatellitePhotometry(scene, directory, fregat.Id, fregat.Epoch, "fregat-photometry", .005, .3);
+        var jason = world.Satellites.Single(track => track.Id == new ObjectId("norad/26997"));
+        await CheckSatellitePhotometry(scene, directory, jason.Id, jason.Epoch, "jason-photometry", .01, .5);
+        GD.Print("Science photometry GPU: original Jason-1 catalogue radius, selectable point and independent eclipse.");
         GD.Print("TLE photometry GPU: original ISS -2.5 at 1000 km half lit, selectable point and independent eclipse.");
         GD.Print("TLE photometry GPU: original FREGAT debris uses archived default radius and albedo, with Earth shadow.");
     }
 
-    private async Task CheckSatellitePhotometry(SolarSystemScene scene, string directory, ObjectId id, string sceneName, double? standardMagnitude)
+    private async Task CheckSatellitePhotometry(SolarSystemScene scene, string directory, ObjectId id, JulianInstant epoch,
+        string sceneName, double legacyRadius, double legacyAlbedo, double? standardMagnitude = null)
     {
         var session = scene.Session!;
-        const double range = 1000, legacyRadius = .005, legacyAlbedo = .3;
-        var satellite = session.World.FindLocalSatellite(id) ?? throw new InvalidOperationException($"The original TLE for {id} is required.");
+        const double range = 1000;
         ObserverView? day = null, night = null;
         double diffuseMagnitude = double.NaN;
         for (int minute = 0; minute <= 120 && (day is null || night is null); minute++)
         {
-            JulianInstant instant = satellite.Epoch.AddSeconds(minute * 60);
+            JulianInstant instant = epoch.AddSeconds(minute * 60);
             var snapshot = session.World.Graph.Evaluate(instant);
             if (!snapshot.TryState(id, out var station) || snapshot.SolarSystem is not { } solar)
                 continue;
@@ -69,7 +77,8 @@ public partial class EarthOrbitProbe
         var renderer = scene.Renderer(0);
         if (renderer.BodyPoint(id) is not { Visible: true, MaterialOverride: ShaderMaterial material } point ||
             Math.Abs(material.GetShaderParameter("magnitude").AsSingle() - (standardMagnitude ?? diffuseMagnitude)) > 1e-4 ||
-            scene.Renderer(1).BodyPoint(id)?.Visible == true || scene.Renderer(1).LocalSatelliteVisible(id))
+            scene.Renderer(1).BodyPoint(id)?.Visible == true || scene.Renderer(1).LocalSatelliteVisible(id) ||
+            scene.Renderer(1).ScienceBodyNode(id)?.Visible == true)
             throw new InvalidOperationException("The satellite must match its archived brightness at 1000 km and disappear in Earth's shadow.");
         if (renderer.BodyLabel(id) is not { Visible: true } || scene.Renderer(1).BodyLabel(id)?.Visible == true)
             throw new InvalidOperationException("The selected satellite label must appear only in the enabled view.");
@@ -79,5 +88,24 @@ public partial class EarthOrbitProbe
         using var image = GetViewport().GetTexture().GetImage();
         if (image.SavePng(Path.ChangeExtension(path, ".png")) != Error.Ok)
             throw new IOException("Could not capture the two original satellite states.");
+
+        if (renderer.ScienceBodyNode(id) is null)
+            return;
+        var farPose = illuminated.Navigation!.Value;
+        var farPlacement = farPose.Placement!.Value;
+        const double nearRange = .08;
+        var nearPose = farPose with
+        {
+            RangeKilometers = nearRange,
+            Placement = farPlacement with { OffsetKilometers = farPlacement.OffsetKilometers * (nearRange / range) }
+        };
+        string nearPath = Path.Combine(directory, sceneName + "-near.stscene");
+        ScenarioFile.Save(nearPath, new([illuminated with { Sky = labels }, illuminated with { Navigation = nearPose }],
+            false, 0, 0, session.DeltaT));
+        if (!scene.LoadScenario(nearPath) || !await scene.ReloadAddOns() ||
+            scene.Renderer(0).BodyPoint(id)?.Visible != true || scene.Renderer(0).ScienceBodyNode(id)?.Visible == true ||
+            scene.Renderer(1).ScienceBodyNode(id) is not { Visible: true, Mesh: ArrayMesh mesh } || mesh.GetSurfaceCount() != 28 ||
+            scene.Renderer(1).BodyPoint(id)?.Visible == true)
+            throw new InvalidOperationException("Reload must preserve the Jason-1 point and its original textured model in separate views.");
     }
 }

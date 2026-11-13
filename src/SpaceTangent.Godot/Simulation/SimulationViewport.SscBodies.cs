@@ -261,10 +261,14 @@ internal partial class SimulationViewport
                         physicalRadius, snapshot, state.PositionKilometers, towardEye, position, (float)radius);
                 }
             }
-            if (body.PhotometricParent is { } parent)
+            ObjectId? photometricParent = body.PhotometricParent;
+            if (photometricParent is null && active is not null && snapshot.TryStateCenter(body.Id, out var centerId))
+                photometricParent = centerId;
+            if (photometricParent is { } parent)
             {
                 var tint = new Color((float)body.Color.X, (float)body.Color.Y, (float)body.Color.Z);
-                if (!DrawReflectedBody(body.Id, parent, physicalRadius, body.GeometricAlbedo, tint,
+                double albedo = active is null ? body.GeometricAlbedo : .5;
+                if (!DrawReflectedBody(body.Id, parent, physicalRadius, albedo, tint,
                     snapshot, towardEye, state.PositionKilometers, position, (float)radius, body.PhotometricStars))
                     continue;
             }

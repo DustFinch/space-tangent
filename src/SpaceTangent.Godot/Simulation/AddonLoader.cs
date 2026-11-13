@@ -159,7 +159,8 @@ internal static partial class AddonLoader
             var definitions = Cached<StellarImport>.Load(sameStarBase ? previous?.StellarDefinitions : null,
                 stellarDefinitionsPath, "STC stellar catalogues", (path, token) =>
                 {
-                    var result = (archive.Value ?? stellar.Value).WithStc(path.Resolve(), token);
+                    var result = (archive.Value ?? stellar.Value).WithStc(path.Resolve(),
+                        archive.Value is null ? null : stellar.Value, token);
                     if (result.AppliedRecords > 0 || result.DiagnosticCount > 0)
                     {
                         global::Godot.GD.Print($"SpaceTangent STC: {result.AppliedRecords:N0} effective records, {result.DiagnosticCount} diagnostics.");

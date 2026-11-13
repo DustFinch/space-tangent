@@ -90,6 +90,7 @@ public partial class EarthOrbitProbe : Node
             await ExerciseSkyPhotographs(scene, directory);
             await ExerciseCompactLens(scene, directory);
             await ExerciseTourNotices(scene, directory);
+            await ExerciseRedshiftScript(scene, directory);
             await CaptureShip(scene, directory);
             await ExerciseHistoricalEpoch(scene, directory);
             await ExerciseHistoricalSurface(scene, directory);

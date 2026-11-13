@@ -25,11 +25,11 @@ public sealed partial class LuaSessionScript
     {
         internal Coroutine Coroutine { get; } = coroutine;
         internal DynValue[]? Arguments = arguments;
-        internal int Steps, Messages;
+        internal int Steps, Messages, CatalogueReads;
         internal long Allocated;
         internal double WaitRemaining, TotalWait, DollyRate;
         internal bool Complete, Yielded;
-        internal string? Error;
+        internal string? Error, LastNotice;
     }
 
     private LuaSessionScript(string source, string name, SimulationSession session, int view, bool hasSurface, Action<string> log)
@@ -42,7 +42,7 @@ public sealed partial class LuaSessionScript
             throw new InvalidDataException("Lua source exceeds the size quota.");
 
         var script = _vm = new Script(CoreModules.Basic | CoreModules.GlobalConsts | CoreModules.TableIterators |
-            CoreModules.Math | CoreModules.Bit32);
+            CoreModules.Math | CoreModules.Bit32 | CoreModules.String);
         script.Options.DebugPrint = Log;
         script.Globals.Set("collectgarbage", DynValue.Nil);
         var api = new Table(script);
@@ -158,10 +158,11 @@ public sealed partial class LuaSessionScript
             if (work.WaitRemaining > 0)
                 return _changed;
             work.DollyRate = 0;
+            long frameStart = work.Allocated;
             for (int step = 0; step < slice; step++)
             {
-                if (work.Steps++ >= MaximumSteps)
-                    throw new ScriptRuntimeException("Lua instruction quota exceeded.");
+                if (work.Steps++ >= MaximumSteps + work.CatalogueReads * 192)
+                    throw new ScriptRuntimeException($"Lua instruction quota exceeded ({work.Steps} instructions, {work.CatalogueReads} records).");
                 long before = GC.GetAllocatedBytesForCurrentThread();
                 if (work.Arguments is { } arguments)
                 {
@@ -171,14 +172,14 @@ public sealed partial class LuaSessionScript
                 else
                     work.Coroutine.Resume();
                 work.Allocated += GC.GetAllocatedBytesForCurrentThread() - before;
-                if (work.Allocated > MaximumAllocatedBytes)
-                    throw new ScriptRuntimeException("Lua allocation quota exceeded.");
+                if (work.Allocated > MaximumAllocatedBytes + work.CatalogueReads * 49152L)
+                    throw new ScriptRuntimeException($"Lua allocation quota exceeded ({work.Allocated} bytes, {work.CatalogueReads} records).");
                 if (work.Coroutine.State == CoroutineState.Dead)
                 {
                     work.Complete = true;
                     break;
                 }
-                if (work.Yielded)
+                if (work.Yielded || work.CatalogueReads > 0 && work.Allocated - frameStart >= 512 * 1024)
                     break;
             }
         }

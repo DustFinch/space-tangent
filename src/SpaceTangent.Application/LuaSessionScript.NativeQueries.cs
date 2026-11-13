@@ -8,12 +8,20 @@ public sealed partial class LuaSessionScript
 {
     private void BindNativeQueries(Table upstream)
     {
+        Bind(upstream, "find", (_, arguments) => FindObject(arguments.SkipMethodCall()[0]));
+        Bind(upstream, "select", (_, arguments) => Change(() => _session.SelectObject(View, LuaObjectId(arguments.SkipMethodCall()[0]))));
         Bind(upstream, "getselection", (_, _) => LuaObject(_session[View].Selection));
         Bind(upstream, "flash", (_, arguments) =>
         {
             Log(Text(arguments.SkipMethodCall()[0]));
             return DynValue.Nil;
         });
+    }
+
+    private DynValue FindObject(DynValue name)
+    {
+        try { return LuaObject(SceneLink.ResolveObject(Text(name), _session.World.Catalogue)); }
+        catch (InvalidDataException) { return DynValue.Nil; }
     }
 
     private DynValue ObjectPosition(ObjectId id)

@@ -303,6 +303,7 @@ public sealed partial class SimulationSession
         _flights.Clear();
         _trackingEpochs.Clear();
         _scriptNotices.Clear();
+        _scriptMarkers.Clear();
         _viewIds.Clear();
         foreach (ObserverView view in views)
         {
@@ -393,6 +394,7 @@ public sealed partial class SimulationSession
         _trackingEpochs.RemoveAt(view);
         _ships.Remove(ViewIdentity(view));
         ClearScriptNotice(view);
+        _scriptMarkers.Remove(_viewIds[view]);
         _viewIds.RemoveAt(view);
         Layout = Layout.Remove(view)!;
         if (Layout.View is null)

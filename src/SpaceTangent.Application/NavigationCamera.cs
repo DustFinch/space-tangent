@@ -15,7 +15,7 @@ public readonly record struct NavigationCamera(Vector3d AnchorKilometers, double
 
     internal const double MaxElevation = 1.55;
     internal const double MinRange = .005;
-    internal const double MaxRange = 5e21;
+    internal const double MaxRange = 1e23;
 
     public bool IsValid() => AnchorKilometers.IsFinite && AnchorKilometers.Length <= 1e23 &&
         RangeKilometers is >= MinRange and <= MaxRange &&

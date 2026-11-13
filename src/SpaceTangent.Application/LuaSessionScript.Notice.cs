@@ -25,7 +25,11 @@ public sealed partial class LuaSessionScript
         }
         if (horizontal is < -1 or > 1 || vertical is < -1 or > 1 || duration > 600)
             throw new ScriptRuntimeException("A script message anchor or duration is out of range.");
-        Log(text);
+        if (_running is { } work && work.LastNotice != text)
+        {
+            Log(text);
+            work.LastNotice = text;
+        }
         return Change(() => _session.ShowScriptNotice(View, new(text, horizontal, vertical, column, row), duration));
 
         double Optional(int index, double fallback) => arguments[index].IsNil() ? fallback : Number(arguments[index]);

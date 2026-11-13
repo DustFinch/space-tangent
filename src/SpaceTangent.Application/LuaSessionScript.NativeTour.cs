@@ -15,11 +15,7 @@ public sealed partial class LuaSessionScript
 
     private void BindNativeObjects(Table api)
     {
-        Bind(api, "find", (_, arguments) =>
-        {
-            try { return LuaObject(SceneLink.ResolveObject(Text(arguments[0]), _session.World.Catalogue)); }
-            catch (InvalidDataException) { return DynValue.Nil; }
-        });
+        Bind(api, "find", (_, arguments) => FindObject(arguments[0]));
         Bind(api, "selection", (_, _) => LuaObject(_session[View].Selection));
         Bind(api, "celxprint", (_, arguments) => PrintNotice(arguments, native: true));
     }
@@ -28,6 +24,7 @@ public sealed partial class LuaSessionScript
     {
         Bind(upstream, "getobserver", (_, _) => _nativeObserver ??= MakeNativeObserver());
         BindNativeQueries(upstream);
+        BindNativeMarkers(upstream);
     }
 
     private DynValue MakeNativeObserver()
@@ -50,6 +47,19 @@ public sealed partial class LuaSessionScript
             {
                 _session.SelectObject(View, LuaObjectId(args[0]));
                 _session.GoToSelection(View, duration, null, NativeSnapshot());
+            });
+        });
+        Bind(observer, "gotodistance", (_, arguments) =>
+        {
+            var args = arguments.SkipMethodCall();
+            ObjectId target = LuaObjectId(args[0]);
+            double range = Number(args[1]), duration = args[2].IsNil() ? 5 : Number(args[2]);
+            if (range <= 0 || duration is < 0 or > 300)
+                throw new ScriptRuntimeException("Observer flight distance or duration is out of range.");
+            return Change(() =>
+            {
+                _session.SelectObject(View, target);
+                _session.GoToSelection(View, duration, range, NativeSnapshot());
             });
         });
         Bind(observer, "travelling", (_, _) => DynValue.NewBoolean(_session.IsFlying(View)));
@@ -75,6 +85,9 @@ public sealed partial class LuaSessionScript
         Bind(item, "getposition", (_, _) => ObjectPosition(id));
         Bind(item, "absmag", (_, _) => AbsoluteMagnitude(id));
         Bind(item, "children", (_, _) => Children(id));
+        item.MetaTable = ObjectEquality();
+        Bind(item, "mark", (_, arguments) => Mark(id, arguments.SkipMethodCall()));
+        Bind(item, "unmark", (_, _) => Change(() => _session.RemoveScriptMarker(View, id)));
         var value = DynValue.NewTable(item);
         _luaObjects.Add(id, value);
         return value;

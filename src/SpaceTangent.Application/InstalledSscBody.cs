@@ -3,13 +3,16 @@ using System.Text.RegularExpressions;
 using SpaceTangent.Contracts;
 using SpaceTangent.Core.Addons;
 using SpaceTangent.Core.Ephemerides;
+using SpaceTangent.Core.Observing;
 using SpaceTangent.Core.World;
 
 namespace SpaceTangent.Application;
 
 public sealed record InstalledSscBody(ObjectId Id, ObjectId Parent, SscBodyDefinition Definition)
 {
-    public CatalogueKind Kind => Definition.Class.ToLowerInvariant() switch
+    public ObjectId? StellarHost { get; init; }
+    public CatalogueKind Kind => (StellarHost.HasValue && Definition.Class == "asteroid" ?
+        Parent == StellarHost ? "planet" : "moon" : Definition.Class.ToLowerInvariant()) switch
     {
         "spacecraft" => CatalogueKind.Spacecraft,
         "planet" => CatalogueKind.Planet,
@@ -19,8 +22,11 @@ public sealed record InstalledSscBody(ObjectId Id, ObjectId Parent, SscBodyDefin
         _ => CatalogueKind.Asteroid
     };
 
-    internal static IReadOnlyList<InstalledSscBody> Install(WorldGraphBuilder graph, IEnumerable<SscBodyDefinition> definitions)
+    internal static IReadOnlyList<InstalledSscBody> Install(WorldGraphBuilder graph, IEnumerable<SscBodyDefinition> definitions, StellarCatalogue stars, ExoplanetCatalogue exoplanets, Vector3d stellarOrigin)
     {
+        if (definitions.TryGetNonEnumeratedCount(out int count) && count == 0)
+            return [];
+
         var paths = new Dictionary<string, ObjectId>(StringComparer.OrdinalIgnoreCase)
         {
             ["Sol"] = SolarSystemSample.SunId,
@@ -36,6 +42,28 @@ public sealed record InstalledSscBody(ObjectId Id, ObjectId Parent, SscBodyDefin
         }
         foreach (NaturalBodyDefinition natural in NaturalBodyCatalogue.Bodies)
             paths.Add(primaryPaths[natural.Parent] + "/" + natural.Name, natural.Id);
+        var stellarPaths = new Dictionary<string, StellarEntry>(StringComparer.OrdinalIgnoreCase);
+        foreach (var star in stars.Stars.Concat(exoplanets.Hosts).Where(star => !star.IsBarycenter))
+        {
+            stellarPaths.TryAdd(Normalize(star.Name), star);
+            foreach (string alias in star.Aliases)
+                stellarPaths.TryAdd(Normalize(alias), star);
+        }
+
+        var hosts = new Dictionary<ObjectId, StellarEntry>();
+        var installedHostRules = new HashSet<ObjectId>();
+        foreach (var planet in exoplanets.Bodies)
+        {
+            if (exoplanets.FindHost(planet.Host) is not { } fallback)
+                continue;
+            var star = stars.Find(planet.Host) ?? fallback;
+            var names = star.Aliases.Append(star.Name).Append(fallback.Name).Concat(fallback.Aliases);
+            foreach (string host in names.Select(Normalize).Distinct(StringComparer.OrdinalIgnoreCase))
+                foreach (string name in planet.Names)
+                    paths.TryAdd(host + "/" + Normalize(name), planet.Id);
+            hosts[planet.Id] = star;
+        }
+
         var ids = new HashSet<ObjectId>();
         var bodies = new List<(ObjectId Id, SscBodyDefinition Definition)>();
         foreach (SscBodyDefinition body in definitions)
@@ -49,6 +77,12 @@ public sealed record InstalledSscBody(ObjectId Id, ObjectId Parent, SscBodyDefin
             foreach (string name in body.Names.Split(':').Distinct(StringComparer.OrdinalIgnoreCase))
                 if (!paths.TryAdd(parent + "/" + name, id))
                     throw new InvalidDataException($"Duplicate SSC path {parent}/{name}.");
+            string hostName = parent.Split('/')[0];
+            if (stellarPaths.TryGetValue(hostName, out var star))
+            {
+                hosts.Add(id, star);
+                paths.TryAdd(hostName, star.Id);
+            }
             bodies.Add((id, body));
         }
         var installed = new List<InstalledSscBody>(bodies.Count);
@@ -59,7 +93,16 @@ public sealed record InstalledSscBody(ObjectId Id, ObjectId Parent, SscBodyDefin
                 graph.AddSampledMission(timeline(id, Resolve));
             else
             {
-                graph.AddTrajectory(id, definition.Sample, Resolve(definition.Center));
+                ObjectId center = Resolve(definition.Center);
+                if (hosts.TryGetValue(id, out var star))
+                {
+                    InstallHost(star);
+                    if (exoplanets.Find(center) is { } planet && installedHostRules.Add(planet.Id))
+                        graph.AddTrajectory(planet.Id, epoch => planet.ParentRelativeState(epoch), star.Id);
+                }
+                var sample = hosts.TryGetValue(id, out var host) && definition.BindExtrasolarOrbit is { } bind
+                    ? bind(center == host.Id) : definition.Sample;
+                graph.AddTrajectory(id, sample, center);
                 if (definition.SampleRotation is { } rotation)
                     graph.AddOrientation(id, rotation);
                 else if (definition.Orientation is { } orientation)
@@ -68,9 +111,21 @@ public sealed record InstalledSscBody(ObjectId Id, ObjectId Parent, SscBodyDefin
                 else
                     graph.AddOrientation(id, _ => new(Basis3d.Identity, default(Vector3d)));
             }
-            installed.Add(new(id, parent, definition));
+            var hostId = hosts.TryGetValue(id, out var stellarHost) ? (ObjectId?)stellarHost.Id : null;
+            installed.Add(new(id, parent, definition) { StellarHost = hostId });
         }
         return installed.AsReadOnly();
+
+        void InstallHost(StellarEntry star)
+        {
+            if (!installedHostRules.Add(star.Id))
+                return;
+            graph.AddTrajectory(star.Id, epoch =>
+            {
+                var state = star.StateAt(epoch);
+                return new(state.PositionKilometers + stellarOrigin, state.VelocityKilometersPerSecond);
+            });
+        }
 
         ObjectId Resolve(string path) => paths.TryGetValue(Normalize(path), out var id) ? id :
             throw new InvalidDataException($"An SSC body refers to the unavailable object {path}.");

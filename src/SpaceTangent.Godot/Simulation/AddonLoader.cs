@@ -343,6 +343,7 @@ internal static partial class AddonLoader
             {
                 EllipsoidRadiiKilometers = definition.EllipsoidRadiiKilometers,
                 Surface = texture,
+                StellarHost = body.StellarHost,
                 Rings = definition.Rings is { } rings && input.RingMap is { } ringMap
                     ? new(rings, PublishMissionTexture(rings.TexturePath, ringMap)) : null,
                 MeshSpan = definition.EllipsoidRadiiKilometers is not null ? bounds?.Span : null,

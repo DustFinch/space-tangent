@@ -3,6 +3,7 @@ using Godot;
 using SpaceTangent.Application;
 using SpaceTangent.Contracts;
 using SpaceTangent.Core.Addons;
+using SpaceTangent.Core.Ephemerides;
 using SpaceTangent.Core.World;
 
 namespace SpaceTangent.Godot.Simulation;
@@ -15,6 +16,7 @@ internal sealed record PreparedImportedBody(ObjectId Id, CatalogueKind Kind, Vec
 {
     internal Vector3d? EllipsoidRadiiKilometers { get; init; }
     internal Texture2D? Surface { get; init; }
+    internal ObjectId? StellarHost { get; init; }
     internal PreparedSscRings? Rings { get; init; }
     internal Vector3d? MeshSpan { get; init; }
     internal (Vector3d Center, Vector3d Span)? ModelBounds { get; init; }
@@ -102,7 +104,21 @@ internal partial class SimulationViewport
             }
             else
                 node = CreateNavigationSphere(new((float)color.X, (float)color.Y, (float)color.Z));
-            if (asset.Model is null && asset.Surface is { } map && node.MaterialOverride is StandardMaterial3D material)
+            if (asset.StellarHost.HasValue && asset.Model is null && node.MaterialOverride is StandardMaterial3D)
+            {
+                _exoplanetGlobeShader ??= GD.Load<Shader>("res://Shaders/world_orbit_globe.gdshader");
+                var globe = new ShaderMaterial { Shader = _exoplanetGlobeShader };
+                globe.SetShaderParameter("globe_color", new Color((float)color.X, (float)color.Y, (float)color.Z));
+                globe.SetShaderParameter("prime_meridian_offset", .25f);
+                if (asset.Surface is { } surface)
+                {
+                    globe.SetShaderParameter("has_globe_map", true);
+                    globe.SetShaderParameter("globe_map", surface);
+                    globe.SetShaderParameter("globe_color", Colors.White);
+                }
+                node.MaterialOverride = globe;
+            }
+            else if (asset.Model is null && asset.Surface is { } map && node.MaterialOverride is StandardMaterial3D material)
             {
                 material.AlbedoColor = Colors.White;
                 material.AlbedoTexture = map;
@@ -229,6 +245,15 @@ internal partial class SimulationViewport
                 var scale = new Vector3((float)(radii.X * factor), (float)(radii.Z * factor), (float)(radii.Y * factor));
                 node.Transform = new(PlanetBasis(frame.ToWorld) * Basis.FromScale(scale), position);
             }
+            else if (asset.StellarHost is { } host && asset.Model is null && node.MaterialOverride is ShaderMaterial globe &&
+                snapshot.TryState(host, out var stellarState))
+            {
+                Basis basis = PlanetBasis(frame.ToWorld);
+                Vector3d illumination = (stellarState - state).PositionKilometers;
+                if (illumination.Length > 0)
+                    globe.SetShaderParameter("light_in_body", basis.Inverse() * ToGodot(illumination, illumination.Length));
+                node.Transform = new(basis * Basis.FromScale(Vector3.One * (float)radius), position);
+            }
             else if ((active?.Model ?? asset.Model) is null)
             {
                 node.Position = position;
@@ -261,15 +286,21 @@ internal partial class SimulationViewport
                 node.Transform = new(basis, position + offset);
             }
             node.Show();
-            if (_importedRings.TryGetValue(asset.Id, out var ring) && snapshot.SolarSystem is { } ringSolar)
+            if (_importedRings.TryGetValue(asset.Id, out var ring))
             {
-                Vector3d towardSun = ringSolar.Sun.PositionKilometers - state.PositionKilometers;
+                ObjectId lightId = asset.StellarHost ?? SolarSystemSample.SunId;
+                if (!snapshot.TryState(lightId, out var light))
+                    continue;
+                Vector3d towardSun = light.PositionKilometers - state.PositionKilometers;
+                double lightRadius = asset.StellarHost is not null && CatalogueWorld is { } world
+                    ? world.TargetRadiusKilometers(lightId)
+                    : SpaceTangent.Core.Observing.SolarOccultation.SunRadiusKilometers;
                 if (towardSun.Length > 0)
                 {
                     Basis basis = PlanetBasis(frame.ToWorld);
                     var ringMaterial = (ShaderMaterial)ring.MaterialOverride;
                     ringMaterial.SetShaderParameter("sun_in_body", basis.Inverse() * ToGodot(towardSun, towardSun.Length));
-                    ringMaterial.SetShaderParameter("solar_radius_radians", (float)Math.Asin(Math.Min(1, SpaceTangent.Core.Observing.SolarOccultation.SunRadiusKilometers / towardSun.Length)));
+                    ringMaterial.SetShaderParameter("solar_radius_radians", (float)Math.Asin(Math.Min(1, lightRadius / towardSun.Length)));
                     ring.Transform = new(basis * Basis.FromScale(Vector3.One * (float)radius), position);
                     ring.Show();
                 }

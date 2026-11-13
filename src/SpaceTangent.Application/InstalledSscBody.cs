@@ -44,7 +44,7 @@ public sealed record InstalledSscBody(ObjectId Id, ObjectId Parent, SscBodyDefin
         foreach (NaturalBodyDefinition natural in NaturalBodyCatalogue.Bodies)
             paths.Add(primaryPaths[natural.Parent] + "/" + natural.Name, natural.Id);
         var stellarPaths = new Dictionary<string, StellarEntry>(StringComparer.OrdinalIgnoreCase);
-        foreach (var star in stars.Stars.Concat(exoplanets.Hosts))
+        foreach (var star in stars.Stars.Concat(exoplanets.Hosts.Where(host => exoplanets.CanonicalHost(host.Id) == host.Id)))
         {
             stellarPaths.TryAdd(Normalize(star.Name), star);
             foreach (string alias in star.Aliases)
@@ -61,7 +61,7 @@ public sealed record InstalledSscBody(ObjectId Id, ObjectId Parent, SscBodyDefin
         {
             if (exoplanets.FindHost(planet.Host) is not { } fallback)
                 continue;
-            var star = stars.Find(planet.Host) ?? fallback;
+            var star = stars.Find(exoplanets.CanonicalHost(planet.Host)) ?? fallback;
             var names = star.Aliases.Append(star.Name).Append(fallback.Name).Concat(fallback.Aliases);
             foreach (string host in names.Select(Normalize).Distinct(StringComparer.OrdinalIgnoreCase))
                 foreach (string name in planet.Names)

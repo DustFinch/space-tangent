@@ -55,7 +55,7 @@ public sealed partial class SimulationWorld
         HasMarsTerrain = hasMarsTerrain;
         Stellar = stellar ?? StellarCatalogue.Empty;
         DeepSky = deepSky ?? DeepSkyIndex.Default;
-        Exoplanets = exoplanets ?? ExoplanetCatalogue.Empty;
+        Exoplanets = (exoplanets ?? ExoplanetCatalogue.Empty).WithStellarHosts(Stellar);
         StellarOrigin = ephemeris.Sample(JulianInstant.FromJulianDate(2451545, TimeScale.Tdb)).Sun.PositionKilometers;
         var graph = new WorldGraphBuilder();
         graph.AddSolarSystem(ephemeris);
@@ -182,7 +182,7 @@ public sealed partial class SimulationWorld
         return false;
     }
 
-    public StellarEntry? FindStellarTarget(ObjectId id) => Stellar.Find(id) ?? Exoplanets.FindHost(id) ?? DistantStars?.Find(id);
+    public StellarEntry? FindStellarTarget(ObjectId id) => Stellar.Find(Exoplanets.CanonicalHost(id)) ?? Exoplanets.FindHost(id) ?? DistantStars?.Find(id);
 
     private CartesianState PlaceStar(StellarEntry star, JulianInstant epoch)
     {

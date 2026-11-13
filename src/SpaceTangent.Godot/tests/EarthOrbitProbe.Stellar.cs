@@ -84,6 +84,21 @@ public partial class EarthOrbitProbe
             if (!scene.Renderer(0).ExoplanetVisible(exoplanet.Id) || !scene.Renderer(0).ExoplanetTextured(exoplanet.Id))
                 throw new InvalidOperationException("The original Dimidium map must be visible in the planet view.");
         }
+        if (world.Stellar.FindByName("Kepler-931 A") is { } primary &&
+            world.Exoplanets.Find(new("exo/4294958019/kepler-931-ab")) is { } kepler)
+        {
+            if (world.Exoplanets.CanonicalHost(kepler.Host) != primary.Id ||
+                !world.TryNavigationState(primary.Id, snapshot, out var host) ||
+                !world.TryNavigationState(kepler.Id, snapshot, out var planet))
+                throw new InvalidOperationException("The original Kepler-931 Ab orbit must use the positioned component A.");
+            var light = (host - planet).PositionKilometers;
+            light /= light.Length;
+            var eye = light + Vector3d.Cross(light, new(0, 0, 1)) * .42;
+            await Capture("kepler-931-ab", kepler.Id, planet.PositionKilometers, kepler.RadiusKilometers * 4.2, sky, eye / eye.Length);
+            if (!scene.Renderer(0).ExoplanetVisible(kepler.Id))
+                throw new InvalidOperationException("The linked Kepler-931 Ab must render at its archived planet identifier.");
+            GD.Print("GPU: rendered original Kepler-931 Ab relative to the matching stellar component.");
+        }
         string[] nearby = world.DeepSky.Objects.Count > DeepSkyCatalogue.Objects.Count
             ? ["dso/m31", "dso/m42", "dso/m45", "dso/m13"] : ["dso/m31", "dso/m42", "dso/m45"];
         foreach (DeepSkyObject body in nearby.Select(id => world.DeepSky.Find(new(id))!))

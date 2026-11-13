@@ -60,7 +60,7 @@ public sealed class ObjectCatalogue
         objects.AddRange(exoplanets.Hosts.Where(star => spatialStars.Find(star.Id) is null && stars.Find(star.Id) is null)
             .Select(star => new CatalogueObject(star.Id, star.Name, CatalogueKind.Star) { Aliases = star.Aliases }));
         objects.AddRange(exoplanets.Bodies.Select(body => new CatalogueObject(body.Id, body.Name,
-            body.Parent == body.Host ? CatalogueKind.Planet : CatalogueKind.Moon, body.Parent) { Aliases = body.Names }));
+            body.Parent == body.Host ? CatalogueKind.Planet : CatalogueKind.Moon, exoplanets.CanonicalHost(body.Parent)) { Aliases = body.Names }));
         objects.AddRange(deepSky.Objects.Select(body => new CatalogueObject(body.Id,
             body.Name == body.Designation ? body.Name : $"{body.Name} ({body.Designation})", body.Kind switch
             {

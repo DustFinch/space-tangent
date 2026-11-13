@@ -25,7 +25,7 @@ internal partial class SimulationViewport
         if (pose.Target is not { } target)
             return;
         ObjectId host = world.Exoplanets.Find(target)?.Host ?? target;
-        if (world.Exoplanets.FindHost(host) is null || !world.TryNavigationState(host, snapshot, out var hostState))
+        if (!world.TryNavigationState(host, snapshot, out var hostState))
             return;
         foreach (ExoplanetEntry planet in world.Exoplanets.BodiesOf(host))
         {

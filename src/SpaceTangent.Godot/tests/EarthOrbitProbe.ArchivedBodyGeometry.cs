@@ -9,6 +9,51 @@ namespace SpaceTangent.Godot.Tests;
 
 public partial class EarthOrbitProbe
 {
+    private async Task ExerciseArchivedRings(SolarSystemScene scene, string directory, string recordings)
+    {
+        string saved = Path.Combine(directory, "before-archived-rings.stscene");
+        if (!scene.SaveScenario(saved))
+            throw new IOException("Could not save the live view.");
+        foreach (var (file, name) in new[] { ("saturn", "Sol/Saturn"), ("uranus", "Sol/Uranus") })
+        {
+            if (!scene.StartReplay(Path.Combine(recordings, file + ".celframe")))
+                throw new InvalidOperationException($"Could not open the original {name} recording.");
+            scene.SetProcess(false);
+            try
+            {
+                var renderer = scene.Renderer(0);
+                var geometry = renderer.ArchivedGeometry!;
+                var record = geometry.Bodies.Single(body => body.Name == name);
+                var globe = renderer.ArchivedBody(name)!;
+                var rings = renderer.ArchivedRings(record.Id!.Value);
+                if (rings is not { Visible: true, Mesh: ImmediateMesh mesh } ||
+                    record.RingInnerRadius <= record.Radius || record.RingOuterRadius <= record.RingInnerRadius ||
+                    rings.Position != globe.Position || rings.Basis.Y.Normalized().DistanceTo(globe.Basis.Y.Normalized()) > .0001f ||
+                    Math.Abs(mesh.GetAabb().Size.X / 2 - record.RingOuterRadius / record.Radius) > .0001)
+                    throw new InvalidOperationException($"The saved radii or orientation of the {name} rings did not render.");
+                await ToSignal(RenderingServer.Singleton, RenderingServer.SignalName.FramePostDraw);
+                using var with = renderer.GetViewport().GetTexture().GetImage();
+                rings.Hide();
+                await ToSignal(RenderingServer.Singleton, RenderingServer.SignalName.FramePostDraw);
+                using var without = renderer.GetViewport().GetTexture().GetImage();
+                int changed = 0;
+                for (int y = 0; y < with.GetHeight(); y += 2)
+                for (int x = 0; x < with.GetWidth(); x += 2)
+                    if (Math.Abs(with.GetPixel(x, y).Luminance - without.GetPixel(x, y).Luminance) > .025)
+                        changed++;
+                if (changed < 50 || with.SavePng(Path.Combine(directory, file + "-replay.png")) != Error.Ok)
+                    throw new InvalidOperationException($"The {name} rings changed only {changed} GPU samples.");
+                GD.Print($"Archived rings GPU: {name}, {record.RingInnerRadius * geometry.KilometersPerUnit:F1}–{record.RingOuterRadius * geometry.KilometersPerUnit:F1} km, {changed} changed samples.");
+                if (!scene.LoadScenario(saved) || rings.Visible)
+                    throw new InvalidOperationException($"The {name} rings persisted after replay.");
+            }
+            finally
+            {
+                scene.SetProcess(true);
+            }
+        }
+    }
+
     private async Task ExerciseArchivedAtmospheres(SolarSystemScene scene, string directory, string recordings)
     {
         var cases = new (string File, string Body, ObjectId Id)[]

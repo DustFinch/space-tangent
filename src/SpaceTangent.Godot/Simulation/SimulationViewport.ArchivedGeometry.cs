@@ -16,6 +16,10 @@ internal partial class SimulationViewport
     private EarthOrbitTextures? _archivedEarthMaps;
     internal MeshInstance3D? ArchivedEarthLimb { get; private set; }
     private int _archivedUsed;
+    private PlanetTextures? _archivedPlanetTextures;
+    private readonly Dictionary<ObjectId, (MeshInstance3D Node, Vector2 Radii)> _archivedRings = new();
+
+    internal MeshInstance3D? ArchivedRings(ObjectId id) => _archivedRings.GetValueOrDefault(id).Node;
     private IReadOnlyDictionary<ObjectId, OrbitAtmosphereTextures> _archivedAtmosphereLookups =
         new Dictionary<ObjectId, OrbitAtmosphereTextures>();
     private readonly Dictionary<ObjectId, MeshInstance3D> _archivedAtmospheres = new();
@@ -46,7 +50,7 @@ internal partial class SimulationViewport
         Plane[] frustum = _navigationCamera.GetFrustum().ToArray();
         foreach (var body in scene.Bodies)
         {
-            if (body.CameraPosition.Z >= body.Radius)
+            if (body.CameraPosition.Z >= Math.Max(body.Radius, body.RingOuterRadius))
                 continue;
             double distance = body.CameraPosition.Length * scale;
             double projection = distance > NavigationFar * .8 ? NavigationFar * .8 / distance : 1;
@@ -57,7 +61,8 @@ internal partial class SimulationViewport
             Vector3 center = _navigationCamera.Position + camera * local;
             var rotation = body.CameraBasis;
             double maximumAxis = Math.Sqrt(Vector3d.Dot(rotation.X, rotation.X) + Vector3d.Dot(rotation.Y, rotation.Y) + Vector3d.Dot(rotation.Z, rotation.Z));
-            if (frustum.Any(plane => plane.DistanceTo(center) > radius * maximumAxis))
+            double extent = Math.Max(body.Radius * maximumAxis, body.RingOuterRadius) * scale * projection;
+            if (frustum.Any(plane => plane.DistanceTo(center) > extent))
                 continue;
 
             if (_archivedBodies.Count == _archivedUsed)
@@ -88,7 +93,7 @@ internal partial class SimulationViewport
             }
             node.Transform = new(camera * basis.Scaled(Vector3.One * radius), center);
             EarthOrbitTextures? earth = id == SolarSystemSample.EarthId ? _archivedEarthMaps : null;
-            Texture2D? texture = id == SolarSystemSample.MoonId ? _archivedMoonMap : earth?.Day ?? globeMaterial?.AlbedoTexture;
+            Texture2D? texture = id == SolarSystemSample.MoonId ? _archivedMoonMap : earth?.Day ?? (id is { } planet ? _archivedPlanetTextures?.Surfaces.GetValueOrDefault(planet) : null) ?? globeMaterial?.AlbedoTexture;
             material.SetShaderParameter("has_night_map", earth?.Night is not null);
             material.SetShaderParameter("has_cloud_map", earth?.Clouds is not null);
             if (earth?.Night is { } night)
@@ -106,6 +111,9 @@ internal partial class SimulationViewport
             material.SetShaderParameter("camera_secondary_light", Column(body.SecondLightDirection));
             material.SetShaderParameter("secondary_light_color", Column(body.SecondLightColor));
             node.Show();
+            if (id is { } ringId && body.RingOuterRadius > body.RingInnerRadius &&
+                _archivedPlanetTextures?.Rings.GetValueOrDefault(ringId) is { } ringMap)
+                DrawArchivedRings(ringId, node, body, radius, camera * Column(body.LightDirection), ringMap);
             if (id is { } atmosphereId && body.AtmosphereRadius > body.Radius && body.LightDirection.Length > 0)
             {
                 Vector3 light = camera * Column(body.LightDirection);
@@ -200,6 +208,37 @@ internal partial class SimulationViewport
         shell.Show();
     }
 
+    private void DrawArchivedRings(ObjectId id, MeshInstance3D surface, RecordedBodyGeometry body,
+        float radius, Vector3 light, Texture2D texture)
+    {
+        var radii = new Vector2((float)(body.RingInnerRadius / body.Radius), (float)(body.RingOuterRadius / body.Radius));
+        if (surface.Basis.Determinant() == 0)
+            return;
+        if (!_archivedRings.TryGetValue(id, out var rings))
+        {
+            var material = new ShaderMaterial { Shader = GD.Load<Shader>("res://Shaders/planet_rings.gdshader") };
+            material.SetShaderParameter("rings_map", texture);
+            var node = new MeshInstance3D
+            {
+                MaterialOverride = material, CastShadow = GeometryInstance3D.ShadowCastingSetting.Off
+            };
+            AddChild(node);
+            rings = (node, default);
+        }
+        var shader = (ShaderMaterial)rings.Node.MaterialOverride;
+        if (rings.Radii != radii)
+        {
+            rings.Node.Mesh = PlanetRingRendering.RingMesh(radii.X, radii.Y, shader);
+            _archivedRings[id] = (rings.Node, radii);
+        }
+        Basis rotation = surface.Basis.Orthonormalized();
+        shader.SetShaderParameter("sun_in_body", rotation.Inverse() * (light == Vector3.Zero ? Vector3.Right : light));
+        shader.SetShaderParameter("polar_ratio", (float)body.PolarScale);
+        shader.SetShaderParameter("solar_radius_radians", (float)body.LightAngularRadius);
+        rings.Node.Transform = new(rotation.Scaled(Vector3.One * radius), surface.Position);
+        rings.Node.Show();
+    }
+
     private void HideArchivedBodies()
     {
         for (int index = 0; index < _archivedUsed; index++)
@@ -209,6 +248,8 @@ internal partial class SimulationViewport
         _archivedOverlayRoot?.Hide();
         _archivedSymbolCanvas?.Hide();
         ArchivedEarthLimb?.Hide();
+        foreach (var rings in _archivedRings.Values)
+            rings.Node.Hide();
         foreach (var atmosphere in _archivedAtmospheres.Values)
             atmosphere.Hide();
     }

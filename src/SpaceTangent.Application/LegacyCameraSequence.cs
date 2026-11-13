@@ -9,7 +9,12 @@ namespace SpaceTangent.Application;
 
 public readonly record struct RecordedBodyGeometry(string Name, ObjectId? Id, Vector3d CameraPosition, double Radius,
     double PolarScale, Basis3d CameraBasis, Vector3d LightDirection,
-    Vector3d LightColor, Vector3d SecondLightDirection, Vector3d SecondLightColor, double AtmosphereRadius);
+    Vector3d LightColor, Vector3d SecondLightDirection, Vector3d SecondLightColor, double AtmosphereRadius)
+{
+    public double RingInnerRadius { get; init; }
+    public double RingOuterRadius { get; init; }
+    public double LightAngularRadius { get; init; }
+}
 
 public sealed record RecordedSceneGeometry(double KilometersPerUnit, IReadOnlyList<RecordedBodyGeometry> Bodies)
 {
@@ -135,8 +140,17 @@ public sealed class LegacyCameraSequence : IObserverReplay
                 double atmosphereRadius = Single(body[60..]);
                 if (!double.IsFinite(atmosphereRadius) || atmosphereRadius != 0 && atmosphereRadius < radius)
                     throw new InvalidDataException("Invalid archived atmosphere radius.");
+                float inner = Single(body[52..]), outer = Single(body[56..]);
+                float lightRadius = minor >= 6 ? Single(body[129..]) : 0;
+                if (!float.IsFinite(inner) || !float.IsFinite(outer) || inner < 0 || outer < inner ||
+                    outer > 0 && inner < radius || !float.IsFinite((float)(outer / radius)) ||
+                    !float.IsFinite(lightRadius) || lightRadius < 0)
+                    throw new InvalidDataException("Invalid archived ring radii or light angular radius.");
                 geometry[index] = new(strings[(int)id], key, position, radius, polarScale, basis,
-                    light, lightColor, secondDirection, secondColor, atmosphereRadius);
+                    light, lightColor, secondDirection, secondColor, atmosphereRadius)
+                {
+                    RingInnerRadius = inner, RingOuterRadius = outer, LightAngularRadius = lightRadius
+                };
             }
             var (orbits, labels) = overlays.Read(data, cursor, minor, strings);
             if (previousGeometry is null || previousGeometry.KilometersPerUnit != scale ||

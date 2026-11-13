@@ -94,6 +94,12 @@ public partial class EarthOrbitProbe : Node
                 result = 0;
                 return;
             }
+            if (System.Environment.GetEnvironmentVariable("SPACETANGENT_ARCHIVED_RINGS") is { Length: > 0 } ringRecordings)
+            {
+                await ExerciseArchivedRings(scene, directory, ringRecordings);
+                result = 0;
+                return;
+            }
             var epoch = JulianInstant.FromJulianDate(2460600.5008, TimeScale.Tdb);
             if (System.Environment.GetEnvironmentVariable("SPACETANGENT_MOON_MODELS_GPU") == "only")
             {

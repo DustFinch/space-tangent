@@ -55,6 +55,7 @@ internal partial class SimulationViewport
     {
         _surface?.SetPlanetMaps(textures.Surfaces, groundMaps);
         _venusClouds = textures.VenusClouds;
+        _archivedPlanetTextures = textures;
         _marsSurface = textures.Surfaces.GetValueOrDefault(PlanetCatalogue.MarsId);
         foreach (var (id, texture) in textures.Surfaces)
         {

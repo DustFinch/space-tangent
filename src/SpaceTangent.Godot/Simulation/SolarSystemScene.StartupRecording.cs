@@ -42,6 +42,8 @@ public partial class SolarSystemScene
                 await ImportStartupSettings(RequiredArgument("--startup-legacy-settings"));
             ApplyStartupSkyLayers();
             ApplyStartupFinders();
+            if (_startupArguments.Contains("--startup-save-default-views", StringComparer.Ordinal) && !SaveStartupWorkspace())
+                throw new InvalidDataException(_status.Text);
             if (_startupArguments.Contains("--startup-save-scenario", StringComparer.Ordinal) &&
                 !SaveScenario(RequiredArgument("--startup-save-scenario")))
                 throw new InvalidDataException(_status.Text);

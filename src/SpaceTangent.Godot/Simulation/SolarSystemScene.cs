@@ -219,6 +219,7 @@ public partial class SolarSystemScene : Control
             ShowAddonFailure("Could not read local add-on settings.", settingsError);
         AddView();
         Refresh();
+        RestoreStartupWorkspace();
         InitializationFinished = true;
         ReportLoadedWorld(world);
         if (_startupArguments.Any(argument => argument.StartsWith("--startup-", StringComparison.Ordinal)))
@@ -1168,7 +1169,30 @@ public partial class SolarSystemScene : Control
         PopupMenu popup = menu.GetPopup();
         popup.AddItem("Open scenario…", 0);
         popup.AddItem("Save scenario…", 1);
-        popup.IdPressed += id => (id == 0 ? open : save).PopupCentered(new Vector2I(700, 460));
+        popup.AddSeparator();
+        popup.AddItem("Import observer settings…", 2);
+        popup.AddItem("Use current views at startup", 3);
+        popup.AddItem("Clear saved startup views", 4);
+        var import = new FileDialog { Name = "ImportObserverSettings", Access = FileDialog.AccessEnum.Filesystem,
+            FileMode = FileDialog.FileModeEnum.OpenFile, DeletingEnabled = false };
+        import.AddFilter("*.json", "Observer settings");
+        AddChild(import);
+        import.FileSelected += async path =>
+        {
+            try { await ImportStartupSettings(path); }
+            catch (Exception error) when (IsLoadError(error)) { _status.Text = $"Could not import observer settings. {error.Message}"; }
+        };
+        popup.IdPressed += id =>
+        {
+            switch (id)
+            {
+                case 0: open.PopupCentered(new Vector2I(700, 460)); break;
+                case 1: save.PopupCentered(new Vector2I(700, 460)); break;
+                case 2: import.PopupCentered(new Vector2I(700, 460)); break;
+                case 3: SaveStartupWorkspace(); break;
+                case 4: ClearStartupWorkspace(); break;
+            }
+        };
     }
 
     private void AddScriptMenu(Container toolbar)

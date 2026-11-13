@@ -65,6 +65,7 @@ internal partial class SimulationViewport
         foreach (var mesh in _missionVectorMeshes.Values)
             mesh.Dispose();
         _missionVectorMeshes.Clear();
+        _missionDirectionLabels.Clear();
         foreach (PreparedImportedBody asset in assets)
         {
             var color = asset.Color;
@@ -102,6 +103,8 @@ internal partial class SimulationViewport
         foreach (var (asset, node) in _importedNodes.Values)
         {
             node.Hide();
+            if (_missionDirectionLabels.TryGetValue(node, out var directionLabel))
+                directionLabel.Hide();
             var body = asset;
             if (!snapshot.TryState(body.Id, out CartesianState state) ||
                 !snapshot.TryOrientation(body.Id, out FrameKinematics frame))
@@ -224,5 +227,7 @@ internal partial class SimulationViewport
         _missionSensorRendering?.Clear();
         foreach (var (_, node) in _importedNodes.Values)
             node.Hide();
+        foreach (var label in _missionDirectionLabels.Values)
+            label.Hide();
     }
 }

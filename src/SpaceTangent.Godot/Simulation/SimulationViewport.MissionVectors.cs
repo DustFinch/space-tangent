@@ -9,6 +9,7 @@ namespace SpaceTangent.Godot.Simulation;
 internal partial class SimulationViewport
 {
     private readonly Dictionary<MissionVectorStyle, ArrayMesh> _missionVectorMeshes = new();
+    private readonly Dictionary<MeshInstance3D, Label3D> _missionDirectionLabels = new();
 
     private void DrawMissionVector(MeshInstance3D node, MissionVectorStyle style, CartesianState state,
         WorldSnapshot snapshot, Basis3d frame, Vector3 position, double scale)
@@ -17,6 +18,8 @@ internal partial class SimulationViewport
         if (!style.Visible || style.Opacity <= 0 || length < .015 || length > float.MaxValue)
             return;
 
+        if (_missionDirectionLabels.TryGetValue(node, out var label))
+            label.Hide();
         Basis basis = PlanetBasis(frame);
         if (style.Target.HasValue)
         {
@@ -34,6 +37,26 @@ internal partial class SimulationViewport
         node.CastShadow = GeometryInstance3D.ShadowCastingSetting.Off;
         node.Transform = new(basis.Scaled(Vector3.One * (float)length), position);
         node.Show();
+        if (style.Target is not { } target || CatalogueWorld?.Catalogue.Find(target) is not { } destination)
+            return;
+
+        if (label is null)
+        {
+            label = CreateLabel("", default);
+            label.FixedSize = true;
+            label.PixelSize = .00085f;
+            label.FontSize = 18;
+            label.OutlineSize = 2;
+            label.NoDepthTest = false;
+            label.TopLevel = true;
+            node.AddChild(label);
+            _missionDirectionLabels.Add(node, label);
+        }
+        label.Text = "→ " + destination.Name;
+        label.Modulate = new((float)style.Color.X, (float)style.Color.Y, (float)style.Color.Z, (float)style.Opacity);
+        Vector3 tip = position + node.Basis.X;
+        label.Position = tip + _navigationCamera.Basis.Y * tip.DistanceTo(_navigationCamera.Position) * .009f;
+        label.Show();
     }
 
     private static ArrayMesh BuildMissionVector(MissionVectorStyle style)

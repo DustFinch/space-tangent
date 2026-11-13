@@ -58,7 +58,7 @@ public partial class EarthOrbitProbe
                 var eye = new Vector3d(.23, -.61, .76);
                 eye /= eye.Length;
                 var up = new Vector3d(0, 0, 1) - eye * eye.Z;
-                const double range = 67_000;
+                const double range = 77_000;
                 return new(when, CameraMode.Solar, target, false)
                 {
                     Navigation = new NavigationCamera(state.PositionKilometers, range, 0, 0, target, true)
@@ -74,6 +74,10 @@ public partial class EarthOrbitProbe
                     var a = Need(renderer, ecliptic, 2);
                     var b = Need(renderer, equatorial, 2);
                     var arrow = Need(renderer, direction, 1);
+                    var labels = arrow.GetChildren().OfType<Label3D>();
+                    if (labels.SingleOrDefault() is not { Text: "→ Moon", Visible: true, NoDepthTest: false } label ||
+                        label.GlobalPosition.DistanceTo(arrow.GlobalPosition + arrow.Basis.X) > .6f)
+                        throw new InvalidOperationException("The lunar direction label did not follow the arrow tip.");
                     float tilt = a.Basis.Y.AngleTo(b.Basis.Y) * 180 / Mathf.Pi;
                     if (Math.Abs(tilt - 23.4393f) > .001f)
                         throw new InvalidOperationException($"The ecliptic grid tilt was {tilt} degrees.");
@@ -89,7 +93,7 @@ public partial class EarthOrbitProbe
                     Vector3d toMoon = (solar.Moon - solar.Earth).PositionKilometers;
                     Vector3 expected = new((float)toMoon.X, (float)toMoon.Z, (float)-toMoon.Y);
                     if (expected.Normalized().DistanceTo(arrow.Basis.X.Normalized()) > 1e-5f ||
-                        Math.Abs(arrow.Basis.X.Length() - 20_000 * 48f / 67_000) > .001f)
+                        Math.Abs(arrow.Basis.X.Length() - 20_000 * 48f / 77_000) > .001f)
                         throw new InvalidOperationException("The arrow did not point to the Moon at this view's epoch.");
                 }
                 var left = Need(scene.Renderer(0), direction, 1);

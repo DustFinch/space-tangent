@@ -31,6 +31,8 @@ internal partial class BrightSkyOverlay
             MarkCircle(eclipticPole, obliquity, PrecessionMark);
             MarkCircle(-eclipticPole, obliquity, PrecessionMark);
         }
+        Vector3? pole = CelestialPoleOfDate.Direction(_frame.Epoch) is { } datePole ? Convert(datePole) : null;
+        DrawDateMarkings(marks, pole);
         if (_frame.SiteAxes is not { } axes)
             return;
         Vector3 zenith = Convert(axes.Z);
@@ -38,20 +40,72 @@ internal partial class BrightSkyOverlay
             MarkCircle(Convert(axes.X), rightAngle, HorizonMark);
         if (marks.HasFlag(SkyMarkings.PrimeVertical))
             MarkCircle(Convert(axes.Y), rightAngle, HorizonMark);
-        if (marks.HasFlag(SkyMarkings.CircumpolarCircles))
+        if (marks.HasFlag(SkyMarkings.CircumpolarCircles) && pole is { } polarAxis)
         {
-            float latitude = MathF.Asin(Math.Clamp(zenith.Z, -1, 1));
+            float latitude = MathF.Asin(Math.Clamp(zenith.Dot(polarAxis), -1, 1));
             if (Math.Abs(latitude) > .001f)
             {
-                Vector3 pole = Vector3.Back * Math.Sign(latitude);
-                MarkCircle(pole, Math.Abs(latitude), PolarMark);
-                MarkCircle(-pole, Math.Abs(latitude), PolarMark with { A = .3f });
+                Vector3 visiblePole = polarAxis * Math.Sign(latitude);
+                MarkCircle(visiblePole, Math.Abs(latitude), PolarMark);
+                MarkCircle(-visiblePole, Math.Abs(latitude), PolarMark with { A = .3f });
             }
         }
         if (marks.HasFlag(SkyMarkings.ZenithAndNadir))
         {
             MarkPoint(zenith, "Zenith");
             MarkPoint(-zenith, "Nadir");
+        }
+    }
+
+    private void DrawDateMarkings(SkyMarkings marks, Vector3? pole)
+    {
+        const float rightAngle = MathF.PI / 2;
+        Vector3 ecliptic = EclipticDirection(0, 90), galactic = GalacticDirection(0, 90);
+        if (marks.HasFlag(SkyMarkings.Poles))
+        {
+            MarkPoint(ecliptic, "North ecliptic pole");
+            MarkPoint(-ecliptic, "South ecliptic pole");
+            MarkPoint(galactic, "North galactic pole");
+            MarkPoint(-galactic, "South galactic pole");
+        }
+        if (pole is not { } axis)
+            return;
+        if (marks.HasFlag(SkyMarkings.Poles))
+        {
+            MarkPoint(axis, "North celestial pole");
+            MarkPoint(-axis, "South celestial pole");
+        }
+        if (marks.HasFlag(SkyMarkings.EquatorOfDate))
+            MarkCircle(axis, rightAngle, PolarMark);
+        Vector3 equinox = axis.Cross(ecliptic).Normalized();
+        Vector3 solstice = ecliptic.Cross(equinox).Normalized();
+        if (marks.HasFlag(SkyMarkings.Colures))
+        {
+            Color color = new(.6f, .9f, .7f, .45f);
+            MarkCircle(axis.Cross(equinox), rightAngle, color);
+            MarkCircle(axis.Cross(solstice), rightAngle, color);
+        }
+        if (marks.HasFlag(SkyMarkings.EquinoxesAndSolstices))
+        {
+            MarkPoint(equinox, "March equinox");
+            MarkPoint(-equinox, "September equinox");
+            MarkPoint(solstice, "June solstice");
+            MarkPoint(-solstice, "December solstice");
+        }
+        if (marks.HasFlag(SkyMarkings.ArchaeoLines))
+        {
+            const float obliquity = 23.4392911f, lunarInclination = 5.145f;
+            DrawPair(obliquity, new(1, .85f, .4f, .5f));
+            DrawPair(16.4f, new(.8f, .8f, .8f, .35f));
+            DrawPair(obliquity + lunarInclination, new(.6f, .7f, 1, .45f));
+            DrawPair(obliquity - lunarInclination, new(.6f, .7f, 1, .45f));
+        }
+
+        void DrawPair(float declination, Color color)
+        {
+            float radius = Mathf.DegToRad(90 - declination);
+            MarkCircle(axis, radius, color);
+            MarkCircle(-axis, radius, color);
         }
     }
 

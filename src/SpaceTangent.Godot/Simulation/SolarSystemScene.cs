@@ -324,7 +324,10 @@ public partial class SolarSystemScene : Control
         _skyMarkingsMenu.HideOnCheckableItemSelection = false;
         foreach (var (mark, title) in new (SkyMarkings Mark, string Title)[]
         {
-            (SkyMarkings.GalacticEquator, "Galactic equator"), (SkyMarkings.Meridian, "Local meridian"),
+            (SkyMarkings.EquatorOfDate, "Equator of date"), (SkyMarkings.GalacticEquator, "Galactic equator"),
+            (SkyMarkings.Colures, "Colures"), (SkyMarkings.Poles, "Celestial, ecliptic and galactic poles"),
+            (SkyMarkings.EquinoxesAndSolstices, "Equinoxes and solstices"), (SkyMarkings.ArchaeoLines, "Archaeoastronomy lines"),
+            (SkyMarkings.Meridian, "Local meridian"),
             (SkyMarkings.PrimeVertical, "Prime vertical"), (SkyMarkings.PrecessionCircles, "Precession circles"),
             (SkyMarkings.CircumpolarCircles, "Circumpolar circles"), (SkyMarkings.ZenithAndNadir, "Zenith and nadir")
         })

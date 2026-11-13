@@ -5,10 +5,15 @@ namespace SpaceTangent.Application;
 public enum SkyMarkings
 {
     None = 0,
+    EquatorOfDate = 1,
     GalacticEquator = 2,
     Meridian = 4,
     PrimeVertical = 8,
+    Colures = 16,
     PrecessionCircles = 32,
     CircumpolarCircles = 64,
-    ZenithAndNadir = 512
+    Poles = 128,
+    EquinoxesAndSolstices = 256,
+    ZenithAndNadir = 512,
+    ArchaeoLines = 1024
 }

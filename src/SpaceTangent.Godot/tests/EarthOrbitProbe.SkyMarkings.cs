@@ -20,10 +20,18 @@ public partial class EarthOrbitProbe
             FieldOfViewDegrees = 75
         };
         string profile = Path.Combine(directory, "sky-markings.json");
-        File.WriteAllText(profile, """{"Site":{},"SkyMarks":622}""");
+        File.WriteAllText(profile, """{"Site":{},"SkyMarks":2047}""");
         var marked = LegacyObserverProfiles.Read(profile, view, session.DeltaT).Observer;
         const SkyMarkings expected = SkyMarkings.Meridian | SkyMarkings.PrimeVertical | SkyMarkings.GalacticEquator |
-            SkyMarkings.PrecessionCircles | SkyMarkings.CircumpolarCircles | SkyMarkings.ZenithAndNadir;
+            SkyMarkings.PrecessionCircles | SkyMarkings.CircumpolarCircles | SkyMarkings.ZenithAndNadir |
+            SkyMarkings.EquatorOfDate | SkyMarkings.Colures | SkyMarkings.Poles | SkyMarkings.EquinoxesAndSolstices | SkyMarkings.ArchaeoLines;
+        var j2000 = JulianInstant.FromJulianDate(JulianInstant.J2000Day, TimeScale.Tdb);
+        var poleAtEpoch = CelestialPoleOfDate.Direction(j2000)!.Value;
+        var poleAfter = CelestialPoleOfDate.Direction(j2000.AddSeconds(36525d * 86400))!.Value;
+        var poleBefore = CelestialPoleOfDate.Direction(j2000.AddSeconds(-36525d * 86400))!.Value;
+        if ((poleAtEpoch - new Vector3d(0, 0, 1)).Length > 1e-5 || Math.Abs(poleAfter.Length - 1) > 1e-12 ||
+            poleAfter.X is < .009 or > .011 || poleBefore.X is < -.011 or > -.009)
+            throw new InvalidOperationException($"Incorrect P03 pole: {poleAtEpoch}, {poleBefore}, {poleAfter}.");
         string path = Path.Combine(directory, "paranal-sky-markings.stscene");
         ScenarioFile.Save(path, new([marked, marked with { Sky = view.Sky }], false, 0, 0, session.DeltaT));
         if (!scene.LoadScenario(path) || !await scene.ReloadAddOns() ||
@@ -60,6 +68,6 @@ public partial class EarthOrbitProbe
         menu.EmitSignal(PopupMenu.SignalName.IdPressed, (long)SkyMarkings.Meridian);
         if (session[0].Sky.Markings != (expected & ~SkyMarkings.Meridian) || session[1].Sky.Markings != SkyMarkings.None)
             throw new InvalidOperationException("The markings menu must affect only the active view.");
-        GD.Print($"Sky markings GPU: Paranal, six archived flags and independent views, {vertical}/{horizontal} bright horizon-circle samples after reload.");
+        GD.Print($"Sky markings GPU: Paranal, eleven archived flags and independent views, {vertical}/{horizontal} bright horizon-circle samples after reload.");
     }
 }

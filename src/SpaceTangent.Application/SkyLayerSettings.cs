@@ -38,8 +38,11 @@ public readonly record struct SkyLayerSettings(bool Stars, bool Labels, bool Equ
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingDefault)]
     public SkyMarkings Markings { get; init; }
 
-    internal const SkyMarkings SupportedMarkings = SkyMarkings.GalacticEquator | SkyMarkings.Meridian |
+    internal const SkyMarkings OriginalMarkings = SkyMarkings.GalacticEquator | SkyMarkings.Meridian |
         SkyMarkings.PrimeVertical | SkyMarkings.PrecessionCircles | SkyMarkings.CircumpolarCircles | SkyMarkings.ZenithAndNadir;
+
+    internal const SkyMarkings SupportedMarkings = OriginalMarkings | SkyMarkings.EquatorOfDate |
+        SkyMarkings.Colures | SkyMarkings.Poles | SkyMarkings.EquinoxesAndSolstices | SkyMarkings.ArchaeoLines;
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingDefault)]
     public bool HideOrbits { get; init; }
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingDefault)]

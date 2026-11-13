@@ -1166,7 +1166,7 @@ public partial class SolarSystemScene : Control
         }
     }
 
-    private async Task<bool> ReloadAddOns(LocalAddonSettings? requested)
+    internal async Task<bool> ReloadAddOns(LocalAddonSettings? requested)
     {
         CancellationToken token = BeginLoad();
         int generation = _loadGeneration;

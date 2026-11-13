@@ -72,7 +72,7 @@ internal sealed class SurfaceTileTexture
             material.SetShaderParameter("native_normal_encoding", _map.PackedNormals ? 1 : 2);
     }
 
-    internal static SurfaceTileTexture? Create(SurfaceTilePyramid? map)
+    internal static SurfaceTileTexture? Create(SurfaceTilePyramid? map, IReadOnlyDictionary<string, byte[]>? decoded = null)
     {
         if (map is null || map.Tiles.Count == 0)
             return null;
@@ -86,7 +86,11 @@ internal sealed class SurfaceTileTexture
                     Path.GetExtension(path).Equals(".dxt5nm", StringComparison.OrdinalIgnoreCase);
                 var image = new Image();
                 images.Add(path, image);
-                Error status = dds ? image.LoadDdsFromBuffer(File.ReadAllBytes(path)) : image.Load(path);
+                Error status = decoded is null
+                    ? dds ? image.LoadDdsFromBuffer(File.ReadAllBytes(path)) : image.Load(path)
+                    : dds ? image.LoadDdsFromBuffer(decoded[path])
+                    : Path.GetExtension(path).ToLowerInvariant() is ".jpg" or ".jpeg" ? image.LoadJpgFromBuffer(decoded[path])
+                    : image.LoadPngFromBuffer(decoded[path]);
                 if (status != Error.Ok || image.IsEmpty())
                     throw new InvalidDataException($"Could not decode the local surface tile {Path.GetFileName(path)}.");
                 if (!image.IsCompressed() && !image.HasMipmaps())

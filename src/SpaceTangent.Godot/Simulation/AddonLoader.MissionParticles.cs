@@ -27,6 +27,49 @@ internal static partial class AddonLoader
         return textures;
     }
 
+    private static IReadOnlyDictionary<string, byte[]> ReadMissionTiles(SampledMission mission,
+        Dictionary<string, byte[]> cache, ref int total, CancellationToken cancellation)
+    {
+        var resources = new Dictionary<string, byte[]>(StringComparer.Ordinal);
+        foreach (var maps in (mission.Geometry ?? []).Select(span => span.Shape.SurfaceMaps).OfType<BodySurfaceMaps>())
+        foreach (string path in (maps.Color?.Tiles.Values ?? []).Concat(maps.Normal?.Tiles.Values ?? []).Distinct())
+        {
+            cancellation.ThrowIfCancellationRequested();
+            if (!cache.TryGetValue(path, out var data))
+            {
+                const int maxTileBytes = 16 * 1024 * 1024, maxTotalBytes = 192 * 1024 * 1024;
+                using var file = AddonDependencies.OpenRead(path, maxTileBytes);
+                if (file.Length > maxTotalBytes - total)
+                    throw new InvalidDataException("Mission surface tiles exceed the catalogue size limit.");
+                data = new byte[(int)file.Length];
+                file.ReadExactly(data);
+                string format = Path.GetExtension(path).Equals(".dxt5nm", StringComparison.OrdinalIgnoreCase)
+                    ? Path.ChangeExtension(path, ".dds") : path;
+                ModelTextureFormats.Validate(format, data);
+                total += data.Length;
+                cache.Add(path, data);
+            }
+            resources[path] = data;
+        }
+        return resources;
+    }
+
+    private static ShaderMaterial? PublishTiledMissionGlobe(BodySurfaceMaps maps,
+        IReadOnlyDictionary<string, byte[]> bytes, Texture2D? fallback)
+    {
+        var tiles = new BodyTileTextures(SurfaceTileTexture.Create(maps.Color, bytes), SurfaceTileTexture.Create(maps.Normal, bytes));
+        if (tiles.Color is null && tiles.Normal is null)
+            return null;
+        var material = new ShaderMaterial { Shader = GD.Load<Shader>("res://Shaders/world_orbit_globe.gdshader") };
+        material.SetShaderParameter("globe_color", new Color(.8f, .8f, .8f));
+        material.SetShaderParameter("prime_meridian_offset", .25f);
+        material.SetShaderParameter("has_globe_map", fallback is not null);
+        if (fallback is not null)
+            material.SetShaderParameter("globe_map", fallback);
+        tiles.Bind(material);
+        return material;
+    }
+
     private static void PublishMissionTextures(IReadOnlyDictionary<string, byte[]> source, Dictionary<string, Texture2D> textures)
     {
         foreach (var (path, data) in source)

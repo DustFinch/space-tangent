@@ -21,7 +21,7 @@ internal static partial class AddonLoader
         DecodedScienceModel? ProbeModel);
     internal sealed record DecodedSscBody(SscBodyDefinition Body, DecodedScienceModel? Geometry, byte[]? Surface);
     internal sealed record DecodedSampledMission(SampledMission Track,
-        IReadOnlyDictionary<string, DecodedScienceModel> Meshes, IReadOnlyDictionary<string, byte[]> Textures);
+        IReadOnlyDictionary<string, DecodedScienceModel> Meshes, IReadOnlyDictionary<string, byte[]> Textures, IReadOnlyDictionary<string, byte[]> Tiles);
     internal sealed record DecodedMissionContent(IReadOnlyList<DecodedSampledMission> Tracks, IReadOnlyList<MissionAnnotation> Annotations, IReadOnlyList<MissionViewpoint> Viewpoints);
     internal sealed record DecodedTerrain(SpicePolynomialBodyFrame Frame, DecodedBodyTerrain Model);
 
@@ -366,6 +366,8 @@ internal static partial class AddonLoader
                     VectorOverlay = shape.VectorOverlay,
                     Swarm = shape.Swarm is { } swarm ? MissionSwarmRendering.Publish(swarm, swarmResources) : null,
                     EllipsoidRadiiKilometers = shape.EllipsoidRadiiKilometers,
+                    TiledGlobe = shape.SurfaceMaps is { } maps ? PublishTiledMissionGlobe(maps, item.Tiles,
+                        shape.GlobeTexturePath is { } fallback ? textures[fallback] : null) : null,
                     GlobeMaterial = shape.GlobeTexturePath is { } map ? new global::Godot.StandardMaterial3D
                     {
                         AlbedoTexture = textures[map], Roughness = .85f
@@ -392,7 +394,8 @@ internal static partial class AddonLoader
             throw new InvalidDataException("The sampled mission directory may contain at most 64 catalogues.");
         var tracks = new List<DecodedSampledMission>();
         var textureCache = new Dictionary<string, byte[]>(StringComparer.Ordinal);
-        int textureBytes = 0;
+        var tileCache = new Dictionary<string, byte[]>(StringComparer.Ordinal);
+        int textureBytes = 0, tileBytes = 0;
         var content = SampledMissionCatalog.LoadContent(catalogues.Order(StringComparer.Ordinal), root, Resolve,
             message => global::Godot.GD.Print("Sampled mission: " + message), cancellation);
         foreach (SampledMission mission in content.Missions)
@@ -401,7 +404,8 @@ internal static partial class AddonLoader
             var meshes = new Dictionary<string, DecodedScienceModel>(StringComparer.Ordinal);
             foreach (string file in (mission.Geometry ?? []).Select(span => span.Shape.MeshPath).OfType<string>().Distinct())
                 meshes.Add(file, ReadAddonMesh(root, file, cancellation));
-            tracks.Add(new(mission, meshes, ReadMissionTextures(mission, textureCache, ref textureBytes, cancellation)));
+            tracks.Add(new(mission, meshes, ReadMissionTextures(mission, textureCache, ref textureBytes, cancellation),
+                ReadMissionTiles(mission, tileCache, ref tileBytes, cancellation)));
         }
         return new(tracks.AsReadOnly(), content.Annotations, content.Viewpoints);
 

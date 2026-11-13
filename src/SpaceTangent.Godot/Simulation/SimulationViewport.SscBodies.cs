@@ -25,6 +25,7 @@ internal sealed record PreparedMissionGeometry(JulianInstant Start, JulianInstan
     internal PreparedMissionSwarm? Swarm { get; init; }
     internal Vector3d? EllipsoidRadiiKilometers { get; init; }
     internal StandardMaterial3D? GlobeMaterial { get; init; }
+    internal ShaderMaterial? TiledGlobe { get; init; }
 }
 
 internal partial class SimulationViewport
@@ -39,6 +40,7 @@ internal partial class SimulationViewport
     internal int ObservationFootprintCount(ObjectId id) => _missionObservations.GetValueOrDefault(id)?.Count ?? 0;
 
     private IReadOnlyList<PreparedImportedBody>? _importedAssets;
+    private readonly Dictionary<ShaderMaterial, ShaderMaterial> _missionTileMaterials = new();
     private readonly SphereMesh _missionMarkerMesh = new() { Radius = 1, Height = 2, RadialSegments = 32, Rings = 16 };
     private readonly StandardMaterial3D _missionMarkerMaterial = new()
     {
@@ -67,6 +69,9 @@ internal partial class SimulationViewport
             mesh.Dispose();
         _missionVectorMeshes.Clear();
         _missionDirectionLabels.Clear();
+        foreach (var material in _missionTileMaterials.Values)
+            material.Dispose();
+        _missionTileMaterials.Clear();
         foreach (PreparedImportedBody asset in assets)
         {
             var color = asset.Color;
@@ -165,6 +170,18 @@ internal partial class SimulationViewport
                 }
                 Mesh mesh = active.Model is { } model ? model : _missionMarkerMesh;
                 Material? material = active.Model is null ? active.GlobeMaterial ?? _missionMarkerMaterial : null;
+                if (active.TiledGlobe is { } tiled)
+                {
+                    if (!_missionTileMaterials.TryGetValue(tiled, out var local))
+                        _missionTileMaterials.Add(tiled, local = (ShaderMaterial)tiled.Duplicate());
+                    if (snapshot.SolarSystem is { } solar)
+                    {
+                        Vector3d light = solar.Sun.PositionKilometers - state.PositionKilometers;
+                        if (light.Length > 0)
+                            local.SetShaderParameter("light_in_body", ToGodot(frame.ToWorld.Transpose().Transform(light), light.Length));
+                    }
+                    material = local;
+                }
                 if (node.Mesh != mesh || node.MaterialOverride != material)
                 {
                     node.Mesh = mesh;

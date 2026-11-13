@@ -218,7 +218,9 @@ internal partial class SimulationViewport : Node3D
 
     internal void SetSurfaceControls(bool clouds, bool lunarLight) => _surface!.SetControls(clouds, lunarLight);
 
-    internal void SetLandscape(LandscapeTextures? textures) => _surface?.SetLandscape(textures);
+    internal void SetLandscape(LandscapeTextures? textures, bool showFog) => _surface?.SetLandscape(textures, showFog);
+
+    internal bool LandscapeFogVisible => _surface?.LandscapeFogVisible == true;
 
     internal string? VisibleLandscape => _surface?.VisibleLandscape;
 

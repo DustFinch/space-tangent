@@ -9,14 +9,26 @@ internal sealed partial class SurfaceProjection
     private ColorRect? _landscape;
     private ShaderMaterial? _landscapeMaterial;
     private LandscapeTextures? _landscapeTextures;
+    private bool _landscapeHasVisibleFog;
 
     internal string? VisibleLandscape => _surface.Visible && _landscape?.Visible == true ? _landscapeTextures?.Name : null;
 
-    internal void SetLandscape(LandscapeTextures? textures)
+    internal bool LandscapeFogVisible => VisibleLandscape is not null && _landscapeHasVisibleFog;
+
+    internal void SetLandscape(LandscapeTextures? textures, bool showFog)
     {
+        bool visibleFog = showFog && textures?.Fog is not null;
         if (ReferenceEquals(textures, _landscapeTextures))
+        {
+            if (_landscapeHasVisibleFog != visibleFog)
+            {
+                _landscapeHasVisibleFog = visibleFog;
+                _landscapeMaterial?.SetShaderParameter("has_fog", visibleFog);
+            }
             return;
+        }
         _landscapeTextures = textures;
+        _landscapeHasVisibleFog = visibleFog;
         if (textures is null)
         {
             _landscape?.Hide();
@@ -37,7 +49,7 @@ internal sealed partial class SurfaceProjection
         SetLayer("lights", textures.Lights);
         SetLayer("fog", textures.Fog);
         _landscapeMaterial!.SetShaderParameter("has_lights", textures.Lights is not null);
-        _landscapeMaterial.SetShaderParameter("has_fog", textures.Fog is not null);
+        _landscapeMaterial.SetShaderParameter("has_fog", visibleFog);
         _landscape.Show();
 
         void SetLayer(string layer, LandscapeTexture? source)

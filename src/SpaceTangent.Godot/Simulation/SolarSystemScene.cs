@@ -1841,7 +1841,7 @@ public partial class SolarSystemScene : Control
             ObserverView view = session[index];
             controls.Snapshot = snapshot;
             controls.Renderer.ShowSurfaceSiteLabels = _showSurfaceSites;
-            controls.Renderer.SetLandscape(ViewLandscape(view));
+            controls.Renderer.SetLandscape(ViewLandscape(view), view.EarthObserver?.HideLandscapeFog != true);
             controls.Renderer.ArchivedGeometry = index == 0 ? (_replay as LegacyCameraSequence)?.CurrentGeometry : null;
             bool available = controls.Renderer.Draw(view, snapshot, session.DeltaT);
             controls.Renderer.DrawShip(ship, view.Navigation);

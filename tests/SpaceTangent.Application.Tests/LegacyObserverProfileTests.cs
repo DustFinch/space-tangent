@@ -175,6 +175,36 @@ public sealed class LegacyObserverProfileTests
         finally { File.Delete(path); }
     }
 
+    [Fact]
+    public void ArchivedLandscapeFogRoundTripsAndPreservesDefaults()
+    {
+        string path = Path.GetTempFileName();
+        try
+        {
+            File.WriteAllText(path, """{"Site":{},"Landscape":"trees","LandscapeFog":false}""");
+            var defaultView = new ObserverView(new(2451545, 0, TimeScale.Tdb), CameraMode.Surface, null, false)
+            {
+                EarthObserver = EarthObserverCamera.Moscow
+            };
+            var archived = LegacyObserverProfiles.Read(path, defaultView, DeltaTModel.EspenakMeeus2006);
+            Assert.True(archived.Observer.EarthObserver?.HideLandscapeFog);
+            var scene = new SimulationScenario([archived.Observer, defaultView], false, 0, 0, archived.DeltaT);
+            ScenarioFile.Save(path, scene);
+            Assert.Equal(scene.Views, ScenarioFile.Load(path).Views);
+            var json = System.Text.Json.Nodes.JsonNode.Parse(File.ReadAllText(path))!.AsObject();
+            Assert.Equal(23, json["version"]!.GetValue<int>());
+            json["version"] = 22;
+            File.WriteAllText(path, json.ToJsonString());
+            Assert.Throws<InvalidDataException>(() => ScenarioFile.Load(path));
+
+            File.WriteAllText(path, """{"Site":{}}""");
+            Assert.True(LegacyObserverProfiles.Read(path, archived.Observer, archived.DeltaT).Observer.EarthObserver?.HideLandscapeFog);
+            File.WriteAllText(path, """{"Site":{},"LandscapeFog":true}""");
+            Assert.False(LegacyObserverProfiles.Read(path, archived.Observer, archived.DeltaT).Observer.EarthObserver?.HideLandscapeFog);
+        }
+        finally { File.Delete(path); }
+    }
+
     private sealed class ArchiveSettingsFactAttribute : FactAttribute
     {
         public ArchiveSettingsFactAttribute()

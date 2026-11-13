@@ -17,7 +17,7 @@ public sealed record SimulationScenario(IReadOnlyList<ObserverView> Views, bool 
 /// <summary>Persists observer settings with exact TDB epochs and stable catalog IDs.</summary>
 public static class ScenarioFile
 {
-    private const int Version = 22;
+    private const int Version = 23;
     internal const int MaximumBytes = 32 * 1024;
     private static readonly JsonSerializerOptions Json = new()
     {
@@ -62,7 +62,8 @@ public static class ScenarioFile
             throw new InvalidDataException("The scenario has an invalid camera sensitivity.");
         var document = new Document
         {
-            Version = scenario.Views.Any(view => view.CameraInertia) ? 22 :
+            Version = scenario.Views.Any(view => view.EarthObserver?.HideLandscapeFog == true) ? 23 :
+                scenario.Views.Any(view => view.CameraInertia) ? 22 :
                 scenario.Views.Any(view => view.MouseSensitivity is not null) ? 21 :
                 scenario.Views.Any(view => view.AutoOrbit is not null) ? 20 :
                 scenario.Views.Any(view => view.Navigation?.Placement?.CatalogueFrame is not null) ? 19 :
@@ -175,7 +176,7 @@ public static class ScenarioFile
                 throw new InvalidDataException("The scenario has an invalid camera pose.");
             if (data.EarthObserver is { } earth &&
                 (document.Version < 3 || !earth.IsValid() || (document.Version < 11 && earth.Conditions is not null) ||
-                    (document.Version < 13 && earth.LandscapeId is not null)))
+                    (document.Version < 13 && earth.LandscapeId is not null) || (document.Version < 23 && earth.HideLandscapeFog)))
                 throw new InvalidDataException("The scenario has an invalid Earth observer camera.");
             if (data.Sky is { Meteors: true } && document.Version < 12)
                 throw new InvalidDataException("This scenario version does not support meteor layers.");

@@ -48,13 +48,41 @@ public partial class EarthOrbitProbe
                     throw new IOException($"Could not save the {id} panorama.");
             }
         }
-        var expected = scene.Session!.CaptureScenario(0);
+        if (!scene.Renderer(0).LandscapeFogVisible)
+            throw new InvalidOperationException("The original Trees landscape must show fog by default.");
+        bool rendered = DisplayServer.GetName() != "headless";
+        if (rendered)
+            await ToSignal(RenderingServer.Singleton, RenderingServer.SignalName.FramePostDraw);
+        using var fogged = rendered ? scene.Renderer(0).GetViewport().GetTexture().GetImage() : null;
+        string profile = Path.Combine(directory, "landscape-fog.json");
+        File.WriteAllText(profile, """{"Site":{},"LandscapeFog":false}""");
+        var archived = LegacyObserverProfiles.Read(profile, session[0], session.DeltaT);
+        var baseline = session.CaptureScenario(0);
+        var expected = baseline with { Views = [archived.Observer, baseline.Views[1]] };
         ScenarioFile.Save(scenario, expected);
+        if (!scene.LoadScenario(scenario) || scene.Renderer(0).LandscapeFogVisible ||
+            scene.Renderer(0).VisibleLandscape is null || session[1] != without)
+            throw new InvalidOperationException("The imported setting must hide only the original Trees fog.");
+        ScenarioFile.Save(scenario, expected);
+        if (fogged is not null)
+        {
+            await ToSignal(RenderingServer.Singleton, RenderingServer.SignalName.FramePostDraw);
+            using var clear = scene.Renderer(0).GetViewport().GetTexture().GetImage();
+            int changed = 0;
+            for (int y = 0; y < clear.GetHeight(); y += 4)
+                for (int x = 0; x < clear.GetWidth(); x += 4)
+                    if (!clear.GetPixel(x, y).IsEqualApprox(fogged.GetPixel(x, y)))
+                        changed++;
+            if (changed == 0 || clear.SavePng(Path.Combine(directory, "panorama-trees-clear.png")) != Error.Ok)
+                throw new InvalidOperationException("The archived Trees fog setting must change the rendered panorama.");
+            GD.Print($"Landscape GPU: the original Trees fog changed {changed} sampled pixels.");
+        }
         scene.SetLandscapeChoice(0, null);
         if (scene.Renderer(0).VisibleLandscape is not null || !scene.LoadScenario(scenario) || !await scene.ReloadAddOns() ||
-            scene.Session[0] != expected.Views[0] || scene.Session[1] != without || scene.Renderer(0).VisibleLandscape is null)
+            scene.Session![0] != expected.Views[0] || scene.Session[1] != without || scene.Renderer(0).VisibleLandscape is null ||
+            scene.Renderer(0).LandscapeFogVisible)
             throw new InvalidOperationException("The original landscape must survive scenario round trip and add-on reload.");
-        GD.Print("Landscape GPU: Geneva, Grossmugl, Garching and Trees from the original local corpus.");
+        GD.Print("Landscape GPU: Geneva, Grossmugl, Garching and Trees from the original local corpus. The archived fog setting survived reload.");
 
         static Color Center(Image image)
         {

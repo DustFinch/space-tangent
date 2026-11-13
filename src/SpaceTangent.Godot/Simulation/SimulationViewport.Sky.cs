@@ -66,6 +66,7 @@ internal partial class SimulationViewport
             bool culture = observer.Sky.ConstellationArt ||
                 (observer.Sky.Constellations && observer.Sky.CultureId is not null);
             bool render = (catalogue || culture || observer.Sky.HasAlternateGrids || observer.Sky.ConstellationBoundaries ||
+                (observer.Sky.Markings != SkyMarkings.None && camera?.Projection == Camera3D.ProjectionType.Perspective) ||
                 (observer.Sky.Stars && _spaceSky.HasTransientStars)) && orbital;
             _spaceSky.Visible = render;
             _spaceSky.SetFillBackground(!GalacticSkyVisible && !survey);

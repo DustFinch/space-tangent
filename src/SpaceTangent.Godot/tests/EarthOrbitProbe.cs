@@ -78,6 +78,12 @@ public partial class EarthOrbitProbe : Node
                 result = 0;
                 return;
             }
+            if (System.Environment.GetEnvironmentVariable("SPACETANGENT_SKY_MARKINGS_PROBE") == "only")
+            {
+                await ExerciseSkyMarkings(scene, directory);
+                result = 0;
+                return;
+            }
             if (System.Environment.GetEnvironmentVariable("SPACETANGENT_MINOR_BODY_PROBE") == "only")
             {
                 await ExerciseMinorBodySwarm(scene, directory);

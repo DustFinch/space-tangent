@@ -58,6 +58,7 @@ public partial class SolarSystemScene : Control
     private CheckButton _stars = null!, _starLabels = null!, _equatorialGrid = null!, _constellations = null!;
     private CheckButton _zodiacalLight = null!, _starlink = null!;
     private OptionButton _smallBodyMode = null!;
+    private PopupMenu _skyMarkingsMenu = null!;
     private SimulatorWorkspace _workspace = null!;
     private ObjectSearchPanel _objectSearch = null!;
     private Label _timeHeading = null!, _dataSummary = null!;
@@ -318,6 +319,24 @@ public partial class SolarSystemScene : Control
             Refresh();
         };
         layers.AddChild(_smallBodyMode);
+        var markings = new MenuButton { Name = "SkyMarkings", Text = "Sky markings" };
+        _skyMarkingsMenu = markings.GetPopup();
+        _skyMarkingsMenu.HideOnCheckableItemSelection = false;
+        foreach (var (mark, title) in new (SkyMarkings Mark, string Title)[]
+        {
+            (SkyMarkings.GalacticEquator, "Galactic equator"), (SkyMarkings.Meridian, "Local meridian"),
+            (SkyMarkings.PrimeVertical, "Prime vertical"), (SkyMarkings.PrecessionCircles, "Precession circles"),
+            (SkyMarkings.CircumpolarCircles, "Circumpolar circles"), (SkyMarkings.ZenithAndNadir, "Zenith and nadir")
+        })
+            _skyMarkingsMenu.AddCheckItem(title, (int)mark);
+        _skyMarkingsMenu.IdPressed += id =>
+        {
+            var session = Session!;
+            var sky = session[_active].Sky;
+            session.SetSkyLayers(_active, sky with { Markings = sky.Markings ^ (SkyMarkings)id });
+            Refresh();
+        };
+        layers.AddChild(markings);
         layers.AddChild(SimulatorTheme.Section("Earth satellites"));
         _satelliteLayersMode = AddButton(layers, "Earth satellites view", () => SetMode(_active, CameraMode.Satellites));
         _starlink = new CheckButton { Name = "StarlinkLayer", Text = "Starlink" };
@@ -1840,6 +1859,8 @@ public partial class SolarSystemScene : Control
         _zodiacalLight.SetPressedNoSignal(active.Sky.ZodiacalLight);
         _starlink.SetPressedNoSignal(active.Sky.Starlink ?? !active.Sky.HideSatellites);
         _smallBodyMode.Select((int)(active.Sky.SmallBodies ?? MinorBodyDisplay.Photometric));
+        for (int index = 0; index < _skyMarkingsMenu.ItemCount; index++)
+            _skyMarkingsMenu.SetItemChecked(index, active.Sky.Markings.HasFlag((SkyMarkings)_skyMarkingsMenu.GetItemId(index)));
         _objectSearch.UpdateSelection(active.Selection);
         var target = active.Selection is { } selection ? Session.World.Catalogue.Find(selection) : null;
         bool tracking = active.Navigation is { Tracking: true } pose && pose.Target == target?.Id;

@@ -36,6 +36,11 @@ public readonly record struct SkyLayerSettings(bool Stars, bool Labels, bool Equ
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingDefault)]
     public bool ZodiacalLight { get; init; }
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingDefault)]
+    public SkyMarkings Markings { get; init; }
+
+    internal const SkyMarkings SupportedMarkings = SkyMarkings.GalacticEquator | SkyMarkings.Meridian |
+        SkyMarkings.PrimeVertical | SkyMarkings.PrecessionCircles | SkyMarkings.CircumpolarCircles | SkyMarkings.ZenithAndNadir;
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingDefault)]
     public bool HideOrbits { get; init; }
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingDefault)]
     public bool HideCometTails { get; init; }
@@ -96,9 +101,9 @@ public readonly record struct SkyLayerSettings(bool Stars, bool Labels, bool Equ
     public bool HasCultureSettings => CultureId is not null || CultureNames != default || ConstellationArt;
 
     [JsonIgnore]
-    public bool Visible => Stars || Labels || EquatorialGrid || HasAlternateGrids || ConstellationBoundaries || Constellations || DeepSky || Meteors || ShowMeteorRadiants || ConstellationArt || SurveyId is not null;
+    public bool Visible => Markings != SkyMarkings.None || Stars || Labels || EquatorialGrid || HasAlternateGrids || ConstellationBoundaries || Constellations || DeepSky || Meteors || ShowMeteorRadiants || ConstellationArt || SurveyId is not null;
 
-    internal bool IsValid() =>         (CultureId is null || SkyCultureLibrary.ValidId(CultureId)) && Enum.IsDefined(CultureNames) &&
+    internal bool IsValid() => (Markings & ~SupportedMarkings) == 0 &&         (CultureId is null || SkyCultureLibrary.ValidId(CultureId)) && Enum.IsDefined(CultureNames) &&
                 (SurveyId is null || LocalSkySurvey.ValidId(SurveyId)) && SurveyBrightness is null or (>= 0 and <= 2) &&
         (SmallBodies is not { } minorBodies || Enum.IsDefined(minorBodies)) && (MeteorRateMultiplier is not { } rate || ValidMeteorRate(rate)) && (DeepSkyFilter is not { } filter || filter.IsValid());
 }

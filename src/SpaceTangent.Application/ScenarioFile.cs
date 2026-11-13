@@ -18,7 +18,7 @@ public sealed record SimulationScenario(IReadOnlyList<ObserverView> Views, bool 
 /// <summary>Persists observer settings with exact TDB epochs and stable catalog IDs.</summary>
 public static class ScenarioFile
 {
-    private const int Version = 43;
+    private const int Version = 44;
     internal const int MaximumBytes = 32 * 1024;
     private static readonly JsonSerializerOptions Json = new()
     {
@@ -63,7 +63,8 @@ public static class ScenarioFile
             throw new InvalidDataException("The scenario has an invalid camera sensitivity.");
         var document = new Document
         {
-            Version = scenario.Views.Any(view => view.Sky.SmallBodies.HasValue) ? 43 :
+            Version = scenario.Views.Any(view => view.Sky.Markings != SkyMarkings.None) ? 44 :
+                scenario.Views.Any(view => view.Sky.SmallBodies.HasValue) ? 43 :
                 scenario.Views.Any(view => view.Sky.Starlink.HasValue) ? 42 :
                 scenario.Views.Any(view => view.EarthObserver?.ApparentPlaces == true) ? 41 :
                 scenario.Views.Any(view => view.Sky.ZodiacalLight) ? 40 :
@@ -222,6 +223,8 @@ public static class ScenarioFile
                 throw new InvalidDataException("Cinematic black holes require scenario version 30.");
             if (data.Sky is { HasBodyLayerSettings: true } && document.Version < 29)
                 throw new InvalidDataException("Body layer preferences require scenario version 29.");
+            if (data.Sky is { Markings: not SkyMarkings.None } && document.Version < 44)
+                throw new InvalidDataException("Sky markings require scenario version 44.");
             if (data.Sky is { SmallBodies: not null } && document.Version < 43)
                 throw new InvalidDataException("The small-body swarm requires scenario version 43.");
             if (data.Sky is { Starlink: not null } && document.Version < 42)

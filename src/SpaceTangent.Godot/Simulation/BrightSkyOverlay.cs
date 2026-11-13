@@ -12,7 +12,7 @@ internal partial class BrightSkyOverlay : Control
         Vector3 Forward, Vector3 Right, Vector3 Up, float TangentHalfField, float StarVisibility = 1,
         Vector3? Horizon = null, Vector3? Moon = null, float MoonRadius = 0, bool ShowCatalogue = true,
         GroundSkyConditions? Conditions = null, EarthSite Site = default, double? OpticalLimit = null,
-        Vector3d ObserverFromSun = default, Vector3d ObserverBeta = default);
+        Vector3d ObserverFromSun = default, Vector3d ObserverBeta = default, Basis3d? SiteAxes = null);
 
     private static readonly (Vector3 From, Vector3 To)[] Grid = MakeGrid().ToArray();
     private static readonly (Vector3 From, Vector3 To)[] EclipticLine = Enumerable.Range(0, 360)
@@ -130,6 +130,7 @@ internal partial class BrightSkyOverlay : Control
         if (_fillBackground && _frame.ShowCatalogue)
             DrawRect(new Rect2(Vector2.Zero, Size), new Color(.02745f, .03529f, .04706f));
         var occupied = new List<Rect2>();
+        DrawSkyMarkings();
         bool customConstellations = DrawCulture(occupied);
         if (_frame.Layers.ConstellationBoundaries)
             DrawSegments(_data.Boundaries, new(.38f, .55f, .73f, .6f));
@@ -215,13 +216,13 @@ internal partial class BrightSkyOverlay : Control
         return TrySkyObject(star.Direction, magnitude, star.Direction.X * 18.1, 8, out point, out magnitude, out _);
     }
 
-    private void DrawSegments(IReadOnlyList<(Vector3 From, Vector3 To)> lines, Color color)
+    private void DrawSegments(IReadOnlyList<(Vector3 From, Vector3 To)> lines, Color color, bool clipHorizon = true)
     {
         var rect = new Rect2(Vector2.Zero, Size).Grow(20);
         foreach (var (from, to) in lines)
         {
             Vector3 start = from, end = to;
-            if (_frame.Horizon is { } horizon)
+            if (clipHorizon && _frame.Horizon is { } horizon)
             {
                 float first = from.Dot(horizon), last = to.Dot(horizon);
                 if (first < 0 && last < 0)
@@ -236,16 +237,16 @@ internal partial class BrightSkyOverlay : Control
                         end = crossing;
                 }
             }
-            if (Project(start, out Vector2 a) && Project(end, out Vector2 b) &&
+            if (Project(start, out Vector2 a, clipHorizon) && Project(end, out Vector2 b, clipHorizon) &&
                 new Rect2(a, Vector2.Zero).Expand(b).Grow(1).Intersects(rect))
                 DrawLine(a, b, color, 1, true);
         }
     }
 
-    private bool Project(Vector3 direction, out Vector2 point)
+    private bool Project(Vector3 direction, out Vector2 point, bool clipHorizon = true)
     {
         point = default;
-        if (_frame.Horizon is { } horizon && direction.Dot(horizon) < 0)
+        if (clipHorizon && _frame.Horizon is { } horizon && direction.Dot(horizon) < 0)
             return false;
         float depth = direction.Dot(_frame.Forward);
         if (depth < .02f || _frame.TangentHalfField <= 0 || Size.Y <= 0)

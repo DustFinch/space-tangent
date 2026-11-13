@@ -357,7 +357,7 @@ internal partial class SimulationViewport
         HideLocalSatelliteMarkers();
         if (CatalogueWorld is not { } world)
             return;
-        if (sky.HideSatellites)
+        if (sky.HideSatellites && sky.Starlink != true)
         {
             if (selection is { } selected && world.FindLocalSatellite(selected) is { } selectedSatellite)
                 DrawSatellite(selectedSatellite, true, []);
@@ -368,7 +368,14 @@ internal partial class SimulationViewport
 
         var frustum = _navigationCamera.GetFrustum().ToArray();
         foreach (var satellite in world.LocalSatellites)
-            DrawSatellite(satellite, satellite.Id == selection || satellite.Id == pose.Target, frustum);
+        {
+            bool selected = satellite.Id == selection || satellite.Id == pose.Target;
+            bool starlink = satellite.Name.StartsWith("STARLINK-", StringComparison.OrdinalIgnoreCase) ||
+                satellite.Aliases.Contains("starlink", StringComparer.OrdinalIgnoreCase);
+            bool visible = starlink ? sky.Starlink ?? !sky.HideSatellites : !sky.HideSatellites;
+            if (selected || visible)
+                DrawSatellite(satellite, selected, frustum);
+        }
 
         void DrawSatellite(LocalTleSatellite satellite, bool selected, Plane[] planes)
         {

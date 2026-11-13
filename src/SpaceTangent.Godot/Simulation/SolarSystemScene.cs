@@ -56,7 +56,7 @@ public partial class SolarSystemScene : Control
     private BrightSkyData? _brightSky;
     private CheckButton _deepSky = null!;
     private CheckButton _stars = null!, _starLabels = null!, _equatorialGrid = null!, _constellations = null!;
-    private CheckButton _zodiacalLight = null!;
+    private CheckButton _zodiacalLight = null!, _starlink = null!;
     private SimulatorWorkspace _workspace = null!;
     private ObjectSearchPanel _objectSearch = null!;
     private Label _timeHeading = null!, _dataSummary = null!;
@@ -308,6 +308,14 @@ public partial class SolarSystemScene : Control
         _zodiacalLight.Disabled = _brightSky?.ZodiacalMap is null;
         layers.AddChild(SimulatorTheme.Section("Earth satellites"));
         _satelliteLayersMode = AddButton(layers, "Earth satellites view", () => SetMode(_active, CameraMode.Satellites));
+        _starlink = new CheckButton { Name = "StarlinkLayer", Text = "Starlink" };
+        _starlink.Toggled += enabled =>
+        {
+            var session = Session!;
+            session.SetSkyLayers(_active, session[_active].Sky with { Starlink = enabled });
+            Refresh();
+        };
+        layers.AddChild(_starlink);
         _workspace.AddRailSeparator();
         var location = _workspace.AddPage("Location", "Observer location");
         var ephemerides = _workspace.AddPage("Ephemerides", "Ephemerides");
@@ -1818,6 +1826,7 @@ public partial class SolarSystemScene : Control
         _constellations.SetPressedNoSignal(active.Sky.Constellations);
         _deepSky.SetPressedNoSignal(active.Sky.DeepSky);
         _zodiacalLight.SetPressedNoSignal(active.Sky.ZodiacalLight);
+        _starlink.SetPressedNoSignal(active.Sky.Starlink ?? !active.Sky.HideSatellites);
         _objectSearch.UpdateSelection(active.Selection);
         var target = active.Selection is { } selection ? Session.World.Catalogue.Find(selection) : null;
         bool tracking = active.Navigation is { Tracking: true } pose && pose.Target == target?.Id;

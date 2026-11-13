@@ -100,6 +100,7 @@ public static class LegacyObserverProfiles
             SurfacePlaces = Flag(root, "Places") ?? sky.SurfacePlaces,
             CinematicBlackHoles = Flag(root, "CinematicBlackHoles") ?? sky.CinematicBlackHoles,
             HideSatellites = Flag(root, "Satellites") is { } satellites ? !satellites : sky.HideSatellites,
+            Starlink = Flag(root, "Starlink") ?? sky.Starlink,
             Meteors = Flag(root, "Meteors") ?? sky.Meteors,
             MeteorRadiants = Flag(root, "Radiants") ?? sky.MeteorRadiants,
             MeteorRateMultiplier = meteorRate is { } rate && SkyLayerSettings.ValidMeteorRate(rate)

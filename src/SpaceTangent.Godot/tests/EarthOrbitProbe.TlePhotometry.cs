@@ -54,6 +54,29 @@ public partial class EarthOrbitProbe
         GD.Print(FormattableString.Invariant(
             $"Dense TLE GPU: {group.Length} archived satellites, {visible}/{afterReload} visible before/after reload, {samples} two-view updates at {timer.Elapsed.TotalMilliseconds / samples:F1} ms and {allocated / samples:N0} managed bytes each."));
 
+        string profile = Path.Combine(directory, "archived-starlink-settings.json");
+        File.WriteAllText(profile, """{"Site":{},"Satellites":false,"Starlink":true}""");
+        var imported = LegacyObserverProfiles.Read(profile, first, session.DeltaT).Observer;
+        var enabled = first with { Sky = imported.Sky };
+        var disabled = first with { Sky = first.Sky with { Starlink = false } };
+        string settings = Path.Combine(directory, "starlink-independent.stscene");
+        ScenarioFile.Save(settings, scenario with { Views = [enabled, disabled] });
+        if (!scene.LoadScenario(settings) || !await scene.ReloadAddOns() ||
+            session[0].Sky.Starlink != true || session[1].Sky.Starlink != false)
+            throw new InvalidOperationException("The independent Starlink flags did not survive reload.");
+        int archivedVisible = CheckPoints();
+        var shown = group.First(satellite => scene.Renderer(0).BodyPoint(satellite.Id)?.Visible == true);
+        var toggle = (CheckButton)scene.FindChild("StarlinkLayer", recursive: true, owned: false);
+        toggle.ButtonPressed = false;
+        if (session[0].Sky.Starlink != false || session[1].Sky.Starlink != false ||
+            group.Any(satellite => scene.Renderer(0).BodyPoint(satellite.Id)?.Visible == true))
+            throw new InvalidOperationException("Disabling the active Starlink layer left visible unselected points.");
+        session.SelectObject(0, shown.Id);
+        scene.Seek(0, first.Epoch);
+        if (scene.Renderer(0).BodyPoint(shown.Id)?.Visible != true)
+            throw new InvalidOperationException("An explicitly selected Starlink satellite must remain visible.");
+        GD.Print($"Starlink settings GPU: {archivedVisible} visible with Satellites disabled, independent flags after reload and selected satellite preserved.");
+
         int CheckPoints()
         {
             int shown = group.Count(satellite => scene.Renderer(0).BodyPoint(satellite.Id)?.Visible == true);

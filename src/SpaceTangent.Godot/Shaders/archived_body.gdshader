@@ -18,11 +18,15 @@ uniform vec3 camera_secondary_light;
 uniform vec3 secondary_light_color;
 
 #include "res://Shaders/archived_occultation.gdshaderinc"
+#include "res://Shaders/ring_shadow.gdshaderinc"
+uniform float archived_ring_polar_ratio = 1.0;
+varying vec3 ring_receiver_point;
 uniform float archived_render_radius = 1.0;
 varying vec3 receiver_point;
 
 void vertex() {
     receiver_point = mat3(MODELVIEW_MATRIX) * VERTEX / archived_render_radius;
+    ring_receiver_point = VERTEX * vec3(1.0, archived_ring_polar_ratio, 1.0);
 }
 
 float incidence(vec3 normal, vec3 light) {
@@ -39,6 +43,9 @@ void fragment() {
     float primary = incidence(normal, camera_light);
     float secondary = incidence(normal, camera_secondary_light);
     primary *= archived_light_visibility(receiver_point, camera_light, archived_light_angle, true);
+    if (primary > 0.0 && cast_ring_shadows) {
+        primary *= ring_visibility(ring_receiver_point, false);
+    }
     secondary *= archived_light_visibility(receiver_point, camera_secondary_light, archived_second_angle, false);
     vec3 daylight = primary * light_color + secondary * secondary_light_color;
     vec3 surface = emissive ? color : color * (vec3(0.04) + 0.96 * daylight);

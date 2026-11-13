@@ -172,6 +172,39 @@ public partial class EarthOrbitProbe
                         contrast = Math.Max(contrast, difference);
                     }
                     GD.Print($"Archived ring shadow GPU: Saturn, {recordedShadows} recorded occluders, {ringShadowPixels} darkened pixels, contrast {contrast:F4}.");
+                    var surface = (ShaderMaterial)globe.MaterialOverride;
+                    if (!surface.GetShaderParameter("cast_ring_shadows").AsBool())
+                        throw new InvalidOperationException("The recorded Saturn rings did not reach its globe material.");
+                    surface.SetShaderParameter("cast_ring_shadows", false);
+                    await ToSignal(RenderingServer.Singleton, RenderingServer.SignalName.FramePostDraw);
+                    using var unshadowedGlobe = renderer.GetViewport().GetTexture().GetImage();
+                    int globeShadowPixels = 0;
+                    for (int y = 0; y < litRings.GetHeight(); y++)
+                    for (int x = 0; x < litRings.GetWidth(); x++)
+                        if (unshadowedGlobe.GetPixel(x, y).Luminance - litRings.GetPixel(x, y).Luminance > .025f)
+                            globeShadowPixels++;
+                    if (globeShadowPixels < 100 ||
+                        litRings.SavePng(Path.Combine(directory, "saturn-ring-shadow.png")) != Error.Ok ||
+                        unshadowedGlobe.SavePng(Path.Combine(directory, "saturn-ring-shadow-control.png")) != Error.Ok)
+                        throw new InvalidOperationException($"The rings darkened only {globeShadowPixels} pixels on the recorded Saturn globe.");
+                    GD.Print($"Archived ring-to-globe shadow GPU: Saturn, {globeShadowPixels} darkened pixels.");
+                    Vector3 sun = ringMaterial.GetShaderParameter("sun_in_body").AsVector3();
+                    Vector3 inPlane = new Vector3(sun.X, 0, sun.Z).Normalized();
+                    Vector3 blocker = 1.8f * inPlane + .5f * sun;
+                    ringMaterial.SetShaderParameter("archived_blockers",
+                        new Vector4[] { new(blocker.X, blocker.Y, blocker.Z, .12f), default, default, default });
+                    ringMaterial.SetShaderParameter("archived_shadow_count", 1);
+                    await ToSignal(RenderingServer.Singleton, RenderingServer.SignalName.FramePostDraw);
+                    using var ringControl = renderer.GetViewport().GetTexture().GetImage();
+                    int controlledPixels = 0;
+                    for (int y = 0; y < ringControl.GetHeight(); y++)
+                    for (int x = 0; x < ringControl.GetWidth(); x++)
+                        if (unshadowedGlobe.GetPixel(x, y).Luminance - ringControl.GetPixel(x, y).Luminance > .025f)
+                            controlledPixels++;
+                    if (controlledPixels < 50)
+                        throw new InvalidOperationException($"The controlled occluder darkened only {controlledPixels} ring pixels.");
+                    ringMaterial.SetShaderParameter("archived_shadow_count", 0);
+                    GD.Print($"Archived ring receiver GPU: controlled occluder, {controlledPixels} darkened pixels on the original Saturn geometry.");
                 }
                 if (file == "saturn")
                 {

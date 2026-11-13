@@ -125,10 +125,24 @@ internal partial class SimulationViewport
             material.SetShaderParameter("light_color", Column(body.LightColor));
             material.SetShaderParameter("camera_secondary_light", Column(body.SecondLightDirection));
             material.SetShaderParameter("secondary_light_color", Column(body.SecondLightColor));
+            material.SetShaderParameter("cast_ring_shadows", false);
             node.Show();
             if (id is { } ringId && body.RingOuterRadius > body.RingInnerRadius &&
                 _archivedPlanetTextures?.Rings.GetValueOrDefault(ringId) is { } ringMap)
-                DrawArchivedRings(ringId, node, body, scene, radius, camera * Column(body.LightDirection), ringMap);
+            {
+                Vector3 ringLight = camera * Column(body.LightDirection);
+                if (node.Basis.Determinant() != 0)
+                {
+                    Vector3 localLight = node.Basis.Orthonormalized().Inverse() * ringLight;
+                    material.SetShaderParameter("rings_map", ringMap);
+                    material.SetShaderParameter("ring_inner", (float)(body.RingInnerRadius / body.Radius));
+                    material.SetShaderParameter("ring_outer", (float)(body.RingOuterRadius / body.Radius));
+                    material.SetShaderParameter("archived_ring_polar_ratio", (float)body.PolarScale);
+                    material.SetShaderParameter("sun_in_body", localLight.Normalized());
+                    material.SetShaderParameter("cast_ring_shadows", true);
+                }
+                DrawArchivedRings(ringId, node, body, scene, radius, ringLight, ringMap);
+            }
             if (id is { } atmosphereId && body.AtmosphereRadius > body.Radius && body.LightDirection.Length > 0)
             {
                 Vector3 light = camera * Column(body.LightDirection);

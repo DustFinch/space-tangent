@@ -18,6 +18,21 @@ float earth_solar_visibility(vec3 position) {
     return solar_eclipse_active ? solar_visibility(eclipse_sun_km - position, eclipse_moon_km - position, 1737.4) : 1.0;
 }
 
+float earth_air_visibility(vec3 eye, vec3 ray, float start, float end, float ground_radius) {
+    if (!solar_eclipse_active || end <= start) {
+        return 1.0;
+    }
+    float density = 0.0;
+    float lit_density = 0.0;
+    for (int i = 0; i < 8; i++) {
+        vec3 point = eye + ray * mix(start, end, (float(i) + 0.5) / 8.0);
+        float weight = exp(-max(length(point) - ground_radius, 0.0) / AIR_SCALE_KM.x);
+        density += weight;
+        lit_density += weight * earth_solar_visibility(point);
+    }
+    return density > 0.0 ? lit_density / density : 1.0;
+}
+
 float air_exit(vec3 position, vec3 direction, float radius) {
     float along = dot(position, direction);
     float position_radius = length(position);

@@ -29,6 +29,9 @@ public partial class EarthOrbitProbe
         Vector3d umbra = moonward + axis * (closest - Math.Sqrt(earthRadius * earthRadius - miss * miss));
         using var earthImage = await Capture("earth-solar-eclipse", solarEpoch, earth, solar.Earth.PositionKilometers, umbra, earthRadius * 4.2);
 
+        if (earthImage is not null)
+            await CheckEarthLayers(earthImage);
+
         var lunarEpoch = FromTt(new(2025, 9, 7, 18, 12, 58));
         using var darkMoon = await CaptureMoon("moon-totality", lunarEpoch);
         using var brightMoon = await CaptureMoon("moon-after-totality", lunarEpoch.AddSeconds(JulianInstant.SecondsPerDay));
@@ -42,6 +45,79 @@ public partial class EarthOrbitProbe
         GD.Print(FormattableString.Invariant($"Eclipse luminance: Earth shadow {shadow:F5}, surrounding disc {adjacent:F5}, Moon totality {dark:F5}, Moon control {lit:F5}."));
         if (shadow >= adjacent * .65 || dark >= lit * .4)
             throw new InvalidOperationException("The rendered eclipse umbrae must be substantially darker than their controls.");
+
+        async Task CheckEarthLayers(Image eclipse)
+        {
+            var globe = scene.Renderer(0).EarthOrbitGlobe;
+            if (globe.MaterialOverride is not ShaderMaterial ground ||
+                globe.GetChildren().OfType<MeshInstance3D>().FirstOrDefault(node =>
+                    node.MaterialOverride is ShaderMaterial shader && shader.Shader.ResourcePath.EndsWith("earth_limb.gdshader", StringComparison.Ordinal)) is not { } limb ||
+                limb.MaterialOverride is not ShaderMaterial air ||
+                !ground.GetShaderParameter("solar_eclipse_active").AsBool() ||
+                !air.GetShaderParameter("solar_eclipse_active").AsBool())
+                throw new InvalidOperationException("The Earth orbit globe and limb must both receive the real eclipse geometry.");
+            if (!ground.GetShaderParameter("has_cloud_map").AsBool() ||
+                !ground.GetShaderParameter("use_atmosphere_lookup").AsBool())
+            {
+                if (System.Environment.GetEnvironmentVariable("SPACETANGENT_ECLIPSE_PROBE") == "only")
+                    throw new InvalidOperationException("The eclipse layer probe requires the original cloud map and atmosphere LUT.");
+                return;
+            }
+
+            try
+            {
+                ground.SetShaderParameter("solar_eclipse_active", false);
+                air.SetShaderParameter("solar_eclipse_active", false);
+                using var lit = await LayerFrame();
+                ground.SetShaderParameter("has_cloud_map", false);
+                using var litNoClouds = await LayerFrame();
+                ground.SetShaderParameter("solar_eclipse_active", true);
+                air.SetShaderParameter("solar_eclipse_active", true);
+                using var eclipseNoClouds = await LayerFrame();
+                ground.SetShaderParameter("show_atmosphere", false);
+                limb.Hide();
+                using var eclipseNoAir = await LayerFrame();
+                ground.SetShaderParameter("solar_eclipse_active", false);
+                using var litNoAir = await LayerFrame();
+
+                double eclipsedCloud = LayerBrightness(eclipse, eclipseNoClouds);
+                double litCloud = LayerBrightness(lit, litNoClouds);
+                double eclipsedAir = LayerBrightness(eclipseNoClouds, eclipseNoAir);
+                double litAir = LayerBrightness(litNoClouds, litNoAir);
+                GD.Print(FormattableString.Invariant($"Earth eclipse layers GPU: clouds {eclipsedCloud:F6}/{litCloud:F6}, air {eclipsedAir:F6}/{litAir:F6} (eclipse/unshadowed)."));
+                if (litCloud < .001 || litAir < .001 || eclipsedCloud >= litCloud * .7 || eclipsedAir >= litAir * .7)
+                    throw new InvalidOperationException("Earth's cloud and air contributions must respond independently to the real eclipse.");
+            }
+            finally
+            {
+                ground.SetShaderParameter("solar_eclipse_active", true);
+                air.SetShaderParameter("solar_eclipse_active", true);
+                ground.SetShaderParameter("has_cloud_map", true);
+                ground.SetShaderParameter("show_atmosphere", true);
+                limb.Show();
+            }
+
+            async Task<Image> LayerFrame()
+            {
+                await ToSignal(GetTree(), SceneTree.SignalName.ProcessFrame);
+                await ToSignal(RenderingServer.Singleton, RenderingServer.SignalName.FramePostDraw);
+                return scene.Renderer(0).GetViewport().GetTexture().GetImage();
+            }
+
+            static double LayerBrightness(Image withLayer, Image withoutLayer)
+            {
+                const int radius = 9;
+                int cx = withLayer.GetWidth() / 2, cy = withLayer.GetHeight() / 2;
+                double sum = 0;
+                for (int y = -radius; y <= radius; y++)
+                for (int x = -radius; x <= radius; x++)
+                {
+                    Color a = withLayer.GetPixel(cx + x, cy + y), b = withoutLayer.GetPixel(cx + x, cy + y);
+                    sum += Math.Abs(a.R - b.R) + Math.Abs(a.G - b.G) + Math.Abs(a.B - b.B);
+                }
+                return sum / ((2 * radius + 1) * (2 * radius + 1) * 3);
+            }
+        }
 
         async Task<Image?> CaptureMoon(string name, JulianInstant epoch)
         {

@@ -29,6 +29,7 @@ internal partial class SimulationViewport
     }
 
     internal bool EarthOrbitAtmosphereActive => _earthOrbit?.Active == true;
+    internal MeshInstance3D EarthOrbitGlobe => _navigationEarth;
     internal bool NavigationCameraCurrent => _navigationCamera.Current;
     internal Camera3D NavigationCameraNode => _navigationCamera;
 

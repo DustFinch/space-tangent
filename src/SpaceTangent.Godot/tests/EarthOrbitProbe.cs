@@ -59,6 +59,12 @@ public partial class EarthOrbitProbe : Node
                 result = 0;
                 return;
             }
+            if (System.Environment.GetEnvironmentVariable("SPACETANGENT_ECLIPSE_PROBE") == "only")
+            {
+                await ExerciseEclipses(scene, directory);
+                result = 0;
+                return;
+            }
             if (System.Environment.GetEnvironmentVariable("SPACETANGENT_COMPACT_LENS_PROBE") == "only")
             {
                 await ExerciseCompactLens(scene, directory);

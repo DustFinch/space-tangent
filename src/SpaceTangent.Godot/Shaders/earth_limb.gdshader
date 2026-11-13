@@ -38,7 +38,7 @@ void fragment() {
         vec3 transmission;
         vec3 entry;
         sample_atmosphere_lookup(eye, ray, sun_direction, earth_radius_km, transmission, radiance, entry);
-        color = radiance * earth_solar_visibility(entry);
+        color = radiance * earth_air_visibility(eye, ray, start, end, earth_radius_km);
     } else {
         air_integrate(eye, ray, sun_direction, earth_radius_km, start, end, 32, column, radiance);
         color = 1.0 - exp(-2.3 * radiance);

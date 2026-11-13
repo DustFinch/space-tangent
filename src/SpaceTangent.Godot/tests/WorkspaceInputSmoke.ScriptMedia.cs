@@ -100,10 +100,54 @@ public partial class WorkspaceInputSmoke
                 view.FindChild("ScriptSound4", true, false) is AudioStreamPlayer { Playing: true, Stream: AudioStreamOggVorbis } &&
                 view.FindChild("ScriptSound5", true, false) is AudioStreamPlayer { Playing: true, Stream: AudioStreamMP3 },
                 "WebP, Ogg and MP3 must load using their own decoders.");
+            if (System.Environment.GetEnvironmentVariable("SPACETANGENT_MEDIA_MIXER_PROBE") == "1")
+                await VerifyDecodedAudio(view);
             await KeyPress(Key.Escape);
             await Until(() => view.FindChild("ScriptSound5", true, false) is null, "Stopping the decoded media");
             GD.Print("UI: decoded WebP and played local Ogg and MP3 on independent channels.");
         }
         GD.Print("UI: converted and played classic media in one view, stopped it with Escape, and rejected an outside path.");
+    }
+
+    private async Task VerifyDecodedAudio(SimulationViewport view)
+    {
+        using var capture = new AudioEffectCapture { BufferLength = .5f };
+        int effect = AudioServer.GetBusEffectCount(0);
+        AudioServer.AddBusEffect(0, capture);
+        var ogg = (AudioStreamPlayer)view.FindChild("ScriptSound4", true, false);
+        var mp3 = (AudioStreamPlayer)view.FindChild("ScriptSound5", true, false);
+        try
+        {
+            ogg.Stop();
+            mp3.Stop();
+            float oggPeak = await Peak(ogg);
+            float mp3Peak = await Peak(mp3);
+            GD.Print(FormattableString.Invariant($"Script audio mixer: Ogg PCM peak {oggPeak:F4}, MP3 PCM peak {mp3Peak:F4}."));
+        }
+        finally
+        {
+            AudioServer.RemoveBusEffect(0, effect);
+        }
+
+        async Task<float> Peak(AudioStreamPlayer player)
+        {
+            capture.ClearBuffer();
+            player.Play();
+            float peak = 0;
+            try
+            {
+                var started = System.Diagnostics.Stopwatch.StartNew();
+                while (started.Elapsed.TotalSeconds < 3 && peak <= .001f)
+                {
+                    await ToSignal(Tree, SceneTree.SignalName.ProcessFrame);
+                    while (capture.CanGetBuffer(256))
+                        foreach (Vector2 sample in capture.GetBuffer(256))
+                            peak = Math.Max(peak, Math.Max(Math.Abs(sample.X), Math.Abs(sample.Y)));
+                }
+                Require(peak > .001f, $"{player.Name} must produce non-silent stereo PCM.");
+                return peak;
+            }
+            finally { player.Stop(); }
+        }
     }
 }

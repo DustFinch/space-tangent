@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
 using Godot;
 using SpaceTangent.Application;
+using SpaceTangent.Core.Addons;
 
 namespace SpaceTangent.Godot.Simulation;
 
@@ -11,6 +12,8 @@ public partial class SolarSystemScene
     private LineEdit _bookmarkName = null!, _sceneLink = null!;
     private OptionButton _bookmarkList = null!;
     private Button _openBookmark = null!, _deleteBookmark = null!;
+    private MenuButton _missionViewpoints = null!;
+    private IReadOnlyList<MissionViewpoint>? _viewpointItems;
 
     private void AddObserverBookmarks(VBoxContainer panel)
     {
@@ -38,6 +41,9 @@ public partial class SolarSystemScene
         _openBookmark.Name = "RestoreBookmark";
         _deleteBookmark = AddButton(buttons, "Delete", DeleteBookmark);
         RefreshBookmarks();
+        _missionViewpoints = new MenuButton { Name = "MissionViewpoints", Text = "Mission viewpoints", Visible = false };
+        panel.AddChild(_missionViewpoints);
+        _missionViewpoints.GetPopup().IdPressed += OpenMissionViewpoint;
 
         panel.AddChild(new HSeparator());
         panel.AddChild(UI.SimulatorTheme.Section("Scene link"));
@@ -47,6 +53,30 @@ public partial class SolarSystemScene
         panel.AddChild(links);
         AddButton(links, "Create link", () => CreateSceneLink()).Name = "CreateSceneLink";
         AddButton(links, "Open link", () => OpenSceneLink(_sceneLink.Text)).Name = "OpenSceneLink";
+    }
+
+    private void RefreshMissionViewpoints()
+    {
+        IReadOnlyList<MissionViewpoint> items = _addOns?.Decoded.SampledMissions.Value.Viewpoints ?? [];
+        if (ReferenceEquals(items, _viewpointItems))
+            return;
+        _viewpointItems = items;
+        var popup = _missionViewpoints.GetPopup();
+        popup.Clear();
+        for (int index = 0; index < items.Count; index++)
+            popup.AddItem(items[index].Name, index);
+        _missionViewpoints.Visible = items.Count != 0;
+    }
+
+    private void OpenMissionViewpoint(long id)
+    {
+        if (Session is not { } session || _viewpointItems is not { } items || id < 0 || id >= items.Count)
+            return;
+        var viewpoint = items[(int)id];
+        _status.Text = session.OpenMissionViewpoint(_active, viewpoint)
+            ? $"Viewpoint opened. {viewpoint.Name}"
+            : "The viewpoint is unavailable at this epoch.";
+        Refresh();
     }
 
     private bool ImportFavorites(string path)

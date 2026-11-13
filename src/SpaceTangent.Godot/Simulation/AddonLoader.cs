@@ -22,7 +22,7 @@ internal static partial class AddonLoader
     internal sealed record DecodedSscBody(SscBodyDefinition Body, DecodedScienceModel? Geometry, byte[]? Surface);
     internal sealed record DecodedSampledMission(SampledMission Track,
         IReadOnlyDictionary<string, DecodedScienceModel> Meshes, IReadOnlyDictionary<string, byte[]> Textures);
-    internal sealed record DecodedMissionContent(IReadOnlyList<DecodedSampledMission> Tracks, IReadOnlyList<MissionAnnotation> Annotations);
+    internal sealed record DecodedMissionContent(IReadOnlyList<DecodedSampledMission> Tracks, IReadOnlyList<MissionAnnotation> Annotations, IReadOnlyList<MissionViewpoint> Viewpoints);
     internal sealed record DecodedTerrain(SpicePolynomialBodyFrame Frame, DecodedBodyTerrain Model);
 
     internal sealed record Cached<T>(LocalDataPath Path, AddonDependencies Dependencies, T Value)
@@ -383,7 +383,7 @@ internal static partial class AddonLoader
     {
         string root = location.Resolve();
         if (!AddonDependencies.DirectoryExists(root))
-            return new([], []);
+            return new([], [], []);
         var catalogues = AddonDependencies.ListFiles(root, "*.json");
         string directory = Path.Combine(root, "catalog");
         if (AddonDependencies.DirectoryExists(directory))
@@ -403,7 +403,7 @@ internal static partial class AddonLoader
                 meshes.Add(file, ReadAddonMesh(root, file, cancellation));
             tracks.Add(new(mission, meshes, ReadMissionTextures(mission, textureCache, ref textureBytes, cancellation)));
         }
-        return new(tracks.AsReadOnly(), content.Annotations);
+        return new(tracks.AsReadOnly(), content.Annotations, content.Viewpoints);
 
         ObjectId? Resolve(string name)
         {

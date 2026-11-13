@@ -1570,6 +1570,7 @@ public partial class SolarSystemScene : Control
 
     private void Refresh(double elapsed = 0)
     {
+        RefreshMissionViewpoints();
         SimulationSession session = Session!;
         _deltaT.Select((int)session.DeltaT);
         for (int index = 0; index < _views.Count; index++)

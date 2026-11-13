@@ -11,11 +11,6 @@ public sealed partial class LuaSessionScript
         Bind(upstream, "find", (_, arguments) => FindObject(arguments.SkipMethodCall()[0]));
         Bind(upstream, "select", (_, arguments) => Change(() => _session.SelectObject(View, LuaObjectId(arguments.SkipMethodCall()[0]))));
         Bind(upstream, "getselection", (_, _) => LuaObject(_session[View].Selection));
-        Bind(upstream, "flash", (_, arguments) =>
-        {
-            Log(Text(arguments.SkipMethodCall()[0]));
-            return DynValue.Nil;
-        });
     }
 
     private DynValue FindObject(DynValue name)

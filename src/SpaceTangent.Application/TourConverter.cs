@@ -3,6 +3,7 @@ using System.Globalization;
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.RegularExpressions;
+using MoonSharp.Interpreter;
 
 namespace SpaceTangent.Application;
 
@@ -38,7 +39,7 @@ public static partial class TourConverter
         if (Encoding.UTF8.GetByteCount(input) > MaximumBytes)
             throw new InvalidDataException("The tour exceeds 32 KiB.");
         if (extension.Equals(".celx", StringComparison.OrdinalIgnoreCase))
-            return ConvertRecursiveTour(input);
+            return ConvertLuaTour(input);
         if (!extension.Equals(".cel", StringComparison.OrdinalIgnoreCase))
             throw new NotSupportedException("Choose a CEL or CELX tour.");
         var words = Tokenize(input);
@@ -191,12 +192,20 @@ public static partial class TourConverter
         return string.Join(", ", fields.Select(ParseNumber).Select(Number));
     }
 
-    private static TourConversion ConvertRecursiveTour(string source)
+    private static TourConversion ConvertLuaTour(string source)
     {
         string normalized = source.Replace("\r\n", "\n", StringComparison.Ordinal).Trim();
         string hash = Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(normalized)));
         if (!hash.Equals(RecursiveTourSha256, StringComparison.OrdinalIgnoreCase))
-            throw new NotSupportedException("This CELX converter accepts the verified recursive Solar System tour.");
+        {
+            try { new Script(CoreModules.None).LoadString(source); }
+            catch (InterpreterException error)
+            {
+                throw new InvalidDataException(error.DecoratedMessage ?? error.Message, error);
+            }
+            // Other scripts already use Lua. The ordinary runner applies its sandbox and quotas on execution.
+            return new(source, 1, Array.Empty<string>());
+        }
         const string lua = """
             local targets = st.cataloguetour()
             local flight = math.min(3, 96 / #targets)

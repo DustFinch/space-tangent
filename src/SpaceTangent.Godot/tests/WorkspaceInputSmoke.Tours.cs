@@ -101,6 +101,42 @@ public partial class WorkspaceInputSmoke
             "The original guide must complete and visit Jupiter and Pluto.");
         GD.Print($"UI: converted the original eleven-stop guide and visited {guideTargets.Count} loaded targets.");
 
+        Session.SelectObject(0, PlanetCatalogue.MarsId);
+        CheckClassic("goto.cel");
+        Require(Session[0].Selection == SolarSystemSample.EarthId, "The original goto script must finish at Earth.");
+        CheckClassic("gotoloc.cel");
+        CheckClassic("orbit.cel");
+        Require(Session[0].Selection == PlanetCatalogue.MarsId, "The original orbit script must retain Mars.");
+
+        var star = Session.World.Stellar.FindByName("Sirius A")?.Id ?? new ObjectId("hip/32349");
+        Session.SelectObject(0, star);
+        CheckLua("absmag.celx", "abs magnitude = ");
+        CheckLua("distanceto.celx", "distance to selection = ");
+        CheckLua("annum.celx", null);
+        var oneYear = JulianInstant.FromJulianDate(2460634.5 + 365, TimeScale.Tdb);
+        Require(Session[0].Epoch == oneYear, "The original annum script must advance exactly 365 TDB days.");
+        GD.Print("UI: ran the original absolute magnitude, distance and one-year CELX scripts and three classic flight scripts.");
+
+        void CheckClassic(string name)
+        {
+            var converted = TourConverter.ConvertFile(Path.Combine(sources, name));
+            Require(converted.Unapplied.Count == 0, $"All commands in {name} must be converted.");
+            string path = Path.Combine(directory, Path.GetFileNameWithoutExtension(name) + ".lua");
+            File.WriteAllText(path, converted.Lua);
+            RunToEnd(path);
+        }
+
+        void CheckLua(string name, string? notice)
+        {
+            var converted = TourConverter.ConvertFile(Path.Combine(sources, name));
+            string path = Path.Combine(directory, Path.GetFileNameWithoutExtension(name) + ".lua");
+            File.WriteAllText(path, converted.Lua);
+            RunToEnd(path);
+            if (notice is not null)
+                Require(Session.Notice(0)?.Text.StartsWith(notice, StringComparison.Ordinal) == true,
+                    $"The original {name} must display its calculated result.");
+        }
+
         LuaSessionScript stopping = _scene.RunScript(tour) ?? throw new InvalidOperationException("Could not start the tour to test Escape.");
         stopping.Step(.05);
         Require(Session.IsFlying(0), "The running tour must have begun a flight before Escape.");

@@ -4,6 +4,7 @@ using SpaceTangent.Application;
 using SpaceTangent.Contracts;
 using SpaceTangent.Core.Addons;
 using SpaceTangent.Core.Ephemerides;
+using SpaceTangent.Core.Observing;
 using SpaceTangent.Core.World;
 
 namespace SpaceTangent.Godot.Simulation;
@@ -19,6 +20,7 @@ internal sealed record PreparedImportedBody(ObjectId Id, CatalogueKind Kind, Vec
     internal ObjectId? StellarHost { get; init; }
     internal ObjectId? PhotometricParent { get; init; }
     internal double GeometricAlbedo { get; init; }
+    internal IReadOnlyList<StellarEntry>? PhotometricStars { get; init; }
     internal PreparedSscRings? Rings { get; init; }
     internal Vector3d? MeshSpan { get; init; }
     internal (Vector3d Center, Vector3d Span)? ModelBounds { get; init; }
@@ -245,7 +247,7 @@ internal partial class SimulationViewport
                 var tint = new Color((float)body.Color.X, (float)body.Color.Y, (float)body.Color.Z);
                 Vector3d towardEye = (pose.AnchorKilometers - state.PositionKilometers) + eyeOffset;
                 if (!DrawReflectedBody(body.Id, parent, physicalRadius, body.GeometricAlbedo, tint,
-                    snapshot, towardEye, state.PositionKilometers, position, (float)radius))
+                    snapshot, towardEye, state.PositionKilometers, position, (float)radius, body.PhotometricStars))
                     continue;
             }
             else if (radius < .035 && pose.Target != body.Id)

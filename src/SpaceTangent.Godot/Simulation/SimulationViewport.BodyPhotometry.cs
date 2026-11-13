@@ -3,6 +3,7 @@ using Godot;
 using SpaceTangent.Application;
 using SpaceTangent.Contracts;
 using SpaceTangent.Core.Ephemerides;
+using SpaceTangent.Core.Observing;
 using SpaceTangent.Core.World;
 
 namespace SpaceTangent.Godot.Simulation;
@@ -16,7 +17,7 @@ internal partial class SimulationViewport
     internal MeshInstance3D? BodyPoint(ObjectId id) => _bodyPoints.GetValueOrDefault(id);
 
     private bool DrawReflectedBody(ObjectId id, ObjectId parentId, double radius, double albedo, Color tint, WorldSnapshot snapshot, Vector3d towardEye,
-        Vector3d bodyPosition, Vector3 position, float projectedRadius)
+        Vector3d bodyPosition, Vector3 position, float projectedRadius, IReadOnlyList<StellarEntry>? lights = null)
     {
         const double au = 149_597_870.7;
         const double sunMagnitudeAtAu = -26.74;
@@ -36,23 +37,24 @@ internal partial class SimulationViewport
         if (disc >= blendPixels)
             return true;
 
-        Vector3d towardSun = solar.Sun.PositionKilometers - bodyPosition;
-        double sunRange = towardSun.Length;
-        if (sunRange <= 0)
-            return disc >= pointPixels;
-        Vector3d sunDirection = towardSun / sunRange;
         Vector3d eyeDirection = towardEye / range;
-        double phase = Math.Clamp((1 + Vector3d.Dot(sunDirection, eyeDirection)) / 2, 0, 1);
-        if (parentId != SolarSystemSample.SunId && snapshot.TryState(parentId, out var parent))
+        double flux;
+        if (lights is null)
+            flux = ReflectedFlux(solar.Sun.PositionKilometers - bodyPosition, 1, SolarSystemSample.SunId);
+        else if (CatalogueWorld is { } world && lights.Count > 0)
         {
-            Vector3d parentOffset = bodyPosition - parent.PositionKilometers;
-            double alongSun = Vector3d.Dot(parentOffset, sunDirection);
-            double parentRadius = NavigationCamera.BodyRadiusKilometers(parentId);
-            if (alongSun < 0 && (parentOffset - sunDirection * alongSun).Length < parentRadius)
-                phase = 0;
+            flux = 0;
+            foreach (var star in lights)
+            {
+                double absolute = star.AbsoluteMagnitude ?? star.VisualMagnitude - 5 * Math.Log10(star.DistanceParsecs / 10);
+                double luminosity = Math.Pow(10, .4 * (4.83 - absolute));
+                Vector3d direction = (world.StellarOrigin - bodyPosition) + star.StateAt(snapshot.Epoch).PositionKilometers;
+                flux += ReflectedFlux(direction, luminosity, star.Id);
+            }
         }
-        double ratio = radius / sunRange * (au / range);
-        double flux = albedo * phase * ratio * ratio;
+        else
+            return true;
+
         double magnitude = sunMagnitudeAtAu - 2.5 * Math.Log10(flux);
         if (magnitude < faintestMagnitude)
         {
@@ -66,6 +68,27 @@ internal partial class SimulationViewport
             point.Show();
         }
         return disc >= pointPixels;
+
+        double ReflectedFlux(Vector3d towardSun, double luminosity, ObjectId lightId)
+        {
+            double sunRange = towardSun.Length;
+            if (sunRange <= 0)
+                return 0;
+            Vector3d sunDirection = towardSun / sunRange;
+            double phase = Math.Clamp((1 + Vector3d.Dot(sunDirection, eyeDirection)) / 2, 0, 1);
+            if (parentId != lightId && CatalogueWorld?.FindStellarTarget(parentId) is null &&
+                snapshot.TryState(parentId, out var parent))
+            {
+                Vector3d parentOffset = bodyPosition - parent.PositionKilometers;
+                double alongSun = Vector3d.Dot(parentOffset, sunDirection);
+                double parentRadius = CatalogueWorld?.TargetRadiusKilometers(parentId) ??
+                    NavigationCamera.BodyRadiusKilometers(parentId);
+                if (alongSun < 0 && (parentOffset - sunDirection * alongSun).Length < parentRadius)
+                    return 0;
+            }
+            double ratio = radius / sunRange * (au / range);
+            return albedo * phase * ratio * ratio * luminosity;
+        }
     }
 
     private MeshInstance3D GetBodyPoint(ObjectId id)

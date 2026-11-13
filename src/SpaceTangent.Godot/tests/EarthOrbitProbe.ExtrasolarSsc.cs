@@ -64,6 +64,48 @@ public partial class EarthOrbitProbe
                 throw new IOException("Could not capture the extrasolar rings and moon.");
             GD.Print("Extrasolar SSC GPU: Sirius illumination, original ring map, independent moon and ring cameras through reload.");
 
+            var stellarHost = session.World.FindStellarTarget(star)!;
+            var lights = stellarHost.IsBarycenter ? session.World.Stellar.Stars.Where(entry =>
+                entry.BarycenterId == star && !entry.IsBarycenter).ToArray() : [stellarHost];
+            if (lights.Length == 0)
+                throw new InvalidOperationException("The original Sirius system needs a luminous component.");
+            double focalPixels = scene.Renderer(0).GetViewport().GetVisibleRect().Size.Y / (2 * Math.Tan(49 * Math.PI / 360));
+            const double radius = 60_000;
+            double range = radius * (1 + focalPixels / .8);
+            var far = Observer(ringed, epoch, range);
+            string farPath = Path.Combine(directory, "sirius-photometry.stscene");
+            ScenarioFile.Save(farPath, new([far, second], false, 0, 0, deltaT));
+            if (!scene.LoadScenario(farPath))
+                throw new InvalidOperationException("Could not open the distant Sirius view.");
+            var renderer = scene.Renderer(0);
+            if (renderer.BodyPoint(ringed) is not { Visible: true, MaterialOverride: ShaderMaterial photometry } point ||
+                renderer.ImportedRingNode(ringed)?.Visible != false ||
+                scene.Renderer(1).ImportedBodyNode(moon)?.Visible != true)
+                throw new InvalidOperationException("The unresolved Sirius planet must become a point while the close moon remains resolved.");
+            var eye = session[0].Navigation!.Value.ResolvePlacement(snapshot, deltaT).OffsetKilometers;
+            double flux = 0;
+            foreach (var light in lights)
+            {
+                Vector3d starward = (session.World.StellarOrigin - ringedState.PositionKilometers) + light.StateAt(epoch).PositionKilometers;
+                double phase = (1 + Vector3d.Dot(starward / starward.Length, eye / eye.Length)) / 2;
+                double absolute = light.AbsoluteMagnitude ?? light.VisualMagnitude - 5 * Math.Log10(light.DistanceParsecs / 10);
+                flux += Math.Pow(10, .4 * (4.83 - absolute)) * .5 * phase *
+                    Math.Pow(radius / starward.Length * 149597870.7 / range, 2);
+            }
+            float magnitude = photometry.GetShaderParameter("magnitude").AsSingle();
+            if (Math.Abs(magnitude - (-26.74 - 2.5 * Math.Log10(flux))) > 1e-4)
+                throw new InvalidOperationException("The point magnitude must use the light from Sirius.");
+            await ToSignal(RenderingServer.Singleton, RenderingServer.SignalName.FramePostDraw);
+            using var withPoint = renderer.GetViewport().GetTexture().GetImage();
+            Vector2I center = withPoint.GetSize() / 2;
+            point.Hide();
+            await ToSignal(RenderingServer.Singleton, RenderingServer.SignalName.FramePostDraw);
+            using var withoutPoint = renderer.GetViewport().GetTexture().GetImage();
+            point.Show();
+            if (withPoint.GetPixel(center.X, center.Y).IsEqualApprox(withoutPoint.GetPixel(center.X, center.Y)))
+                throw new InvalidOperationException("The Sirius point must change the center pixel.");
+            GD.Print($"Extrasolar photometry GPU: Sirius magnitude {magnitude:F5}, {lights.Length} stellar light sources, independent resolved moon.");
+
             ObserverView Observer(ObjectId id, JulianInstant time, double range)
             {
                 if (!session.World.Graph.Evaluate(time).TryState(id, out var state))

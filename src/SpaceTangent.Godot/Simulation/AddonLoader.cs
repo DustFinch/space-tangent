@@ -321,6 +321,17 @@ internal static partial class AddonLoader
         }
     }
 
+    private static IReadOnlyList<StellarEntry> PhotometricStars(SimulationWorld world, ObjectId host)
+    {
+        var primary = world.FindStellarTarget(host);
+        if (primary is null)
+            return [];
+        if (!primary.IsBarycenter)
+            return primary.DistanceParsecs > 0 ? [primary] : [];
+        return world.Stellar.Stars.Where(star => star.BarycenterId == primary.Id && !star.IsBarycenter &&
+            star.DistanceParsecs > 0).ToArray();
+    }
+
     private static IReadOnlyList<PreparedImportedBody> PublishImportedBodies(DecodedAddOns decoded, AddonGeneration? previous)
     {
         var sources = decoded.BodyCatalogues.Bodies.ToDictionary(body => body.Body);
@@ -354,9 +365,10 @@ internal static partial class AddonLoader
                 EllipsoidRadiiKilometers = definition.EllipsoidRadiiKilometers,
                 Surface = texture,
                 StellarHost = body.StellarHost,
-                PhotometricParent = body.StellarHost is null && body.Kind is (CatalogueKind.Planet or CatalogueKind.Moon or
+                PhotometricParent = body.Kind is (CatalogueKind.Planet or CatalogueKind.Moon or
                     CatalogueKind.DwarfPlanet or CatalogueKind.Asteroid or CatalogueKind.Comet) ? body.Parent : null,
                 GeometricAlbedo = definition.GeometricAlbedo ?? .5,
+                PhotometricStars = body.StellarHost is { } host ? PhotometricStars(decoded.World, host) : null,
                 Rings = definition.Rings is { } rings && input.RingMap is { } ringMap
                     ? new(rings, PublishMissionTexture(rings.TexturePath, ringMap)) : null,
                 MeshSpan = definition.EllipsoidRadiiKilometers is not null ? bounds?.Span : null,

@@ -54,7 +54,7 @@ With a body selected, press ? for its light travel time or − to move the clock
 
 ## Observation events
 
-Use Ctrl+E in a view to search from its current epoch. Select a spacecraft with TLE data for passes above 10° during the next two days, or a planet for close conjunctions over the next 45 days. With the Sun selected the search uses the observer's site for solar eclipses. The default search also includes lunar eclipses.
+Use Ctrl+E in a view to search from its current epoch. Select a spacecraft with TLE data for passes above 10° during the next two days, or a planet for close conjunctions over the next 45 days. With the Sun selected the search uses the observer's site for solar eclipses. The default search also includes lunar eclipses. For a selected first-generation Iridium with a historical TLE, the search returns its next predicted antenna flare within two days when one is visible. The same shortcut returns a pass when there is no flare in that interval.
 
 The status line gives the next result and its peak time. Press Ctrl+Shift+E to open it in the view that ran the search. Independent views keep their epochs and cameras. A changed target, site, clock model or add-on generation requires a fresh search.
 

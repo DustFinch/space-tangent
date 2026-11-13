@@ -26,6 +26,17 @@ public static class ObserverEventFinder
             var end = SearchEnd(2);
             if (end.CompareTo(from) <= 0)
                 return null;
+            if (local is not null && ObservationEventSearch.HasFlarePanels(local))
+            {
+                var flares = ObservationEventSearch.FindSatelliteFlares(ephemeris, local, site, deltaT,
+                    from, end, cancellation: cancellation);
+                if (flares.Count != 0)
+                {
+                    var flare = flares[0];
+                    return new(flare.Peak, selected, FormattableString.Invariant(
+                        $"{spacecraft.Name} flare · magnitude {flare.Magnitude:F1} · {flare.Horizontal.AltitudeDegrees:F1}° altitude"));
+                }
+            }
             foreach (var pass in ObservationEventSearch.FindSatellitePasses(ephemeris, State, site, deltaT,
                          from, end, 10, cancellation))
                 events.Add(new(pass.AboveHorizon.Peak, selected,

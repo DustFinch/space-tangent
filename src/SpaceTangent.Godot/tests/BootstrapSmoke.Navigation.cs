@@ -55,6 +55,10 @@ public partial class BootstrapSmoke
         var pose = session[0].Navigation!.Value;
         viewport.EmitSignal(Control.SignalName.GuiInput,
             new InputEventMouseMotion { ButtonMask = MouseButtonMask.Right, Relative = new(40, -20) });
+        var orbited = session[0].Navigation!.Value;
+        Require(Math.Abs(Math.IEEERemainder(orbited.AzimuthRadians - pose.AzimuthRadians, Math.Tau) + .12) < 1e-12 &&
+                Math.Abs(orbited.ElevationRadians - pose.ElevationRadians - .06) < 1e-12,
+            "A tracking orbit must use the archived angle per pixel.");
         viewport.EmitSignal(Control.SignalName.GuiInput,
             new InputEventMouseButton { Pressed = true, ButtonIndex = MouseButton.WheelUp });
         var adjusted = session[0].Navigation!.Value;
@@ -82,7 +86,28 @@ public partial class BootstrapSmoke
         Require(Math.Abs(session[0].EffectiveFieldOfView - surface.EffectiveFieldOfView * .85) < 1e-12 &&
                 session[0].EarthObserver == surface.EarthObserver && session[1] == lunar,
             "The observatory wheel must narrow its field without changing the observing site or other view.");
+        var ground = session[0].EarthObserver ?? EarthObserverCamera.Moscow;
+        using var drag = new InputEventMouseMotion { ButtonMask = MouseButtonMask.Right, Relative = new(40, -20) };
+        viewport.EmitSignal(Control.SignalName.GuiInput, drag);
+        double groundScale = Math.Tan(session[0].EffectiveFieldOfView * Math.PI / 360) / Math.Tan(25 * Math.PI / 180);
+        var turnedGround = session[0].EarthObserver!.Value;
+        Require(turnedGround.Site == ground.Site && session[1] == lunar &&
+                Math.Abs(turnedGround.AzimuthDegrees - ground.AzimuthDegrees - .12 * groundScale * 180 / Math.PI) < 1e-10 &&
+                Math.Abs(turnedGround.ElevationDegrees - ground.ElevationDegrees - .06 * groundScale * 180 / Math.PI) < 1e-10,
+            "A ground drag must turn the view by its optical field while keeping the site and other view.");
+
         scene.SetMode(0, CameraMode.Solar);
+        session.StartFreeFlight(0);
+        session.SetFieldOfView(0, 10);
+        var free = session[0].Navigation!.Value;
+        viewport.EmitSignal(Control.SignalName.GuiInput, drag);
+        var turned = session[0].Navigation!.Value;
+        double freeScale = Math.Tan(5 * Math.PI / 180) / Math.Tan(25 * Math.PI / 180);
+        Require(turned.AnchorKilometers == free.AnchorKilometers && turned.RangeKilometers == free.RangeKilometers &&
+                turned.Placement!.Value.Forward != free.Placement!.Value.Forward && session[1] == lunar &&
+                Math.Abs(Math.IEEERemainder(turned.AzimuthRadians - free.AzimuthRadians, Math.Tau) + .12 * freeScale) < 1e-12,
+            "A free drag must turn at its own field of view without translating the eye or the second view.");
+
         session.SetFieldOfView(0, priorField);
         JulianInstant beforeJason = session[0].Epoch;
         Select("26997");

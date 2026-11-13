@@ -1410,7 +1410,7 @@ public partial class SolarSystemScene : Control
             InputEventMouseButton { Pressed: true, ButtonIndex: MouseButton.WheelUp or MouseButton.WheelDown } wheel =>
                 AdjustWheel(view, wheel),
             InputEventMouseMotion motion when (motion.ButtonMask & MouseButtonMask.Right) != 0 =>
-                Session!.AdjustCamera(view, -.006 * motion.Relative.X, .006 * motion.Relative.Y, 1),
+                AdjustDrag(view, motion.Relative),
             _ => false
         };
         if (adjusted)
@@ -1418,6 +1418,37 @@ public partial class SolarSystemScene : Control
             GetViewport().SetInputAsHandled();
             Refresh();
         }
+    }
+
+    private bool AdjustDrag(int view, Vector2 pixels)
+    {
+        var session = Session!;
+        if (!pixels.IsFinite())
+            return false;
+        if (session.InShip(view))
+            return session.AdjustCamera(view, -.006 * pixels.X, .006 * pixels.Y, 1);
+
+        var observer = session[view];
+        bool ground = observer is { Mode: CameraMode.Surface, Navigation: null };
+        bool look = ground || observer.Navigation is { Target: null };
+        const double radiansPerPixel = .003;
+        double sensitivity = look
+            ? Math.Tan(observer.EffectiveFieldOfView * Math.PI / 360) / Math.Tan(50 * Math.PI / 360)
+            : 1;
+        double yaw = Math.Clamp(-pixels.X * radiansPerPixel * sensitivity, -1, 1);
+        double pitch = Math.Clamp(-pixels.Y * radiansPerPixel * sensitivity, -1, 1);
+        if (!ground)
+            return session.AdjustCamera(view, yaw, pitch, 1);
+
+        var camera = observer.EarthObserver ?? EarthObserverCamera.Moscow;
+        double direction = observer.ActiveOptics?.Inverted == true ? -1 : 1;
+        double azimuth = (camera.AzimuthDegrees - direction * yaw * (180 / Math.PI)) % 360;
+        session.SetEarthObserver(view, camera with
+        {
+            AzimuthDegrees = azimuth < 0 ? azimuth + 360 : azimuth,
+            ElevationDegrees = Math.Clamp(camera.ElevationDegrees + direction * pitch * (180 / Math.PI), -89, 89)
+        });
+        return true;
     }
 
     private bool AdjustWheel(int view, InputEventMouseButton wheel)

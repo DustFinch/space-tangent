@@ -16,6 +16,7 @@ internal partial class SimulationViewport
     private EarthOrbitTextures? _archivedEarthMaps;
     internal MeshInstance3D? ArchivedEarthLimb { get; private set; }
     private int _archivedUsed;
+    private readonly Vector4[] _archivedBlockers = new Vector4[4];
     private readonly List<MeshInstance3D> _archivedPointPool = [];
     private readonly Dictionary<string, MeshInstance3D> _archivedPoints = new(StringComparer.Ordinal);
     private int _archivedPointsUsed;
@@ -119,6 +120,7 @@ internal partial class SimulationViewport
             material.SetShaderParameter("tint", id == SolarSystemSample.SunId ? new Color("ffd18d") :
                 id == SolarSystemSample.EarthId ? new Color("4a76ad") : globeMaterial?.AlbedoColor ?? new Color("b8b0a6"));
             material.SetShaderParameter("emissive", id == SolarSystemSample.SunId);
+            BindArchivedShadows(material, scene, body, radius);
             material.SetShaderParameter("camera_light", Column(body.LightDirection));
             material.SetShaderParameter("light_color", Column(body.LightColor));
             material.SetShaderParameter("camera_secondary_light", Column(body.SecondLightDirection));
@@ -141,6 +143,30 @@ internal partial class SimulationViewport
         DrawArchivedComets(scene.CometTails, scale);
 
         static Vector3 Column(Vector3d value) => new((float)value.X, (float)value.Y, (float)value.Z);
+    }
+
+    private void BindArchivedShadows(ShaderMaterial material, RecordedSceneGeometry scene, RecordedBodyGeometry body, float renderRadius)
+    {
+        int count = 0;
+        foreach (var blocker in scene.Shadows)
+        {
+            if (!string.Equals(blocker.Receiver, body.Name, StringComparison.Ordinal))
+                continue;
+            Vector3d offset = (blocker.Center - body.CameraPosition) / body.Radius;
+            _archivedBlockers[count++] = new((float)offset.X, (float)offset.Y, (float)offset.Z, (float)(blocker.Radius / body.Radius));
+            if (count == _archivedBlockers.Length)
+                break;
+        }
+        material.SetShaderParameter("archived_shadow_count", count);
+        if (count == 0)
+            return;
+        Vector3d sun = (scene.SunPosition - body.CameraPosition) / body.Radius;
+        material.SetShaderParameter("archived_blockers", _archivedBlockers);
+        material.SetShaderParameter("archived_render_radius", renderRadius);
+        material.SetShaderParameter("archived_sun", new Vector3((float)sun.X, (float)sun.Y, (float)sun.Z));
+        material.SetShaderParameter("archived_sun_radius", (float)(scene.SunRadius / body.Radius));
+        material.SetShaderParameter("archived_light_angle", (float)body.LightAngularRadius);
+        material.SetShaderParameter("archived_second_angle", (float)body.SecondLightAngularRadius);
     }
 
     private void DrawArchivedEarthLimb(MeshInstance3D surface, RecordedBodyGeometry body, double kilometersPerUnit,

@@ -18,6 +18,8 @@ public readonly record struct RecordedBodyPoint(string Name, double Magnitude, V
 public readonly record struct RecordedCometTail(string Name, Vector3d Head, Vector3d Direction, Vector3d Trail,
     double Length, double Width, double Brightness, Vector3d Color, double ComaRadius);
 
+public readonly record struct RecordedShadow(string Receiver, Vector3d Center, double Radius);
+
 internal sealed class LegacyFrameOverlays
 {
     private readonly List<IReadOnlyList<Vector3d>> _geometry = [];
@@ -25,6 +27,8 @@ internal sealed class LegacyFrameOverlays
     private RecordedLabel[] _lastLabels = [];
     private RecordedBodyPoint[] _lastPoints = [];
     private RecordedCometTail[] _lastTails = [];
+    private RecordedShadow[] _lastShadows = [];
+    private IReadOnlyList<RecordedShadow> _shadows = [];
     private IReadOnlyList<RecordedCometTail> _tails = [];
     private IReadOnlyDictionary<string, RecordedBodyPoint> _points =
         new System.Collections.ObjectModel.ReadOnlyDictionary<string, RecordedBodyPoint>(new Dictionary<string, RecordedBodyPoint>());
@@ -47,7 +51,7 @@ internal sealed class LegacyFrameOverlays
         _geometry.Add(Array.AsReadOnly(points));
     }
 
-    internal (IReadOnlyList<RecordedOrbit>, IReadOnlyList<RecordedLabel>, IReadOnlyDictionary<string, RecordedBodyPoint>, IReadOnlyList<RecordedCometTail>, int StellarOffset) Read(ReadOnlySpan<byte> data,
+    internal (IReadOnlyList<RecordedOrbit>, IReadOnlyList<RecordedLabel>, IReadOnlyDictionary<string, RecordedBodyPoint>, IReadOnlyList<RecordedCometTail>, IReadOnlyList<RecordedShadow>, int StellarOffset) Read(ReadOnlySpan<byte> data,
         int offset, int minor, IReadOnlyList<string> strings)
     {
         int stars = Count(data, 100, 256), orbitCount = Count(data, 102, 128);
@@ -74,7 +78,19 @@ internal sealed class LegacyFrameOverlays
                 worldFrame == 1 ? worldToCamera : Basis3d.Identity, color, fade);
         }
 
-        reader.Skip(shadows * 20);
+        var blockers = new RecordedShadow[shadows];
+        for (int index = 0; index < blockers.Length; index++)
+        {
+            var blocker = new RecordedShadow(reader.Text(strings), reader.Vector(), reader.Float());
+            if (blocker.Radius <= 0)
+                throw new InvalidDataException("Invalid archived shadow radius.");
+            blockers[index] = blocker;
+        }
+        if (!blockers.AsSpan().SequenceEqual(_lastShadows))
+        {
+            Charge(blockers.Length);
+            _shadows = Array.AsReadOnly(_lastShadows = blockers);
+        }
         var bodyPoints = new RecordedBodyPoint[points];
         for (int index = 0; index < bodyPoints.Length; index++)
         {
@@ -137,7 +153,7 @@ internal sealed class LegacyFrameOverlays
             Charge(tails.Length);
             _tails = Array.AsReadOnly(_lastTails = tails);
         }
-        return (_orbits, _labels, _points, _tails, data.Length - reader.Remaining);
+        return (_orbits, _labels, _points, _tails, _shadows, data.Length - reader.Remaining);
 
         Vector3d Turn(Vector3d value)
         {

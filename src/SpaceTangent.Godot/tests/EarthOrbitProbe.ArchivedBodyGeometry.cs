@@ -9,6 +9,51 @@ namespace SpaceTangent.Godot.Tests;
 
 public partial class EarthOrbitProbe
 {
+    private async Task ExerciseArchivedShadows(SolarSystemScene scene, string directory, string recording)
+    {
+        string saved = Path.Combine(directory, "before-archived-shadows.stscene");
+        if (!scene.SaveScenario(saved) || !scene.StartReplay(recording))
+            throw new InvalidOperationException("Could not replay the original solar eclipse.");
+        scene.SetProcess(false);
+        try
+        {
+            var renderer = scene.Renderer(0);
+            var geometry = renderer.ArchivedGeometry!;
+            var shadow = geometry.Shadows.Single(item => item.Receiver == "Sol/Earth");
+            double radiusKm = shadow.Radius * geometry.KilometersPerUnit;
+            if (radiusKm is < 1736 or > 1739 ||
+                renderer.ArchivedBody("Sol/Earth")?.MaterialOverride is not ShaderMaterial material ||
+                material.GetShaderParameter("archived_shadow_count").AsInt32() != 1)
+                throw new InvalidOperationException("The Moon's recorded shadow geometry was not bound to Earth.");
+            await ToSignal(RenderingServer.Singleton, RenderingServer.SignalName.FramePostDraw);
+            using var eclipsed = renderer.GetViewport().GetTexture().GetImage();
+            material.SetShaderParameter("archived_shadow_count", 0);
+            await ToSignal(RenderingServer.Singleton, RenderingServer.SignalName.FramePostDraw);
+            using var lit = renderer.GetViewport().GetTexture().GetImage();
+            int pixels = 0;
+            float darkest = 0;
+            for (int y = 0; y < eclipsed.GetHeight(); y++)
+            for (int x = 0; x < eclipsed.GetWidth(); x++)
+            {
+                float change = lit.GetPixel(x, y).Luminance - eclipsed.GetPixel(x, y).Luminance;
+                if (change > .03f)
+                    pixels++;
+                darkest = Math.Max(darkest, change);
+            }
+            if (pixels < 30 || darkest < .15f ||
+                eclipsed.SavePng(Path.Combine(directory, "archived-eclipse.png")) != Error.Ok ||
+                lit.SavePng(Path.Combine(directory, "archived-eclipse-control.png")) != Error.Ok)
+                throw new InvalidOperationException($"The recorded Earth shadow changed {pixels} pixels with contrast {darkest:F3}.");
+            if (!scene.LoadScenario(saved) || renderer.ArchivedGeometry is not null)
+                throw new InvalidOperationException("The recorded Earth shadow persisted outside replay.");
+            GD.Print($"Archived eclipse GPU: original Moon radius {radiusKm:F2} km, {pixels} darkened pixels, contrast {darkest:F3}.");
+        }
+        finally
+        {
+            scene.SetProcess(true);
+        }
+    }
+
     private async Task ExerciseArchivedComets(SolarSystemScene scene, string directory, string recording)
     {
         string saved = Path.Combine(directory, "before-archived-comets.stscene");

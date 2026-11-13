@@ -14,6 +14,7 @@ public readonly record struct RecordedBodyGeometry(string Name, ObjectId? Id, Ve
     public double RingInnerRadius { get; init; }
     public double RingOuterRadius { get; init; }
     public double LightAngularRadius { get; init; }
+    public double SecondLightAngularRadius { get; init; }
 }
 
 public sealed record RecordedSceneGeometry(double KilometersPerUnit, IReadOnlyList<RecordedBodyGeometry> Bodies)
@@ -22,6 +23,9 @@ public sealed record RecordedSceneGeometry(double KilometersPerUnit, IReadOnlyLi
     public IReadOnlyList<RecordedLabel> Labels { get; init; } = [];
     public RecordedStellarView? StellarView { get; init; }
     public IReadOnlyList<RecordedCometTail> CometTails { get; init; } = [];
+    public IReadOnlyList<RecordedShadow> Shadows { get; init; } = [];
+    public Vector3d SunPosition { get; init; }
+    public double SunRadius { get; init; }
     public IReadOnlyDictionary<string, RecordedBodyPoint> BodyPoints { get; init; } =
         new System.Collections.ObjectModel.ReadOnlyDictionary<string, RecordedBodyPoint>(new Dictionary<string, RecordedBodyPoint>());
 }
@@ -147,22 +151,30 @@ public sealed class LegacyCameraSequence : IObserverReplay
                     throw new InvalidDataException("Invalid archived atmosphere radius.");
                 float inner = Single(body[52..]), outer = Single(body[56..]);
                 float lightRadius = minor >= 6 ? Single(body[129..]) : 0;
+                float secondLightRadius = minor >= 6 ? Single(body[133..]) : 0;
                 if (!float.IsFinite(inner) || !float.IsFinite(outer) || inner < 0 || outer < inner ||
                     outer > 0 && inner < radius || !float.IsFinite((float)(outer / radius)) ||
-                    !float.IsFinite(lightRadius) || lightRadius < 0)
+                    !float.IsFinite(lightRadius) || lightRadius < 0 || !float.IsFinite(secondLightRadius) || secondLightRadius < 0)
                     throw new InvalidDataException("Invalid archived ring radii or light angular radius.");
                 geometry[index] = new(strings[(int)id], key, position, radius, polarScale, basis,
                     light, lightColor, secondDirection, secondColor, atmosphereRadius)
                 {
-                    RingInnerRadius = inner, RingOuterRadius = outer, LightAngularRadius = lightRadius
+                    RingInnerRadius = inner, RingOuterRadius = outer, LightAngularRadius = lightRadius,
+                    SecondLightAngularRadius = secondLightRadius
                 };
             }
-            var (orbits, labels, points, tails, stellarOffset) = overlays.Read(data, cursor, minor, strings);
+            var (orbits, labels, points, tails, shadows, stellarOffset) = overlays.Read(data, cursor, minor, strings);
+            var sunPosition = Vector(data[81..]);
+            double sunRadius = Single(data[93..]);
+            if (!sunPosition.IsFinite || !double.IsFinite(sunRadius) || sunRadius < 0)
+                throw new InvalidDataException("Invalid archived solar geometry.");
             var stellarView = minor >= 10 ? stellar.ReadView(data, stellarOffset) : null;
             if (previousGeometry is null || previousGeometry.KilometersPerUnit != scale ||
                 !geometry.AsSpan().SequenceEqual(previousBodies) ||
                 !ReferenceEquals(orbits, previousGeometry.Orbits) || !ReferenceEquals(labels, previousGeometry.Labels) || previousGeometry.StellarView != stellarView ||
-                !ReferenceEquals(points, previousGeometry.BodyPoints) || !ReferenceEquals(tails, previousGeometry.CometTails))
+                !ReferenceEquals(points, previousGeometry.BodyPoints) || !ReferenceEquals(tails, previousGeometry.CometTails) ||
+                !ReferenceEquals(shadows, previousGeometry.Shadows) || previousGeometry.SunPosition != sunPosition ||
+                previousGeometry.SunRadius != sunRadius)
             {
                 if (!geometry.AsSpan().SequenceEqual(previousBodies))
                     retainedBodies += geometry.Length;
@@ -170,7 +182,11 @@ public sealed class LegacyCameraSequence : IObserverReplay
                     throw new InvalidDataException("Archived replay exceeds the body geometry budget.");
                 var savedBodies = previousGeometry is not null && geometry.AsSpan().SequenceEqual(previousBodies)
                     ? previousGeometry.Bodies : Array.AsReadOnly(geometry);
-                previousGeometry = new(scale, savedBodies) { Orbits = orbits, Labels = labels, StellarView = stellarView, BodyPoints = points, CometTails = tails };
+                previousGeometry = new(scale, savedBodies)
+                {
+                    Orbits = orbits, Labels = labels, StellarView = stellarView, BodyPoints = points, CometTails = tails,
+                    Shadows = shadows, SunPosition = sunPosition, SunRadius = sunRadius
+                };
                 previousBodies = geometry;
             }
             _geometry.Add(previousGeometry);

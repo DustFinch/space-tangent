@@ -29,7 +29,7 @@ try
     DecodedScienceModel model = extension switch
     {
         ".obj" => ScienceModelDecoder.Decode(source),
-        ".cmod" => CmodMeshDecoder.DecodeForTriangleExport(root, source, nativeBody),
+        ".cmod" => CmodMeshDecoder.DecodeForModelExport(root, source, nativeBody),
         ".cms" => DisplacedSphereDecoder.Decode(source),
         ".3ds" => StudioMeshDecoder.Decode(root, source),
         ".glb" or ".gltf" => PackedModelDecoder.Decode(root, source),
@@ -54,7 +54,7 @@ try
         if (created)
             File.Delete(temporary);
     }
-    Console.WriteLine($"{model.Surfaces.Sum(surface => surface.Positions.Length / 3)} triangles, {model.Textures.Count} images -> {target}");
+    Console.WriteLine($"{model.Surfaces.Sum(surface => surface.Positions.Length / 3)} triangles, {model.Sprites.Count} sprites, {model.Textures.Count} images -> {target}");
     return 0;
 }
 catch (Exception error) when (AddonDiagnostics.Annotate(error, AddonStage.Mesh, input))

@@ -14,10 +14,9 @@ public static class PackedModelWriter
 
     public static void Write(DecodedScienceModel model, Stream output)
     {
-        if (model.Sprites.Count > 0)
-            throw new NotSupportedException("GLB cannot preserve this model's camera-facing sprites.");
-        if (model.Surfaces.Count is 0 or > 128)
-            throw new InvalidDataException("GLB export requires one to 128 triangle surfaces.");
+        if (model.Surfaces.Count > 128 || model.Sprites.Count > 1_000_000 ||
+            model.Surfaces.Count == 0 && model.Sprites.Count == 0)
+            throw new InvalidDataException("Invalid surface or sprite count for GLB export.");
 
         using var binary = new MemoryStream();
         using var data = new BinaryWriter(binary);
@@ -55,6 +54,9 @@ public static class PackedModelWriter
             primitives.Add(new JsonObject { ["attributes"] = attributes, ["material"] = materials.Count });
             materials.Add(Material(surface.Material));
         }
+
+        if (model.Sprites.Count > 0)
+            WriteSprites();
 
         int unpaddedBinaryLength = (int)binary.Length;
         Align(data, binary.Length, 0);
@@ -96,6 +98,50 @@ public static class PackedModelWriter
         writer.Write((int)binary.Length);
         writer.Write(0x004e4942u);
         binary.WriteTo(output);
+
+        void WriteSprites()
+        {
+            int count = model.Sprites.Count;
+            if (binary.Length + count * 32L > MaximumBytes)
+                throw new InvalidDataException("GLB export exceeds 64 MiB.");
+
+            int start = (int)binary.Position;
+            Vector3d minimum = new(double.PositiveInfinity, double.PositiveInfinity, double.PositiveInfinity);
+            Vector3d maximum = new(double.NegativeInfinity, double.NegativeInfinity, double.NegativeInfinity);
+            foreach (var sprite in model.Sprites)
+            {
+                var p = new Vector3d(Finite(sprite.Position.X), Finite(sprite.Position.Y), Finite(sprite.Position.Z));
+                data.Write((float)p.X);
+                data.Write((float)p.Y);
+                data.Write((float)p.Z);
+                minimum = new(Math.Min(minimum.X, p.X), Math.Min(minimum.Y, p.Y), Math.Min(minimum.Z, p.Z));
+                maximum = new(Math.Max(maximum.X, p.X), Math.Max(maximum.Y, p.Y), Math.Max(maximum.Z, p.Z));
+            }
+            int positions = AddAccessor(start, count, "VEC3");
+            accessors[positions]!["min"] = new JsonArray(minimum.X, minimum.Y, minimum.Z);
+            accessors[positions]!["max"] = new JsonArray(maximum.X, maximum.Y, maximum.Z);
+
+            start = (int)binary.Position;
+            foreach (var sprite in model.Sprites)
+            {
+                data.Write(Finite(sprite.Color.X));
+                data.Write(Finite(sprite.Color.Y));
+                data.Write(Finite(sprite.Color.Z));
+                data.Write(Finite(sprite.Opacity));
+            }
+            int colors = AddAccessor(start, count, "VEC4");
+
+            start = (int)binary.Position;
+            foreach (var sprite in model.Sprites)
+                data.Write(Finite(sprite.Size));
+            int sizes = AddAccessor(start, count, "SCALAR");
+
+            primitives.Add(new JsonObject
+            {
+                ["mode"] = 0,
+                ["attributes"] = new JsonObject { ["POSITION"] = positions, ["COLOR_0"] = colors, ["_POINTSIZE"] = sizes }
+            });
+        }
 
         int WriteVectors(ReadOnlySpan<Vector3d> vectors, bool bounds)
         {

@@ -15,8 +15,10 @@ internal static partial class AddonLoader
         long count = 0;
         foreach (var body in index.Objects)
         {
-            if (body.Kind != DeepSkyKind.Nebula || body.Mesh is not { Length: > 0 } name ||
-                !Path.GetExtension(name).Equals(".cmod", StringComparison.OrdinalIgnoreCase))
+            if (body.Kind != DeepSkyKind.Nebula || body.Mesh is not { Length: > 0 } name)
+                continue;
+            string extension = Path.GetExtension(name).ToLowerInvariant();
+            if (extension is not (".cmod" or ".gltf" or ".glb"))
                 continue;
 
             cancellation.ThrowIfCancellationRequested();
@@ -24,7 +26,11 @@ internal static partial class AddonLoader
             {
                 string path = DeepSkyIndex.ResolveMesh(root, body);
                 if (!models.TryGetValue(path, out var model))
-                    models.Add(path, model = CmodMeshDecoder.DecodeSprites(path, cancellation));
+                {
+                    model = extension == ".cmod" ? CmodMeshDecoder.DecodeSprites(path, cancellation) :
+                        PackedModelDecoder.DecodeSprites(root, path, cancellation);
+                    models.Add(path, model);
+                }
                 sprites.Add(body.Id, model);
             }
             catch (Exception error) when (error is IOException or InvalidDataException or NotSupportedException)

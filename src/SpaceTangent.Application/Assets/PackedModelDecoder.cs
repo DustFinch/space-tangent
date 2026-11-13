@@ -14,7 +14,7 @@ public static partial class PackedModelDecoder
     private const uint Magic = 0x46546c67, JsonChunk = 0x4e4f534a, BinaryChunk = 0x004e4942;
     private const string DdsExtension = "MSFT_texture_dds";
     private const string EmissiveExtension = "KHR_materials_emissive_strength";
-    private const int MaximumModelBytes = 64 * 1024 * 1024, MaximumCorners = 3_000_000, MaximumSurfaces = 128;
+    private const int MaximumModelBytes = 64 * 1024 * 1024, MaximumCorners = 3_000_000, MaximumSurfaces = 128, MaximumSprites = 1_000_000;
     private static readonly DecodedMaterial White = new(new(1, 1, 1), 1, null);
 
     public static DecodedScienceModel Decode(string path, CancellationToken cancellation = default) =>
@@ -23,13 +23,18 @@ public static partial class PackedModelDecoder
     public static DecodedScienceModel Decode(string root, string path, CancellationToken cancellation = default) =>
         AddonDiagnostics.Read(AddonStage.Mesh, path, () => Read(root, path, cancellation));
 
-    private static DecodedScienceModel Read(string addOnRoot, string path, CancellationToken cancellation)
+    public static IReadOnlyList<DecodedModelSprite> DecodeSprites(string root, string path, CancellationToken cancellation = default) =>
+        AddonDiagnostics.Read(AddonStage.Mesh, path, () => Read(root, path, cancellation, spritesOnly: true).Sprites);
+
+    private static DecodedScienceModel Read(string addOnRoot, string path, CancellationToken cancellation, bool spritesOnly = false)
     {
         using FileStream stream = AddonDependencies.OpenRead(path, MaximumModelBytes);
+        if (stream.Length > MaximumModelBytes)
+            throw new InvalidDataException("The glTF model exceeds 64 MiB.");
         if (Path.GetExtension(path).Equals(".gltf", StringComparison.OrdinalIgnoreCase))
         {
             using var text = JsonDocument.Parse(stream);
-            return ReadScene(text.RootElement, null, addOnRoot, path, cancellation);
+            return ReadScene(text.RootElement, null, addOnRoot, path, cancellation, spritesOnly);
         }
         if (stream.Length is < 20 or > MaximumModelBytes)
             throw new InvalidDataException("Invalid GLB model length.");
@@ -42,7 +47,7 @@ public static partial class PackedModelDecoder
         if (stream.Position != stream.Length)
             throw new InvalidDataException("Unexpected trailing chunks in the GLB model.");
         using var doc = JsonDocument.Parse(json);
-        return ReadScene(doc.RootElement, binary, addOnRoot, path, cancellation);
+        return ReadScene(doc.RootElement, binary, addOnRoot, path, cancellation, spritesOnly);
 
         byte[] Chunk(uint kind)
         {
@@ -57,7 +62,7 @@ public static partial class PackedModelDecoder
         }
     }
 
-    private static DecodedScienceModel ReadScene(JsonElement root, byte[]? binary, string addOnRoot, string path, CancellationToken cancellation)
+    private static DecodedScienceModel ReadScene(JsonElement root, byte[]? binary, string addOnRoot, string path, CancellationToken cancellation, bool spritesOnly)
     {
         JsonElement meshes = root.GetProperty("meshes");
         JsonElement buffers = root.GetProperty("buffers");
@@ -84,24 +89,19 @@ public static partial class PackedModelDecoder
         JsonElement views = root.GetProperty("bufferViews"), accessors = root.GetProperty("accessors");
         var textures = new Dictionary<string, ReadOnlyMemory<byte>>(StringComparer.Ordinal);
         var surfaces = new List<DecodedSurface>();
+        var sprites = new List<DecodedModelSprite>();
         var minimum = new Vector3d(double.PositiveInfinity, double.PositiveInfinity, double.PositiveInfinity);
         var maximum = new Vector3d(double.NegativeInfinity, double.NegativeInfinity, double.NegativeInfinity);
-        int corners = 0;
+        int corners = 0, spriteBounds = 0;
         foreach (var (mesh, transform) in SceneMeshes(root, cancellation))
         foreach (var primitive in meshes[mesh].GetProperty("primitives").EnumerateArray())
         {
             cancellation.ThrowIfCancellationRequested();
             int mode = Int(primitive, "mode", 4);
-            if (mode is not (4 or 5 or 6))
+            if (mode is not (0 or 4 or 5 or 6))
                 continue;
-            if (surfaces.Count >= MaximumSurfaces || !Matrix4x4.Invert(transform, out var inverse))
-                throw new InvalidDataException("glTF exceeds the surface budget or contains a singular transform.");
-            var normalMatrix = Matrix4x4.Transpose(inverse);
-            bool mirrored = transform.GetDeterminant() < 0;
             var fields = primitive.GetProperty("attributes");
             var position = Access(fields.GetProperty("POSITION").GetInt32(), "VEC3", 5126, 12);
-            var normal = fields.TryGetProperty("NORMAL", out var n) ? Access(n.GetInt32(), "VEC3", 5126, 12) : default;
-            var uv = fields.TryGetProperty("TEXCOORD_0", out var t) ? Access(t.GetInt32(), "VEC2", 5126, 8) : default;
             var indices = default(ModelAccessor);
             int indexSize = 0;
             if (primitive.TryGetProperty("indices", out var index))
@@ -111,6 +111,34 @@ public static partial class PackedModelDecoder
                 indices = Access(index.GetInt32(), "SCALAR", indexType, indexSize);
             }
             int points = indexSize == 0 ? position.Count : indices.Count;
+            if (mode == 0)
+            {
+                if (points > MaximumSprites - sprites.Count)
+                    throw new InvalidDataException("The glTF model contains too many point sprites.");
+                ReadSprites(primitive, fields, position, points, transform, VertexIndex);
+                continue;
+            }
+
+            if (spritesOnly)
+            {
+                if (points > MaximumCorners - spriteBounds)
+                    throw new InvalidDataException("glTF exceeds the sprite bounds budget.");
+                spriteBounds += points;
+                for (int i = 0; i < points; i++)
+                {
+                    if ((i & 4095) == 0)
+                        cancellation.ThrowIfCancellationRequested();
+                    AddBounds(Checked(Vector3.Transform(Vector(position, VertexIndex(i)), transform)));
+                }
+                continue;
+            }
+
+            if (surfaces.Count >= MaximumSurfaces || !Matrix4x4.Invert(transform, out var inverse))
+                throw new InvalidDataException("glTF exceeds the surface budget or contains a singular transform.");
+            var normalMatrix = Matrix4x4.Transpose(inverse);
+            bool mirrored = transform.GetDeterminant() < 0;
+            var normal = fields.TryGetProperty("NORMAL", out var n) ? Access(n.GetInt32(), "VEC3", 5126, 12) : default;
+            var uv = fields.TryGetProperty("TEXCOORD_0", out var t) ? Access(t.GetInt32(), "VEC2", 5126, 8) : default;
             long count = mode == 4 ? points : Math.Max(0, points - 2) * 3L;
             if (normal.Count != 0 && position.Count != normal.Count || uv.Count != 0 && position.Count != uv.Count ||
                 count % 3 != 0 || count < 3 || count > MaximumCorners - corners)
@@ -134,15 +162,8 @@ public static partial class PackedModelDecoder
                     6 => corner == 0 ? 0 : triangle + corner,
                     _ => triangle * 3 + corner
                 };
-                uint vertex = (uint)input;
-                if (indexSize != 0)
-                {
-                    var bytes = indices.Data.Span.Slice(indices.Offset + input * indices.Stride, indexSize);
-                    vertex = indexSize switch { 1 => bytes[0], 2 => BinaryPrimitives.ReadUInt16LittleEndian(bytes), _ => Word(bytes) };
-                }
-                if (vertex >= position.Count)
-                    throw new InvalidDataException("A packed triangle index is outside its vertex range.");
-                Vector3d p = vertices[at] = Checked(Vector3.Transform(Vector(position, (int)vertex), transform));
+                int vertex = VertexIndex(input);
+                Vector3d p = vertices[at] = Checked(Vector3.Transform(Vector(position, vertex), transform));
                 if (normal.Count != 0)
                 {
                     var direction = Checked(Vector3.TransformNormal(Vector(normal, (int)vertex), normalMatrix));
@@ -153,8 +174,7 @@ public static partial class PackedModelDecoder
                     coordinates[at * 2] = Float(uv, (int)vertex, 0);
                     coordinates[at * 2 + 1] = Float(uv, (int)vertex, 1);
                 }
-                minimum = new(Math.Min(minimum.X, p.X), Math.Min(minimum.Y, p.Y), Math.Min(minimum.Z, p.Z));
-                maximum = new(Math.Max(maximum.X, p.X), Math.Max(maximum.Y, p.Y), Math.Max(maximum.Z, p.Z));
+                AddBounds(p);
             }
             for (int i = 0; i < triangleCorners; i += 3)
             {
@@ -169,11 +189,89 @@ public static partial class PackedModelDecoder
             }
             var material = primitive.TryGetProperty("material", out var selected) ? Material(selected.GetInt32()) : White;
             surfaces.Add(new(vertices, normals, coordinates, material));
+
+            int VertexIndex(int input)
+            {
+                uint vertex = (uint)input;
+                if (indexSize != 0)
+                {
+                    var bytes = indices.Data.Span.Slice(indices.Offset + input * indices.Stride, indexSize);
+                    vertex = indexSize switch { 1 => bytes[0], 2 => BinaryPrimitives.ReadUInt16LittleEndian(bytes), _ => Word(bytes) };
+                }
+                return vertex < position.Count ? (int)vertex : throw new InvalidDataException("A glTF index is outside its vertex range.");
+            }
+        }
+        if (spritesOnly)
+        {
+            if (sprites.Count == 0)
+                throw new InvalidDataException("The glTF model contains no point sprites.");
+            return new([], new ReadOnlyDictionary<string, ReadOnlyMemory<byte>>(textures), 2)
+            {
+                Sprites = DecodedModelSprite.Normalize(sprites, minimum, maximum)
+            };
         }
         double diameter = (maximum - minimum).Length;
-        if (!(diameter > 0) || !double.IsFinite(diameter))
+        if (!double.IsFinite(diameter) || diameter <= 0 && (surfaces.Count > 0 || sprites.Count == 0))
             throw new InvalidDataException("Packed model has invalid bounds.");
-        return new(surfaces.AsReadOnly(), new ReadOnlyDictionary<string, ReadOnlyMemory<byte>>(textures), diameter);
+        return new(surfaces.AsReadOnly(), new ReadOnlyDictionary<string, ReadOnlyMemory<byte>>(textures), diameter)
+        {
+            Sprites = sprites.AsReadOnly()
+        };
+
+        void AddBounds(Vector3d point)
+        {
+            minimum = new(Math.Min(minimum.X, point.X), Math.Min(minimum.Y, point.Y), Math.Min(minimum.Z, point.Z));
+            maximum = new(Math.Max(maximum.X, point.X), Math.Max(maximum.Y, point.Y), Math.Max(maximum.Z, point.Z));
+        }
+
+        void ReadSprites(JsonElement primitive, JsonElement fields, ModelAccessor positions, int count, Matrix4x4 transform,
+            Func<int, int> vertexIndex)
+        {
+            var sizes = fields.TryGetProperty("_POINTSIZE", out var size) ? Access(size.GetInt32(), "SCALAR", 5126, 4) : default;
+            var colors = default(ModelAccessor);
+            int components = 0, componentType = 0, componentWidth = 0;
+            if (fields.TryGetProperty("COLOR_0", out var color))
+            {
+                var spec = accessors[color.GetInt32()];
+                string? shape = spec.GetProperty("type").GetString();
+                components = shape switch { "VEC3" => 3, "VEC4" => 4, _ => throw new InvalidDataException("Invalid glTF point color shape.") };
+                componentType = spec.GetProperty("componentType").GetInt32();
+                componentWidth = componentType switch { 5121 => 1, 5123 => 2, 5126 => 4, _ => throw new NotSupportedException("Unsupported glTF point color type.") };
+                colors = Access(color.GetInt32(), shape!, componentType, components * componentWidth, normalized: componentType != 5126);
+            }
+            if ((sizes.Count != 0 && sizes.Count != positions.Count) || (colors.Count != 0 && colors.Count != positions.Count))
+                throw new InvalidDataException("Point attributes must have the same count as positions.");
+
+            var material = primitive.TryGetProperty("material", out var index) ? root.GetProperty("materials")[index.GetInt32()] : default;
+            var pbr = material.ValueKind == JsonValueKind.Object && material.TryGetProperty("pbrMetallicRoughness", out var pbrValue)
+                ? pbrValue : default;
+            double[] factor = Channels(pbr, "baseColorFactor", [1, 1, 1, 1]);
+            Vector3d fallback = new(Srgb(factor[0]), Srgb(factor[1]), Srgb(factor[2]));
+            double opacity = material.ValueKind == JsonValueKind.Object && material.TryGetProperty("alphaMode", out var alpha) &&
+                alpha.GetString() == "BLEND" ? factor[3] : 1;
+            for (int i = 0; i < count; i++)
+            {
+                if ((i & 4095) == 0)
+                    cancellation.ThrowIfCancellationRequested();
+                int vertex = vertexIndex(i);
+                Vector3d point = Checked(Vector3.Transform(Vector(positions, vertex), transform));
+                AddBounds(point);
+                var rgb = components == 0 ? fallback : new Vector3d(Color(vertex, 0), Color(vertex, 1), Color(vertex, 2));
+                double alphaValue = components == 4 ? Color(vertex, 3) : 1;
+                double pointSize = sizes.Count == 0 ? 1 : Math.Max(0, Float(sizes, vertex, 0));
+                sprites.Add(new(point, pointSize, rgb, opacity * alphaValue));
+            }
+
+            double Color(int vertex, int axis)
+            {
+                if (componentType == 5126)
+                    return Math.Clamp(Float(colors, vertex, axis), 0, 1);
+                int offset = colors.Offset + vertex * colors.Stride + axis * componentWidth;
+                var data = colors.Data.Span;
+                return componentType == 5121 ? data[offset] / 255.0 :
+                    BinaryPrimitives.ReadUInt16LittleEndian(data.Slice(offset, 2)) / 65535.0;
+            }
+        }
 
         (ReadOnlyMemory<byte> Data, int Stride) View(int index)
         {
@@ -185,11 +283,12 @@ public static partial class PackedModelDecoder
             return (data.Slice(offset, length), Int(view, "byteStride", 0));
         }
 
-        ModelAccessor Access(int index, string shape, int type, int width)
+        ModelAccessor Access(int index, string shape, int type, int width, bool normalized = false)
         {
             JsonElement accessor = accessors[index];
             if (accessor.GetProperty("type").GetString() != shape || accessor.GetProperty("componentType").GetInt32() != type ||
-                accessor.TryGetProperty("sparse", out _) || accessor.TryGetProperty("normalized", out var normalized) && normalized.GetBoolean())
+                accessor.TryGetProperty("sparse", out _) ||
+                (accessor.TryGetProperty("normalized", out var flag) && flag.GetBoolean()) != normalized)
                 throw new NotSupportedException("Unexpected packed accessor profile.");
             var view = View(accessor.GetProperty("bufferView").GetInt32());
             int offset = Int(accessor, "byteOffset", 0), count = accessor.GetProperty("count").GetInt32();

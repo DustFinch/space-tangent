@@ -13,6 +13,8 @@ internal static class ScienceMeshLoader
 
     private static ArrayMesh PublishCore(DecodedScienceModel source, string meshPath, bool litBody, Texture2D? bodySurface)
     {
+        if (source.Surfaces.Count == 0)
+            throw new InvalidDataException("This model must contain triangle surfaces.");
         var mesh = new ArrayMesh();
         var textures = new Dictionary<string, Texture2D>(StringComparer.Ordinal);
         Shader? shader = litBody ? GD.Load<Shader>("res://Shaders/planet_moon_model.gdshader") : null;

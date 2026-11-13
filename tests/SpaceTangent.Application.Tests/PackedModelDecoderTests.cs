@@ -125,6 +125,69 @@ public sealed class PackedModelDecoderTests
         finally { Directory.Delete(root, recursive: true); }
     }
 
+    [Fact]
+    public void PointSpritesSurviveAnIndexedGltfAndGlbRoundTrip()
+    {
+        using var bytes = new MemoryStream();
+        using var data = new BinaryWriter(bytes);
+        foreach (float coordinate in new float[] { -2, 0, 0, 2, 0, 0 })
+            data.Write(coordinate);
+        data.Write(new byte[] { 255, 0, 0, 255, 0, 128, 255, 64 });
+        data.Write(2f);
+        data.Write(4f);
+        data.Write(new byte[] { 1, 0 });
+
+        string json = """
+            {"asset":{"version":"2.0"},"nodes":[{"mesh":0,"translation":[4,0,0]}],
+             "meshes":[{"primitives":[{"mode":0,"material":0,"indices":3,
+                 "attributes":{"POSITION":0,"COLOR_0":1,"_POINTSIZE":2}}]}],
+             "materials":[{"alphaMode":"BLEND","pbrMetallicRoughness":{"baseColorFactor":[1,1,1,0.5]}}],
+             "buffers":[{"uri":"data:application/octet-stream;base64,DATA","byteLength":42}],
+             "bufferViews":[{"buffer":0,"byteLength":24},{"buffer":0,"byteOffset":24,"byteLength":8},
+                            {"buffer":0,"byteOffset":32,"byteLength":8},{"buffer":0,"byteOffset":40,"byteLength":2}],
+             "accessors":[{"bufferView":0,"componentType":5126,"type":"VEC3","count":2},
+                          {"bufferView":1,"componentType":5121,"type":"VEC4","normalized":true,"count":2},
+                          {"bufferView":2,"componentType":5126,"type":"SCALAR","count":2},
+                          {"bufferView":3,"componentType":5121,"type":"SCALAR","count":2}]}
+            """;
+        var root = Directory.CreateTempSubdirectory("space-tangent-gltf-points-");
+        try
+        {
+            string source = Path.Combine(root.FullName, "points.gltf");
+            File.WriteAllText(source, json.Replace("base64,DATA", "base64," + Convert.ToBase64String(bytes.ToArray())));
+            var model = PackedModelDecoder.Decode(source);
+            Assert.Empty(model.Surfaces);
+            Assert.Equal(new(6, 0, 0), model.Sprites[0].Position);
+            Assert.Equal(new(0, 128 / 255.0, 1), model.Sprites[0].Color);
+            Assert.Equal(32 / 255.0, model.Sprites[0].Opacity);
+            Assert.Equal(4, model.Sprites[0].Size);
+
+            string packed = Path.Combine(root.FullName, "points.glb");
+            using (var output = File.Create(packed))
+                PackedModelWriter.Write(model, output);
+            var normalized = PackedModelDecoder.DecodeSprites(root.FullName, packed);
+            Assert.Collection(normalized, first =>
+            {
+                Assert.Equal(new(1, 0, 0), first.Position);
+                Assert.Equal(2, first.Size);
+                Assert.Equal(32 / 255.0, first.Opacity, 7);
+            }, second =>
+            {
+                Assert.Equal(new(-1, 0, 0), second.Position);
+                Assert.Equal(1, second.Size);
+                Assert.Equal(.5, second.Opacity);
+            });
+
+            File.WriteAllText(source, json.Replace("base64,DATA", "base64," + Convert.ToBase64String(bytes.ToArray()))
+                .Replace("\"SCALAR\",\"count\":2},", "\"SCALAR\",\"count\":1},"));
+            Assert.Throws<InvalidDataException>(() => PackedModelDecoder.Decode(source));
+        }
+        finally
+        {
+            root.Delete(recursive: true);
+        }
+    }
+
     [ShuttleFact]
     [Trait("Category", "ExternalData")]
     public void ArchivedShuttleMatchesItsExternalGltfAtEveryCorner()

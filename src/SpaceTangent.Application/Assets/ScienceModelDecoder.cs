@@ -23,7 +23,18 @@ public sealed record DecodedScienceModel(IReadOnlyList<DecodedSurface> Surfaces,
     public IReadOnlyList<DecodedModelSprite> Sprites { get; init; } = [];
 }
 
-public readonly record struct DecodedModelSprite(Vector3d Position, double Size, Vector3d Color, double Opacity);
+public readonly record struct DecodedModelSprite(Vector3d Position, double Size, Vector3d Color, double Opacity)
+{
+    internal static IReadOnlyList<DecodedModelSprite> Normalize(IEnumerable<DecodedModelSprite> sprites, Vector3d min, Vector3d max)
+    {
+        var center = (min + max) * .5;
+        var extent = max - min;
+        double longest = Math.Max(extent.X, Math.Max(extent.Y, extent.Z));
+        double scale = longest > 0 ? 2 / longest : 1;
+        return sprites.Select(sprite => sprite with
+            { Position = (sprite.Position - center) * scale, Size = sprite.Size * scale }).ToArray();
+    }
+}
 
 /// <summary>Decodes the local science OBJ convention into managed data for main-thread publication.</summary>
 public static class ScienceModelDecoder

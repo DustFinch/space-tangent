@@ -9,6 +9,7 @@ namespace SpaceTangent.Application.Assets;
 public static partial class CmodMeshDecoder
 {
     private const int MaximumVertices = 1_000_000, MaximumTriangles = 1_000_000, MaximumMaterials = 4096, MaximumSurfaces = 128;
+    private enum Geometry { Triangles, Sprites, TriangleExport, ModelExport }
     private static readonly DecodedMaterial Default = new(new(.8, .8, .8), 1, null);
 
     public static DecodedScienceModel Decode(string root, string path, CancellationToken cancellation = default) =>
@@ -16,17 +17,21 @@ public static partial class CmodMeshDecoder
 
     public static DecodedScienceModel DecodeForTriangleExport(string root, string path, bool nativeBody = false) =>
         AddonDiagnostics.Read(AddonStage.Mesh, path, () => Read(root, path, nativeBody,
-            CancellationToken.None, requireTriangles: true));
+            CancellationToken.None, Geometry.TriangleExport));
+
+    public static DecodedScienceModel DecodeForModelExport(string root, string path, bool nativeBody = false) =>
+        AddonDiagnostics.Read(AddonStage.Mesh, path, () => Read(root, path, nativeBody,
+            CancellationToken.None, Geometry.ModelExport));
 
     public static DecodedScienceModel DecodeNativeBody(string root, string path, CancellationToken cancellation = default) =>
         AddonDiagnostics.Read(AddonStage.Mesh, path, () => Read(root, path, nativeBody: true, cancellation));
 
     public static IReadOnlyList<DecodedModelSprite> DecodeSprites(string path, CancellationToken cancellation = default) =>
         AddonDiagnostics.Read(AddonStage.Mesh, path,
-            () => Read(Path.GetDirectoryName(path)!, path, nativeBody: false, cancellation, spritesOnly: true).Sprites);
+            () => Read(Path.GetDirectoryName(path)!, path, nativeBody: false, cancellation, Geometry.Sprites).Sprites);
 
     private static DecodedScienceModel Read(string root, string path, bool nativeBody, CancellationToken cancellation,
-        bool spritesOnly = false, bool requireTriangles = false)
+        Geometry geometry = Geometry.Triangles)
     {
         using FileStream source = AddonDependencies.OpenRead(path, 32L * 1024 * 1024);
         if (source.Length > 32L * 1024 * 1024)
@@ -43,6 +48,8 @@ public static partial class CmodMeshDecoder
         var surfaces = new Dictionary<DecodedMaterial, Surface>();
         var sprites = new List<DecodedModelSprite>();
         int triangles = 0;
+        bool spritesOnly = geometry == Geometry.Sprites;
+        bool readSprites = spritesOnly || geometry == Geometry.ModelExport;
         var min = new Vector3d(double.PositiveInfinity, double.PositiveInfinity, double.PositiveInfinity);
         var max = new Vector3d(double.NegativeInfinity, double.NegativeInfinity, double.NegativeInfinity);
 
@@ -68,19 +75,15 @@ public static partial class CmodMeshDecoder
         {
             if (sprites.Count == 0)
                 throw new InvalidDataException("The CMOD model contains no point sprites.");
-            var center = (min + max) * .5;
-            var extent = max - min;
-            double longest = Math.Max(extent.X, Math.Max(extent.Y, extent.Z));
-            double scale = longest > 0 ? 2 / longest : 1;
+
             return new([], new Dictionary<string, ReadOnlyMemory<byte>>(), 2)
             {
-                Sprites = sprites.Select(sprite => sprite with
-                    { Position = (sprite.Position - center) * scale, Size = sprite.Size * scale }).ToArray()
+                Sprites = DecodedModelSprite.Normalize(sprites, min, max)
             };
         }
 
         double diameter = (max - min).Length;
-        if (surfaces.Count == 0 || !double.IsFinite(diameter) || diameter <= 0)
+        if (!double.IsFinite(diameter) || (surfaces.Count == 0 && sprites.Count == 0) || (surfaces.Count > 0 && diameter <= 0))
             throw new InvalidDataException("CMOD contains no usable triangle geometry.");
         var decoded = new List<DecodedSurface>(surfaces.Count);
         var textures = new Dictionary<string, ReadOnlyMemory<byte>>(StringComparer.Ordinal);
@@ -90,7 +93,7 @@ public static partial class CmodMeshDecoder
             var resolved = material with { Texture = ReadTexture(material.Texture), NormalTexture = ReadTexture(material.NormalTexture) };
             decoded.Add(new(surface.Positions.ToArray(), surface.Normals.ToArray(), surface.Uvs.ToArray(), resolved));
         }
-        return new(decoded.AsReadOnly(), textures, diameter);
+        return new(decoded.AsReadOnly(), textures, diameter) { Sprites = sprites.AsReadOnly() };
 
         string? ReadTexture(string? name)
         {
@@ -182,7 +185,7 @@ public static partial class CmodMeshDecoder
             if (count is 0 or > MaximumVertices || (long)stride * count > stream.Length - stream.Position)
                 throw new InvalidDataException("Invalid CMOD vertex count.");
             var vertices = new Vertex[count];
-            if (spritesOnly)
+            if (readSprites)
                 Array.Fill(vertices, new Vertex { Size = 1, Alpha = 1 });
             Span<float> components = stackalloc float[4];
             for (int vertex = 0; vertex < vertices.Length; vertex++)
@@ -194,7 +197,7 @@ public static partial class CmodMeshDecoder
                     if (format == 4)
                     {
                         uint packed = input.ReadUInt32();
-                        if (spritesOnly && semantic == 1)
+                        if (readSprites && semantic == 1)
                         {
                             vertices[vertex].Color = new((packed & 255) / 255.0,
                                 ((packed >> 8) & 255) / 255.0, ((packed >> 16) & 255) / 255.0);
@@ -207,12 +210,12 @@ public static partial class CmodMeshDecoder
                         components[i] = Float();
                     if (semantic == 0)
                         vertices[vertex].Position = new(components[0], components[1], components[2]);
-                    else if (spritesOnly && semantic == 1 && format >= 2)
+                    else if (readSprites && semantic == 1 && format >= 2)
                     {
                         vertices[vertex].Color = new(components[0], components[1], components[2]);
                         vertices[vertex].Alpha = format == 3 ? components[3] : 1;
                     }
-                    else if (spritesOnly && semantic == 9)
+                    else if (readSprites && semantic == 9)
                         vertices[vertex].Size = Math.Max(0, components[0]);
                     else if (semantic == 3)
                         vertices[vertex].Normal = new(components[0], components[1], components[2]);
@@ -226,9 +229,9 @@ public static partial class CmodMeshDecoder
                 if (type is < 0 or > 6 || indexCount > 3 * MaximumTriangles ||
                     (long)indexCount * 4 > stream.Length - stream.Position)
                     throw new InvalidDataException("Invalid CMOD primitive group.");
-                if (requireTriangles && type > 2)
+                if (geometry == Geometry.TriangleExport && type > 2)
                     throw new NotSupportedException("The CMOD contains lines, points or sprites outside triangle export.");
-                if (spritesOnly && type is 5 or 6)
+                if (readSprites && type is 5 or 6)
                 {
                     DecodedMaterial style = material < materials.Count ? materials[(int)material] : Default;
                     if (sprites.Count + indexCount > MaximumVertices)
@@ -256,6 +259,8 @@ public static partial class CmodMeshDecoder
                 }
                 if (type > 2)
                 {
+                    if (geometry == Geometry.ModelExport)
+                        throw new NotSupportedException("The CMOD contains lines outside model export.");
                     stream.Seek(indexCount * 4L, SeekOrigin.Current);
                     continue;
                 }

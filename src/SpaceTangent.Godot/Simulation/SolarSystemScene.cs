@@ -437,6 +437,7 @@ public partial class SolarSystemScene : Control
             Session.SetEarthObserver(_active, camera with
             {
                 Site = place.ObserverSite,
+                CivilClock = new(place.Name, place.TimeZone, place.FixedOffsetHours),
                 Conditions = place.Bortle is { } bortle ? new GroundSkyConditions(bortle) : camera.Conditions
             });
             SetMode(_active, CameraMode.Surface);

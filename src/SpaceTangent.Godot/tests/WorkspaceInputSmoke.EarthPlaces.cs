@@ -3,6 +3,8 @@ using System.Text.Json.Nodes;
 using Godot;
 using SpaceTangent.Application;
 using SpaceTangent.Core.Observing;
+using SpaceTangent.Core.Time;
+using SpaceTangent.Contracts;
 using SpaceTangent.Godot.UI;
 
 namespace SpaceTangent.Godot.Tests;
@@ -144,6 +146,25 @@ public partial class WorkspaceInputSmoke
                 Require(File.ReadAllBytes(savedFile).SequenceEqual(once), "Repeating a legacy profile import must leave the saved file unchanged.");
                 await OpenPlace(imported.EnglishName, imported);
                 GD.Print("UI: migrated an archived profile's Cyrillic saved site, preserved a duplicate and the other observer, and reopened it by search");
+            }
+            if (System.Environment.GetEnvironmentVariable("SPACETANGENT_ARCHIVED_CIVIL_PROFILE") is { Length: > 0 } civilProfile)
+            {
+                var instant = TimeConversion.FromUtc(new(new(2024, 12, 31), 21, 15), TimeScale.Tdb);
+                _scene.Seek(0, instant);
+                await _scene.ImportStartupSettings(civilProfile);
+                Require(Session[0].EarthObserver?.CivilClock is { Name: "Москва", TimeZone: "Europe/Moscow", UtcOffsetHours: 3 } &&
+                    Session[1] == right, "The archived Moscow civil clock must apply to only the first observer.");
+                await Click(Find<Button>("EphemeridesTab"));
+                await Until(() => Find<Label>("CivilTwilight").Text.Contains("2025-01-01 · local civil date"),
+                    "Displaying Moscow's civil date across midnight");
+                var civil = Session.CaptureScenario(0);
+                ScenarioFile.Save(path, civil);
+                Require(File.ReadAllText(path).Contains("\"Version\": 48", StringComparison.OrdinalIgnoreCase),
+                    "The civil site clock requires scenario version 48.");
+                RequireScenario(civil, ScenarioFile.Load(path), "Reopening the archived civil site clock");
+                await Reload("Reloading the archived civil clock");
+                RequireScenario(civil, Session.CaptureScenario(0), "Keeping both observers and ΔT through reload");
+                GD.Print("UI: archived Moscow profile retained its name and civil midnight, independent second observer and ΔT.");
             }
             GD.Print("UI: found Paranal and the localized Moscow alias, activated a saved site, and kept both views through reload");
         }

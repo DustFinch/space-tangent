@@ -10,8 +10,10 @@ public static class ObserverNightFinder
     public static ObserverNight ForSelection(SimulationWorld world, ObserverView observer, DeltaTModel model,
         CancellationToken cancellation = default)
     {
-        var site = (observer.EarthObserver ?? EarthObserverCamera.Moscow).Site;
-        var date = EarthObserving.LocalMeanDate(observer.Epoch, site, model);
+        var camera = observer.EarthObserver ?? EarthObserverCamera.Moscow;
+        var site = camera.Site;
+        var clock = camera.CivilClock.GetValueOrDefault();
+        var date = clock.DateAt(observer.Epoch, site, model);
         var star = observer.Selection is { } id ? world.BrightStars.Find(id) : null;
         return ObserverEphemerides.Night(world.Ephemeris, date, site, model, (solar, light) =>
         {
@@ -22,6 +24,6 @@ public static class ObserverNightFinder
             var snapshot = world.Graph.Evaluate(solar.Epoch);
             return world.TryNavigationState(target, snapshot, out CartesianState state, model)
                 ? EarthObserving.Horizontal(light, (state - solar.Earth).PositionKilometers) : null;
-        }, cancellation: cancellation);
+        }, cancellation: cancellation, clock: clock);
     }
 }

@@ -40,7 +40,20 @@ public static partial class LegacyObserverProfiles
                 Number(position, "LongitudeDegrees") ?? camera.Site.LongitudeDegrees,
                 Math.Max(0, (Number(position, "AltitudeMeters") ?? 1000 * camera.Site.HeightKilometers) / 1000));
             if (site.IsValid())
-                camera = camera with { Site = site };
+            {
+                string? name = Word(position, "Name");
+                string? zone = Word(position, "TimeZone");
+                double? offset = Number(position, "UtcOffsetHours");
+                var clock = new ObserverSiteClock(
+                    name is { Length: > 0 and <= 160 } && !name.Any(char.IsControl) ? name : null,
+                    zone is { Length: > 0 and <= 128 } && !zone.Any(char.IsControl) ? zone : null,
+                    offset is >= -14 and <= 14 ? offset : null);
+                camera = camera with
+                {
+                    Site = site,
+                    CivilClock = clock != default ? clock : site == camera.Site ? camera.CivilClock : null
+                };
+            }
         }
         var conditions = camera.Conditions ?? new GroundSkyConditions(4);
         conditions = conditions with

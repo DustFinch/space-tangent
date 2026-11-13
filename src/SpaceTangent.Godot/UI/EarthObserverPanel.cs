@@ -22,7 +22,7 @@ internal sealed class EarthObserverPanel
     private readonly Action<string> _setStatus;
     private EarthObserverCamera _camera;
     private int _view = -1;
-    private (DateOnly Date, EarthSite Site, DeltaTModel Model)? _twilightKey;
+    private (DateOnly Date, EarthSite Site, DeltaTModel Model, ObserverSiteClock Clock)? _twilightKey;
 
     internal EarthObserverPanel(VBoxContainer location, VBoxContainer ephemerides, bool surfaceAvailable,
         Action<EarthObserverCamera> apply, Action fullMoon, Action<string> setStatus, Texture2D? mapTexture, Action<string, EarthSite> saveSite,
@@ -39,7 +39,8 @@ internal sealed class EarthObserverPanel
         _sites.SetItemDisabled(0, true);
         _sites.ItemSelected += index => _apply(_camera with
         {
-            Site = index == 1 ? EarthObserverCamera.Moscow.Site : EarthObserverCamera.Tromso.Site
+            Site = index == 1 ? EarthObserverCamera.Moscow.Site : EarthObserverCamera.Tromso.Site,
+            CivilClock = index == 1 ? new("Moscow", "Europe/Moscow", 3) : new("Tromsø", "Europe/Oslo", 1)
         });
         location.AddChild(_sites);
         _map = new EarthSiteMap(mapTexture) { Visible = surfaceAvailable };
@@ -54,6 +55,7 @@ internal sealed class EarthObserverPanel
             _apply(_camera with
             {
                 Site = site,
+                CivilClock = place is null ? null : new(place.Name, place.TimeZone, place.FixedOffsetHours),
                 Conditions = place?.Bortle is { } bortle ? new GroundSkyConditions(bortle) : _camera.Conditions
             });
         };
@@ -165,6 +167,9 @@ internal sealed class EarthObserverPanel
                 }
             }
         }
+        var clock = camera.CivilClock.GetValueOrDefault();
+        if (clock.Name is { Length: > 0 } siteName)
+            _coordinates.Text += "\n" + siteName;
         if (camera.Conditions is { } conditions)
             _coordinates.Text += FormattableString.Invariant($"\nBortle {conditions.Bortle} · {conditions.PressureAt(camera.Site):F0} hPa");
         if (night is not null)
@@ -179,13 +184,14 @@ internal sealed class EarthObserverPanel
         }
         try
         {
-            DateOnly date = EarthObserving.LocalMeanDate(observer.Epoch, camera.Site, model);
-            var key = (date, camera.Site, model);
+            DateOnly date = clock.DateAt(observer.Epoch, camera.Site, model);
+            var key = (date, camera.Site, model, clock);
             if (key == _twilightKey)
                 return;
             _twilightKey = key;
-            CivilTwilight twilight = EarthObserving.Twilight(ephemeris, date, camera.Site, model);
-            _twilight.Text = FormattableString.Invariant($"{date:yyyy-MM-dd} · local mean solar date\n") +
+            CivilTwilight twilight = EarthObserving.Twilight(ephemeris, date, camera.Site, model, clock);
+            string dateKind = clock.HasOffset ? "local civil date" : "local mean solar date";
+            _twilight.Text = FormattableString.Invariant($"{date:yyyy-MM-dd} · {dateKind}\n") +
                 (twilight.Horizon.AlwaysAbove ? "Sun above the horizon all day." :
                  twilight.CivilLimit.AlwaysBelow ? "Sun below the civil limit all day." :
                  twilight.Horizon.AlwaysBelow
@@ -204,7 +210,12 @@ internal sealed class EarthObserverPanel
         if (Read(_latitude, out double latitude) && Read(_longitude, out double longitude) &&
             Read(_height, out double height) && Read(_azimuth, out double azimuth) && Read(_elevation, out double elevation))
         {
-            var camera = _camera with { Site = new(latitude, longitude, height), AzimuthDegrees = azimuth, ElevationDegrees = elevation };
+            var site = new EarthSite(latitude, longitude, height);
+            var camera = _camera with
+            {
+                Site = site, AzimuthDegrees = azimuth, ElevationDegrees = elevation,
+                CivilClock = site == _camera.Site ? _camera.CivilClock : null
+            };
             if (camera.IsValid())
             {
                 _apply(camera);

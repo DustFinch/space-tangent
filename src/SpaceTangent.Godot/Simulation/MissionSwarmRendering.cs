@@ -67,7 +67,8 @@ internal static class MissionSwarmRendering
         material.SetShaderParameter("swarm_color", new Vector4((float)style.Color.X, (float)style.Color.Y,
             (float)style.Color.Z, style.Opacity * fade));
         node.CastShadow = GeometryInstance3D.ShadowCastingSetting.Off;
-        node.Transform = new(new Basis(Axis(axes.X), Axis(axes.Y), Axis(axes.Z)), position);
+        int sign = style.ReverseEquatorialAxes ? -1 : 1;
+        node.Transform = new(new Basis(Axis(axes.X * sign), Axis(axes.Y * sign), Axis(axes.Z)), position);
         node.Show();
 
         Vector3 Axis(Vector3d value) => new((float)(value.X * scale), (float)(value.Z * scale), (float)(-value.Y * scale));

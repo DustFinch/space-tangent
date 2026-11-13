@@ -3,6 +3,7 @@ using Godot;
 using SpaceTangent.Application;
 using SpaceTangent.Contracts;
 using SpaceTangent.Core.Addons;
+using SpaceTangent.Core.Ephemerides;
 using SpaceTangent.Godot.Simulation;
 
 namespace SpaceTangent.Godot.Tests;
@@ -53,6 +54,69 @@ public partial class EarthOrbitProbe
                     throw new InvalidOperationException("Swarm data must be shared, and clocks and materials must be per view.");
                 GD.Print($"Mission swarm GPU ({format}): 5,000 ASTORB, 3,094 Hilda, 2,740 Fengyun points; shared mesh and separate epochs.");
             }
+
+            var translated = new ObjectId("mission/nativeswarmtranslated");
+            var natural = new ObjectId("mission/nativeswarmnatural");
+            var science = session.World.Satellites.Single(track => track.Name == "SORCE").Id;
+            var captured = new Dictionary<(int View, ObjectId Body), Transform3D>();
+            foreach (string format in new[] { "source", "packed" })
+            {
+                System.Environment.SetEnvironmentVariable(input, Path.Combine(corpus, format + "-addons", "science"));
+                if (!await scene.ReloadAddOns())
+                    throw new InvalidOperationException($"Could not install the {format} rotating swarms.");
+                var first = View(translated, epoch, 72_000);
+                var second = View(natural, epoch.AddSeconds(3300), 72_000);
+                string path = Path.Combine(directory, $"mission-swarm-frames-{format}.stscene");
+                var deltaT = session.DeltaT;
+                ScenarioFile.Save(path, new([first, second], false, 0, 0, deltaT));
+                if (!scene.LoadScenario(path) || !await scene.ReloadAddOns() || session[0] != first || session[1] != second ||
+                    session.DeltaT != deltaT)
+                    throw new InvalidOperationException("The rotating swarm observers did not survive reload.");
+                for (int index = 0; index < 2; index++)
+                {
+                    var snapshot = session.World.Graph.Evaluate(session[index].Epoch);
+                    if (!snapshot.TryState(SolarSystemSample.EarthId, out var earth) ||
+                        !snapshot.TryOrientation(science, out var satellite))
+                        throw new InvalidOperationException("Missing Earth or SORCE frame.");
+                    var follow = Need(index, translated, 2740);
+                    var spin = Need(index, natural, 2740);
+                    if (follow.Mesh != spin.Mesh || follow.MaterialOverride == spin.MaterialOverride)
+                        throw new InvalidOperationException("The two Fengyun references must share geometry and retain their own materials.");
+                    foreach (var (id, node, offset) in new[] { (translated, follow, 12000), (natural, spin, -12000) })
+                    {
+                        if (!snapshot.TryState(id, out var state) ||
+                            ((state - earth).PositionKilometers - new Vector3d(offset, 0, 0)).Length > .001)
+                            throw new InvalidOperationException("The swarm lost its authored offset from Earth.");
+                        if (format == "source")
+                            captured.Add((index, id), node.Transform);
+                        else
+                        {
+                            var priorPose = captured[(index, id)];
+                            if (node.Position.DistanceTo(priorPose.Origin) > .001 ||
+                                DirectionError(node.Basis, priorPose.Basis) > 1e-5f)
+                                throw new InvalidOperationException($"Source and packed swarm poses differ for {id.Value} in view {index + 1}: {DirectionError(node.Basis, priorPose.Basis)}.");
+                        }
+                    }
+                    var alongSorCe = ToRender(satellite.ToWorld.Z);
+                    if (follow.Basis.Z.Normalized().Dot(alongSorCe) < .55f)
+                        throw new InvalidOperationException("The translated swarm is detached from the live SORCE frame.");
+                }
+                if (DirectionError(Need(0, natural, 2740).Basis, Need(1, natural, 2740).Basis) < .25)
+                    throw new InvalidOperationException("The rotating swarm did not advance independently.");
+                await ToSignal(GetTree(), SceneTree.SignalName.ProcessFrame);
+                await ToSignal(RenderingServer.Singleton, RenderingServer.SignalName.FramePostDraw);
+                using var image = GetViewport().GetTexture().GetImage();
+                if (image.SavePng(Path.ChangeExtension(path, ".png")) != Error.Ok)
+                    throw new IOException("Could not capture the rotating swarm observers.");
+                GD.Print($"Mission swarm frames ({format}): SORCE following, two 12,000 km offsets, two independent spin epochs and shared buffers after reload.");
+            }
+
+            static Vector3 ToRender(Vector3d axis) => new((float)axis.X, (float)axis.Z, (float)-axis.Y);
+
+            static float DirectionError(Basis first, Basis second) => Math.Max(
+                first.X.Normalized().DistanceTo(second.X.Normalized()),
+                Math.Max(first.Y.Normalized().DistanceTo(second.Y.Normalized()),
+                    first.Z.Normalized().DistanceTo(second.Z.Normalized())));
 
             ObserverView View(ObjectId id, JulianInstant at, double range)
             {

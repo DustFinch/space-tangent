@@ -52,6 +52,12 @@ public partial class EarthOrbitProbe : Node
                 result = 0;
                 return;
             }
+            if (System.Environment.GetEnvironmentVariable("SPACETANGENT_ARCHIVED_CMOD_GPU") == "1")
+            {
+                await ExerciseArchivedCmod(scene, directory);
+                result = 0;
+                return;
+            }
             if (System.Environment.GetEnvironmentVariable("SPACETANGENT_MISSION_MESH_SCALE_PROBE") == "1")
             {
                 await ExerciseMissionMeshScale(scene, directory);

@@ -207,6 +207,32 @@ public partial class EarthOrbitProbe
         }
     }
 
+    private async Task ExerciseArchivedCmod(SolarSystemScene scene, string directory)
+    {
+        var session = scene.Session!;
+        var id = new ObjectId("mission/ship");
+        var epoch = new JulianInstant(2451545, 0, TimeScale.Tdb);
+        var snapshot = session.World.Graph.Evaluate(epoch);
+        if (!snapshot.TryState(id, out var state))
+            throw new InvalidOperationException("The original packed CMOD object is unavailable.");
+        var camera = new NavigationCamera(state.PositionKilometers, 3.5, .48, .14, id, true);
+        var view = new ObserverView(epoch, CameraMode.Solar, id, false) { Navigation = camera };
+        string scenario = Path.Combine(directory, "archived-cmod.stscene");
+        ScenarioFile.Save(scenario, new([view], false, 0, 0, session.DeltaT));
+        if (!scene.LoadScenario(scenario) || !await scene.ReloadAddOns() || session[0] != view)
+            throw new InvalidOperationException("The archived model camera did not survive reload.");
+        await ToSignal(GetTree(), SceneTree.SignalName.ProcessFrame);
+        await ToSignal(RenderingServer.Singleton, RenderingServer.SignalName.FramePostDraw);
+        if (scene.Renderer(0).ImportedBodyNode(id) is not { Visible: true, Mesh: ArrayMesh mesh } ||
+            !Enumerable.Range(0, mesh.GetSurfaceCount()).Any(index =>
+                mesh.SurfaceGetMaterial(index) is StandardMaterial3D { AlbedoTexture: not null }))
+            throw new InvalidOperationException("The archived textured model did not render.");
+        using var image = GetViewport().GetTexture().GetImage();
+        if (image.SavePng(Path.Combine(directory, "archived-cmod.png")) != Error.Ok)
+            throw new IOException("Could not save the archived model capture.");
+        GD.Print($"Archived CMOD model: {mesh.GetSurfaceCount()} surfaces after reload.");
+    }
+
     private async Task ExerciseMissionMeshScale(SolarSystemScene scene, string directory)
     {
         var session = scene.Session!;

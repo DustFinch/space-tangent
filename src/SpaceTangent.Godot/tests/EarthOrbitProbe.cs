@@ -118,6 +118,13 @@ public partial class EarthOrbitProbe : Node
                 result = 0;
                 return;
             }
+            if (System.Environment.GetEnvironmentVariable("SPACETANGENT_SCRIPTED_FACTORIES_PROBE") == "only")
+            {
+                await ExerciseSourceFactories(scene, directory);
+                await ExercisePackedFactories(scene, directory);
+                result = 0;
+                return;
+            }
             if (System.Environment.GetEnvironmentVariable("SPACETANGENT_CAPTURE_PACKED_CASSINI") == "1")
             {
                 await ExercisePackedCassini(scene, directory);

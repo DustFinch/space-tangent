@@ -41,7 +41,7 @@ public partial class BootstrapSmoke
                 moonTarget == moon && scene.Renderer(0).NavigationCameraCurrent,
             "The flight must publish the Moon navigation camera.");
         track.EmitSignal(Button.SignalName.Pressed);
-        Require(session[0].Navigation is { Tracking: true } && track.Text == "Stop tracking",
+        Require(session[0].Navigation is { Tracking: true } && track.Text == UI.WorkspaceText.Choose("Stop tracking", "Прекратить слежение"),
             "Tracking must enable the camera lock and update its action.");
         var moonBefore = session[0].Navigation!.Value.AnchorKilometers;
         scene.Advance(0, 3600);

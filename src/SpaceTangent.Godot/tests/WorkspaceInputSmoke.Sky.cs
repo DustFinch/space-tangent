@@ -26,11 +26,11 @@ public partial class WorkspaceInputSmoke
 
         await Click(Find<Button>("SearchTab"));
         await FillField("ObjectQuery", "Capella");
-        await Click(Result(star));
-        Require(Session[1].Selection == star, "Selecting Capella by name must resolve the Hipparcos ID.");
-        var pointAt = Find<Button>("GoToObject");
-        Require(pointAt.Text == "Point at", "A stellar direction must be available as an Earth pointing target.");
-        await Click(pointAt);
+        await Click(Result(star), MouseButton.Right);
+        var actions = Find<PopupMenu>("ObjectActions");
+        Require(Session[1].Selection == star && actions.GetItemText(0) == UI.WorkspaceText.Choose("Point at", "Навести камеру"),
+            "Capella must be selectable and offer pointing for an Earth observer.");
+        await ChooseMenuItem(actions, 0);
         Require(Session[1].EarthObserver is { ElevationDegrees: > 0 } && Session[1].Mode == CameraMode.Surface,
             "Pointing at Capella must leave it above the Moscow horizon.");
 

@@ -136,9 +136,10 @@ public partial class BootstrapSmoke : Node
         Require(session[0].Selection == SpaceTangent.Core.Ephemerides.SolarSystemSample.MoonId &&
                 session[0].Mode == CameraMode.Solar, "Search must select the Moon without changing the current camera mode.");
         layersTab.EmitSignal(Button.SignalName.Pressed);
-        Require(layersTab.ButtonPressed && !searchTab.ButtonPressed, "Only the chosen sidebar tab must be active.");
-        layersTab.EmitSignal(Button.SignalName.Pressed);
-        Require(!sidebar.IsVisibleInTree(), "Clicking the active tab must close the sidebar.");
+        Require(layersTab.ButtonPressed && searchTab.ButtonPressed, "The layers tab must highlight its parent search section.");
+        searchTab.EmitSignal(Button.SignalName.Pressed);
+        searchTab.EmitSignal(Button.SignalName.Pressed);
+        Require(!sidebar.IsVisibleInTree(), "Clicking the selected rail section must close the sidebar.");
         timeTab.EmitSignal(Button.SignalName.Pressed);
 
         var initial = session[0].Epoch;
@@ -180,12 +181,16 @@ public partial class BootstrapSmoke : Node
             "Searching for Jason-1 by NORAD ID must preserve the active epoch.");
         scene.SetMode(0, CameraMode.Satellites);
         var card = (Control)scene.FindChild("ObjectCard", recursive: true, owned: false);
-        Require(card.IsVisibleInTree(), "Selecting Jason-1 must open the spacecraft card.");
+        Require(!card.IsVisibleInTree(), "Selecting Jason-1 must leave details collapsed.");
+        var details = (Button)scene.FindChild("ObjectDetailsToggle", recursive: true, owned: false);
+        Require(details.Text == "Jason-1", "The selected spacecraft must be named in the view header.");
+        details.EmitSignal(BaseButton.SignalName.Toggled, true);
+        Require(card.IsVisibleInTree(), "The header must reveal the spacecraft card.");
         var closeCard = (Button)card.FindChild("CloseObjectCard", recursive: true, owned: false);
         closeCard.EmitSignal(Button.SignalName.Pressed);
         Require(!card.IsVisibleInTree(), "The card close control must hide the card.");
         query.EmitSignal(LineEdit.SignalName.TextSubmitted, query.Text);
-        Require(card.IsVisibleInTree(), "Selecting the same object must reveal the card again.");
+        Require(!card.IsVisibleInTree(), "Selecting the same object must honor the collapsed card.");
         VerifyMesh(scene.Renderer(0).SatelliteMesh(jasonId), 83_233, 28, 2);
         VerifyMesh(scene.Renderer(0).SatelliteMesh(sorceId), 115_711, 20, 1);
 

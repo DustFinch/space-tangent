@@ -23,11 +23,24 @@ internal sealed class LocalAddonsPanel
         _reloadAction = reload;
         _setDefault = setDefault;
         _setSource = setSource;
-        page.AddChild(SimulatorTheme.Section("Add a local source"));
+        _reload = new Button { Name = "ReloadAddOns", Text = WorkspaceText.Choose("Reload add-ons", "Перечитать дополнения") };
+        _reload.Pressed += async () => await _reloadAction();
+        page.AddChild(_reload);
+
+        var import = new Button
+        {
+            Name = "AddonImportOptions", Text = WorkspaceText.Choose("Import and update", "Импорт и обновление"),
+            ToggleMode = true
+        };
+        page.AddChild(import);
+        var importTools = new VBoxContainer { Visible = false };
+        page.AddChild(importTools);
+        import.Toggled += expanded => importTools.Visible = expanded;
+        importTools.AddChild(SimulatorTheme.Section(WorkspaceText.Choose("Add a local source", "Добавить локальный источник")));
         _kind = new OptionButton { Name = "LocalAddonKind" };
         foreach (LocalAddonKind kind in Enum.GetValues<LocalAddonKind>())
             _kind.AddItem(Title(kind), (int)kind);
-        page.AddChild(_kind);
+        importTools.AddChild(_kind);
 
         _directory = new FileDialog { Name = "OpenAddonFolder", Access = FileDialog.AccessEnum.Filesystem,
             FileMode = FileDialog.FileModeEnum.OpenDir, DeletingEnabled = false };
@@ -38,15 +51,12 @@ internal sealed class LocalAddonsPanel
         owner.AddChild(_mission);
         _directory.DirSelected += async path => await add(Kind, path);
         _mission.FileSelected += async path => await add(LocalAddonKind.Mission, path);
-        _browse = new Button { Name = "BrowseLocalAddon", Text = "Choose folder…" };
-        _kind.ItemSelected += _ => _browse.Text = Kind == LocalAddonKind.Mission ? "Choose file…" : "Choose folder…";
+        _browse = new Button { Name = "BrowseLocalAddon", Text = WorkspaceText.Choose("Choose folder…", "Выбрать папку…") };
+        _kind.ItemSelected += _ => _browse.Text = Kind == LocalAddonKind.Mission ? WorkspaceText.Choose("Choose file…", "Выбрать файл…")
+            : WorkspaceText.Choose("Choose folder…", "Выбрать папку…");
         _browse.Pressed += () => (Kind == LocalAddonKind.Mission ? _mission : _directory).PopupCentered(new(720, 470));
-        page.AddChild(_browse);
-        page.AddChild(SimulatorTheme.Section("Local sources"));
-        _reload = new Button { Name = "ReloadAddOns", Text = "Reload add-ons" };
-        _reload.Pressed += async () => await _reloadAction();
-        page.AddChild(_reload);
-        _updateSatellites = new Button { Name = "UpdateSatelliteGroups", Text = "Update satellite groups" };
+        importTools.AddChild(_browse);
+        _updateSatellites = new Button { Name = "UpdateSatelliteGroups", Text = WorkspaceText.Choose("Update satellite groups", "Обновить группы спутников") };
         _updateSatellites.Pressed += async () =>
         {
             _updatingSatellites = true;
@@ -59,7 +69,8 @@ internal sealed class LocalAddonsPanel
                     SetBusy(_busy);
             }
         };
-        page.AddChild(_updateSatellites);
+        importTools.AddChild(_updateSatellites);
+        page.AddChild(SimulatorTheme.Section(WorkspaceText.Choose("Local sources", "Локальные источники")));
         _rows = new VBoxContainer { Name = "LocalAddonSources" };
         _rows.AddThemeConstantOverride("separation", 9);
         page.AddChild(_rows);

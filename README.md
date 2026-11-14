@@ -23,7 +23,7 @@ godot --headless --path $project --editor --import --quit
 godot --path $project
 ```
 
-On a fresh start, the simulator opens in a perspective view near Earth with time paused at J2000. Search for Saturn, select it, and click **Go to**. Use **+1 h** or **Play** to advance time. **Inner planets** opens the orbital overview. See the [first simulation guide](docs/FIRST_SIMULATION.md) for the camera modes. The [DE440 notes](https://github.com/DustFinch/space-tangent-core/blob/main/docs/DE440.md) include the download checksum.
+On a fresh start, the simulator opens in a perspective view near Earth with time paused at J2000. Search for Saturn, right-click its result, and choose **Go to**. Use **+1 h** or **Play** to advance time. **Inner planets** opens the orbital overview. See the [first simulation guide](docs/FIRST_SIMULATION.md) for the camera modes. The [DE440 notes](https://github.com/DustFinch/space-tangent-core/blob/main/docs/DE440.md) include the download checksum.
 
 ## What you can explore
 

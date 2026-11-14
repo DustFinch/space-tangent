@@ -490,15 +490,21 @@ public partial class WorkspaceInputSmoke : Node
         var results = Find<Container>("ObjectResults");
         var jason = results.FindChildren("*", "Button", recursive: true, owned: false).OfType<Button>()
             .Single(button => button.TooltipText == Jason.Value);
-        await Click(jason);
-        Require(Session[0].Selection == Jason, "Clicking the filtered result must select Jason-1 in the left view.");
-        var goTo = Find<Button>("GoToObject");
-        await Click(goTo);
-        Require(Session.IsFlying(0), "Clicking Go to must start the flight.");
+        if (Find<PanelContainer>("ObjectCard").IsVisibleInTree())
+            await Click(Find<Button>("CloseObjectCard"));
+        var otherViewBeforeFlight = Session[1];
+        var menu = Find<PopupMenu>("ObjectActions");
+        await Click(jason, MouseButton.Right);
+        Require(Session[0].Selection == Jason && menu.Visible, "Right-click must select Jason-1 and open its actions.");
+        Require(!Find<PanelContainer>("ObjectCard").IsVisibleInTree(), "The context action must not need the details card.");
+        await ChooseMenuItem(menu, 0);
+        Require(Session.IsFlying(0) && Session[1] == otherViewBeforeFlight,
+            "The context menu must start the flight and preserve the other view.");
         await KeyPress(Key.Escape);
         Require(!Session.IsFlying(0) && Find<Label>("WorkspaceStatus").Text == "Flight stopped.",
             "Escape must cancel the flight and report that it stopped.");
-        await Click(goTo);
+        await Click(jason, MouseButton.Right);
+        await ChooseMenuItem(menu, 0);
         Require(Session.IsFlying(0), "The flight must be restartable after cancellation.");
         await Until(() => !Session.IsFlying(0), "Flying to Jason-1");
         Require(Session[0].Navigation is { Target: { } target } && target == Jason &&
@@ -584,8 +590,19 @@ public partial class WorkspaceInputSmoke : Node
         _scene.FindChild(name, recursive: true, owned: false) as T
         ?? throw new InvalidOperationException($"Missing {typeof(T).Name} {name}.");
 
-    private async Task Click(Control control)
+    private async Task Click(Control control, MouseButton button = MouseButton.Left)
     {
+        string? section = control.Name.ToString() switch
+        {
+            "LayersTab" => "SearchTab",
+            "TimeTab" or "EphemeridesTab" => "LocationTab",
+            "ScriptsTab" => "BookmarksTab",
+            "GoToObject" or "TrackObject" => "ObjectDetailsToggle",
+            "LocalAddonKind" or "BrowseLocalAddon" or "UpdateSatelliteGroups" => "AddonImportOptions",
+            _ => null
+        };
+        if (section is not null && !control.IsVisibleInTree())
+            await Click(Find<Button>(section));
         await ToSignal(Tree, SceneTree.SignalName.ProcessFrame);
         Require(control.IsVisibleInTree() && control.Size.X > 0 && control.Size.Y > 0,
             $"Cannot click hidden or empty control {control.Name}.");
@@ -594,17 +611,17 @@ public partial class WorkspaceInputSmoke : Node
             (control.GetScreenTransform() * (control.Size / 2));
         using var move = new InputEventMouseMotion { Position = point, GlobalPosition = point };
         root.PushInput(move, inLocalCoords: true);
-        using var down = MouseButtonAt(point, true);
+        using var down = MouseButtonAt(point, true, button);
         root.PushInput(down, inLocalCoords: true);
-        using var up = MouseButtonAt(point, false);
+        using var up = MouseButtonAt(point, false, button);
         root.PushInput(up, inLocalCoords: true);
         await ToSignal(Tree, SceneTree.SignalName.ProcessFrame);
     }
 
-    private static InputEventMouseButton MouseButtonAt(Vector2 point, bool down) => new()
+    private static InputEventMouseButton MouseButtonAt(Vector2 point, bool down, MouseButton button = MouseButton.Left) => new()
     {
-        Position = point, GlobalPosition = point, ButtonIndex = MouseButton.Left,
-        ButtonMask = down ? MouseButtonMask.Left : 0, Pressed = down
+        Position = point, GlobalPosition = point, ButtonIndex = button,
+        ButtonMask = !down ? 0 : button == MouseButton.Right ? MouseButtonMask.Right : MouseButtonMask.Left, Pressed = down
     };
 
     private async Task TypeText(string text)

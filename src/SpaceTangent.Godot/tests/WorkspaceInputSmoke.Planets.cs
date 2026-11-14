@@ -19,6 +19,20 @@ public partial class WorkspaceInputSmoke
                 await Click(time);
             await Click(Find<CheckButton>("SyncViewTime"));
         }
+        await Click(Find<SubViewportContainer>("ViewCanvas0"));
+        var search = Find<Button>("SearchTab");
+        if (!Find<VBoxContainer>("SearchPage").IsVisibleInTree())
+            await Click(search);
+        await FillField("ObjectQuery", "Earth");
+        await Click(Result(new("sol/earth")));
+        await FillField("ObjectQuery", "Saturn");
+        await Click(Result(new("sol/saturn")), MouseButton.Right);
+        var menu = Find<PopupMenu>("ObjectActions");
+        await ChooseMenuItem(menu, 0);
+        Require(Session[0].Selection == new ObjectId("sol/saturn") && Session.IsFlying(0) &&
+            Session[0].Navigation?.Target == new ObjectId("sol/saturn"),
+            "Right-click flight must replace the old Earth selection with Saturn.");
+        await Until(() => !Session.IsFlying(0), "Flying to Saturn from search");
         await FlyTo(0, "Venus", new("sol/venus"));
         await FlyTo(1, "Neptune", new("sol/neptune"));
         var before = Session[1].Navigation;

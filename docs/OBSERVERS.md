@@ -1,6 +1,6 @@
 # Observer views and reloading
 
-Use **Split view** to open two views. With **Synchronize view time** cleared, the hour-step and playback controls affect only their view. With synchronization enabled, both views use the epoch of the most recently used view. Each view retains its own camera mode and satellite selection.
+Use **Split view** to open two views. The clock switch next to it shows whether their times are linked. With **Clocks independent**, the hour-step and playback controls affect only their view. Find exact date and ΔT under **Observing → Time**. With synchronization enabled, both views use the epoch of the most recently used view. Each view retains its own camera mode and satellite selection.
 
 **Reload add-ons** decodes source geometry on a worker and publishes meshes and the replacement world on the main thread. The current epochs, camera modes, available selections and ΔT preference carry forward. A failed reload leaves the previous generation visible. The ΔT option is saved in the Godot user profile. The Earth surface view uses the selected model for sidereal rotation.
 
@@ -14,7 +14,7 @@ Scenario files use versioned JSON and refer to loaded objects by their catalog I
 
 ## Object navigation
 
-Open **Search** or press **Enter**. Search by name or catalogue ID, then select an object. The card shows its type and distance from Earth at the active view's epoch. **Go to** flies to the object, and **Esc** or **Stop flight** stops at the current camera position. Drag with the right mouse button to orbit the camera pivot, and use the wheel to zoom. **Track** centers the selected object and follows its position as the view's clock advances.
+Open **Search** or press **Enter**. Right-click a result and choose **Go to** to fly there in the active view. A star available as a pointing direction offers **Point at**. Click the selected object's name in the top bar to open its details. **Esc** or **Stop flight** stops at the current camera position. Drag with the right mouse button to orbit the camera pivot, and use the wheel to zoom. **Track** centers the selected object and follows its position as the view's clock advances.
 
 Selecting an object leaves the epoch unchanged. If an Earth satellite has no state at that epoch, starting a flight or tracking may move the clock to the satellite's catalogue epoch. An independent second view keeps its own epoch and camera.
 
@@ -22,7 +22,7 @@ Saving a scenario writes both camera poses and tracking settings. Open the scena
 
 ## Observing from Earth
 
-Open **Location** to choose Moscow or Tromsø, or enter latitude, east longitude and height from 0 to 100 kilometres. Set the azimuth clockwise from north and the elevation above the local horizon, then choose **Apply to this view**. Each view can show its own horizon grid and cardinal points. **Full Moon · Moscow** restores the original site, direction and epoch.
+Open **Location** to choose Moscow or Tromsø, or enter latitude, east longitude and height from 0 to 100 kilometres. Set the azimuth clockwise from north and the elevation above the local horizon, then choose **Apply to this view**. Each view can show its own horizon grid and cardinal points. Find the location and ephemeris tabs inside **Observing**. **Full Moon · Moscow** restores the original site, direction and epoch.
 
 **Ephemerides** shows the selected object's geometric altitude and azimuth at the active view's site and epoch. It also estimates civil twilight from the Sun's centre crossing −6° and the conventional level-horizon sunrise and sunset altitude of −0.833°. The date follows local mean solar time. Event times are shown in UTC when covered by the leap-second table and in modeled UT1 at earlier dates. The model uses a spherical Earth and a mean equator. Terrain and local atmospheric refraction can affect observed rise and set times.
 

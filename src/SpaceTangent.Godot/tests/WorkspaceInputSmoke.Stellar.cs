@@ -168,7 +168,7 @@ public partial class WorkspaceInputSmoke
                 await Click(search);
             await FillField("ObjectQuery", query);
             await Click(Result(target));
-            Require(Find<Button>("GoToObject").Text == "Go to", $"The {query} card must offer space flight.");
+            Require(Find<Button>("GoToObject").Text == UI.WorkspaceText.Choose("Go to", "Перелететь"), $"The {query} card must offer space flight.");
             await Click(Find<Button>("GoToObject"));
             Require(Session.IsFlying(view), $"Flight to {query} must start.");
             await Until(() => !Session.IsFlying(view), $"Flying to {query}");

@@ -233,30 +233,34 @@ public partial class SolarSystemScene : Control
     private void BuildWorkspaceControls()
     {
         var toolbar = _workspace.Toolbar;
-        _spaceMode = AddButton(toolbar, "Space", () =>
+        _spaceMode = AddButton(toolbar, WorkspaceText.Choose("Space", "Космос"), () =>
         {
             Session!.OpenSpaceView(_active);
             Refresh();
         });
-        _observatoryMode = AddButton(toolbar, "Observatory", () => SetMode(_active, CameraMode.Surface));
+        _observatoryMode = AddButton(toolbar, WorkspaceText.Choose("Observatory", "Обсерватория"), () => SetMode(_active, CameraMode.Surface));
         _spaceMode.Name = "SpaceMode";
         _spaceMode.ToggleMode = _observatoryMode.ToggleMode = true;
         _observatoryMode.Disabled = _surfaceTextures is null;
         _split = AddButton(toolbar, "Split view", ToggleSplit);
         _split.Name = "SplitViews";
 
-        var search = _workspace.AddPage("Search", "Search");
-        _objectSearch = new(search, Session!.World.Catalogue, SelectObject, AimAtSkyMarker);
-        var time = _workspace.AddPage("Time", "Time");
+        var search = _workspace.AddPage("Search", WorkspaceText.Choose("Search and view", "Поиск и вид"), tabTitle: WorkspaceText.Choose("Search", "Поиск"));
+        _objectSearch = new(search, Session!.World.Catalogue, SelectObject, AimAtSkyMarker,
+            NavigateFromSearch, SearchNavigationAction);
+        var location = _workspace.AddPage("Location", WorkspaceText.Choose("Observing", "Наблюдения"), tabTitle: WorkspaceText.Choose("Location", "Место"));
+        var time = _workspace.AddPage("Time", WorkspaceText.Choose("Time", "Время"), "Location");
         _timeHeading = new Label { ThemeTypeVariation = "WorkspaceTitle" };
         time.AddChild(_timeHeading);
         _calendarTime = SimulatorTheme.Detail("");
         time.AddChild(_calendarTime);
-        _playFromPanel = AddButton(time, "Play", () => TogglePlaying(_active));
-        _sync = new CheckButton { Name = "SyncViewTime", Text = "Synchronize view time", ButtonPressed = true };
+        _playFromPanel = AddButton(time, PlaybackButton(false), () => TogglePlaying(_active));
+        _sync = new CheckButton { Name = "SyncViewTime", ButtonPressed = true };
         _sync.Toggled += enabled => Synchronize(enabled, _active);
-        time.AddChild(_sync);
-        time.AddChild(SimulatorTheme.Section("Go to date"));
+        _sync.TooltipText = WorkspaceText.Choose("Synchronize the clocks of all views",
+            "Синхронизировать часы всех видов");
+        toolbar.AddChild(_sync);
+        time.AddChild(SimulatorTheme.Section(WorkspaceText.Choose("Go to date", "Перейти к дате")));
         var dateFields = new HBoxContainer();
         time.AddChild(dateFields);
         var utcDate = new LineEdit { Name = "UtcDate", PlaceholderText = "YYYY-MM-DD", SizeFlagsHorizontal = SizeFlags.ExpandFill };
@@ -276,13 +280,13 @@ public partial class SolarSystemScene : Control
         var epochInput = new LineEdit { PlaceholderText = "Julian date (TDB)", Name = "TimePanelEpoch" };
         epochInput.TextSubmitted += text => SeekTimeline(_active, text);
         time.AddChild(epochInput);
-        time.AddChild(SimulatorTheme.Section("Step"));
+        time.AddChild(SimulatorTheme.Section(WorkspaceText.Choose("Step", "Шаг времени")));
         var steps = new HFlowContainer();
         time.AddChild(steps);
         foreach (var (label, seconds) in new[]
                  { ("−1 y", -31_557_600), ("−1 d", -86400), ("−1 h", -3600), ("+1 h", 3600), ("+1 d", 86400), ("+1 y", 31_557_600) })
             AddButton(steps, label, () => Advance(_active, seconds));
-        time.AddChild(SimulatorTheme.Section("ΔT model"));
+        time.AddChild(SimulatorTheme.Section(WorkspaceText.Choose("ΔT model", "Модель ΔT")));
         _deltaT = new OptionButton { Name = "DeltaTModel" };
         _deltaT.AddItem("ΔT · Espenak–Meeus", (int)DeltaTModel.EspenakMeeus2006);
         _deltaT.AddItem("ΔT · Morrison–Stephenson", (int)DeltaTModel.MorrisonStephenson2004);
@@ -290,7 +294,7 @@ public partial class SolarSystemScene : Control
         _deltaT.ItemSelected += index => SetDeltaT((DeltaTModel)_deltaT.GetItemId((int)index));
         time.AddChild(_deltaT);
 
-        var layers = _workspace.AddPage("Layers", "Layers and view");
+        var layers = _workspace.AddPage("Layers", WorkspaceText.Choose("Layers and view", "Слои и вид"), "Search", WorkspaceText.Choose("Layers", "Слои"));
         layers.AddChild(SimulatorTheme.Section("Objects"));
         AddButton(layers, "Inner planets", () => SetMode(_active, CameraMode.Solar));
         AddButton(layers, "Outer planets", () => SetMode(_active, CameraMode.SolarOuter));
@@ -355,9 +359,7 @@ public partial class SolarSystemScene : Control
             Refresh();
         };
         layers.AddChild(_starlink);
-        _workspace.AddRailSeparator();
-        var location = _workspace.AddPage("Location", "Observer location");
-        var ephemerides = _workspace.AddPage("Ephemerides", "Ephemerides");
+        var ephemerides = _workspace.AddPage("Ephemerides", WorkspaceText.Choose("Ephemerides", "Эфемериды"), "Location");
         _earthObserver = new(location, ephemerides, _surfaceTextures is not null, camera =>
         {
             Session!.SetEarthObserver(_active, camera);
@@ -371,32 +373,31 @@ public partial class SolarSystemScene : Control
                 UpdateActiveFrame();
         };
         _workspace.AddRailSeparator();
-        var bookmarks = _workspace.AddPage("Bookmarks", "Scenarios");
-        bookmarks.AddChild(SimulatorTheme.Section("Scene file"));
+        var bookmarks = _workspace.AddPage("Bookmarks", WorkspaceText.Choose("Scenarios", "Сценарии"));
+        bookmarks.AddChild(SimulatorTheme.Section(WorkspaceText.Choose("Scene file", "Файл сцены")));
         AddScenarioMenu(bookmarks);
         AddObserverBookmarks(bookmarks);
-        var addOns = _workspace.AddPage("AddOns", "Packs and add-ons");
-        addOns.AddChild(SimulatorTheme.Section("Loaded inputs"));
+        var addOns = _workspace.AddPage("AddOns", WorkspaceText.Choose("Packs and add-ons", "Паки и дополнения"));
+        addOns.AddChild(SimulatorTheme.Section(WorkspaceText.Choose("Loaded inputs", "Загруженные данные")));
         _dataSummary = SimulatorTheme.Detail("");
         addOns.AddChild(_dataSummary);
         _localAddonPanel = new(this, addOns, ReloadAddOns, InstallLocalAddon,
             (kind, enabled) => ReloadAddOns(ApplyPackOverride(_localAddons.SetDefault(kind, enabled), AddonLoader.DefaultPath(kind), enabled)),
             (source, enabled) => ReloadAddOns(ApplyPackOverride(_localAddons.SetSource(source, enabled), AddonLoader.SourcePath(source, _localAddonFile), enabled)), UpdateSatelliteGroups);
         _localAddonPanel.ShowSources(_localAddons, _localAddonFile, _addOns?.Decoded);
-        var scripts = _workspace.AddPage("Scripts", "Observer scripts");
-        scripts.AddChild(SimulatorTheme.Section("Observer scripts"));
+        var scripts = _workspace.AddPage("Scripts", WorkspaceText.Choose("Observer scripts", "Скрипты наблюдателя"), "Bookmarks", WorkspaceText.Choose("Scripts", "Скрипты"));
+        scripts.AddChild(SimulatorTheme.Section(WorkspaceText.Choose("Observer scripts", "Скрипты наблюдателя")));
         AddScriptMenu(scripts);
-        _workspace.AddRailSeparator();
         _workspace.AddRailSpacer();
-        var settings = _workspace.AddPage("Settings", "Settings");
+        var settings = _workspace.AddPage("Settings", WorkspaceText.Choose("Settings", "Настройки"));
         settings.AddChild(SimulatorTheme.Section("Workspace"));
-        AddButton(settings, "Split or close second view", ToggleSplit);
+
         AddButton(settings, "Views side by side", () => SetSplitLayout(ViewSplit.SideBySide)).Name = "SideBySideViews";
         AddButton(settings, "Stack views", () => SetSplitLayout(ViewSplit.Stacked)).Name = "StackViews";
         AddButton(settings, "Free flight", StartFreeFlight).Name = "FreeFlight";
         AddButton(settings, "Follow body rotation", FollowBodyRotation).Name = "FollowBodyRotation";
-        AddButton(settings, "Open time settings", () => _workspace.Open("Time"));
-        var help = _workspace.AddPage("Help", "Controls");
+        AddButton(settings, WorkspaceText.Choose("Open time settings", "Открыть настройки времени"), () => _workspace.Open("Time"));
+        var help = _workspace.AddPage("Help", WorkspaceText.Choose("Controls", "Управление"), "Settings");
         help.AddChild(SimulatorTheme.Detail("Ctrl+U    Split or close the second view"));
         help.AddChild(SimulatorTheme.Detail("Tab    Switch the active view"));
         help.AddChild(SimulatorTheme.Detail("Right drag    Orbit around the camera target"));
@@ -427,10 +428,26 @@ public partial class SolarSystemScene : Control
     {
         Session!.SelectObject(_active, target);
         Refresh();
-        _workspace.RevealObjectCard();
     }
 
-    private void GoToActiveObject()
+    private (string Label, bool Enabled) SearchNavigationAction(ObjectId target)
+    {
+        if (Session!.World.EarthPlaces.Find(target) is not null)
+            return (WorkspaceText.Choose("Go to observing site", "Перейти к месту наблюдения"), true);
+        return UseEarthPointing(target, Session[_active])
+            ? (WorkspaceText.Choose("Point at", "Навести камеру"), _surfaceTextures is not null)
+            : (WorkspaceText.Choose("Go to", "Перелететь к объекту"), true);
+    }
+
+    private void NavigateFromSearch(ObjectId target)
+    {
+        if (Session![_active].Selection == target)
+            NavigateToActiveObject(stopCurrentFlight: false);
+    }
+
+    private void GoToActiveObject() => NavigateToActiveObject(stopCurrentFlight: true);
+
+    private void NavigateToActiveObject(bool stopCurrentFlight)
     {
         ObserverView observer = Session![_active];
         if (observer.Selection is { } location && Session.World.EarthPlaces.Find(location) is { } place)
@@ -452,7 +469,7 @@ public partial class SolarSystemScene : Control
             PointAtStar(star);
             return;
         }
-        _status.Text = Session!.CancelFlight(_active) ? "Flight stopped."
+        _status.Text = stopCurrentFlight && Session!.CancelFlight(_active) ? "Flight stopped."
             : Session.GoToSelection(_active) ? "" : "The object has no state at a usable epoch.";
         Refresh();
     }
@@ -848,7 +865,6 @@ public partial class SolarSystemScene : Control
         _active = view;
         Session!.Select(view, id);
         Refresh();
-        _workspace.RevealObjectCard();
     }
 
     internal void Advance(int view, double seconds)
@@ -875,7 +891,6 @@ public partial class SolarSystemScene : Control
     internal void Synchronize(bool enabled, int source)
     {
         Session!.Synchronize(enabled, source);
-        _sync.SetPressedNoSignal(enabled);
         Refresh();
     }
 
@@ -1097,7 +1112,12 @@ public partial class SolarSystemScene : Control
             child.QueueFree();
         }
         AttachView(Session.Layout, _panels, "");
-        _split.Text = Session.ViewCount switch { 1 => "Split view", 2 => "Close second view", _ => "Close active view" };
+        _split.Text = Session.ViewCount switch
+        {
+            1 => WorkspaceText.Choose("Split view", "Разделить вид"),
+            2 => WorkspaceText.Choose("Close second view", "Закрыть второй вид"),
+            _ => WorkspaceText.Choose("Close active view", "Закрыть активный вид")
+        };
     }
 
     private Control AttachView(ObserverLayout layout, Container parent, string path)
@@ -1158,7 +1178,7 @@ public partial class SolarSystemScene : Control
 
     private void AddScenarioMenu(Container toolbar)
     {
-        var menu = new MenuButton { Name = "ScenarioMenu", Text = "Scenario" };
+        var menu = new MenuButton { Name = "ScenarioMenu", Text = WorkspaceText.Choose("Scenario", "Сценарий") };
         toolbar.AddChild(menu);
         var open = new FileDialog { Name = "OpenScenario", Access = FileDialog.AccessEnum.Filesystem,
             FileMode = FileDialog.FileModeEnum.OpenFile, DeletingEnabled = false };
@@ -1178,12 +1198,12 @@ public partial class SolarSystemScene : Control
         };
         save.FileSelected += path => SaveScenario(path);
         PopupMenu popup = menu.GetPopup();
-        popup.AddItem("Open scenario…", 0);
-        popup.AddItem("Save scenario…", 1);
+        popup.AddItem(WorkspaceText.Choose("Open scenario…", "Открыть сценарий…"), 0);
+        popup.AddItem(WorkspaceText.Choose("Save scenario…", "Сохранить сценарий…"), 1);
         popup.AddSeparator();
-        popup.AddItem("Import observer settings…", 2);
-        popup.AddItem("Use current views at startup", 3);
-        popup.AddItem("Clear saved startup views", 4);
+        popup.AddItem(WorkspaceText.Choose("Import observer settings…", "Импортировать настройки наблюдателя…"), 2);
+        popup.AddItem(WorkspaceText.Choose("Use current views at startup", "Открывать эти виды при запуске"), 3);
+        popup.AddItem(WorkspaceText.Choose("Clear saved startup views", "Очистить виды запуска"), 4);
         var import = new FileDialog { Name = "ImportObserverSettings", Access = FileDialog.AccessEnum.Filesystem,
             FileMode = FileDialog.FileModeEnum.OpenFile, DeletingEnabled = false };
         import.AddFilter("*.json", "Observer settings");
@@ -1208,7 +1228,7 @@ public partial class SolarSystemScene : Control
 
     private void AddScriptMenu(Container toolbar)
     {
-        var menu = new MenuButton { Name = "ScriptMenu", Text = "Script" };
+        var menu = new MenuButton { Name = "ScriptMenu", Text = WorkspaceText.Choose("Script", "Скрипт") };
         toolbar.AddChild(menu);
         var open = new FileDialog { Name = "OpenScript", Access = FileDialog.AccessEnum.Filesystem,
             FileMode = FileDialog.FileModeEnum.OpenFile, DeletingEnabled = false };
@@ -1223,10 +1243,10 @@ public partial class SolarSystemScene : Control
                 RunScript(path);
         };
         _scriptMenu = menu.GetPopup();
-        _scriptMenu.AddItem("Run Lua…", 0);
-        _scriptMenu.AddItem("Stop script", 1);
+        _scriptMenu.AddItem(WorkspaceText.Choose("Run Lua…", "Запустить Lua…"), 0);
+        _scriptMenu.AddItem(WorkspaceText.Choose("Stop script", "Остановить скрипт"), 1);
         _tourConversionSource = AddTourDialogs();
-        _scriptMenu.AddItem("Convert tour…", 2);
+        _scriptMenu.AddItem(WorkspaceText.Choose("Convert tour…", "Преобразовать экскурсию…"), 2);
         _scriptMenu.SetItemDisabled(1, true);
         _scriptMenu.IdPressed += id =>
         {
@@ -1414,7 +1434,7 @@ public partial class SolarSystemScene : Control
         _active = scenario.ActiveView;
         if (Session.Layout != previousLayout || Session.SplitLayout != previousDirection)
             UpdateViewLayout();
-        _sync.SetPressedNoSignal(Session.Synchronized);
+
         Refresh();
     }
 
@@ -1539,24 +1559,24 @@ public partial class SolarSystemScene : Control
         frame.AddChild(panel);
         var tools = new HFlowContainer();
         panel.AddChild(tools);
-        var epoch = new Label();
+        var epoch = new Label { TextOverrunBehavior = TextServer.OverrunBehavior.TrimEllipsis };
         panel.AddChild(epoch);
         AddButton(tools, "−1 h", () => Advance(CurrentIndex(), -3600));
-        Button play = AddButton(tools, "Play", () => TogglePlaying(CurrentIndex()));
+        Button play = AddButton(tools, PlaybackButton(false), () => TogglePlaying(CurrentIndex()));
         Button advanceHour = AddButton(tools, "+1 h", () => Advance(CurrentIndex(), 3600));
         advanceHour.Name = $"AdvanceHour{index}";
         var mode = new OptionButton();
-        mode.AddItem("Inner planets", (int)CameraMode.Solar);
-        mode.AddItem("Earth–Moon view", (int)CameraMode.Lunar);
-        mode.AddItem("Earth satellites", (int)CameraMode.Satellites);
-        mode.AddItem("Earth surface", (int)CameraMode.Surface);
-        mode.AddItem("Cassini at Saturn", (int)CameraMode.Mission);
-        mode.AddItem("Cassini timeline", (int)CameraMode.Timeline);
+        mode.AddItem(WorkspaceText.Choose("Inner planets", "Внутренние планеты"), (int)CameraMode.Solar);
+        mode.AddItem(WorkspaceText.Choose("Earth–Moon view", "Земля и Луна"), (int)CameraMode.Lunar);
+        mode.AddItem(WorkspaceText.Choose("Earth satellites", "Спутники Земли"), (int)CameraMode.Satellites);
+        mode.AddItem(WorkspaceText.Choose("Earth surface", "Поверхность Земли"), (int)CameraMode.Surface);
+        mode.AddItem(WorkspaceText.Choose("Cassini at Saturn", "Cassini у Сатурна"), (int)CameraMode.Mission);
+        mode.AddItem(WorkspaceText.Choose("Cassini timeline", "Полёт Cassini"), (int)CameraMode.Timeline);
         mode.AddItem("Huygens", (int)CameraMode.Probe);
-        mode.AddItem("Lunar terrain", (int)CameraMode.LunarTerrain);
-        mode.AddItem("Outer planets", (int)CameraMode.SolarOuter);
-        mode.AddItem("Olympus Mons", (int)CameraMode.MarsTerrain);
-        mode.AddItem("Object camera", NavigationOption);
+        mode.AddItem(WorkspaceText.Choose("Lunar terrain", "Рельеф Луны"), (int)CameraMode.LunarTerrain);
+        mode.AddItem(WorkspaceText.Choose("Outer planets", "Внешние планеты"), (int)CameraMode.SolarOuter);
+        mode.AddItem(WorkspaceText.Choose("Olympus Mons", "Олимп"), (int)CameraMode.MarsTerrain);
+        mode.AddItem(WorkspaceText.Choose("Object camera", "Камера объекта"), NavigationOption);
         mode.SetItemDisabled(NavigationOption, true);
         mode.SetItemDisabled((int)CameraMode.Surface, _surfaceTextures is null);
         mode.ItemSelected += item => SetMode(CurrentIndex(), (CameraMode)mode.GetItemId((int)item));
@@ -1952,10 +1972,15 @@ public partial class SolarSystemScene : Control
         bool observatory = active.Mode == CameraMode.Surface && active.Navigation is null;
         _spaceMode.SetPressedNoSignal(!observatory);
         _observatoryMode.SetPressedNoSignal(observatory);
-        _workspace.Observation.Text = $"View {_active + 1} · {(active.Playing ? "Playing" : "Paused")}";
+        _sync.Visible = _views.Count > 1;
+        _sync.SetPressedNoSignal(Session.Synchronized);
+        _sync.Text = Session.Synchronized ? WorkspaceText.Choose("Clocks linked", "Часы связаны")
+            : WorkspaceText.Choose("Clocks independent", "Часы раздельны");
+        string playback = active.Playing ? WorkspaceText.Choose("Playing", "Идёт") : WorkspaceText.Choose("Paused", "Пауза");
+        _workspace.Observation.Text = $"{WorkspaceText.Choose("View", "Вид")} {_active + 1} · {playback}";
         _timeHeading.Text = FormattableString.Invariant($"JD {active.Epoch.ToJulianDate():F6}");
         _calendarTime.Text = CivilTimeLabel(active.Epoch, Session!.DeltaT);
-        _playFromPanel.Text = active.Playing ? "Pause" : "Play";
+        _playFromPanel.Text = PlaybackButton(active.Playing);
         _earthObserver.Update(_active, active, _views[_active].Snapshot, Session.World.Ephemeris, Session.DeltaT,
             Session.World.BrightStars, CurrentObserverNight(), Session.World.EarthPlaces);
         _showPlanetOrbits.SetPressedNoSignal(!active.Sky.HideOrbits);
@@ -2049,7 +2074,7 @@ public partial class SolarSystemScene : Control
             controls.Renderer.SetMissionAnnotations(_addOns?.Decoded.SampledMissions.Annotations ?? [], session[index].Epoch);
             controls.Renderer.DrawReferenceMarks(view, session.ReferenceGeometry(index, snapshot));
             controls.Measurements.Update(controls.Renderer, view, snapshot, session.World, session.DeltaT);
-            controls.Epoch.Text = FormattableString.Invariant($"View {index + 1}   JD {view.Epoch.ToJulianDate():F6} TDB");
+            controls.Epoch.Text = FormattableString.Invariant($"{WorkspaceText.Choose("View", "Вид")} {index + 1}   JD {view.Epoch.ToJulianDate():F6} TDB");
             if (view.LightTimeDelayed)
                 controls.Epoch.Text += "   ·   Light time";
             if (ship is not null)
@@ -2058,9 +2083,9 @@ public partial class SolarSystemScene : Control
                 controls.Epoch.Text += FormattableString.Invariant($"   ·   Ship {ship.Pilot} · {ship.SpeedKilometersPerSecond:G4} km/s · {targetName}");
             }
             else if (session.IsFlying(index))
-                controls.Epoch.Text += "   ·   Flying to target";
+                controls.Epoch.Text += WorkspaceText.Choose("   ·   Flying to target", "   ·   Перелёт к цели");
             else if (view.Navigation is { Tracking: true, Target: { } target })
-                controls.Epoch.Text += $"   ·   Tracking {session.World.Catalogue.Find(target)?.Name ?? target.Value}";
+                controls.Epoch.Text += $"   ·   {WorkspaceText.Choose("Tracking", "Слежение:")} {session.World.Catalogue.Find(target)?.Name ?? target.Value}";
             if (!available)
                 controls.Epoch.Text += view.Mode switch
                 {
@@ -2073,7 +2098,7 @@ public partial class SolarSystemScene : Control
                 };
             if (controls.Renderer.ProbeStatus is { } phase)
                 controls.Epoch.Text += "\n" + phase;
-            controls.Play.Text = view.Playing ? "Pause" : "Play";
+            controls.Play.Text = PlaybackButton(view.Playing);
             bool preset = view.Navigation is null;
             controls.Mode.Select(preset ? (int)view.Mode : NavigationOption);
             controls.FieldOfView.Visible = !preset || view.Mode == CameraMode.Surface;
@@ -2145,6 +2170,10 @@ public partial class SolarSystemScene : Control
             File.Delete(temporary);
         }
     }
+
+    private static string PlaybackButton(bool playing) => playing
+        ? WorkspaceText.Choose("Pause", "Пауза")
+        : WorkspaceText.Choose("Play", "Пуск");
 
     private static Button AddButton(Container parent, string text, Action onPressed)
     {

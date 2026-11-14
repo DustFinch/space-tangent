@@ -183,6 +183,20 @@ public static partial class TourConverter
                 case "synchronous":
                     lua.AppendLine("if selected then st.legacybodylock() end");
                     break;
+                case "splitview":
+                    string direction = command.Fields.GetValueOrDefault("type") ?? command.Fields.GetValueOrDefault("split") ?? "v";
+                    lua.AppendLine($"st.legacyview(\"splitview\", {Number(command.Number("view", 1))}, " +
+                        $"{Quote(direction)}, {Number(command.Number("position", .5))})");
+                    break;
+                case "deleteview":
+                case "makeactiveview":
+                    lua.AppendLine($"st.legacyview({Quote(command.Name)}, {Number(command.Number("view", 1))})");
+                    break;
+                case "singleview":
+                    lua.AppendLine("st.legacyview(\"singleview\")");
+                    if (command.Fields.ContainsKey("view"))
+                        Report("singleview view");
+                    break;
                 case "chase":
                 case "lock":
                     lua.AppendLine($"if selected then st.legacyframe({Quote(command.Name)}, st.selection()) end");

@@ -390,18 +390,22 @@ public sealed partial class SimulationSession
             SplitView(0, SplitLayout);
     }
 
-    public bool SplitView(int view, ViewSplit direction)
+    public bool SplitView(int view, ViewSplit direction) => SplitView(view, direction, view, .5, false);
+
+    public bool SplitView(int view, ViewSplit direction, int copyFrom, double share, bool newFirst)
     {
+        if (!double.IsFinite(share) || share is <= 0 or >= 1)
+            throw new ArgumentOutOfRangeException(nameof(share));
         if (!Enum.IsDefined(direction))
             throw new ArgumentOutOfRangeException(nameof(direction));
         if (_views.Count == ObserverLayout.MaximumViews)
             return false;
-        ObserverView source = _views[view];
-        Layout = Layout.Insert(view, _views.Count, direction);
+        ObserverView source = _views[copyFrom];
+        Layout = Layout.Insert(view, _views.Count, direction, share, newFirst);
         SplitLayout = Layout.Direction;
         _views.Add(source);
         _flights.Add(null);
-        _trackingEpochs.Add(_trackingEpochs[view]);
+        _trackingEpochs.Add(_trackingEpochs[copyFrom]);
         _viewIds.Add(_nextViewId++);
         return true;
     }

@@ -9,6 +9,75 @@ namespace SpaceTangent.Godot.Tests;
 
 public partial class WorkspaceInputSmoke
 {
+    private async Task ExerciseClassicViews(string directory)
+    {
+        string restore = Path.Combine(directory, "before-classic-views.stscene");
+        Require(_scene.SaveScenario(restore), "Save the original workspace.");
+        var left = Session[0] with { Playing = false, FieldOfViewDegrees = 41 };
+        var right = left with { Selection = Jason, Epoch = left.Epoch.AddSeconds(7200), FieldOfViewDegrees = 62 };
+        string initial = Path.Combine(directory, "classic-views-start.stscene");
+        ScenarioFile.Save(initial, new([left, right], false, 0, 1, Session.DeltaT));
+        Require(_scene.LoadScenario(initial), "Open independent views with original Jason-1 active.");
+        string source = Path.Combine(directory, "classic-views.cel");
+        using (var icon = GD.Load<Texture2D>("res://UI/space-tangent.png").GetImage())
+            Require(icon.SavePng(Path.Combine(directory, "classic-view.png")) == Error.Ok, "Create a local overlay fixture.");
+        File.WriteAllText(source, """
+            {
+                splitview { view 1 type "h" position 0.35 }
+                wait { duration 1 }
+                makeactiveview { view 3 }
+                set { name "FOV" value 36 }
+                overlay { filename "classic-view.png" duration 20 width 64 height 64 }
+                wait { duration 1 }
+                deleteview { view 2 }
+                wait { duration 1 }
+                deleteview { view 1 }
+                wait { duration 1 }
+                splitview { view 1 split "v" position 0.7 }
+                makeactiveview { view 2 }
+                set { name "FOV" value 52 }
+                singleview {}
+            }
+            """);
+        string scriptPath = Path.ChangeExtension(source, ".lua");
+        var converted = TourConverter.ConvertFile(source);
+        Require(converted.Unapplied.Count == 0, "Every classic view command must convert.");
+        File.WriteAllText(scriptPath, converted.Lua);
+        try
+        {
+            var running = _scene.RunScript(scriptPath) ?? throw new InvalidOperationException("Open the classic view script.");
+            running.Step(0);
+            Require(Session.ViewCount == 3 && Session[2] == right && running.View == 1 &&
+                Session.Layout.First is { Direction: ViewSplit.Stacked, First.View: 2, Second.View: 0 } branch &&
+                Math.Abs(branch.FirstShare - .65) < 1e-12, "Split the named leaf below its clone at the authored share.");
+            running.Step(1);
+            Require(running.View == 2 && Session[2].FieldOfViewDegrees == 36 && Session[0] == left && Session[1] == right &&
+                _scene.Renderer(2).FindChild("ScriptImage", true, false) is TextureRect &&
+                _scene.Renderer(1).FindChild("ScriptImage", true, false) is null, "Switch the script and overlay to the newly active view.");
+            if (DisplayServer.GetName() != "headless")
+            {
+                await ToSignal(RenderingServer.Singleton, RenderingServer.SignalName.FramePostDraw);
+                using var view = _scene.Renderer(2).GetViewport().GetTexture().GetImage();
+                Require(!view.IsEmpty(), "Render the selected split on the GPU.");
+            }
+            running.Step(1);
+            Require(Session.ViewCount == 2 && running.View == 1 && Session[1].Selection == Jason &&
+                Session[1].Epoch == right.Epoch, "Deleting a view must activate the first sibling leaf.");
+            running.Step(1);
+            Require(Session.ViewCount == 1 && running.View == 0 && Session[0].FieldOfViewDegrees == 36,
+                "Removing a neighboring leaf must preserve the active observer.");
+            running.Step(1);
+            Require(running.Finished && running.Error is null && Session.ViewCount == 1 &&
+                running.View == 0 && Session[0].FieldOfViewDegrees == 52 && Session[0].Selection == Jason,
+                "Single view must keep the observer selected by the script.");
+            GD.Print("Classic view script: split, selected, displayed local media and removed views without losing the Jason-1 observer.");
+        }
+        finally
+        {
+            Require(_scene.LoadScenario(restore), "Restore the original workspace after classic views.");
+        }
+    }
+
     private async Task ExerciseOriginalTours(string directory, string sources)
     {
         await Click(Find<SubViewportContainer>("ViewCanvas0"));
@@ -154,6 +223,7 @@ public partial class WorkspaceInputSmoke
         }
         await ExerciseScriptMedia(directory);
         Require(_scene.LoadScenario(restore), "The scene before the tour must be restorable.");
+        await ExerciseClassicViews(directory);
         GD.Print($"UI: converted original demo ({demoConversion.Commands} command blocks) and recursive tour ({tourTargets.Count} targets), completed both, and stopped a rerun with Escape");
 
         (HashSet<ObjectId>, bool) RunToEnd(string path)

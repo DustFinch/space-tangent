@@ -77,7 +77,7 @@ public partial class SolarSystemScene : Control
     private int _loadGeneration;
     private CancellationTokenSource? _loadCancellation;
     private LuaSessionScript? _script;
-    private ScriptMediaPlayer? _scriptMedia;
+    private readonly List<(SimulationViewport Renderer, ScriptMediaPlayer Player)> _scriptMedia = [];
     private PopupMenu _scriptMenu = null!;
     internal SimulationSession? Session { get; private set; }
     internal bool InitializationFinished { get; private set; }
@@ -713,7 +713,7 @@ public partial class SolarSystemScene : Control
                     CloseReplay();
                     Refresh();
                 }
-                else if (_script is { Finished: false } || _scriptMedia?.Active == true)
+                else if (_script is { Finished: false } || _scriptMedia.Any(entry => entry.Player.Active))
                     StopScript();
                 else if (StopCameraMotion(_active, out bool stoppedFlight))
                 {
@@ -740,7 +740,7 @@ public partial class SolarSystemScene : Control
         DisconnectCapture();
         DisablePlugins(updateMenu: false);
         _script?.Stop();
-        _scriptMedia?.Clear();
+        ClearScriptMedia();
         _loadGeneration++;
         _loadCancellation?.Cancel();
         _loadCancellation?.Dispose();
@@ -786,19 +786,15 @@ public partial class SolarSystemScene : Control
                 _script = null;
                 _scriptMenu.SetItemDisabled(1, true);
                 if (script.Error is not null)
-                    _scriptMedia?.Clear();
+                    ClearScriptMedia();
                 _status.Text = script.Error ?? "Lua script finished.";
             }
         }
-        if (_scriptMedia is { } media)
+        if (_scriptMedia.Count > 0)
         {
-            if (!media.Attached)
-            {
-                _scriptMedia = null;
-                _scriptMenu.SetItemDisabled(1, true);
-            }
-            else if (_script is null)
-                _scriptMenu.SetItemDisabled(1, !media.Active);
+            _scriptMedia.RemoveAll(entry => !entry.Player.Attached);
+            if (_script is null)
+                _scriptMenu.SetItemDisabled(1, !_scriptMedia.Any(entry => entry.Player.Active));
         }
         if (changed || Session is { } session && (session.AnyFlight || session.HasShips || session.HasActiveAutoOrbit))
             Refresh(delta);
@@ -944,7 +940,14 @@ public partial class SolarSystemScene : Control
 
     private void RemoveViewPanel(int index)
     {
-        PanelContainer panel = _views[index].Panel;
+        var controls = _views[index];
+        PanelContainer panel = controls.Panel;
+        int media = _scriptMedia.FindIndex(entry => entry.Renderer == controls.Renderer);
+        if (media >= 0)
+        {
+            _scriptMedia[media].Player.Clear();
+            _scriptMedia.RemoveAt(media);
+        }
         _views.RemoveAt(index);
         panel.GetParent().RemoveChild(panel);
         panel.QueueFree();
@@ -1233,16 +1236,74 @@ public partial class SolarSystemScene : Control
         };
     }
 
+    private void PresentScriptMedia(int view, string directory, ScriptMediaRequest request)
+    {
+        var renderer = Renderer(view);
+        var entry = _scriptMedia.Find(item => item.Renderer == renderer);
+        if (entry.Player is null)
+        {
+            entry = (renderer, new ScriptMediaPlayer(renderer));
+            _scriptMedia.Add(entry);
+        }
+        entry.Player.Present(directory, request);
+    }
+
+    private void ClearScriptMedia()
+    {
+        foreach (var entry in _scriptMedia)
+            entry.Player.Clear();
+        _scriptMedia.Clear();
+    }
+
+    private int ApplyClassicView(ScriptViewRequest request)
+    {
+        var session = Session!;
+        int index = request.View;
+        switch (request.Operation)
+        {
+            case ScriptViewOperation.Split:
+                if (session.Layout.ViewSpan(index, request.Direction) >= .2 &&
+                    session.SplitView(index, request.Direction, _active, request.Share, request.Direction == ViewSplit.Stacked))
+                    UpdateViewLayout();
+                break;
+            case ScriptViewOperation.Delete when session.Layout.FirstSiblingView(index) is { } sibling:
+                session.RemoveView(index);
+                RemoveViewPanel(index);
+                _shipKeys.Clear();
+                _freeFlightKeys.Clear();
+                _active = sibling > index ? sibling - 1 : sibling;
+                UpdateViewLayout();
+                break;
+            case ScriptViewOperation.Activate:
+                ActivateView(index);
+                break;
+            case ScriptViewOperation.Keep when session.ViewCount > 1:
+                for (int view = session.ViewCount - 1; view >= 0; view--)
+                {
+                    if (view == index)
+                        continue;
+                    session.RemoveView(view);
+                    RemoveViewPanel(view);
+                }
+                _shipKeys.Clear();
+                _freeFlightKeys.Clear();
+                _active = 0;
+                UpdateViewLayout();
+                break;
+        }
+        return _active;
+    }
+
     internal LuaSessionScript? RunScript(string path)
     {
         try
         {
             string directory = Path.GetDirectoryName(Path.GetFullPath(path))!;
-            var media = new ScriptMediaPlayer(Renderer(_active));
-            LuaSessionScript next = LuaSessionScript.Load(path, Session!, _active, _surfaceTextures is not null,
-                line => GD.Print(line), request => media.Present(directory, request));
-            _scriptMedia?.Clear();
-            _scriptMedia = media;
+            LuaSessionScript? next = null;
+            next = LuaSessionScript.Load(path, Session!, _active, _surfaceTextures is not null,
+                line => GD.Print(line), request => PresentScriptMedia(next!.View, directory, request),
+                views: ApplyClassicView);
+            ClearScriptMedia();
             if (_script is { } previous)
             {
                 previous.Stop();
@@ -1276,8 +1337,7 @@ public partial class SolarSystemScene : Control
         }
         _script = null;
         _scriptMenu.SetItemDisabled(1, true);
-        _scriptMedia?.Clear();
-        _scriptMedia = null;
+        ClearScriptMedia();
         _status.Text = "Lua script stopped.";
     }
 

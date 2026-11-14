@@ -14,7 +14,7 @@ public sealed partial class LuaSessionScript
     private const double MaximumWaitSeconds = 120;
     private static readonly UTF8Encoding StrictUtf8 = new(false, true);
     private readonly SimulationSession _session;
-    private readonly int _viewIdentity;
+    private int _viewIdentity;
     private readonly Action<string> _log;
     private readonly bool _hasSurface;
     private readonly Script _vm;
@@ -25,14 +25,14 @@ public sealed partial class LuaSessionScript
     {
         internal Coroutine Coroutine { get; } = coroutine;
         internal DynValue[]? Arguments = arguments;
-        internal int Steps, Messages, CatalogueReads, MediaRequests;
+        internal int Steps, Messages, CatalogueReads, MediaRequests, ViewRequests;
         internal long Allocated;
         internal double WaitRemaining, TotalWait, DollyRate;
         internal bool Complete, Yielded;
         internal string? Error, LastNotice;
     }
 
-    private LuaSessionScript(string source, string name, SimulationSession session, int view, bool hasSurface, Action<string> log, bool plugin = false, Action<ScriptMediaRequest>? media = null)
+    private LuaSessionScript(string source, string name, SimulationSession session, int view, bool hasSurface, Action<string> log, bool plugin = false, Action<ScriptMediaRequest>? media = null, Func<ScriptViewRequest, int>? views = null)
     {
         _session = session;
         _viewIdentity = session.ViewIdentity(view);
@@ -63,6 +63,8 @@ public sealed partial class LuaSessionScript
         Bind(api, "log", (_, arguments) => { Log(Text(arguments[0])); return DynValue.Nil; });
         Bind(api, "notice", (_, arguments) => PrintNotice(arguments, native: false));
         BindTourActions(api);
+        if (views is not null && !plugin)
+            BindClassicViews(api, views);
         BindNativeObjects(api);
         script.Globals.Set("st", DynValue.NewTable(api));
         Bind(script.Globals, "wait", Wait);
@@ -102,7 +104,7 @@ public sealed partial class LuaSessionScript
     public string? Error { get; private set; }
 
     public static LuaSessionScript Load(string path, SimulationSession session, int view, bool hasSurface, Action<string> log,
-        Action<ScriptMediaRequest>? media = null)
+        Action<ScriptMediaRequest>? media = null, Func<ScriptViewRequest, int>? views = null)
     {
         using FileStream stream = File.OpenRead(path);
         if (stream.Length > MaximumSourceBytes)
@@ -116,7 +118,7 @@ public sealed partial class LuaSessionScript
             content = content[3..];
         try
         {
-            return new(StrictUtf8.GetString(content), Path.GetFileName(path), session, view, hasSurface, log, media: media);
+            return new(StrictUtf8.GetString(content), Path.GetFileName(path), session, view, hasSurface, log, media: media, views: views);
         }
         catch (InterpreterException error)
         {

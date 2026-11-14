@@ -63,6 +63,13 @@ public partial class WorkspaceInputSmoke : Node
                 return;
             }
 
+            if (System.Environment.GetEnvironmentVariable("SPACETANGENT_CLASSIC_VIEWS_SMOKE_ONLY") == "1")
+            {
+                await ExerciseClassicViews(scratch.FullName);
+                exitCode = 0;
+                return;
+            }
+
             if (System.Environment.GetEnvironmentVariable("SPACETANGENT_MEDIA_SMOKE_ONLY") == "1")
             {
                 var view = Session[0] with { Playing = false };

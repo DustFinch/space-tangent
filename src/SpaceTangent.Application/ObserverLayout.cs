@@ -49,9 +49,32 @@ public sealed record ObserverLayout(
         return First is not null && Second is not null && First.Validate(seen, depth + 1) && Second.Validate(seen, depth + 1);
     }
 
-    internal ObserverLayout Insert(int view, int added, ViewSplit direction) => View is { } leaf
-        ? (leaf == view ? new(null, direction, .5, this, Leaf(added)) : this)
-        : this with { First = First!.Insert(view, added, direction), Second = Second!.Insert(view, added, direction) };
+    internal ObserverLayout Insert(int view, int added, ViewSplit direction, double share, bool newFirst) => View is { } leaf
+        ? leaf != view ? this : new(null, direction, newFirst ? 1 - share : share,
+            newFirst ? Leaf(added) : this, newFirst ? this : Leaf(added))
+        : this with { First = First!.Insert(view, added, direction, share, newFirst),
+            Second = Second!.Insert(view, added, direction, share, newFirst) };
+
+    public double ViewSpan(int view, ViewSplit direction)
+    {
+        if (View is { } leaf)
+            return leaf == view ? 1 : 0;
+        double first = First!.ViewSpan(view, direction), second = Second!.ViewSpan(view, direction);
+        return Direction == direction ? first * FirstShare + second * (1 - FirstShare) : first + second;
+    }
+
+    public int? FirstSiblingView(int view)
+    {
+        if (View.HasValue)
+            return null;
+        if (First!.View == view)
+            return Second!.FirstLeaf();
+        if (Second!.View == view)
+            return First.FirstLeaf();
+        return First.FirstSiblingView(view) ?? Second.FirstSiblingView(view);
+    }
+
+    private int FirstLeaf() => View ?? First!.FirstLeaf();
 
     internal ObserverLayout? Remove(int view)
     {

@@ -3,7 +3,12 @@ using SpaceTangent.Contracts;
 
 namespace SpaceTangent.Application;
 
-public readonly record struct ScriptMarker(Vector3d Color, double Size, double Opacity);
+public enum ScriptMarkerShape { Disk, Circle, Square, FilledSquare, Diamond, Triangle, Cross }
+
+public readonly record struct ScriptMarker(Vector3d Color, double Size, double Opacity)
+{
+    public ScriptMarkerShape Shape { get; init; }
+}
 
 public sealed partial class SimulationSession
 {

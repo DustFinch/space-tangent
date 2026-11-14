@@ -34,6 +34,12 @@ public partial class EarthOrbitProbe : Node
                 await ToSignal(GetTree(), SceneTree.SignalName.ProcessFrame);
             }
             var session = scene.Session ?? throw new InvalidOperationException("The probe needs DE440.");
+            if (System.Environment.GetEnvironmentVariable("SPACETANGENT_REDSHIFT_PROBE") == "only")
+            {
+                await ExerciseRedshiftScript(scene, directory);
+                result = 0;
+                return;
+            }
             if (System.Environment.GetEnvironmentVariable("SPACETANGENT_TOUR_NOTICE_PROBE") == "only")
             {
                 await ExerciseTourNotices(scene, directory);

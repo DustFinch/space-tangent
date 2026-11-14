@@ -209,6 +209,52 @@ public sealed class NativeTourGeometryTests
         finally { folder.Delete(recursive: true); }
     }
 
+    [TourArchiveFact]
+    [Trait("Category", "ExternalData")]
+    public void ClassicMarkersPreserveStyleAndStayInTheirOwnObserver()
+    {
+        var world = new SimulationWorld(De440Ephemeris.Load(Environment.GetEnvironmentVariable("SPACETANGENT_DE440")!), []);
+        var epoch = JulianInstant.FromJulianDate(2451545, TimeScale.Tdb);
+        var session = new SimulationSession(world, epoch, DeltaTModel.MorrisonStephenson2004);
+        session.Split();
+        var folder = Directory.CreateTempSubdirectory("st-cel-markers-");
+        try
+        {
+            string source = Path.Combine(folder.FullName, "marks.cel");
+            File.WriteAllText(source, """
+                {
+                  renderflags { set "markers" }
+                  select { object "Sol/Earth" }
+                  mark { color [1 0.5 0] size 16 alpha 0.6 }
+                  mark { object "Sol/Earth/Moon" symbol "filledsquare" color "#0000ff" }
+                  wait { duration 1 }
+                  unmark { object "Sol/Earth/Moon" }
+                  wait { duration 1 }
+                  unmarkall {}
+                }
+                """);
+            var conversion = TourConverter.ConvertFile(source);
+            Assert.Empty(conversion.Unapplied);
+            string lua = Path.Combine(folder.FullName, "marks.lua");
+            File.WriteAllText(lua, conversion.Lua);
+            var other = LuaSessionScript.Load(lua, session, 1, false, _ => { });
+            other.Step(0);
+            var script = LuaSessionScript.Load(lua, session, 0, false, _ => { });
+            script.Step(0);
+            Assert.Equal(new ScriptMarker(new(1, 128 / 255d, 0), 16, .6) { Shape = ScriptMarkerShape.Diamond },
+                session.Markers(0)[SolarSystemSample.EarthId]);
+            Assert.Equal(ScriptMarkerShape.FilledSquare, session.Markers(0)[SolarSystemSample.MoonId].Shape);
+            script.Step(1);
+            Assert.Equal(SolarSystemSample.EarthId, Assert.Single(session.Markers(0)).Key);
+            script.Step(1);
+            Assert.True(script.Finished);
+            Assert.Null(script.Error);
+            Assert.Empty(session.Markers(0));
+            Assert.Equal(2, session.Markers(1).Count);
+        }
+        finally { folder.Delete(recursive: true); }
+    }
+
     private sealed class TourArchiveFactAttribute : FactAttribute
     {
         public TourArchiveFactAttribute()

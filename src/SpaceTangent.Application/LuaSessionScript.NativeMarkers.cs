@@ -66,12 +66,20 @@ public sealed partial class LuaSessionScript
         string hex = color.IsNil() ? "#00ff00" : Text(color);
         if (hex.Length != 7 || hex[0] != '#' || !uint.TryParse(hex.AsSpan(1), NumberStyles.HexNumber, CultureInfo.InvariantCulture, out uint rgb))
             throw new ScriptRuntimeException("A marker color needs six hexadecimal digits.");
-        if (!shape.IsNil() && !Text(shape).Equals("disk", StringComparison.OrdinalIgnoreCase))
-            throw new ScriptRuntimeException("Expected a disk marker.");
+        ScriptMarkerShape symbol = shape.IsNil() ? ScriptMarkerShape.Disk : Text(shape).ToLowerInvariant() switch
+        {
+            "disk" => ScriptMarkerShape.Disk,
+            "circle" => ScriptMarkerShape.Circle,
+            "square" => ScriptMarkerShape.Square,
+            "filledsquare" => ScriptMarkerShape.FilledSquare,
+            "diamond" => ScriptMarkerShape.Diamond,
+            "triangle" => ScriptMarkerShape.Triangle,
+            _ => ScriptMarkerShape.Cross
+        };
         double diameter = size.IsNil() ? 10 : Number(size), alpha = opacity.IsNil() ? 1 : Number(opacity);
         if (diameter is <= 0 or > 128 || alpha is < 0 or > 1)
             throw new ScriptRuntimeException("Marker size or opacity is out of range.");
         var channels = new Vector3d((rgb >> 16) / 255d, ((rgb >> 8) & 255) / 255d, (rgb & 255) / 255d);
-        return Change(() => _session.PutScriptMarker(View, id, new(channels, diameter, alpha)));
+        return Change(() => _session.PutScriptMarker(View, id, new(channels, diameter, alpha) { Shape = symbol }));
     }
 }

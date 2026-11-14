@@ -92,6 +92,25 @@ public static partial class TourConverter
                     lua.AppendLine($"st.notice({Quote(command.Fields.GetValueOrDefault("text") ?? "")}, {Number(seconds)}, " +
                         $"{horizontal}, {vertical}, {Number(Math.Truncate(command.Number("column")))}, {Number(Math.Truncate(command.Number("row")))})");
                     break;
+                case "mark":
+                case "unmark":
+                    string target = command.Fields.GetValueOrDefault("object") ?? "";
+                    string lookup = target.Length == 0 ? "(selected and st.selection())" : $"st.find({Quote(target)})";
+                    if (command.Name == "unmark")
+                        lua.AppendLine($"do local item = {lookup}; if item then item:unmark() end end");
+                    else
+                    {
+                        string color = MarkerColor(command.Fields.GetValueOrDefault("color") ?? "#00ff00");
+                        string symbol = command.Fields.GetValueOrDefault("symbol") ?? "diamond";
+                        lua.AppendLine($"do local item = {lookup}; if item then item:mark({Quote(color)}, {Quote(symbol)}, " +
+                            $"{Number(command.Number("size", 10))}, {Number(command.Number("alpha", 1))}) end end");
+                        if (command.Fields.ContainsKey("occludable"))
+                            Report("mark occludable");
+                    }
+                    break;
+                case "unmarkall":
+                    lua.AppendLine("st.legacyclearmarks()");
+                    break;
                 case "overlay":
                     mediaFiles.Add(command.Get("filename"));
                     foreach (string field in new[] { "fitscreen", "color", "colortop", "colorbottom", "colortopleft",
@@ -237,6 +256,15 @@ public static partial class TourConverter
         }
 
         string FlightTime(Command command) => Number(Duration(command.Number("time", 1)) * scale);
+    }
+
+    private static string MarkerColor(string value)
+    {
+        string[] channels = value.Split(' ', StringSplitOptions.RemoveEmptyEntries);
+        return channels.Length == 3
+            ? "#" + string.Concat(channels.Select(channel =>
+                ((int)Math.Round(Math.Clamp(ParseNumber(channel), 0, 1) * 255)).ToString("x2", CultureInfo.InvariantCulture)))
+            : value;
     }
 
     private static string Vector(Command command, string field, string fallback)

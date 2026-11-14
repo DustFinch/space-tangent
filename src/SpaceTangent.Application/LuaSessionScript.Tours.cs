@@ -31,6 +31,7 @@ public sealed partial class LuaSessionScript
                 ? Change(() => _session.SetScriptFieldOfView(View, degrees, synchronizeZoom: false, synchronizeOtherViews: false))
                 : DynValue.Nil;
         });
+        Bind(api, "legacyclearmarks", (_, _) => Change(() => _session.ClearScriptMarkers(View)));
         BindTourGeometry(api);
     }
 

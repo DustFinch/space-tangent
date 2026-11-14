@@ -55,10 +55,38 @@ internal partial class ScriptMarkerCanvas : Node2D
         foreach (var (center, marker) in Markers)
         {
             var color = new Color((float)marker.Color.X, (float)marker.Color.Y, (float)marker.Color.Z, (float)marker.Opacity);
-            if (marker.Size == 1)
-                DrawRect(new(center.Floor(), Vector2.One), color);
-            else
-                DrawCircle(center, (float)marker.Size * .5f, color, antialiased: true);
+            float radius = (float)marker.Size * .5f;
+            var horizontal = Vector2.Right * radius;
+            var vertical = Vector2.Down * radius;
+            switch (marker.Shape)
+            {
+                case ScriptMarkerShape.Disk when marker.Size == 1:
+                    DrawRect(new(center.Floor(), Vector2.One), color);
+                    break;
+                case ScriptMarkerShape.Disk:
+                    DrawCircle(center, radius, color, antialiased: true);
+                    break;
+                case ScriptMarkerShape.Circle:
+                    DrawCircle(center, radius, color, filled: false, width: 1, antialiased: true);
+                    break;
+                case ScriptMarkerShape.Square:
+                case ScriptMarkerShape.FilledSquare:
+                    DrawRect(new(center - horizontal - vertical, (horizontal + vertical) * 2), color,
+                        filled: marker.Shape == ScriptMarkerShape.FilledSquare);
+                    break;
+                case ScriptMarkerShape.Diamond:
+                    DrawPolyline([center - vertical, center + horizontal, center + vertical, center - horizontal,
+                        center - vertical], color, 1, true);
+                    break;
+                case ScriptMarkerShape.Triangle:
+                    DrawPolyline([center - vertical, center + vertical + horizontal, center + vertical - horizontal,
+                        center - vertical], color, 1, true);
+                    break;
+                case ScriptMarkerShape.Cross:
+                    DrawLine(center - horizontal, center + horizontal, color);
+                    DrawLine(center - vertical, center + vertical, color);
+                    break;
+            }
         }
     }
 }

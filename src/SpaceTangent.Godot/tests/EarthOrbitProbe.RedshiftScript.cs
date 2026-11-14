@@ -10,7 +10,7 @@ public partial class EarthOrbitProbe
 {
     private async Task ExerciseRedshiftScript(SolarSystemScene scene, string directory)
     {
-        if (System.Environment.GetEnvironmentVariable("SPACETANGENT_REDSHIFT_PROBE") != "1")
+        if (System.Environment.GetEnvironmentVariable("SPACETANGENT_REDSHIFT_PROBE") is not ("1" or "only"))
             return;
         string source = Path.Combine(System.Environment.GetEnvironmentVariable("SPACETANGENT_TOUR_SOURCES")!, "z-dist.celx");
         var session = scene.Session!;
@@ -54,6 +54,31 @@ public partial class EarthOrbitProbe
             if (image.SavePng(Path.Combine(directory, "redshift-catalogue.png")) != Error.Ok)
                 throw new IOException("Could not capture the interactive redshift view.");
             GD.Print($"Original redshift CELX: {session.Markers(0).Count} galaxy marks, {renderer.VisibleScriptMarkers.Count} projected, a green selected disk, an independent second view and a 1000 Mpc flight.");
+            running.Stop();
+            string classic = Path.Combine(directory, "catalogue-marker.cel");
+            File.WriteAllText(classic, """
+                {
+                    unmarkall {}
+                    renderflags { set "markers" }
+                    mark { object "Andromeda Galaxy" symbol "filledsquare" color [1 0 1] size 24 }
+                }
+                """);
+            string converted = Path.ChangeExtension(classic, ".lua");
+            File.WriteAllText(converted, TourConverter.ConvertFile(classic).Lua);
+            var markerScript = scene.RunScript(converted) ?? throw new InvalidOperationException("Could not run the classic marker.");
+            for (int frame = 0; frame < 10 && !markerScript.Finished; frame++)
+                await ToSignal(GetTree(), SceneTree.SignalName.ProcessFrame);
+            await ToSignal(RenderingServer.Singleton, RenderingServer.SignalName.FramePostDraw);
+            if (markerScript.Error is not null || !session.Markers(0).ContainsKey(andromeda))
+                throw new InvalidOperationException("The classic script could not mark the original galaxy: " + markerScript.Error);
+            var square = renderer.VisibleScriptMarkers.Single(item => item.Marker.Shape == ScriptMarkerShape.FilledSquare);
+            using var markedView = renderer.GetViewport().GetTexture().GetImage();
+            // This point is inside the square, beyond the radius of a disk of the same size.
+            Color corner = markedView.GetPixel((int)square.Center.X + 10, (int)square.Center.Y + 10);
+            if (corner.R < .8 || corner.G > .2 || corner.B < .8 ||
+                scene.Renderer(1).VisibleScriptMarkers.Count != 0)
+                throw new InvalidOperationException("The classic marker did not render as an isolated magenta square.");
+            GD.Print("Classic marker GPU: converted a filled square on original M31, sampled its corner and preserved the second view.");
         }
         finally
         {

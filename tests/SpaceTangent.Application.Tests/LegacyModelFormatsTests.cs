@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
 using SpaceTangent.Application.Assets;
 using SpaceTangent.Contracts;
+using SpaceTangent.Core.Addons;
+using System.Security.Cryptography;
 using Xunit;
 
 namespace SpaceTangent.Application.Tests;
@@ -30,11 +32,58 @@ public sealed class LegacyModelFormatsTests
         Assert.InRange(Math.Abs(y / z - 169.75343272089958 / 172.5), 0, 1e-6);
     }
 
+    [ModelFormatFact(owners: true)]
+    [Trait("Category", "ExternalData")]
+    public void ArchivedModelOwnersKeepDistinctTexturesWhenTheirPackIsRelocated()
+    {
+        string archive = Environment.GetEnvironmentVariable("SPACETANGENT_ARCHIVED_MODEL_OWNERS")!;
+        var scratch = Directory.CreateTempSubdirectory("st-archive-model-");
+        try
+        {
+            string destination = scratch.CreateSubdirectory("перенесённые модели").FullName;
+            string packedRoot = Path.Combine(archive, "packed");
+            foreach (string file in Directory.EnumerateFiles(packedRoot, "*", SearchOption.AllDirectories))
+            {
+                string copy = Path.Combine(destination, Path.GetRelativePath(packedRoot, file));
+                Directory.CreateDirectory(Path.GetDirectoryName(copy)!);
+                File.Copy(file, copy);
+            }
+            var source = Load(Path.Combine(archive, "source"));
+            var packed = Load(destination);
+            Assert.Equal(new[] { "jason", "sorce", "synthetic-0", "synthetic-1" }, packed.Select(body => body.Name).Order().ToArray());
+            Assert.Equal(packed.Select(body => body.Name), source.Select(body => body.Name));
+            Assert.Equal(4, packed.Select(body => body.MeshPath).Distinct().Count());
+
+            var signatures = new Dictionary<string, string[]>();
+            foreach (var body in source)
+            {
+                var relocated = Assert.Single(packed, item => item.Name == body.Name);
+                var loose = ScienceModelDecoder.Decode(body.MeshPath!);
+                var compiled = PackedModelDecoder.Decode(destination, relocated.MeshPath!);
+                Assert.Equal(loose.Surfaces.Sum(surface => surface.Positions.Length),
+                    compiled.Surfaces.Sum(surface => surface.Positions.Length));
+                string[] textures = Hashes(loose);
+                Assert.NotEmpty(textures);
+                Assert.Equal(textures, Hashes(compiled));
+                signatures.Add(body.Name, textures);
+            }
+            Assert.NotEqual(signatures["synthetic-0"], signatures["synthetic-1"]);
+        }
+        finally { scratch.Delete(recursive: true); }
+
+        static IReadOnlyList<SampledMission> Load(string root) => SampledMissionCatalog.Load("pack.json", root,
+            name => name is "Earth" or "Sol/Earth" ? new ObjectId("sol/earth") : null,
+            warning => throw new InvalidDataException(warning));
+        static string[] Hashes(DecodedScienceModel model) => model.Textures.Values
+            .Select(bytes => Convert.ToHexString(SHA256.HashData(bytes.Span))).Order(StringComparer.Ordinal).ToArray();
+    }
+
+
     private sealed class ModelFormatFactAttribute : FactAttribute
     {
-        public ModelFormatFactAttribute()
+        public ModelFormatFactAttribute(bool owners = false)
         {
-            if (string.IsNullOrWhiteSpace(Environment.GetEnvironmentVariable("SPACETANGENT_LEGACY_MODEL_FORMATS")))
+            if (string.IsNullOrWhiteSpace(Environment.GetEnvironmentVariable(owners ? "SPACETANGENT_ARCHIVED_MODEL_OWNERS" : "SPACETANGENT_LEGACY_MODEL_FORMATS")))
                 Skip = "Set the archived model formats fixture.";
         }
     }

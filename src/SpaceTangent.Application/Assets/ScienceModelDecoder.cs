@@ -58,7 +58,7 @@ public static class ScienceModelDecoder
         var normals = new List<Vector3d>();
         var uvs = new List<(float U, float V)>();
         var surfaces = new Dictionary<string, List<Corner>>(StringComparer.Ordinal);
-        var materials = new Dictionary<string, DecodedMaterial>(StringComparer.Ordinal);
+        var materials = new Dictionary<string, (DecodedMaterial Material, string Owner)>(StringComparer.Ordinal);
         string material = "";
         int triangles = 0;
 
@@ -126,7 +126,15 @@ public static class ScienceModelDecoder
                 minimum = new(Math.Min(minimum.X, p.X), Math.Min(minimum.Y, p.Y), Math.Min(minimum.Z, p.Z));
                 maximum = new(Math.Max(maximum.X, p.X), Math.Max(maximum.Y, p.Y), Math.Max(maximum.Z, p.Z));
             }
-            DecodedMaterial definition = materials.GetValueOrDefault(name) ?? DefaultMaterial;
+            var materialEntry = materials.GetValueOrDefault(name);
+            DecodedMaterial definition = materialEntry.Material ?? DefaultMaterial;
+            if (definition.Texture is { } reference)
+            {
+                string resolved;
+                try { resolved = Companion(directory, reference, ".png"); }
+                catch (FileNotFoundException) { resolved = Companion(directory, reference, ".png", materialEntry.Owner); }
+                definition = definition with { Texture = Path.GetRelativePath(directory, resolved).Replace('\\', '/') };
+            }
             if (definition.Texture is { } texture && !textures.ContainsKey(texture))
                 textures.Add(texture, AddonDiagnostics.Read(AddonStage.Texture, Path.Combine(directory, texture),
                     () => ReadPng(Companion(directory, texture, ".png"))));
@@ -182,7 +190,7 @@ public static class ScienceModelDecoder
         return index;
     }
 
-    private static void ReadMaterials(string directory, string name, Dictionary<string, DecodedMaterial> materials,
+    private static void ReadMaterials(string directory, string name, Dictionary<string, (DecodedMaterial Material, string Owner)> materials,
         CancellationToken cancellation)
     {
         try
@@ -195,7 +203,8 @@ public static class ScienceModelDecoder
         }
     }
 
-    private static void ReadMaterialFile(string path, Dictionary<string, DecodedMaterial> materials, CancellationToken cancellation)
+    private static void ReadMaterialFile(string path, Dictionary<string, (DecodedMaterial Material, string Owner)> materials,
+        CancellationToken cancellation)
     {
         string? name = null;
         DecodedMaterial value = DefaultMaterial;
@@ -205,7 +214,7 @@ public static class ScienceModelDecoder
             {
                 case "newmtl" when fields.Length > 1:
                     if (name is not null)
-                        materials[name] = value;
+                        materials[name] = (value, Path.GetDirectoryName(path)!);
                     name = string.Join(' ', fields.Skip(1));
                     value = DefaultMaterial;
                     break;
@@ -227,16 +236,28 @@ public static class ScienceModelDecoder
             }
         }
         if (name is not null)
-            materials[name] = value;
+            materials[name] = (value, Path.GetDirectoryName(path)!);
     }
 
-    private static string Companion(string directory, string name, string extension)
+    private static string Companion(string directory, string name, string extension, string? owner = null)
     {
-        if (Path.GetFileName(name) != name || !Path.GetExtension(name).Equals(extension, StringComparison.OrdinalIgnoreCase))
-            throw new InvalidDataException("OBJ companion assets must use a local filename and supported extension.");
-        string path = Path.Combine(directory, name);
-        if ((AddonDependencies.GetAttributes(path) & FileAttributes.ReparsePoint) != 0)
-            throw new InvalidDataException("OBJ companion assets must not use symbolic links.");
+        string relative = name.Replace('\\', '/');
+        if (Path.IsPathRooted(relative) || relative.Contains(':') ||
+            !Path.GetExtension(relative).Equals(extension, StringComparison.OrdinalIgnoreCase))
+            throw new InvalidDataException("OBJ companion assets must use a local path and supported extension.");
+        string root = Path.GetFullPath(directory);
+        string path = Path.GetFullPath(relative, owner ?? root);
+        string fromRoot = Path.GetRelativePath(root, path);
+        if (Path.IsPathRooted(fromRoot) || fromRoot == ".." || fromRoot.StartsWith(".." + Path.DirectorySeparatorChar, StringComparison.Ordinal))
+            throw new InvalidDataException("OBJ companion assets must stay within the model folder.");
+        if (!AddonDependencies.FileExists(path))
+            throw new FileNotFoundException("OBJ companion asset is missing.", path);
+        for (string current = path; !string.Equals(current, root, StringComparison.OrdinalIgnoreCase);
+             current = Path.GetDirectoryName(current)!)
+        {
+            if ((AddonDependencies.GetAttributes(current) & FileAttributes.ReparsePoint) != 0)
+                throw new InvalidDataException("OBJ companion assets must not use symbolic links.");
+        }
         return path;
     }
 

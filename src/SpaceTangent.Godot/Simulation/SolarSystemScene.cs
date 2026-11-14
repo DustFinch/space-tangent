@@ -1238,6 +1238,11 @@ public partial class SolarSystemScene : Control
 
     private void PresentScriptMedia(int view, string directory, ScriptMediaRequest request)
     {
+        if (request is ScriptMediaRequest.Capture capture)
+        {
+            QueueScriptScreenshot(capture.File);
+            return;
+        }
         var renderer = Renderer(view);
         var entry = _scriptMedia.Find(item => item.Renderer == renderer);
         if (entry.Player is null)

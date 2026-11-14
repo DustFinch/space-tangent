@@ -11,6 +11,7 @@ public partial class SolarSystemScene
     private int _moviePreviousFps;
     private int? _movieFrameLimit;
     private string? _screenshotPath, _replayFinalScreenshot;
+    private readonly Queue<string> _scriptScreenshots = new();
     private bool _replayEndReached;
     private IObserverReplay? _replay;
     private FileStream? _replayFile;
@@ -62,6 +63,23 @@ public partial class SolarSystemScene
             _status.Text = "Could not prepare screenshot. " + error.Message;
             return false;
         }
+    }
+
+    private void QueueScriptScreenshot(string name)
+    {
+        if (!_captureConnected)
+        {
+            _status.Text = "A rendered viewport is needed for a screenshot.";
+            return;
+        }
+        if (name.Length > 120 || name is "." or ".." || name.EndsWith('.') || name.EndsWith(' ') ||
+            name.Any(character => char.IsControl(character) || "<>:\"/\\|?*".Contains(character)))
+            throw new InvalidDataException("A script screenshot needs a plain filename in the captures folder.");
+        if (_scriptScreenshots.Count >= 32)
+            throw new InvalidOperationException("Too many script screenshots are queued.");
+        string output = name.Length == 0 ? CaptureStem() + ".png" :
+            Path.Combine(CaptureDirectory(), name.EndsWith(".png", StringComparison.OrdinalIgnoreCase) ? name : name + ".png");
+        _scriptScreenshots.Enqueue(output);
     }
 
     private void ToggleRecording()
@@ -141,6 +159,27 @@ public partial class SolarSystemScene
             {
                 _captureFailed = true;
                 _status.Text = "Could not save screenshot. " + error.Message;
+            }
+        }
+        if (_scriptScreenshots.Count > 0)
+        {
+            using var image = GetViewport().GetTexture().GetImage();
+            byte[] png = image.SavePngToBuffer();
+            while (_scriptScreenshots.TryDequeue(out string? scriptOutput))
+            {
+                try
+                {
+                    if (png.Length == 0)
+                        throw new IOException("PNG encoding failed.");
+                    using var file = File.Open(scriptOutput, FileMode.CreateNew, System.IO.FileAccess.Write, FileShare.None);
+                    file.Write(png);
+                    _status.Text = $"Screenshot saved · {scriptOutput}";
+                }
+                catch (Exception error) when (IsLoadError(error))
+                {
+                    _status.Text = "Could not save script screenshot. " + error.Message;
+                    GD.Print(_status.Text);
+                }
             }
         }
         if (_movie is not { } movie || Session is not { } session)
@@ -252,12 +291,17 @@ public partial class SolarSystemScene
         _replayEndReached = false;
     }
 
-    private static string CaptureStem()
+    private static string CaptureDirectory()
     {
         string? configured = System.Environment.GetEnvironmentVariable("SPACETANGENT_CAPTURE_OUTPUT");
         string directory = string.IsNullOrWhiteSpace(configured)
             ? ProjectSettings.GlobalizePath("user://captures") : Path.GetFullPath(configured);
-        Directory.CreateDirectory(directory);
+        return Directory.CreateDirectory(directory).FullName;
+    }
+
+    private static string CaptureStem()
+    {
+        string directory = CaptureDirectory();
         string date = DateTime.UtcNow.ToString("yyyyMMdd-HHmmssfff", CultureInfo.InvariantCulture);
         return Path.Combine(directory, $"spacetangent-{date}-{Guid.NewGuid():N}");
     }

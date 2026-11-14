@@ -112,6 +112,9 @@ public static partial class TourConverter
                 case "unmarkall":
                     lua.AppendLine("st.legacyclearmarks()");
                     break;
+                case "capture":
+                    lua.AppendLine($"st.capture({Quote(command.Fields.GetValueOrDefault("filename") ?? "")})");
+                    break;
                 case "overlay":
                     mediaFiles.Add(command.Get("filename"));
                     foreach (string field in new[] { "fitscreen", "color", "colortop", "colorbottom", "colortopleft",

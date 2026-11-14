@@ -8,6 +8,8 @@ public abstract record ScriptMediaRequest(string File)
     public sealed record Overlay(string File, double Seconds, double X, double Y, double Width, double Height, double Opacity)
         : ScriptMediaRequest(File);
 
+    public sealed record Capture(string File) : ScriptMediaRequest(File);
+
     public sealed record Sound(string File, double Volume, int Channel, bool Loop) : ScriptMediaRequest(File);
 }
 
@@ -17,6 +19,13 @@ public sealed partial class LuaSessionScript
     {
         Bind(api, "overlay", (_, arguments) => Overlay(arguments));
         Bind(api, "play", (_, arguments) => Sound(arguments));
+        Bind(api, "capture", (_, arguments) =>
+        {
+            if (_running is null || ++_running.MediaRequests > 32)
+                throw new ScriptRuntimeException("The script exceeded its media quota.");
+            present(new ScriptMediaRequest.Capture(arguments[0].IsNil() ? "" : Text(arguments[0])));
+            return WaitFor(0);
+        });
         Bind(upstream, "overlay", (_, arguments) => Overlay(arguments.SkipMethodCall()));
         Bind(upstream, "play", (_, arguments) => Sound(arguments.SkipMethodCall()));
 

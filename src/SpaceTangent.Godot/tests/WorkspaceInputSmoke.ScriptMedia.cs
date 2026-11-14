@@ -107,6 +107,56 @@ public partial class WorkspaceInputSmoke
             GD.Print("UI: decoded WebP and played local Ogg and MP3 on independent channels.");
         }
         GD.Print("UI: converted and played classic media in one view, stopped it with Escape, and rejected an outside path.");
+        if (DisplayServer.GetName() != "headless")
+            await ExerciseScriptCapture(directory, source, script);
+    }
+
+    private async Task ExerciseScriptCapture(string directory, string source, string script)
+    {
+        string? oldOutput = System.Environment.GetEnvironmentVariable("SPACETANGENT_CAPTURE_OUTPUT");
+        string output = Path.Combine(directory, "script screenshots");
+        System.Environment.SetEnvironmentVariable("SPACETANGENT_CAPTURE_OUTPUT", output);
+        try
+        {
+            File.WriteAllText(source, """
+                {
+                    capture { filename "classic moon" }
+                    capture {}
+                    exit {}
+                }
+                """);
+            var converted = TourConverter.ConvertFile(source);
+            Require(converted.Unapplied.Count == 0 && converted.MediaFiles.Count == 0,
+                "Screenshots are outputs and must not be copied with the tour inputs.");
+            File.WriteAllText(script, converted.Lua);
+            Require(_scene.RunScript(script) is not null, "Open the classic screenshot tour.");
+            string named = Path.Combine(output, "classic moon.png");
+            await Until(() => Directory.Exists(output) && Directory.GetFiles(output, "*.png").Length == 2,
+                "Saving both tour screenshots");
+            using var image = Image.LoadFromFile(named);
+            Require(!image.IsEmpty() && (Vector2)image.GetSize() == _scene.GetViewport().GetVisibleRect().Size,
+                "The named screenshot must contain the rendered application viewport.");
+
+            byte[] existing = [1, 2, 3, 4];
+            File.WriteAllBytes(named, existing);
+            File.WriteAllText(script, "st.capture('classic moon.png')");
+            Require(_scene.RunScript(script) is not null, "Open the duplicate filename check.");
+            for (int frame = 0; frame < 3; frame++)
+                await ToSignal(RenderingServer.Singleton, RenderingServer.SignalName.FramePostDraw);
+            Require(File.ReadAllBytes(named).SequenceEqual(existing), "An existing capture must not be overwritten.");
+
+            string outside = Path.Combine(directory, "outside.png");
+            File.WriteAllText(script, "st.capture('../outside.png')");
+            var running = _scene.RunScript(script) ?? throw new InvalidOperationException("Open the screenshot path check.");
+            running.Step(0);
+            Require(running.Error?.Contains("plain filename", StringComparison.Ordinal) == true && !File.Exists(outside),
+                "A script capture must reject paths outside the capture folder.");
+            GD.Print("GPU: classic tour saved named and automatic PNGs and rejected an outside capture path.");
+        }
+        finally
+        {
+            System.Environment.SetEnvironmentVariable("SPACETANGENT_CAPTURE_OUTPUT", oldOutput);
+        }
     }
 
     private async Task VerifyDecodedAudio(SimulationViewport view)

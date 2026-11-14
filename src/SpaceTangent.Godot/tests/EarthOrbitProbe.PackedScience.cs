@@ -14,8 +14,9 @@ public partial class EarthOrbitProbe
             DisplayServer.GetName() == "headless")
             return;
         var world = scene.Session!.World;
-        if (world.Satellites.Count != 2 || world.Satellites.Any(track => Path.GetExtension(track.MeshPath) != ".glb"))
-            throw new InvalidOperationException("The GPU probe requires both archived GLB spacecraft.");
+        int expected = System.Environment.GetEnvironmentVariable("SPACETANGENT_ARCHIVED_DEEP_PROBE") is { Length: > 0 } ? 3 : 2;
+        if (world.Satellites.Count != expected || world.Satellites.Any(track => Path.GetExtension(track.MeshPath) != ".glb"))
+            throw new InvalidOperationException("The GPU probe requires the expected set of archived GLB spacecraft.");
         foreach (var track in world.Satellites)
         {
             var snapshot = world.Graph.Evaluate(track.Epoch);

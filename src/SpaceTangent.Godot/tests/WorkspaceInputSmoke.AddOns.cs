@@ -82,7 +82,8 @@ public partial class WorkspaceInputSmoke
             CopyDirectory(packed, science);
             await Click(Find<Button>("ReloadAddOns"));
             await WaitForAddOns("Installing the archived packed science models");
-            Require(Session.World.Satellites.Count == 2 && Session.World.Satellites.All(track =>
+            int count = System.Environment.GetEnvironmentVariable("SPACETANGENT_ARCHIVED_DEEP_PROBE") is { Length: > 0 } ? 3 : 2;
+            Require(Session.World.Satellites.Count == count && Session.World.Satellites.All(track =>
                 Path.GetExtension(track.MeshPath).Equals(".glb", StringComparison.OrdinalIgnoreCase)),
                 "The archived pack must replace both source meshes while keeping their catalogue IDs.");
             RequireScenario(observer, Session.CaptureScenario(0), "Switching from source OBJ to packed GLB");

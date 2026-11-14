@@ -36,4 +36,10 @@ For the archived native particle format, place the original `pack.json` and its 
 
 A local mission root can also hold an existing `pack.json` alongside its `models`, `trajectories`, and optional `textures` directories. Preserve the archive paths. The checked version 11 pack supplies fixed and Keplerian states, sampled XYZ and XYZV, moving frames, Q attitudes, oblate globes and embedded GLB textures. A damaged Q table and its dependent objects are reported and omitted. A missing optional globe map leaves the shape available. Body and frame axes use the original solid arrow profiles and physical scale in both source and packed catalogues.
 
-The archive probe uses the packed version of the original Jason-1 model at the same two attitude epochs as the source probe.
+To validate packs that share kernels across manifests, run PackTool from the simulator checkout. List the manifests relative to their common installation root in the order used by the installation.
+
+```sh
+dotnet run --project deps/space-tangent-core/tools/SpaceTangent.PackTool -- check-missions "/path/to/installation" 00-orbits/pack.json 99-frames/pack.json --strict
+```
+
+The checker resolves the built-in planets and moons. For a body supplied by another catalogue, pass `--body <name>`. The archive probe uses the packed version of the original Jason-1 model at the same two attitude epochs as the source probe.

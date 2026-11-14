@@ -32,14 +32,23 @@ public partial class EarthOrbitProbe
             throw new InvalidOperationException("Disabling the archived pack must preserve other sources and ΔT.");
         if (!await scene.ReloadAddOns() || session.World.Catalogue.Find(comet) is not null)
             throw new InvalidOperationException("The archived disable flag must survive add-on reload.");
-        var toggle = (CheckButton)scene.FindChild("LocalAddon0", recursive: true, owned: false);
-        if (toggle.ButtonPressed)
-            throw new InvalidOperationException("The panel must show the filtered source as disabled.");
+        var rows = scene.FindChild("LocalAddonSources", recursive: true, owned: false);
+        var toggle = rows?.FindChildren("LocalAddon*", "CheckButton", recursive: true, owned: false)
+            .OfType<CheckButton>().SingleOrDefault(button =>
+                string.Equals(button.TooltipText, file.Resolve(source), StringComparison.OrdinalIgnoreCase));
+        if (toggle is null || toggle.ButtonPressed || toggle.Disabled)
+            throw new InvalidOperationException("The panel must offer an unchecked switch for the filtered comet pack.");
         toggle.ButtonPressed = true;
-        for (int frame = 0; frame < 500 && session.World.Catalogue.Find(comet) is null; frame++)
+        ulong deadline = Time.GetTicksMsec() + 60_000;
+        while (GodotObject.IsInstanceValid(toggle) && toggle.IsInsideTree())
+        {
+            if (Time.GetTicksMsec() >= deadline)
+                throw new InvalidOperationException("Reload after enabling the original comet pack timed out.");
             await ToSignal(GetTree(), SceneTree.SignalName.ProcessFrame);
+        }
         if (session.World.Catalogue.Find(comet) is null || file.Load().DisabledPacks.Length != 0)
-            throw new InvalidOperationException("The explicit switch must clear the archived override and restore the pack.");
+            throw new InvalidOperationException("The explicit switch must clear the archived override and restore the pack. " +
+                (scene.LastAddonDiagnostic?.Detail ?? "No add-on diagnostic was recorded."));
         await scene.ImportStartupSettings(profile);
         File.WriteAllText(profile, """{"Site":{},"DisabledPacks":""}""");
         await scene.ImportStartupSettings(profile);

@@ -27,7 +27,11 @@ dotnet run --project tools/SpaceTangent.ModelTool -- model "/path/to/addon/model
 
 The tool accepts OBJ, CMOD, CMS, 3DS, glTF and GLB. It embeds the images resolved by the input decoder. DDS images require support for `MSFT_texture_dds` in the receiving viewer. CMOD point sprites are exported as glTF points with the legacy `_POINTSIZE` attribute. Local DSC nebulae can use these sprites from CMOD, glTF or GLB. The tool reports CMOD lines as unsupported. Append `--native-body` after the optional `--root` argument for native planetary meshes such as Phobos. This uses the native-body UV convention and preserves the CMOD normal map.
 
-To check a legacy installation that selects built-in orbit or attitude models, supply the local DE440, VSOP87 and planetary PCK data. List the pack directories in installation order.
+Supply the local DE440, VSOP87 and planetary PCK data to preserve built-in orbit and attitude selection during export. List the pack directories in installation order when checking an installed set.
+
+```sh
+dotnet run --project deps/space-tangent-core/tools/SpaceTangent.PackTool -- import "/path/to/source" --pack "/path/to/new-pack" --planetary-models "/path/de440.440" "/path/vsop87.bin" "/path/pck00011.tpc"
+```
 
 ```sh
 dotnet run --project deps/space-tangent-core/tools/SpaceTangent.PackTool -- check-ssc "/path/de440.440" "/path/vsop87.bin" "/path/pck00011.tpc" --strict "/path/00-ssc" "/path/99-override"

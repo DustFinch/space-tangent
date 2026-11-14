@@ -36,6 +36,8 @@ Search for a system or a component by name or alias. Flying to a barycenter fram
 
 Place `.stc` files in `data/sky/stc` or set `SPACETANGENT_STC_ROOT` to their directory. The files add names, stellar positions, sizes and barycentric orbits to the selected catalogue. Numbered edits use the existing star when it is available. Place the matching `stars.dat` in the same directory to supply missing coordinates from the source catalogue. A sky pack carries the file alongside its STC records. Inspect the Godot log for records with invalid coordinates or missing reference stars.
 
+Install archived version 1 stellar distance corrections by placing their original pack.json in data/sky/corrections or in an immediate subfolder. SPACETANGENT_STELLAR_CORRECTIONS selects another root. Corrections apply after the STC catalogues, with later folder names taking precedence for the same star. The add-on reload command applies file changes and reports missing stellar targets in the log.
+
 ## Archived exoplanets
 
 Place the original converted `exoplanets.txt` in `data/sky` or set `SPACETANGENT_EXOPLANET_CATALOGUE` to its path. Optional texture-class images go in `data/sky/exoplanet-textures` or `SPACETANGENT_EXOPLANET_TEXTURES`. The catalogue identifies these images by filename stem, for example `rocky.jpg` and `exo-class4.jpg`. Search for a planet or host by name, then use **Go to**. The perspective view evaluates the planet's orbit about its host and illuminates its globe from that star.

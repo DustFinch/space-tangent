@@ -50,7 +50,7 @@ internal static partial class AddonLoader
     internal sealed record DecodedAddOns(SimulationWorld World, IReadOnlyList<Cached<IReadOnlyList<DecodedSatellite>>> Science,
         DecodedMission? Mission, Cached<DecodedTimeline?>? Timeline, Cached<DecodedTerrain?>? Terrain,
         PlanetEphemerides Planets, Cached<DecodedBodyTerrain>? MarsTerrain, Cached<StellarCatalogue> Stellar,
-        Cached<StellarCatalogue?> StellarArchive, Cached<StellarImport> StellarDefinitions,
+        Cached<StellarCatalogue?> StellarArchive, Cached<StellarImport> StellarDefinitions, Cached<StellarImport> StellarCorrections,
         SscInstallation BodyCatalogues, Cached<IReadOnlyList<SscSurfaceLocation>> Locations, Cached<DecodedDeepSky> DeepSky, Cached<ExoplanetCatalogue> Exoplanets,
         DecodedMissionContent SampledMissions, Cached<IReadOnlyList<LocalTleSatellite>> LocalSatellites, string SatelliteUpdates,
         Cached<EarthPlaceCatalogue> EarthPlaces, LocalDataPath SavedEarthPlacesPath, bool AllowAddonLua,
@@ -119,6 +119,7 @@ internal static partial class AddonLoader
         var stellarPath = LocalDataPaths.Candidates("SPACETANGENT_SPATIAL_STARS", "sky/spatial-stars.tsv");
         var archivePath = LocalDataPaths.Candidates("SPACETANGENT_STELLAR_ARCHIVE", "sky/stellar-archive", directory: true);
         var stellarDefinitionsPath = LocalDataPaths.Candidates("SPACETANGENT_STC_ROOT", "sky/stc", directory: true);
+        var stellarCorrectionsPath = LocalDataPaths.Candidates("SPACETANGENT_STELLAR_CORRECTIONS", "sky/corrections", directory: true);
         var exoplanetPath = LocalDataPaths.Candidates("SPACETANGENT_EXOPLANET_CATALOGUE", "sky/exoplanets.txt");
         var locationPath = LocalDataPaths.Candidates("SPACETANGENT_SURFACE_LOCATIONS", "surface-locations", directory: true);
         var deepSkyPath = LocalDataPaths.Candidates("SPACETANGENT_DSC_ROOT", "sky/dsc", directory: true);
@@ -199,6 +200,19 @@ internal static partial class AddonLoader
                     }
                     return result;
                 }, cancellation);
+            var corrections = Cached<StellarImport>.Load(
+                ReferenceEquals(previous?.StellarDefinitions, definitions) ? previous?.StellarCorrections : null,
+                stellarCorrectionsPath, "Stellar distance corrections", (path, token) =>
+                {
+                    var result = definitions.Value.Catalogue.WithDistanceCorrectionPacks(path.Resolve(), token);
+                    if (result.AppliedRecords > 0 || result.DiagnosticCount > 0)
+                    {
+                        global::Godot.GD.Print($"Stellar distance corrections: {result.AppliedRecords} applied, {result.DiagnosticCount} diagnostics.");
+                        foreach (string warning in result.Warnings)
+                            global::Godot.GD.Print("Stellar distance corrections: " + warning);
+                    }
+                    return result;
+                }, cancellation);
             var exoplanets = Cached<ExoplanetCatalogue>.Load(previous?.Exoplanets, exoplanetPath, "Exoplanet catalogue",
                 (path, token) =>
                 {
@@ -232,7 +246,7 @@ internal static partial class AddonLoader
                     ReferenceEquals(previous.MarsTerrain, marsTerrain) && ReferenceEquals(previous.Locations, locations) &&
                     ReferenceEquals(previous.DeepSky, deepSky) && ReferenceEquals(previous.GalacticDust, galacticDust) && ReferenceEquals(previous.Stellar, stellar) &&
                     ReferenceEquals(previous.StellarArchive, archive) && ReferenceEquals(previous.DistantStars, distantStars) && ReferenceEquals(previous.StellarDefinitions, definitions) &&
-                    ReferenceEquals(previous.Exoplanets, exoplanets) && ReferenceEquals(previous.SampledMissions, missions) &&
+                    ReferenceEquals(previous.StellarCorrections, corrections) && ReferenceEquals(previous.Exoplanets, exoplanets) && ReferenceEquals(previous.SampledMissions, missions) &&
                     ReferenceEquals(previous.LocalSatellites, tle) && ReferenceEquals(previous.EarthPlaces, earthPlaces) &&
                     previous.FilteredPacks.Count == filteredPacks.Count && filteredPacks.All(pair =>
                         previous.FilteredPacks.TryGetValue(pair.Key, out var keys) && keys.SequenceEqual(pair.Value)))
@@ -252,10 +266,10 @@ internal static partial class AddonLoader
                     tracks.Add(item.Track);
                 }
                 var world = AddonDiagnostics.Read(AddonStage.World, null, () => new SimulationWorld(ephemeris, tracks,
-                    spice?.Track, sampled?.Value?.Track, sampled?.Value?.Probe, relief?.Value?.Frame, brightStars, planets, marsTerrain is not null, definitions.Value.Catalogue,
+                    spice?.Track, sampled?.Value?.Track, sampled?.Value?.Probe, relief?.Value?.Frame, brightStars, planets, marsTerrain is not null, corrections.Value.Catalogue,
                     bodies.Bodies.Select(body => body.Body), locations.Value, deepSky.Value.Index, exoplanets.Value, missions.Tracks.Select(mission => mission.Track), tle.Value, earthPlaces.Value, distantStars.Value));
                 var observations = PrepareObservations(world, missions.Tracks, cancellation);
-                var decoded = new DecodedAddOns(world, sameScience ? previous!.Science : satellites, spice, sampled, relief, planets, marsTerrain, stellar, archive, definitions, bodies, locations, deepSky, exoplanets, missions, tle, tleUpdates, earthPlaces, savedEarthPlacesPath, allowAddonLua, observations, galacticDust, distantStars) { FilteredPacks = filteredPacks };
+                var decoded = new DecodedAddOns(world, sameScience ? previous!.Science : satellites, spice, sampled, relief, planets, marsTerrain, stellar, archive, definitions, corrections, bodies, locations, deepSky, exoplanets, missions, tle, tleUpdates, earthPlaces, savedEarthPlacesPath, allowAddonLua, observations, galacticDust, distantStars) { FilteredPacks = filteredPacks };
                 openedDistantStars = null;
                 return decoded;
             }

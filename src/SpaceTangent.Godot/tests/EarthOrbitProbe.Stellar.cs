@@ -2,6 +2,7 @@
 using Godot;
 using SpaceTangent.Application;
 using SpaceTangent.Contracts;
+using SpaceTangent.Core.Ephemerides;
 using SpaceTangent.Core.Observing;
 using SpaceTangent.Core.Time;
 using SpaceTangent.Godot.Simulation;
@@ -10,6 +11,57 @@ namespace SpaceTangent.Godot.Tests;
 
 public partial class EarthOrbitProbe
 {
+    private static async Task ExerciseStellarCorrections(SolarSystemScene scene)
+    {
+        var session = scene.Session!;
+        var alcyone = new ObjectId("hip/17702");
+        string root = System.Environment.GetEnvironmentVariable("SPACETANGENT_STELLAR_CORRECTIONS")!;
+        string manifest = Path.Combine(root, "pack.json");
+        byte[] original = File.ReadAllBytes(manifest);
+        var moon = SolarSystemSample.MoonId;
+        session.OpenSpaceView(0);
+        session.Split();
+        session.Synchronize(false, 0);
+        session.SelectObject(0, alcyone);
+        session.SelectObject(1, moon);
+        var expected = session.CaptureScenario(0);
+
+        double Distance()
+        {
+            var snapshot = session.World.Graph.Evaluate(session[0].Epoch);
+            if (!session.World.TryNavigationState(alcyone, snapshot, out var state))
+                throw new InvalidOperationException("Alcyone has no state in the published catalogue.");
+            return (state.PositionKilometers - session.World.StellarOrigin).Length / StellarEntry.KilometersPerLightYear;
+        }
+
+        double corrected = Distance();
+        if (Math.Abs(corrected - 444.2) > .1)
+            throw new InvalidOperationException($"Alcyone has an unexpected corrected distance of {corrected} ly.");
+
+        File.Move(manifest, manifest + ".bak");
+        try
+        {
+            if (!await scene.ReloadAddOns() || Math.Abs(Distance() - corrected) < 1)
+                throw new InvalidOperationException("Removing the manifest must restore the uncorrected distance.");
+            File.WriteAllText(manifest, "{ invalid correction");
+            var published = session.World;
+            if (await scene.ReloadAddOns() || !ReferenceEquals(published, session.World))
+                throw new InvalidOperationException("A malformed correction must leave the previous world active.");
+            File.WriteAllBytes(manifest, original);
+            if (!await scene.ReloadAddOns() || Math.Abs(Distance() - corrected) > 1e-10)
+                throw new InvalidOperationException("Restoring the original manifest must restore its distance.");
+        }
+        finally
+        {
+            File.Move(manifest + ".bak", manifest, overwrite: true);
+        }
+        var actual = session.CaptureScenario(0);
+        if (!actual.Views.SequenceEqual(expected.Views) || actual.DeltaT != expected.DeltaT ||
+            actual.Synchronized != expected.Synchronized)
+            throw new InvalidOperationException("Stellar correction reload must preserve the two views and ΔT.");
+        GD.Print("Stellar corrections: original Pleiades pack loaded; Alcyone restored after removal and corrupt-file rollback.");
+    }
+
     private async Task ExerciseStellarSpace(SolarSystemScene scene, JulianInstant epoch, string directory)
     {
         SimulationWorld world = scene.Session!.World;

@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
 using MoonSharp.Interpreter;
 using SpaceTangent.Contracts;
+using SpaceTangent.Core.Coordinates;
 using SpaceTangent.Core.Ephemerides;
 
 namespace SpaceTangent.Application;
@@ -19,6 +20,16 @@ public sealed partial class LuaSessionScript
         Bind(api, "legacyabsolutepose", (_, a) => BeginAbsolutePose(Number(a[0]),
             new(SceneLink.ReadCoordinate(Text(a[1])), SceneLink.ReadCoordinate(Text(a[2])), SceneLink.ReadCoordinate(Text(a[3]))),
             Number(a[4]), Vector(a, 5)));
+        Bind(api, "legacyposition", (_, a) => SetClassicPosition(
+            new(SceneLink.ReadCoordinate(Text(a[0])), SceneLink.ReadCoordinate(Text(a[1])), SceneLink.ReadCoordinate(Text(a[2])))));
+        Bind(api, "legacypositionkm", (_, a) => SetClassicPosition(
+            Vector(a, 0) * AstronomicalUnits.KilometersPerLightYear + Vector(a, 3)));
+        Bind(api, "legacyorientation", (_, a) => SetClassicOrientation(Number(a[0]), Vector(a, 1)));
+        Bind(api, "legacyorientationaxis", (_, a) =>
+        {
+            var (sine, cosine) = Math.SinCos(Number(a[3]) * Radians / 2);
+            return SetClassicOrientation(cosine, Unit(Vector(a, 0)) * sine);
+        });
         Bind(api, "turnaxis", (_, a) => Change(() =>
             _session.TurnScriptView(View, Vector(a, 0), Number(a[3]), Boolean(a[4]), NativeSnapshot())));
         Bind(api, "legacylookback", (_, _) => Change(() => _session.LookBackForScript(View, NativeSnapshot())));
@@ -105,13 +116,24 @@ public sealed partial class LuaSessionScript
         }
     }
 
+    private DynValue SetClassicPosition(Vector3d position)
+    {
+        var snapshot = NativeSnapshot();
+        if (!snapshot.TryState(SolarSystemSample.SunId, out var sun))
+            return DynValue.Nil;
+        Vector3d eye = sun.PositionKilometers + SceneLink.FromEcliptic(position);
+        return Change(() => _session.SetClassicPose(View, snapshot, eye, null));
+    }
+
+    private DynValue SetClassicOrientation(double w, Vector3d quaternion)
+    {
+        var (forward, up) = AbsoluteAttitude(w, quaternion);
+        return Change(() => _session.SetClassicPose(View, NativeSnapshot(), null, (forward, up)));
+    }
+
     private DynValue BeginAbsolutePose(double seconds, Vector3d position, double w, Vector3d quaternion)
     {
-        double length = Math.Sqrt(w * w + Vector3d.Dot(quaternion, quaternion));
-        if (!double.IsFinite(length) || length < .00001)
-            throw new ScriptRuntimeException("The saved camera quaternion is invalid.");
-        w /= length;
-        quaternion /= -length;
+        var (forward, up) = AbsoluteAttitude(w, quaternion);
         var snapshot = NativeSnapshot();
         if (!snapshot.TryState(SolarSystemSample.SunId, out var sun))
             return DynValue.Nil;
@@ -119,9 +141,19 @@ public sealed partial class LuaSessionScript
         var pose = _session.ScriptCamera(View, snapshot);
         var destination = new NavigationCamera(eye, pose.RangeKilometers, 0, 0, null, false)
         {
-            Placement = new(default, SceneLink.FromEcliptic(Rotate(new(0, 0, -1))), SceneLink.FromEcliptic(Rotate(new(0, 1, 0))))
+            Placement = new(default, forward, up)
         };
         return Change(() => _session.FlyToScriptPose(View, destination, seconds, snapshot));
+    }
+
+    private static (Vector3d Forward, Vector3d Up) AbsoluteAttitude(double w, Vector3d quaternion)
+    {
+        double length = Math.Sqrt(w * w + Vector3d.Dot(quaternion, quaternion));
+        if (!double.IsFinite(length) || length < .00001)
+            throw new ScriptRuntimeException("The saved camera quaternion is invalid.");
+        w /= length;
+        quaternion /= -length;
+        return (SceneLink.FromEcliptic(Rotate(new(0, 0, -1))), SceneLink.FromEcliptic(Rotate(new(0, 1, 0))));
 
         Vector3d Rotate(Vector3d value)
         {

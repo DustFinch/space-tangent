@@ -174,6 +174,19 @@ public static partial class TourConverter
                     }
                     lua.AppendLine($"st.legacyfov({Number(degrees)})");
                     break;
+                case "setposition" when command.Fields.ContainsKey("x") && command.Fields.ContainsKey("y") && command.Fields.ContainsKey("z"):
+                    lua.AppendLine($"st.legacyposition({Quote(command.Get("x"))}, {Quote(command.Get("y"))}, {Quote(command.Get("z"))})");
+                    break;
+                case "setposition" when command.Fields.ContainsKey("base"):
+                    lua.AppendLine($"st.legacypositionkm({Vector(command, "base", "")}, {Vector(command, "offset", "0 0 0")})");
+                    break;
+                case "setorientation" when command.Fields.ContainsKey("axis") && command.Fields.ContainsKey("angle"):
+                    lua.AppendLine($"st.legacyorientationaxis({Vector(command, "axis", "")}, {Number(command.Number("angle"))})");
+                    break;
+                case "setorientation":
+                    lua.AppendLine($"st.legacyorientation({Number(command.Number("ow", 1))}, {Number(command.Number("ox"))}, " +
+                        $"{Number(command.Number("oy"))}, {Number(command.Number("oz"))})");
+                    break;
                 case "lookback":
                     lua.AppendLine("st.legacylookback()");
                     break;

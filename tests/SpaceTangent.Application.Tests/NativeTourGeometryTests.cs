@@ -375,6 +375,64 @@ public sealed class NativeTourGeometryTests
         finally { folder.Delete(recursive: true); }
     }
 
+    [TourArchiveFact]
+    [Trait("Category", "ExternalData")]
+    public void ClassicCameraPoseCommandsReuseArchiveCoordinatesAndKeepTheSecondView()
+    {
+        string sources = Environment.GetEnvironmentVariable("SPACETANGENT_TOUR_SOURCES")!;
+        var world = new SimulationWorld(De440Ephemeris.Load(Environment.GetEnvironmentVariable("SPACETANGENT_DE440")!), []);
+        var epoch = JulianInstant.FromJulianDate(2451545, TimeScale.Tdb);
+        var session = new SimulationSession(world, epoch, DeltaTModel.MorrisonStephenson2004);
+        session.OpenSpaceView(0);
+        session.Split();
+        var other = session[1] with { Epoch = epoch.AddSeconds(3600), Playing = false };
+        session.RestoreScenario(new([session[0] with { Playing = false }, other], false, 0, 0, session.DeltaT));
+        var folder = Directory.CreateTempSubdirectory("st-cel-pose-");
+        try
+        {
+            string original = File.ReadAllText(Path.Combine(sources, "gotoloc.cel"));
+            string encoded = Regex.Match(original, @"x\s+""[^""]*""\s+y\s+""[^""]*""\s+z\s+""[^""]*""").Value;
+            Assert.NotEmpty(encoded);
+            string source = Path.Combine(folder.FullName, "pose.cel");
+            File.WriteAllText(source, $$"""
+                {
+                    setposition { {{encoded}} }
+                    wait { duration 1 }
+                    setposition { base [0 0 0] offset [100 200 300] }
+                    setorientation { axis [0 1 0] angle 90 }
+                    wait { duration 1 }
+                    setorientation { ow 1 ox 0 oy 0 oz 0 }
+                }
+                """);
+            var conversion = TourConverter.ConvertFile(source);
+            Assert.Empty(conversion.Unapplied);
+            string lua = Path.Combine(folder.FullName, "pose.lua");
+            File.WriteAllText(lua, conversion.Lua);
+            var script = LuaSessionScript.Load(lua, session, 0, false, _ => { });
+            var sun = world.Ephemeris.Sample(epoch).Sun.PositionKilometers;
+            script.Step(0);
+            var encodedPose = session[0].Navigation!.Value;
+            Assert.True(encodedPose.Tracking);
+            Assert.InRange((Eye(encodedPose) - sun - new Vector3d(30988223546.628002, -70180951.86538383,
+                -30417101.389447883)).Length, 0, .0001);
+            script.Step(1);
+            var numericPose = session[0].Navigation!.Value;
+            var (sin, cos) = Math.SinCos(23.4392911 * Math.PI / 180);
+            Assert.InRange((Eye(numericPose) - sun - new Vector3d(100, -300 * cos - 200 * sin, 200 * cos - 300 * sin)).Length, 0, 1e-6);
+            Assert.InRange((numericPose.Placement!.Value.Forward - new Vector3d(1, 0, 0)).Length, 0, 1e-12);
+            script.Step(1);
+            Assert.True(script.Finished);
+            Assert.Null(script.Error);
+            Assert.Equal(Eye(numericPose), Eye(session[0].Navigation!.Value));
+            Assert.Equal(new Vector3d(0, cos, sin), session[0].Navigation!.Value.Placement!.Value.Forward);
+            Assert.Equal(other, session[1]);
+
+            Vector3d Eye(NavigationCamera pose) =>
+                pose.AnchorKilometers + pose.ResolvePlacement(world.Graph.Evaluate(epoch), session.DeltaT).OffsetKilometers;
+        }
+        finally { folder.Delete(recursive: true); }
+    }
+
     private sealed class TourArchiveFactAttribute : FactAttribute
     {
         public TourArchiveFactAttribute()

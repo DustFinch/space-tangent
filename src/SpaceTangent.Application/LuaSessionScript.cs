@@ -28,7 +28,9 @@ public sealed partial class LuaSessionScript
         internal int Steps, Messages, CatalogueReads, MediaRequests, ViewRequests;
         internal long Allocated;
         internal double WaitRemaining, TotalWait, DollyRate;
-        internal Vector3d MoveVelocity;
+        internal Vector3d MoveVelocity, TurnAxis;
+        internal double TurnRate;
+        internal bool TurnOrbits;
         internal bool Complete, Yielded;
         internal string? Error, LastNotice;
     }
@@ -163,6 +165,11 @@ public sealed partial class LuaSessionScript
             {
                 if (work.DollyRate != 0)
                     _changed = _session.DollyScriptView(View, work.DollyRate * interval, NativeSnapshot());
+                if (work.TurnRate != 0)
+                {
+                    _session.TurnScriptView(View, work.TurnAxis, work.TurnRate * interval, work.TurnOrbits, NativeSnapshot());
+                    _changed = true;
+                }
                 if (work.MoveVelocity != default)
                     _changed |= _session.MoveClassicView(View, work.MoveVelocity * interval, NativeSnapshot());
             }
@@ -171,6 +178,7 @@ public sealed partial class LuaSessionScript
                 return _changed;
             work.DollyRate = 0;
             work.MoveVelocity = default;
+            work.TurnRate = 0;
             long frameStart = work.Allocated;
             for (int step = 0; step < slice; step++)
             {

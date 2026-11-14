@@ -113,12 +113,25 @@ public sealed partial class SimulationSession
             Vector3d offset = NavigationPlacement.Rotate(eye - state.PositionKilometers, axis, radians);
             if (offset.Length < NavigationCamera.MinRange || offset.Length > NavigationCamera.MaxRange)
                 return;
+            if (pose is { Tracking: true, Placement.UsesFrame: true })
+            {
+                SetClassicPose(view, snapshot, state.PositionKilometers + offset, (attitude.Forward, attitude.Up));
+                return;
+            }
             pose = new NavigationCamera(state.PositionKilometers, offset.Length, 0, 0, target, pose.Tracking)
                 { Placement = attitude with { OffsetKilometers = offset } };
         }
         else
         {
-            pose = pose with { AnchorKilometers = eye, Tracking = false, Placement = attitude };
+            if (observer.Mode == CameraMode.Surface && observer.Navigation is null)
+            {
+                var camera = observer.EarthObserver ?? EarthObserverCamera.Moscow;
+                SetEarthObserver(view, camera.Turn(cameraAxis.Y / cameraAxis.Length * radians,
+                    cameraAxis.X / cameraAxis.Length * radians));
+            }
+            else
+                SetClassicPose(view, snapshot, null, (attitude.Forward, attitude.Up));
+            return;
         }
         FlyToScriptPose(view, pose, 0, snapshot);
     }

@@ -565,6 +565,64 @@ public sealed class NativeTourGeometryTests
     }
 
 
+    [TourArchiveFact]
+    [Trait("Category", "ExternalData")]
+    public void ClassicTurnsIntegrateElapsedTimeAndPreserveTheRotatingFrame()
+    {
+        var world = new SimulationWorld(De440Ephemeris.Load(Environment.GetEnvironmentVariable("SPACETANGENT_DE440")!), []);
+        var epoch = JulianInstant.FromJulianDate(2451545, TimeScale.Tdb);
+        var session = new SimulationSession(world, epoch, DeltaTModel.MorrisonStephenson2004);
+        session.OpenSpaceView(0);
+        session.Split();
+        session.Synchronize(false, 0);
+        var other = session[1];
+        var folder = Directory.CreateTempSubdirectory("st-cel-turn-");
+        try
+        {
+            string source = Path.Combine(folder.FullName, "turn.cel");
+            File.WriteAllText(source, """
+                {
+                    select { object "Earth" }
+                    synchronous {}
+                    rotate { axis [0 1 0] rate 40 duration 2 }
+                    orbit { axis [0 1 0] rate 20 duration 1 }
+                }
+                """);
+            string lua = Path.ChangeExtension(source, ".lua");
+            File.WriteAllText(lua, TourConverter.ConvertFile(source).Lua);
+            var script = LuaSessionScript.Load(lua, session, 0, false, _ => { });
+            var snapshot = world.Graph.Evaluate(epoch);
+            script.Step(0);
+            var original = session[0].Navigation!.Value;
+            var before = original.ResolvePlacement(snapshot, session.DeltaT);
+            script.Step(.125);
+            CheckTurn(5);
+            script.Step(1.875);
+            var rotated = CheckTurn(80);
+            script.Step(.4);
+            script.Step(.6);
+            Assert.True(script.Finished);
+            Assert.Null(script.Error);
+            var orbit = CheckTurn(100, keepsEye: false);
+            Assert.Equal(rotated.OffsetKilometers.Length, orbit.OffsetKilometers.Length, 6);
+            Assert.True((rotated.OffsetKilometers - orbit.OffsetKilometers).Length > 1);
+            Assert.Equal(other, session[1]);
+
+            NavigationPlacement CheckTurn(double degrees, bool keepsEye = true)
+            {
+                var pose = session[0].Navigation!.Value;
+                Assert.Equal(original.Target, pose.Target);
+                Assert.Equal(original.Placement!.Value.Frame, pose.Placement!.Value.Frame);
+                var placement = pose.ResolvePlacement(snapshot, session.DeltaT);
+                if (keepsEye)
+                    Assert.InRange((placement.OffsetKilometers - before.OffsetKilometers).Length, 0, 1e-6);
+                Assert.Equal(Math.Cos(degrees * Math.PI / 180), Vector3d.Dot(before.Forward, placement.Forward), 11);
+                return placement;
+            }
+        }
+        finally { folder.Delete(recursive: true); }
+    }
+
     private sealed class TourArchiveFactAttribute : FactAttribute
     {
         public TourArchiveFactAttribute()

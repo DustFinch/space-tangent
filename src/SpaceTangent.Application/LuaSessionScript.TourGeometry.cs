@@ -32,6 +32,19 @@ public sealed partial class LuaSessionScript
         });
         Bind(api, "turnaxis", (_, a) => Change(() =>
             _session.TurnScriptView(View, Vector(a, 0), Number(a[3]), Boolean(a[4]), NativeSnapshot())));
+        Bind(api, "legacyturn", (_, a) =>
+        {
+            Vector3d axis = Unit(Vector(a, 0));
+            double angle = Number(a[3]), duration = Number(a[4]);
+            double rate = duration > 0 ? angle / duration : 0;
+            if (!double.IsFinite(rate))
+                throw new ScriptRuntimeException("Invalid timed camera rotation.");
+            var wait = WaitFor(duration);
+            _running!.TurnAxis = axis;
+            _running.TurnRate = rate;
+            _running.TurnOrbits = Boolean(a[5]);
+            return wait;
+        });
         Bind(api, "legacylookback", (_, _) => Change(() => _session.LookBackForScript(View, NativeSnapshot())));
         Bind(api, "travelling", (_, _) => DynValue.NewBoolean(_session.IsFlying(View)));
         Bind(api, "legacymove", (_, a) =>

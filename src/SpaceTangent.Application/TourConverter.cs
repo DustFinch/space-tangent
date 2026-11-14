@@ -63,11 +63,7 @@ public static partial class TourConverter
             local selected = true
             local function turn(x, y, z, angle, duration, orbit)
                 while st.travelling() do st.wait(0) end
-                local steps = math.max(1, math.min(16, math.ceil(duration * 8)))
-                for step = 1, steps do
-                    st.turnaxis(x, y, z, angle / steps, orbit)
-                    if duration > 0 then st.wait(duration / steps) end
-                end
+                st.legacyturn(x, y, z, angle, duration, orbit)
             end
             local function dolly(amount, duration)
                 while st.travelling() do st.wait(0) end

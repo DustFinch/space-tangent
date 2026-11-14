@@ -263,7 +263,12 @@ public static partial class TourConverter
                     lua.AppendLine($"st.wait({Number(Duration(command.Number("duration")) * scale)})");
                     break;
                 case "timerate":
-                    lua.AppendLine($"st.rate({Number(command.Number("rate"))})");
+                    const double maximumClassicRate = 1_000_000;
+                    double requestedRate = command.Number("rate", 1);
+                    double classicRate = Math.Clamp(requestedRate, -maximumClassicRate, maximumClassicRate);
+                    if (classicRate != requestedRate)
+                        Report($"timerate {Number(requestedRate)} limited to {Number(classicRate)}");
+                    lua.AppendLine($"st.legacyrate({Number(classicRate)})");
                     break;
                 case "labels":
                 case "renderflags":

@@ -536,11 +536,17 @@ public sealed partial class SimulationSession
 
     public void SetPlaying(int view, bool playing) => SetClock(view, _views[view].Epoch, playing);
 
-    public void SetPlaybackRate(int view, double rate)
+    public void SetPlaybackRate(int view, double rate) => SetPlaybackRate(view, rate, synchronizeRate: false);
+
+    internal void SetPlaybackRate(int view, double rate, bool synchronizeRate)
     {
         if (!ObserverView.ValidPlaybackRate(rate))
             throw new ArgumentOutOfRangeException(nameof(rate));
-        _views[view] = _views[view] with { PlaybackRate = rate == 0 ? null : rate };
+        double? playback = rate == 0 ? null : rate;
+        _views[view] = _views[view] with { PlaybackRate = playback };
+        if (synchronizeRate && Synchronized)
+            for (int index = 0; index < _views.Count; index++)
+                _views[index] = _views[index] with { PlaybackRate = playback };
         SetPlaying(view, rate != 0);
     }
 

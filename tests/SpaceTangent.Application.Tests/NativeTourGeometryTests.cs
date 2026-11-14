@@ -623,6 +623,53 @@ public sealed class NativeTourGeometryTests
         finally { folder.Delete(recursive: true); }
     }
 
+    [TourArchiveFact]
+    [Trait("Category", "ExternalData")]
+    public void OriginalDemosReportTheLegacyRateLimitAndUpdateSynchronizedViews()
+    {
+        string root = Environment.GetEnvironmentVariable("SPACETANGENT_TOUR_SOURCES")!;
+        var world = new SimulationWorld(De440Ephemeris.Load(Environment.GetEnvironmentVariable("SPACETANGENT_DE440")!), []);
+        var epoch = JulianInstant.FromJulianDate(2451545, TimeScale.Tdb);
+        var session = new SimulationSession(world, epoch, DeltaTModel.MorrisonStephenson2004);
+        session.Split();
+        var folder = Directory.CreateTempSubdirectory("st-cel-rate-");
+        try
+        {
+            foreach (string name in new[] { "demo.cel", "demo_ru.cel" })
+            {
+                string command = Assert.Single(File.ReadLines(Path.Combine(root, name)),
+                    line => line.Contains("rate 2592000", StringComparison.Ordinal));
+                Run(command);
+                Assert.True(session[0].Playing && session[1].Playing);
+                Assert.Equal(1_000_000, session[0].PlaybackRate);
+                Assert.Equal(1_000_000, session[1].PlaybackRate);
+                session.Tick(.5);
+                Assert.Equal(session[0].Epoch, session[1].Epoch);
+            }
+
+            session.Synchronize(false, 0);
+            var untouched = session[1];
+            Run("timerate { rate -2592000 }");
+            Assert.Equal(-1_000_000, session[0].PlaybackRate);
+            Assert.Equal(untouched, session[1]);
+
+            void Run(string command)
+            {
+                string source = Path.Combine(folder.FullName, "rate.cel");
+                File.WriteAllText(source, "{ " + command.Trim() + " }");
+                var conversion = TourConverter.ConvertFile(source);
+                Assert.EndsWith(" limited to " + (command.Contains('-') ? "-" : "") + "1000000", Assert.Single(conversion.Unapplied));
+                string lua = Path.ChangeExtension(source, ".lua");
+                File.WriteAllText(lua, conversion.Lua);
+                var script = LuaSessionScript.Load(lua, session, 0, false, _ => { });
+                script.Step(0);
+                Assert.True(script.Finished);
+                Assert.Null(script.Error);
+            }
+        }
+        finally { folder.Delete(recursive: true); }
+    }
+
     private sealed class TourArchiveFactAttribute : FactAttribute
     {
         public TourArchiveFactAttribute()

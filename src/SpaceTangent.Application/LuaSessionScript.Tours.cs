@@ -23,6 +23,8 @@ public sealed partial class LuaSessionScript
                 _session.ToggleTracking(View);
         }));
         Bind(api, "rate", (_, arguments) => Change(() => _session.SetPlaybackRate(View, Number(arguments[0]))));
+        Bind(api, "legacyrate", (_, arguments) => Change(() =>
+            _session.SetPlaybackRate(View, Number(arguments[0]), synchronizeRate: true)));
         Bind(api, "turn", (_, arguments) => Change(() =>
             _session.AdjustCamera(View, Number(arguments[0]), Number(arguments[1]), 1)));
         Bind(api, "sky", (_, arguments) => SetTourSky(Text(arguments[0]), Boolean(arguments[1])));

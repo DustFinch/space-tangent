@@ -53,5 +53,10 @@
     "reason": "Exact archived GLB extras key for preserving specular color and exponent.",
     "sha256": "e2eaf9524cebe019f4e9933f9f7f12eb5532152e20b631426f862df22a4b3188",
     "path": "src/SpaceTangent.Application/Assets/PackedModelDecoder.cs"
+  },
+  {
+    "path": "README.md",
+    "sha256": "2b125e93c6c6267894c9acbd37f6e199849186aef43637f59029e4b8268b55b9",
+    "reason": "Upstream planetary texture attribution and pinned source link for the README screenshot."
   }
 ]

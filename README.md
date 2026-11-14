@@ -1,10 +1,10 @@
 # SpaceTangent
 
-SpaceTangent is a desktop 3D astronomy simulator for exploring the Earth–Moon system and replaying spacecraft trajectories from real mission data. It is an early preview with a verified Windows build.
+SpaceTangent is a 3D astronomy simulator for flying through the Solar System, exploring the sky from Earth, and replaying spacecraft missions from real trajectory data. It runs on Godot .NET and has been verified on Windows.
 
-![Two independent views in SpaceTangent, with Jason-1 above Earth on the left and the full Moon seen from Earth on the right](docs/images/jason-full-moon.png)
+![SpaceTangent split view showing Earth at the day–night boundary on the left and Saturn with its rings on the right](docs/images/earth-and-saturn.png)
 
-*Jason-1 and an Earth-surface view of the full Moon at two different simulation epochs.*
+*Earth at the terminator and Saturn's rings in two independently controlled views. Earth imagery from NASA Earth Observatory. Saturn textures from CelestiaContent. [Planetary data notes](docs/PLANET_DATA.md) · [Saturn asset sources](https://github.com/CelestiaProject/CelestiaContent/tree/60316cf1c7df289b44b3c99711913bdbf1daea2e/textures/hires)*
 
 ## Quick start
 
@@ -23,35 +23,31 @@ godot --headless --path $project --editor --import --quit
 godot --path $project
 ```
 
-The simulation opens with its clock paused at J2000. Switch from **Solar overview** to **Earth–Moon view**, then use **+1 h** or **Play** to see the Moon move. The [first simulation guide](docs/FIRST_SIMULATION.md) explains the initial views and links to the DE440 checksum.
+On a fresh start, the simulator opens in a perspective view near Earth with time paused at J2000. Search for Saturn, select it, and click **Go to**. Use **+1 h** or **Play** to advance time. **Inner planets** opens the orbital overview. See the [first simulation guide](docs/FIRST_SIMULATION.md) for the camera modes. The [DE440 notes](https://github.com/DustFinch/space-tangent-core/blob/main/docs/DE440.md) include the download checksum.
 
 ## What you can explore
 
-- Follow [Jason-1 and SORCE](docs/SCIENCE_ADDONS.md) using their original two-line elements, spacecraft models, and textures.
-- Replay [Cassini and Huygens](docs/CASSINI_MISSION.md), including Cassini's camera fields of view and footprints on Saturn.
-- Inspect [lunar relief from LRO LOLA](docs/LUNAR_TERRAIN.md) from a global or a regional view.
-- Open the [full-Moon scene](docs/MOON_LIGHTING.md) to see reflected moonlight on Earth's clouds.
-- Search for an object, fly to it, and track its motion. Open [two views](docs/OBSERVERS.md) with independent or synchronized clocks and save both cameras as a scenario.
+- Fly to planets, moons and small bodies. Add planetary maps for textured surfaces, atmospheres and ring profiles. Explore lunar relief or start on Earth under a full Moon. [Planetary maps](docs/PLANET_DATA.md) · [Lunar terrain](docs/LUNAR_TERRAIN.md) · [Moon lighting](docs/MOON_LIGHTING.md)
+- Open a split view, track different targets and run the clocks independently or in sync. Save the cameras, epochs and ΔT in a scenario. [Observers and views](docs/OBSERVER_VIEWS.md)
+- Observe stars, constellations and deep-sky objects from Earth or space. Set a ground observing site, search for eclipses and satellite passes, and inspect local sky conditions. [Observing](docs/OBSERVERS.md) · [Star and deep-sky catalogues](docs/SPATIAL_SKY.md)
+- Follow Jason-1 and SORCE or replay Cassini and Huygens. Load supported SSC catalogues, sampled trajectories and SPICE mission data from local add-ons. [Science satellites](docs/SCIENCE_ADDONS.md) · [Cassini and Huygens](docs/CASSINI_MISSION.md) · [SSC catalogues](docs/SSC_BODY_CATALOGUES.md) · [Sampled missions](docs/SAMPLED_MISSIONS.md)
+- Run Lua observer scripts or convert supported CEL commands into tours. [Lua scripts](docs/LUA_SCRIPTS.md) · [Tours](docs/TOURS.md)
 
-- Observe [bright stars and constellation figures](docs/SKY_DATA.md) with per-view sky layers.
+DE440 supplies the base ephemeris. The maps and mission datasets shown above are optional local inputs with their own distribution terms. The format guides specify the supported catalogue fields and kernel types.
 
-## Supported data and current limits
+## Build and validate
 
-The repository contains the simulator and test fixtures. DE440 is the only external file needed for the first scene. The workflows above link to the separate catalogs, kernels, meshes, and textures they use. Each input retains its own distribution terms.
-
-The preview offers preset camera modes and target-relative flight, tracking, and orbit controls. SSC, SPICE mission JSON, and [observer Lua scripts](docs/LUA_SCRIPTS.md) have documented subsets. The [validation notes](docs/RELEASE_NOTES.md) list the original data and workflows exercised on Windows.
-
-## Build, test, and contribute
-
-Use the [Windows export guide](docs/WINDOWS_BUILD.md) to build a standalone executable. To run the first data-backed smoke test after the Quick Start, run these commands from the same PowerShell session.
+Use the [Windows export guide](docs/WINDOWS_BUILD.md) to build a standalone executable. To run the data-backed smoke test after the Quick Start, use the same PowerShell session.
 
 ```powershell
 $env:SPACETANGENT_DE440 = (Resolve-Path (Join-Path $data 'de440.440')).Path
 godot --headless --path $project res://tests/BootstrapSmoke.tscn
 ```
 
-The simulator pins [SpaceTangent Core](https://github.com/DustFinch/space-tangent-core) as a Git submodule. For a bug report, include the revision, scene or catalog, and steps to reproduce it. [GitHub Issues](https://github.com/DustFinch/space-tangent/issues)
+The Windows transfer verification included original mission add-ons, 80 rendered captures and a one-hour test in the Jason-1 and full-Moon scene. Both cameras, their independent epochs and ΔT were checked after each of 20 add-on reloads.
+
+The simulator pins [SpaceTangent Core](https://github.com/DustFinch/space-tangent-core) as a Git submodule. When reporting a bug, include the revision, scene or catalogue, and steps to reproduce it. [GitHub Issues](https://github.com/DustFinch/space-tangent/issues)
 
 ## License
 
-The source code is licensed under [GPL-2.0-or-later](COPYING). The workflow guides above identify the external data sources used by the example scenes.
+The source code is licensed under [GPL-2.0-or-later](COPYING). The linked data guides identify the sources and terms for optional assets.

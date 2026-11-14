@@ -209,6 +209,38 @@ public sealed class NativeTourGeometryTests
         finally { folder.Delete(recursive: true); }
     }
 
+    [Fact]
+    public void ClassicTourReportsCommandsIgnoredByTheLegacyConverter()
+    {
+        var folder = Directory.CreateTempSubdirectory("st-cel-report-");
+        try
+        {
+            string source = Path.Combine(folder.FullName, "display.cel");
+            File.WriteAllText(source, """
+                {
+                  preloadtex { object "Sol/Earth" }
+                  settextureresolution { resolution "high" }
+                  setwindowbordersvisible { visible false }
+                  verbosity { level 2 }
+                  unknowncommand {}
+                  wait { duration 1 }
+                }
+                """);
+
+            var conversion = TourConverter.ConvertFile(source);
+            Assert.Equal(1, conversion.Commands);
+            Assert.Equal([
+                "line 2: preloadtex: ignored by the legacy converter",
+                "line 3: settextureresolution: ignored by the legacy converter",
+                "line 4: setwindowbordersvisible: ignored by the legacy converter",
+                "line 5: verbosity: ignored by the legacy converter",
+                "line 6: unknowncommand"
+            ], conversion.Unapplied);
+            Assert.Contains("st.wait(1)", conversion.Lua);
+        }
+        finally { folder.Delete(recursive: true); }
+    }
+
     [TourArchiveFact]
     [Trait("Category", "ExternalData")]
     public void ClassicMarkersPreserveStyleAndStayInTheirOwnObserver()

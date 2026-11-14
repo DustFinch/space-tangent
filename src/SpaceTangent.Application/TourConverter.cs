@@ -286,6 +286,12 @@ public static partial class TourConverter
                         (orbit ? "true)" : "false)");
                     lua.AppendLine(orbit ? $"if selected then {turn} end" : turn);
                     break;
+                case "preloadtex":
+                case "settextureresolution":
+                case "setwindowbordersvisible":
+                case "verbosity":
+                    Report(command.Name + ": ignored by the legacy converter");
+                    continue;
                 default:
                     Report(command.Name);
                     continue;

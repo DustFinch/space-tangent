@@ -33,9 +33,12 @@ public partial class EarthOrbitProbe
             Directory.Move(frames, moved);
             try
             {
-                if (await scene.ReloadAddOns() || !ReferenceEquals(published, session.World) ||
+                bool reloaded = await scene.ReloadAddOns();
+                if (reloaded || !ReferenceEquals(published, session.World) ||
                     session[0] != first || session[1] != second || session.DeltaT != model)
-                    throw new InvalidOperationException("Removing the frame-only pack must keep the previous world and observers.");
+                    throw new InvalidOperationException($"Removing the frame-only pack: reloaded {reloaded}, " +
+                        $"same world {ReferenceEquals(published, session.World)}, views {session[0] == first}/{session[1] == second}, " +
+                        $"same Delta T {session.DeltaT == model}.");
             }
             finally
             {
@@ -60,20 +63,41 @@ public partial class EarthOrbitProbe
         var towardSun = (solar.Sun - craft).PositionKilometers;
         var eyeOffset = distant.Navigation!.Value.Placement!.Value.OffsetKilometers;
         double phase = (1 + Vector3d.Dot(towardSun / towardSun.Length, eyeOffset / eyeOffset.Length)) / 2;
-        double ratio = .006 / eyeOffset.Length * (149_597_870.7 / towardSun.Length);
+        // The archive's 6 m size scales half the longest mesh axis. Photometry uses the
+        // enclosing radius about the model origin, which can be larger for an asymmetric mesh.
+        const double authoredHalfExtent = .006;
+        var mesh = (ArrayMesh)scene.Renderer(0).ImportedBodyNode(cassini)!.Mesh!;
+        var span = mesh.GetAabb().Size;
+        double extent = Math.Max(span.X, Math.Max(span.Y, span.Z));
+        double originRadius = 0;
+        for (int surface = 0; surface < mesh.GetSurfaceCount(); surface++)
+        {
+            using var arrays = mesh.SurfaceGetArrays(surface);
+            foreach (Vector3 vertex in arrays[(int)Mesh.ArrayType.Vertex].AsVector3Array())
+                originRadius = Math.Max(originRadius, vertex.Length());
+        }
+        double radius = originRadius * (2 * authoredHalfExtent / extent);
+        double ratio = radius / eyeOffset.Length * (149_597_870.7 / towardSun.Length);
         double expectedMagnitude = -26.74 - 2.5 * Math.Log10(.5 * phase * ratio * ratio);
         string photometricScene = Path.Combine(directory, "cassini-photometry.stscene");
         ScenarioFile.Save(photometricScene, new([first, distant], false, 0, 0, model));
         if (!scene.LoadScenario(photometricScene))
             throw new InvalidOperationException("Could not open the Cassini photometry scene.");
         var farView = scene.Renderer(1);
-        if (scene.Renderer(0).ImportedBodyNode(cassini)?.Visible != true ||
-            scene.Renderer(0).BodyPoint(cassini)?.Visible == true ||
-            farView.ImportedBodyNode(cassini)?.Visible == true ||
-            farView.BodyPoint(cassini) is not { Visible: true, MaterialOverride: ShaderMaterial pointMaterial } point ||
-            Math.Abs(pointMaterial.GetShaderParameter("magnitude").AsSingle() - expectedMagnitude) > 1e-4 ||
-            farView.PickObject(farView.NavigationCameraNode.UnprojectPosition(point.Position)) != cassini)
-            throw new InvalidOperationException($"Cassini must retain a near model and a selectable far point at magnitude {expectedMagnitude:F5}.");
+        var nearView = scene.Renderer(0);
+        var point = farView.BodyPoint(cassini);
+        bool nearModel = nearView.ImportedBodyNode(cassini)?.Visible == true;
+        bool nearPoint = nearView.BodyPoint(cassini)?.Visible == true;
+        bool farModel = farView.ImportedBodyNode(cassini)?.Visible == true;
+        bool farPoint = point?.Visible == true;
+        double magnitude = point?.MaterialOverride is ShaderMaterial material
+            ? material.GetShaderParameter("magnitude").AsSingle() : double.NaN;
+        ObjectId? picked = point is not null
+            ? farView.PickObject(farView.NavigationCameraNode.UnprojectPosition(point.Position)) : null;
+        if (!nearModel || nearPoint || farModel || !farPoint ||
+            !(Math.Abs(magnitude - expectedMagnitude) <= 1e-4) || picked != cassini)
+            throw new InvalidOperationException($"Cassini photometry: near model {nearModel}, near point {nearPoint}, " +
+                $"far model {farModel}, far point {farPoint}, magnitude {magnitude:F5} expected {expectedMagnitude:F5}, pick {picked}.");
         GD.Print($"Mission photometry GPU: packed Cassini point at magnitude {expectedMagnitude:F5} and independent near GLB.");
 
         ObserverView Observer(double seconds, double range)

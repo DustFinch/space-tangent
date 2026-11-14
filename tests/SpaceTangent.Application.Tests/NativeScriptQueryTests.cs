@@ -110,6 +110,38 @@ public sealed class NativeScriptQueryTests
         return double.Parse(number, NumberStyles.Float, CultureInfo.CurrentCulture);
     }
 
+    [NativeQueryFact]
+    public void OriginalDemosSelectMimosaUsingTheLegacyBayerName()
+    {
+        string root = Environment.GetEnvironmentVariable("SPACETANGENT_TOUR_SOURCES")!;
+        string archive = Environment.GetEnvironmentVariable("SPACETANGENT_STELLAR_ARCHIVE")!;
+        var world = new SimulationWorld(De440Ephemeris.Load(Environment.GetEnvironmentVariable("SPACETANGENT_DE440")!),
+            [], stellar: StellarCatalogue.LoadArchive(archive));
+        var epoch = JulianInstant.FromJulianDate(2451545, TimeScale.Tdb);
+        var folder = Directory.CreateTempSubdirectory("st-tour-bayer-");
+        try
+        {
+            foreach (string name in new[] { "demo.cel", "demo_ru.cel" })
+            {
+                string command = Assert.Single(File.ReadLines(Path.Combine(root, name)),
+                    line => line.Contains("Beta Cru", StringComparison.Ordinal));
+                string source = Path.Combine(folder.FullName, name);
+                File.WriteAllText(source, "{ " + command.Trim() + " }");
+                string lua = Path.ChangeExtension(source, ".lua");
+                File.WriteAllText(lua, TourConverter.ConvertFile(source).Lua);
+                var session = new SimulationSession(world, epoch, DeltaTModel.MorrisonStephenson2004);
+                var messages = new List<string>();
+                var script = LuaSessionScript.Load(lua, session, 0, false, messages.Add);
+                script.Step(0);
+                Assert.True(script.Finished);
+                Assert.Null(script.Error);
+                Assert.Empty(messages);
+                Assert.Equal(new ObjectId("hip/62434"), session[0].Selection);
+            }
+        }
+        finally { folder.Delete(recursive: true); }
+    }
+
     private sealed class NativeQueryFactAttribute : FactAttribute
     {
         public NativeQueryFactAttribute(bool deepSky = false)

@@ -97,9 +97,17 @@ public sealed partial class LuaSessionScript
     private static ObjectId ResolveTourTarget(string query, ObjectCatalogue catalogue)
     {
         try { return SceneLink.ResolveObject(query, catalogue); }
-        catch (InvalidDataException) when (query.Equals("Alpha Centauri", StringComparison.OrdinalIgnoreCase))
+        catch (InvalidDataException)
         {
-            return SceneLink.ResolveObject("ALF Cen", catalogue);
+            string? alias = query.ToLowerInvariant() switch
+            {
+                "alpha centauri" => "ALF Cen",
+                "beta cru" => "β Cru",
+                _ => null
+            };
+            if (alias is null)
+                throw;
+            return SceneLink.ResolveObject(alias, catalogue);
         }
     }
 

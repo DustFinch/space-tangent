@@ -21,6 +21,7 @@ public sealed partial class LuaSessionScript
             Number(a[4]), Vector(a, 5)));
         Bind(api, "turnaxis", (_, a) => Change(() =>
             _session.TurnScriptView(View, Vector(a, 0), Number(a[3]), Boolean(a[4]), NativeSnapshot())));
+        Bind(api, "legacylookback", (_, _) => Change(() => _session.LookBackForScript(View, NativeSnapshot())));
         Bind(api, "travelling", (_, _) => DynValue.NewBoolean(_session.IsFlying(View)));
         Bind(api, "legacydolly", (_, a) =>
         {

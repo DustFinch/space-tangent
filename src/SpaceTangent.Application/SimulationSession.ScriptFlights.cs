@@ -77,6 +77,23 @@ public sealed partial class SimulationSession
         _flights[view] = flight with { Elapsed = elapsed };
     }
 
+    internal void LookBackForScript(int view, WorldSnapshot snapshot)
+    {
+        var observer = _views[view];
+        if (observer.Navigation is not { } pose)
+        {
+            TurnScriptView(view, new(0, 1, 0), Math.PI, orbit: false, snapshot);
+            return;
+        }
+
+        NavigationPlacement attitude = pose.Placement ?? pose.ResolvePlacement(snapshot, DeltaT);
+        CancelFlight(view);
+        _views[view] = observer with { Navigation = pose with
+        {
+            Placement = attitude with { Forward = attitude.Forward * -1 }
+        } };
+    }
+
     internal void TurnScriptView(int view, Vector3d cameraAxis, double radians, bool orbit, WorldSnapshot snapshot)
     {
         if (!cameraAxis.IsFinite || !(cameraAxis.Length > 0) || !double.IsFinite(radians))

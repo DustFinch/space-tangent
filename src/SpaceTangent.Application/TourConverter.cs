@@ -174,6 +174,9 @@ public static partial class TourConverter
                     }
                     lua.AppendLine($"st.legacyfov({Number(degrees)})");
                     break;
+                case "lookback":
+                    lua.AppendLine("st.legacylookback()");
+                    break;
                 case "center":
                     lua.AppendLine($"if selected then st.center({Number(Duration(command.Number("time", 1.65)) * scale)}) end");
                     break;
@@ -277,7 +280,7 @@ public static partial class TourConverter
                 {
                     ("renderflags", "stars") => "stars",
                     ("renderflags", "constellations") => "constellations",
-                    ("renderflags", "galaxies") => "deep",
+                    ("renderflags", "galaxies" or "globulars") => "deep",
                     ("renderflags", "orbits") => "orbits",
                     ("renderflags", "cloudmaps") => "clouds",
                     ("renderflags", "atmospheres") => "atmospheres",
@@ -286,6 +289,8 @@ public static partial class TourConverter
                     ("renderflags", "grid") => "grid",
                     ("renderflags", "eclipticgrid") => "eclipticgrid",
                     ("renderflags", "galacticgrid") => "galacticgrid",
+                    ("renderflags", "horizontalgrid") => "horizongrid",
+                    ("renderflags", "lightdelay") => "lighttime",
                     ("renderflags", "ecliptic") => "ecliptic",
                     ("renderflags", "markers") => "markers",
                     ("labels", "stars" or "planets" or "moons" or "dwarfplanets") => "labels",

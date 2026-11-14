@@ -320,6 +320,61 @@ public sealed class NativeTourGeometryTests
         finally { folder.Delete(recursive: true); }
     }
 
+    [TourArchiveFact]
+    [Trait("Category", "ExternalData")]
+    public void ClassicLookbackAndLayerFlagsKeepTheirEffectsInTheRunningView()
+    {
+        var world = new SimulationWorld(De440Ephemeris.Load(Environment.GetEnvironmentVariable("SPACETANGENT_DE440")!), []);
+        var epoch = JulianInstant.FromJulianDate(2451545, TimeScale.Tdb);
+        var session = new SimulationSession(world, epoch, DeltaTModel.MorrisonStephenson2004);
+        session.OpenSpaceView(0);
+        session.Split();
+        var first = session[0] with { EarthObserver = EarthObserverCamera.Tromso, Playing = false };
+        var second = session[1] with { Epoch = epoch.AddSeconds(3600), Playing = false };
+        session.RestoreScenario(new([first, second], false, 0, 0, session.DeltaT));
+        session.SelectObject(0, SolarSystemSample.EarthId);
+        Assert.True(session.FollowBodyRotation(0));
+        var before = session[0].Navigation!.Value;
+        double delay = session.LightTimeSeconds(0)!.Value;
+        var folder = Directory.CreateTempSubdirectory("st-cel-lookback-");
+        try
+        {
+            string source = Path.Combine(folder.FullName, "lookback.cel");
+            File.WriteAllText(source, """
+                {
+                    lookback {}
+                    renderflags { set "horizontalgrid|lightdelay|globulars" }
+                    wait { duration 1 }
+                    renderflags { clear "horizontalgrid|lightdelay|globulars" }
+                    lookback {}
+                }
+                """);
+            var conversion = TourConverter.ConvertFile(source);
+            Assert.Empty(conversion.Unapplied);
+            string lua = Path.Combine(folder.FullName, "lookback.lua");
+            File.WriteAllText(lua, conversion.Lua);
+            var script = LuaSessionScript.Load(lua, session, 0, false, _ => { });
+            script.Step(0);
+            var reversed = session[0];
+            Assert.Equal(before with { Placement = before.Placement!.Value with { Forward = before.Placement.Value.Forward * -1 } },
+                reversed.Navigation);
+            Assert.Equal(EarthObserverCamera.Tromso with { HorizonGrid = true }, reversed.EarthObserver);
+            Assert.True(reversed.Sky.DeepSky);
+            Assert.True(reversed.LightTimeDelayed);
+            Assert.Equal(epoch.AddSeconds(-delay), reversed.Epoch);
+            Assert.Equal(second, session[1]);
+            script.Step(1);
+            Assert.True(script.Finished);
+            Assert.Null(script.Error);
+            Assert.Equal(before, session[0].Navigation);
+            Assert.Equal(EarthObserverCamera.Tromso, session[0].EarthObserver);
+            Assert.False(session[0].Sky.DeepSky);
+            Assert.False(session[0].LightTimeDelayed);
+            Assert.Equal(second, session[1]);
+        }
+        finally { folder.Delete(recursive: true); }
+    }
+
     private sealed class TourArchiveFactAttribute : FactAttribute
     {
         public TourArchiveFactAttribute()

@@ -147,6 +147,18 @@ public sealed partial class LuaSessionScript
     {
         if (layer == "markers")
             return Change(() => _session.SetScriptMarkersVisible(View, enabled));
+        if (layer == "horizongrid")
+        {
+            var camera = _session[View].EarthObserver ?? EarthObserverCamera.Moscow;
+            return Change(() => _session.SetEarthObserver(View, camera with { HorizonGrid = enabled }));
+        }
+        if (layer == "lighttime")
+        {
+            if (!_session.TrySetLightTimeDelay(View, enabled, out _))
+                throw new ScriptRuntimeException("Light-time delay is unavailable for this selection or epoch.");
+            _changed = true;
+            return DynValue.Nil;
+        }
         SkyLayerSettings sky = _session[View].Sky;
         sky = layer switch
         {

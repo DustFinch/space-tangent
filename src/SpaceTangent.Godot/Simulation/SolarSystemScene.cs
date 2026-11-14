@@ -53,6 +53,7 @@ public partial class SolarSystemScene : Control
     private IReadOnlyDictionary<ObjectId, BodyTileTextures> _surfaceTiles = new Dictionary<ObjectId, BodyTileTextures>();
     private CheckButton _showPlanetOrbits = null!;
     private bool _refreshingViewField;
+    private bool _viewSizeChanged;
     private BrightSkyData? _brightSky;
     private CheckButton _deepSky = null!;
     private CheckButton _stars = null!, _starLabels = null!, _equatorialGrid = null!, _constellations = null!;
@@ -796,7 +797,9 @@ public partial class SolarSystemScene : Control
             if (_script is null)
                 _scriptMenu.SetItemDisabled(1, !_scriptMedia.Any(entry => entry.Player.Active));
         }
-        if (changed || Session is { } session && (session.AnyFlight || session.HasShips || session.HasActiveAutoOrbit))
+        bool resized = _viewSizeChanged;
+        _viewSizeChanged = false;
+        if (resized || changed || Session is { } session && (session.AnyFlight || session.HasShips || session.HasActiveAutoOrbit))
             Refresh(delta);
     }
 
@@ -1600,6 +1603,7 @@ public partial class SolarSystemScene : Control
         panel.AddChild(container);
         var viewport = new SubViewport { OwnWorld3D = true, RenderTargetUpdateMode = SubViewport.UpdateMode.Always };
         container.AddChild(viewport);
+        viewport.SizeChanged += () => _viewSizeChanged = true;
         var renderer = new SimulationViewport
         {
             GalacticCache = _galacticSky, DemoSurfaces = _demoSurfaces, CompactTables = _compactLensTables,

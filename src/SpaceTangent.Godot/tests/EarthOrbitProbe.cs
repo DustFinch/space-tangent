@@ -143,6 +143,12 @@ public partial class EarthOrbitProbe : Node
                 result = 0;
                 return;
             }
+            if (System.Environment.GetEnvironmentVariable("SPACETANGENT_MISSION_SWARM_GPU") == "only")
+            {
+                await ExerciseMissionSwarms(scene, directory);
+                result = 0;
+                return;
+            }
             if (System.Environment.GetEnvironmentVariable("SPACETANGENT_CAPTURE_PACKED_SCIENCE") == "only")
             {
                 await CapturePackedScience(scene, directory);

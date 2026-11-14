@@ -12,7 +12,7 @@ public partial class EarthOrbitProbe
 {
     private async Task ExerciseMissionSwarms(SolarSystemScene scene, string directory)
     {
-        if (System.Environment.GetEnvironmentVariable("SPACETANGENT_MISSION_SWARM_GPU") != "1" ||
+        if (System.Environment.GetEnvironmentVariable("SPACETANGENT_MISSION_SWARM_GPU") is not ("1" or "only") ||
             System.Environment.GetEnvironmentVariable("SPACETANGENT_SWARM_INSTALL") is not { Length: > 0 } corpus)
             return;
         const string input = "SPACETANGENT_SAMPLED_MISSIONS_ROOT";
@@ -27,9 +27,10 @@ public partial class EarthOrbitProbe
             var asteroids = new ObjectId("mission/original-astorb");
             var hildas = new ObjectId("mission/hilda-family");
             var debris = new ObjectId("mission/fengyun-1c-debris");
-            foreach (string format in new[] { "source", "packed" })
+            var legacy = System.Environment.GetEnvironmentVariable("SPACETANGENT_LEGACY_SWARM_PACK");
+            foreach (string format in legacy is null ? new[] { "source", "packed" } : new[] { "archived-v5" })
             {
-                System.Environment.SetEnvironmentVariable(input, Path.Combine(corpus, format + "-addons", "swarms"));
+                System.Environment.SetEnvironmentVariable(input, legacy ?? Path.Combine(corpus, format + "-addons", "swarms"));
                 if (!await scene.ReloadAddOns())
                     throw new InvalidOperationException($"Could not install the {format} swarms.");
                 var first = View(asteroids, epoch, 1_300_000_000);
@@ -40,6 +41,9 @@ public partial class EarthOrbitProbe
                     throw new InvalidOperationException("Swarm cameras did not survive reload.");
                 Need(0, asteroids, 5000);
                 Need(0, hildas, 3094);
+                // Scenario restoration and reload can finish before the secondary viewport is laid out.
+                for (int frame = 0; frame < 8 && scene.Renderer(1).ImportedBodyNode(debris)?.Visible != true; frame++)
+                    await ToSignal(RenderingServer.Singleton, RenderingServer.SignalName.FramePostDraw);
                 var right = Need(1, debris, 2740);
                 await Capture(path, scene.Renderer(1));
 
@@ -53,6 +57,14 @@ public partial class EarthOrbitProbe
                     Clock(left) == Clock(right))
                     throw new InvalidOperationException("Swarm data must be shared, and clocks and materials must be per view.");
                 GD.Print($"Mission swarm GPU ({format}): 5,000 ASTORB, 3,094 Hilda, 2,740 Fengyun points; shared mesh and separate epochs.");
+            }
+
+            if (legacy is not null)
+            {
+                System.Environment.SetEnvironmentVariable(input, original);
+                if (!await scene.ReloadAddOns() || !scene.LoadScenario(prior))
+                    throw new InvalidOperationException("Could not restore the installation after the archived swarm test.");
+                return;
             }
 
             var translated = new ObjectId("mission/nativeswarmtranslated");

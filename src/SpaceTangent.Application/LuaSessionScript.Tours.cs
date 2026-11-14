@@ -14,6 +14,8 @@ public sealed partial class LuaSessionScript
         Bind(api, "gotoobject", (_, arguments) => GoTo(Number(arguments[0]), Number(arguments[1]), keepRange: false));
         Bind(api, "center", (_, arguments) => GoTo(Number(arguments[0]), 0, keepRange: true));
         Bind(api, "cancelflight", (_, _) => Change(() => _session.CancelFlight(View)));
+        Bind(api, "track", (_, args) => Change(() =>
+            _session.SetScriptAimTarget(View, args[0].IsNil() ? null : LuaObjectId(args[0]))));
         Bind(api, "legacybodylock", (_, _) => Change(() => _session.FollowBodyRotation(View)));
         Bind(api, "follow", (_, _) => Change(() =>
         {

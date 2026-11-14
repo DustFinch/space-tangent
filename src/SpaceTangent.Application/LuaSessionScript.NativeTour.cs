@@ -75,6 +75,12 @@ public sealed partial class LuaSessionScript
             if (_session[Index()].Navigation is not { Tracking: true } current || current.Target != id)
                 _session.ToggleTracking(Index(), NativeSnapshot(Index()));
         }));
+        Bind(observer, "track", (_, arguments) =>
+        {
+            var target = arguments.SkipMethodCall()[0];
+            return Change(() => _session.SetScriptAimTarget(Index(), target.IsNil() ? null : LuaObjectId(target)));
+        });
+        Bind(observer, "gettrackedobject", (_, _) => LuaObject(_session[Index()].ScriptAimTarget));
         Bind(observer, "gotoobject", (_, arguments) =>
         {
             var args = arguments.SkipMethodCall();

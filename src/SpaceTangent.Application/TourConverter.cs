@@ -197,6 +197,9 @@ public static partial class TourConverter
                 case "center":
                     lua.AppendLine($"if selected then st.center({Number(Duration(command.Number("time", 1.65)) * scale)}) end");
                     break;
+                case "track":
+                    lua.AppendLine("if selected and st.selection() then st.track(st.selection()) end");
+                    break;
                 case "follow":
                     lua.AppendLine("if selected then st.follow() end");
                     break;

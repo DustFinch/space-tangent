@@ -496,6 +496,75 @@ public sealed class NativeTourGeometryTests
     }
 
 
+    [TourArchiveFact]
+    [Trait("Category", "ExternalData")]
+    public void ClassicTrackKeepsTheEarthFrameWhileAimingAtTheMoon()
+    {
+        var world = new SimulationWorld(De440Ephemeris.Load(Environment.GetEnvironmentVariable("SPACETANGENT_DE440")!), []);
+        var epoch = JulianInstant.FromJulianDate(2451545, TimeScale.Tdb);
+        var session = new SimulationSession(world, epoch, DeltaTModel.MorrisonStephenson2004);
+        session.OpenSpaceView(0);
+        session.Split();
+        var other = session[1] with { Epoch = epoch.AddSeconds(3600), Playing = false };
+        session.RestoreScenario(new([session[0] with { Playing = false }, other], false, 0, 0, session.DeltaT));
+        var folder = Directory.CreateTempSubdirectory("st-cel-track-");
+        try
+        {
+            string source = Path.Combine(folder.FullName, "track.cel");
+            File.WriteAllText(source, """
+                {
+                    select { object "Earth" }
+                    synchronous {}
+                    select { object "Moon" }
+                    track {}
+                    select { object "Mars" }
+                }
+                """);
+            var conversion = TourConverter.ConvertFile(source);
+            Assert.Empty(conversion.Unapplied);
+            string lua = Path.ChangeExtension(source, ".lua");
+            File.WriteAllText(lua, conversion.Lua);
+            var script = LuaSessionScript.Load(lua, session, 0, false, _ => { });
+            script.Step(0);
+            Assert.True(script.Finished);
+            Assert.Null(script.Error);
+            var initial = session[0].Navigation!.Value;
+            CheckAim(initial);
+            session.Step(0, 3600);
+            CheckAim(initial);
+            string saved = Path.Combine(folder.FullName, "track.stscene");
+            ScenarioFile.Save(saved, session.CaptureScenario(0));
+            session.RestoreScenario(ScenarioFile.Load(saved));
+            Assert.True(session.TryReplaceWorld(new SimulationWorld(world.Ephemeris, [])));
+            CheckAim(initial);
+
+            File.WriteAllText(lua, "st.track(nil)");
+            script = LuaSessionScript.Load(lua, session, 0, false, _ => { });
+            script.Step(0);
+            Assert.Null(script.Error);
+            Assert.Null(session[0].ScriptAimTarget);
+
+            void CheckAim(NavigationCamera expected)
+            {
+                var snapshot = world.Graph.Evaluate(session[0].Epoch);
+                session.UpdateCamera(0, snapshot, 0);
+                var camera = session[0].Navigation!.Value;
+                Assert.Equal(SolarSystemSample.EarthId, camera.Target);
+                Assert.Equal(SolarSystemSample.MoonId, session[0].ScriptAimTarget);
+                Assert.Equal(PlanetCatalogue.MarsId, session[0].Selection);
+                Assert.Equal(expected.Placement!.Value.Frame, camera.Placement!.Value.Frame);
+                Assert.Equal(expected.Placement.Value.OffsetKilometers, camera.Placement.Value.OffsetKilometers);
+                Assert.True(world.TryNavigationState(SolarSystemSample.MoonId, snapshot, out var target));
+                var placement = camera.ResolvePlacement(snapshot, session.DeltaT);
+                Vector3d sight = target.PositionKilometers - (camera.AnchorKilometers + placement.OffsetKilometers);
+                Assert.InRange((placement.Forward - sight / sight.Length).Length, 0, 1e-12);
+                Assert.Equal(other, session[1]);
+            }
+        }
+        finally { folder.Delete(recursive: true); }
+    }
+
+
     private sealed class TourArchiveFactAttribute : FactAttribute
     {
         public TourArchiveFactAttribute()

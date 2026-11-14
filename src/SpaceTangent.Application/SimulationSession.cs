@@ -26,6 +26,7 @@ public readonly record struct ObserverView(JulianInstant Epoch, CameraMode Mode,
 {
     public LunarTerrainCamera? Terrain { get; init; }
     public NavigationCamera? Navigation { get; init; }
+    public ObjectId? ScriptAimTarget { get; init; }
     public EarthObserverCamera? EarthObserver { get; init; }
     public SkyLayerSettings Sky { get; init; }
     public BodyReferenceMarks ReferenceMarks { get; init; }
@@ -300,6 +301,8 @@ public sealed partial class SimulationSession
                 throw new InvalidDataException("The scenario needs the Earth satellite add-ons.");
             if (view.Selection is { } selection && World.Catalogue.Find(selection) is null)
                 throw new InvalidDataException($"The selected object {selection.Value} is missing from the current world.");
+            if (view.ScriptAimTarget is { } aim && World.Catalogue.Find(aim) is null)
+                throw new InvalidDataException("The scenario has an unavailable script aim target.");
             if (view.Navigation is { } camera &&
                 (!camera.IsValid() || (camera.Target is { } target && World.Catalogue.Find(target) is null)))
                 throw new InvalidDataException("The scenario has an invalid camera pose or unavailable camera target.");
@@ -623,7 +626,8 @@ public sealed partial class SimulationSession
                     CancelFlight(index);
                 }
             }
-            _views[index] = previous with { Selection = selected, Mode = mode, Navigation = navigation };
+            ObjectId? aim = previous.ScriptAimTarget is { } tracked && next.Catalogue.Find(tracked) is not null ? tracked : null;
+            _views[index] = previous with { Selection = selected, Mode = mode, Navigation = navigation, ScriptAimTarget = aim };
         }
         World = next;
         return true;

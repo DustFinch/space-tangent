@@ -44,6 +44,57 @@ public sealed partial class SimulationSession
         FlyToScriptPose(view, destination, 0, snapshot);
     }
 
+    internal void SetScriptAimTarget(int view, ObjectId? target)
+    {
+        if (target is { } id && World.Catalogue.Find(id) is null)
+            throw new ArgumentException("The script aim target is unavailable.", nameof(target));
+        _views[view] = _views[view] with { ScriptAimTarget = target };
+    }
+
+    private void UpdateScriptAim(int view, WorldSnapshot snapshot)
+    {
+        var observer = _views[view];
+        if (observer.ScriptAimTarget is not { } id || InShip(view) ||
+            !World.TryNavigationState(id, snapshot, out var target, DeltaT))
+            return;
+        Vector3d sight = target.PositionKilometers - ScriptObserverEye(view, snapshot);
+        if (sight.Length < NavigationCamera.MinRange)
+            return;
+        Vector3d forward = sight / sight.Length;
+        if (observer.Mode == CameraMode.Surface && observer.Navigation is null && snapshot.SolarSystem is { } solar)
+        {
+            var site = observer.EarthObserver ?? EarthObserverCamera.Moscow;
+            var local = EarthSurfaceLighting.Sample(solar, site.Site, DeltaT).EastNorthUp.Transpose().Transform(forward);
+            const double degrees = 180 / Math.PI;
+            double azimuth = Math.Atan2(local.X, local.Y) * degrees;
+            _views[view] = observer with { EarthObserver = site with
+            {
+                AzimuthDegrees = (azimuth + 360) % 360,
+                ElevationDegrees = Math.Asin(Math.Clamp(local.Z, -1, 1)) * degrees
+            } };
+            return;
+        }
+
+        var pose = ScriptCamera(view, snapshot);
+        var world = pose.ResolvePlacement(snapshot, DeltaT);
+        Vector3d right = Vector3d.Cross(forward, world.Up);
+        if (right.Length < 1e-8)
+            right = Vector3d.Cross(forward, Vector3d.Cross(world.Forward, world.Up));
+        Vector3d up = Vector3d.Cross(right / right.Length, forward);
+        var placement = world;
+        if (pose.TryFrameBasis(snapshot, DeltaT, out var basis))
+        {
+            var inverse = basis.Transpose();
+            placement = pose.Placement!.Value;
+            forward = inverse.Transform(forward);
+            up = inverse.Transform(up);
+        }
+        _views[view] = observer with { Navigation = pose with
+        {
+            Placement = placement with { Forward = forward, Up = up }
+        } };
+    }
+
     internal bool MoveClassicView(int view, Vector3d localOffset, WorldSnapshot snapshot)
     {
         if (InShip(view))

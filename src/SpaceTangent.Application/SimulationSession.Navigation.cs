@@ -170,6 +170,12 @@ public sealed partial class SimulationSession
     /// <summary>Updates the view pose against the exact world snapshot used by its renderer.</summary>
     public void UpdateCamera(int view, WorldSnapshot snapshot, double elapsedSeconds)
     {
+        UpdateNavigationCamera(view, snapshot, elapsedSeconds);
+        UpdateScriptAim(view, snapshot);
+    }
+
+    private void UpdateNavigationCamera(int view, WorldSnapshot snapshot, double elapsedSeconds)
+    {
         if (_flights[view] is { ScriptDestination: { } destination } scripted)
         {
             UpdateScriptFlight(view, scripted, destination, snapshot, elapsedSeconds);

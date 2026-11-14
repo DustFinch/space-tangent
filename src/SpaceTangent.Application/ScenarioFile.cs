@@ -18,7 +18,7 @@ public sealed record SimulationScenario(IReadOnlyList<ObserverView> Views, bool 
 /// <summary>Persists observer settings with exact TDB epochs and stable catalog IDs.</summary>
 public static class ScenarioFile
 {
-    private const int Version = 48;
+    private const int Version = 49;
     internal const int MaximumBytes = 32 * 1024;
     private static readonly JsonSerializerOptions Json = new()
     {
@@ -63,7 +63,8 @@ public static class ScenarioFile
             throw new InvalidDataException("The scenario has an invalid camera sensitivity.");
         var document = new Document
         {
-            Version = scenario.Views.Any(view => view.EarthObserver?.CivilClock is not null) ? 48 :
+            Version = scenario.Views.Any(view => view.ScriptAimTarget is not null) ? 49 :
+                scenario.Views.Any(view => view.EarthObserver?.CivilClock is not null) ? 48 :
                 scenario.Views.Any(view => view.Sky.Markings.HasFlag(SkyMarkings.SelectedBodyPath)) ? 47 :
                 scenario.Views.Any(view => (view.Sky.Markings & ~SkyLayerSettings.GeometricalMarkings) != 0) ? 46 :
                 scenario.Views.Any(view => (view.Sky.Markings & ~SkyLayerSettings.OriginalMarkings) != 0) ? 45 :
@@ -117,6 +118,7 @@ public static class ScenarioFile
                 NanosecondsOfDay = view.Epoch.NanosecondsOfDay,
                 Camera = view.Mode,
                 Selection = view.Selection?.Value,
+                ScriptAimTarget = view.ScriptAimTarget?.Value,
                 Playing = view.Playing,
                 Terrain = view.Terrain,
                 FieldOfViewDegrees = view.FieldOfViewDegrees,
@@ -198,6 +200,8 @@ public static class ScenarioFile
             View data = document.Views[i];
             var epoch = new JulianInstant(data.DayTdb, data.NanosecondsOfDay, TimeScale.Tdb);
             ObjectId? selection = data.Selection is { } id ? new ObjectId(id) : null;
+            if (data.ScriptAimTarget is not null && document.Version < 49)
+                throw new InvalidDataException("A script aim target requires scenario version 49.");
             if (document.Version == 1 && data.Navigation is not null)
                 throw new InvalidDataException("Camera poses require a version 2 scenario.");
             NavigationCamera? navigation = data.Navigation?.ToPose();
@@ -293,6 +297,7 @@ public static class ScenarioFile
                 CameraInertia = data.CameraInertia,
                 PlaybackRate = data.PlaybackRate,
                 Navigation = navigation,
+                ScriptAimTarget = data.ScriptAimTarget is { } aim ? new ObjectId(aim) : null,
                 EarthObserver = data.EarthObserver,
                 Sky = data.Sky ?? default,
                 ReferenceMarks = data.ReferenceMarks,
@@ -326,6 +331,8 @@ public static class ScenarioFile
         public required long NanosecondsOfDay { get; init; }
         public required CameraMode Camera { get; init; }
         public required string? Selection { get; init; }
+        [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+        public string? ScriptAimTarget { get; init; }
         public required bool Playing { get; init; }
         [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
         public LunarTerrainCamera? Terrain { get; init; }

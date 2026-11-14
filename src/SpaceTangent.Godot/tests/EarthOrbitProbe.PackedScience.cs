@@ -19,12 +19,21 @@ public partial class EarthOrbitProbe
             throw new InvalidOperationException("The GPU probe requires the expected set of archived GLB spacecraft.");
         foreach (var track in world.Satellites)
         {
-            var snapshot = world.Graph.Evaluate(track.Epoch);
+            var epochs = track.Id.Value == "norad/24208"
+                ? new[] { (track.Epoch, ""), (track.Epoch.AddSeconds(-315360000), "-before"), (track.Epoch.AddSeconds(315360000), "-after") }
+                : [(track.Epoch, "")];
+            foreach (var (epoch, suffix) in epochs)
+                await Capture(track, epoch, suffix);
+        }
+
+        async Task Capture(SpaceTangent.Core.Addons.ScienceSatellite track, SpaceTangent.Contracts.JulianInstant epoch, string suffix)
+        {
+            var snapshot = world.Graph.Evaluate(epoch);
             if (!snapshot.TryState(track.Id, out var state))
-                throw new InvalidOperationException($"The packed track is unavailable at epoch for {track.Name}.");
+                throw new InvalidOperationException($"The packed track is unavailable at {epoch} for {track.Name}.");
             var camera = new NavigationCamera(state.PositionKilometers, .055, .63, .28, track.Id, true);
-            var observer = new ObserverView(track.Epoch, CameraMode.Solar, track.Id, false) { Navigation = camera };
-            string name = "packed-" + track.Name.ToLowerInvariant();
+            var observer = new ObserverView(epoch, CameraMode.Solar, track.Id, false) { Navigation = camera };
+            string name = "packed-" + track.Name.ToLowerInvariant() + suffix;
             string path = Path.Combine(directory, name + ".stscene");
             ScenarioFile.Save(path, new([observer], false, 0, 0, DeltaTModel.MorrisonStephenson2004));
             if (!scene.LoadScenario(path))
@@ -38,7 +47,7 @@ public partial class EarthOrbitProbe
             using var image = GetViewport().GetTexture().GetImage();
             if (image.SavePng(Path.Combine(directory, name + ".png")) != Error.Ok)
                 throw new IOException($"Could not capture the packed spacecraft {track.Name}.");
-            GD.Print($"Archived textured GLB rendered: {track.Name}, {model.GetSurfaceCount()} surfaces.");
+            GD.Print($"Archived textured GLB rendered: {track.Name}{suffix}, {model.GetSurfaceCount()} surfaces.");
         }
     }
 }

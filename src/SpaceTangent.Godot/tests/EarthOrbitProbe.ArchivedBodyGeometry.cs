@@ -812,35 +812,35 @@ public partial class EarthOrbitProbe
         string? orbits = System.Environment.GetEnvironmentVariable("SPACETANGENT_LEGACY_ORBITS");
         if (orbits is null)
             return;
-        if (!scene.StartReplay(orbits) || renderer.ArchivedGeometry is not { Orbits.Count: 66, Labels.Count: 115 } ||
-            renderer.ArchivedOrbitSurfaces != 66 || !renderer.ArchivedLabels.Any(label => label.Visible && label.Text == "Альтаир"))
-            throw new InvalidOperationException("The original Windows recording did not publish its saved orbits and Unicode labels.");
-        await ToSignal(GetTree(), SceneTree.SignalName.ProcessFrame);
-        await ToSignal(RenderingServer.Singleton, RenderingServer.SignalName.FramePostDraw);
-        using var overlays = renderer.GetViewport().GetTexture().GetImage();
-        if (renderer.ArchivedBody("Sol/Earth")?.MaterialOverride is not ShaderMaterial earth ||
-            !earth.GetShaderParameter("has_map").AsBool() || !earth.GetShaderParameter("has_night_map").AsBool() ||
-            !earth.GetShaderParameter("has_cloud_map").AsBool())
-            throw new InvalidOperationException("The replay Earth did not bind day, night and cloud maps.");
-        var savedEarth = renderer.ArchivedGeometry!.Bodies.Single(body => body.Name == "Sol/Earth");
-        var savedLight = savedEarth.LightColor;
-        if (earth.GetShaderParameter("light_color").AsVector3().DistanceTo(
-            new((float)savedLight.X, (float)savedLight.Y, (float)savedLight.Z)) > .000001f)
-            throw new InvalidOperationException("The replay material did not retain the recorded light color.");
-        GD.Print("Archived Earth material GPU: bound day, night and cloud maps and applied recorded light colors.");
-        var symbols = renderer.ArchivedSymbols;
-        if (symbols.Count == 0)
-            throw new InvalidOperationException("The original recording has no projected deep-sky symbols.");
-        GD.Print($"Archived symbols GPU: {symbols.Count} symbols ({symbols.Count(symbol => symbol.Square)} squares), diameter {symbols.Max(symbol => symbol.Diameter):F2} pixels.");
-        if (overlays.SavePng(Path.Combine(directory, "archived-orbits-labels.png")) != Error.Ok)
-            throw new IOException("Could not capture the saved orbit and label overlay.");
-        if (renderer.ArchivedEarthLimb is not { Visible: true, MaterialOverride: ShaderMaterial air } limb ||
-            air.GetShaderParameter("shell_height_override_km").AsSingle() is < 71.8f or > 72f)
-            throw new InvalidOperationException("The replay atmosphere did not preserve the archived shell height.");
         scene.SetProcess(false);
-        int atmospherePixels = 0;
         try
         {
+            if (!scene.StartReplay(orbits) || renderer.ArchivedGeometry is not { Orbits.Count: 66, Labels.Count: 115 } ||
+                renderer.ArchivedOrbitSurfaces != 66 || !renderer.ArchivedLabels.Any(label => label.Visible && label.Text == "Альтаир"))
+                throw new InvalidOperationException("The original Windows recording did not publish its saved orbits and Unicode labels.");
+            await ToSignal(GetTree(), SceneTree.SignalName.ProcessFrame);
+            await ToSignal(RenderingServer.Singleton, RenderingServer.SignalName.FramePostDraw);
+            using var overlays = renderer.GetViewport().GetTexture().GetImage();
+            if (renderer.ArchivedBody("Sol/Earth")?.MaterialOverride is not ShaderMaterial earth ||
+                !earth.GetShaderParameter("has_map").AsBool() || !earth.GetShaderParameter("has_night_map").AsBool() ||
+                !earth.GetShaderParameter("has_cloud_map").AsBool())
+                throw new InvalidOperationException("The replay Earth did not bind day, night and cloud maps.");
+            var savedEarth = renderer.ArchivedGeometry!.Bodies.Single(body => body.Name == "Sol/Earth");
+            var savedLight = savedEarth.LightColor;
+            if (earth.GetShaderParameter("light_color").AsVector3().DistanceTo(
+                new((float)savedLight.X, (float)savedLight.Y, (float)savedLight.Z)) > .000001f)
+                throw new InvalidOperationException("The replay material did not retain the recorded light color.");
+            GD.Print("Archived Earth material GPU: bound day, night and cloud maps and applied recorded light colors.");
+            var symbols = renderer.ArchivedSymbols;
+            if (symbols.Count == 0)
+                throw new InvalidOperationException("The original recording has no projected deep-sky symbols.");
+            GD.Print($"Archived symbols GPU: {symbols.Count} symbols ({symbols.Count(symbol => symbol.Square)} squares), diameter {symbols.Max(symbol => symbol.Diameter):F2} pixels.");
+            if (overlays.SavePng(Path.Combine(directory, "archived-orbits-labels.png")) != Error.Ok)
+                throw new IOException("Could not capture the saved orbit and label overlay.");
+            if (renderer.ArchivedEarthLimb is not { Visible: true, MaterialOverride: ShaderMaterial air } limb ||
+                air.GetShaderParameter("shell_height_override_km").AsSingle() is < 71.8f or > 72f)
+                throw new InvalidOperationException("The replay atmosphere did not preserve the archived shell height.");
+            int atmospherePixels = 0;
             limb.Hide();
             await ToSignal(GetTree(), SceneTree.SignalName.ProcessFrame);
             await ToSignal(RenderingServer.Singleton, RenderingServer.SignalName.FramePostDraw);
@@ -853,16 +853,16 @@ public partial class EarthOrbitProbe
                 if (with.B - without.B > .035f && with.B - without.B > with.R - without.R + .02f)
                     atmospherePixels++;
             }
+            if (atmospherePixels < 30)
+                throw new InvalidOperationException($"Expected the saved atmosphere to change the image, found {atmospherePixels} pixels.");
+            GD.Print($"Archived Earth atmosphere GPU: recorded shell height 71.9 km, {atmospherePixels} blue limb pixels.");
+            if (!scene.LoadScenario(saved) || renderer.ArchivedOrbitSurfaces != 0 || renderer.ArchivedLabels.Count != 0 || renderer.ArchivedSymbols.Count != 0)
+                throw new InvalidOperationException("The saved orbit and label overlays persisted outside replay.");
         }
         finally
         {
             scene.SetProcess(true);
         }
-        if (atmospherePixels < 30)
-            throw new InvalidOperationException($"Expected the saved atmosphere to change the image, found {atmospherePixels} pixels.");
-        GD.Print($"Archived Earth atmosphere GPU: recorded shell height 71.9 km, {atmospherePixels} blue limb pixels.");
-        if (!scene.LoadScenario(saved) || renderer.ArchivedOrbitSurfaces != 0 || renderer.ArchivedLabels.Count != 0 || renderer.ArchivedSymbols.Count != 0)
-            throw new InvalidOperationException("The saved orbit and label overlays persisted outside replay.");
         GD.Print("Archived overlays GPU: original Windows capture published 66 orbit strips and 115 labels including Cyrillic, then cleared them on exit.");
     }
 }

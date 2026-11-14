@@ -3,6 +3,7 @@ using System.Text;
 using System.Text.Json;
 using SpaceTangent.Contracts;
 using SpaceTangent.Core.Addons;
+using SpaceTangent.Core.World;
 using Xunit;
 
 namespace SpaceTangent.Application.Tests;
@@ -93,6 +94,58 @@ public sealed class LuaCatalogueFactoryTests
             Assert.True(inputs.IsCurrent());
             File.AppendAllText(Path.Combine(root, "scripts", "pkg", "curve.lua"), "\n-- changed module");
             Assert.False(inputs.IsCurrent());
+        }
+        finally { temporary.Delete(recursive: true); }
+    }
+
+    [OriginalFactoriesFact]
+    [Trait("Category", "ExternalData")]
+    public void ArchivedFactoriesWorkInsideSourceAndPackedTimelinePhases()
+    {
+        string root = Environment.GetEnvironmentVariable("SPACETANGENT_SCRIPTED_SSC")!;
+        var baseline = Assert.Single(SscBodyCatalogue.Load(root, scripts: new LuaCatalogueFactories()), body => body.Name == "Cassini SOI");
+        var temporary = Directory.CreateTempSubdirectory("st-lua-timeline-");
+        try
+        {
+            string source = temporary.CreateSubdirectory("source").FullName;
+            foreach (string file in Directory.EnumerateFiles(root, "*", SearchOption.AllDirectories))
+            {
+                string target = Path.Combine(source, Path.GetRelativePath(root, file));
+                Directory.CreateDirectory(Path.GetDirectoryName(target)!);
+                File.Copy(file, target);
+            }
+            string catalog = Directory.GetFiles(source, "*.ssc").Single();
+            string content = File.ReadAllText(catalog);
+            int body = content.IndexOf("\"Cassini SOI\" \"Sol/Saturn\"", StringComparison.Ordinal);
+            int first = content.IndexOf("    OrbitFrame", body, StringComparison.Ordinal);
+            int last = content.LastIndexOf('}');
+            Assert.InRange(first, body + 1, last - 1);
+            File.WriteAllText(catalog, content[..first] + "    Timeline [ {\n" + content[first..last] + "    } ]\n}\n");
+            string packed = Path.Combine(temporary.FullName, "pack");
+            Assert.Equal(3, SscBodyCatalogue.BuildPack(source, packed, _ => { }, scripts: new LuaCatalogueFactories()));
+            Check(source);
+            Check(packed);
+
+            void Check(string directory)
+            {
+                var imported = Assert.Single(SscBodyCatalogue.Load(directory, scripts: new LuaCatalogueFactories()),
+                    item => item.Name == "Cassini SOI");
+                var saturn = new ObjectId("sol/saturn");
+                var id = new ObjectId("ssc/sol/saturn/cassini-soi");
+                var builder = new WorldGraphBuilder();
+                builder.AddTrajectory(saturn, _ => new CartesianState(default, default));
+                builder.AddSampledMission(imported.BindTimeline!(id, path => path == "Sol/Saturn" ? saturn : throw new InvalidDataException(path)));
+                var graph = builder.Build();
+                foreach (double day in new[] { 2453187.55, 2453187.57, 2453187.6 })
+                {
+                    var epoch = JulianInstant.FromJulianDate(day, TimeScale.Tdb);
+                    var world = graph.Evaluate(epoch);
+                    Assert.True(world.TryState(id, out var state));
+                    Assert.Equal(baseline.Sample(epoch), state);
+                    Assert.True(world.TryOrientation(id, out var rotation));
+                    Assert.Equal(baseline.SampleRotation!(epoch), rotation);
+                }
+            }
         }
         finally { temporary.Delete(recursive: true); }
     }

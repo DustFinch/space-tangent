@@ -130,9 +130,11 @@ public static class ScienceModelDecoder
             DecodedMaterial definition = materialEntry.Material ?? DefaultMaterial;
             if (definition.Texture is { } reference)
             {
-                string resolved;
-                try { resolved = Companion(directory, reference, ".png"); }
-                catch (FileNotFoundException) { resolved = Companion(directory, reference, ".png", materialEntry.Owner); }
+                string resolved = AddonDiagnostics.Read(AddonStage.Texture, Path.Combine(directory, reference), () =>
+                {
+                    try { return Companion(directory, reference, ".png"); }
+                    catch (FileNotFoundException) { return Companion(directory, reference, ".png", materialEntry.Owner); }
+                });
                 definition = definition with { Texture = Path.GetRelativePath(directory, resolved).Replace('\\', '/') };
             }
             if (definition.Texture is { } texture && !textures.ContainsKey(texture))

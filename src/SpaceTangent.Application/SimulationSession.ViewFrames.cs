@@ -93,26 +93,40 @@ public sealed partial class SimulationSession
         return true;
     }
 
-    public bool FollowRelativeFrame(int view, NavigationFrame frame, ObjectId? reference = null)
+    public bool FollowRelativeFrame(int view, NavigationFrame frame, ObjectId? reference = null) =>
+        _views[view].Selection is { } target && FollowRelativeFrame(view, target, frame, reference);
+
+    internal bool FollowRelativeFrame(int view, ObjectId target, NavigationFrame frame, ObjectId? reference)
     {
-        ObserverView observer = _views[view];
-        var snapshot = World.Graph.Evaluate(observer.Epoch);
-        if (observer.Selection is not { } target ||
-            (reference ?? World.Catalogue.Find(target)?.Parent) is not { } other || other == target ||
+        var snapshot = World.Graph.Evaluate(_views[view].Epoch);
+        if ((reference ?? World.Catalogue.Find(target)?.Parent) is not { } other || other == target ||
             !NavigationCamera.TryRelativeBasis(snapshot, frame, target, other, out Basis3d basis) ||
             !World.TryNavigationState(target, snapshot, out var state))
             return false;
         return FollowFrame(view, snapshot, target, state.PositionKilometers, basis, false, frame, other);
     }
 
-    public bool FollowBodyRotation(int view)
+    public bool FollowBodyRotation(int view) =>
+        _views[view].Selection is { } target && FollowBodyRotation(view, target);
+
+    internal bool FollowBodyRotation(int view, ObjectId target)
     {
-        ObserverView observer = _views[view];
-        var snapshot = World.Graph.Evaluate(observer.Epoch);
-        if (observer.Selection is not { } target || !NavigationCamera.TryBodyBasis(snapshot, target, DeltaT, out Basis3d basis) ||
+        var snapshot = World.Graph.Evaluate(_views[view].Epoch);
+        if (!NavigationCamera.TryBodyBasis(snapshot, target, DeltaT, out Basis3d basis) ||
             !World.TryNavigationState(target, snapshot, out CartesianState state))
             return false;
         return FollowFrame(view, snapshot, target, state.PositionKilometers, basis, true, NavigationFrame.Inertial, null);
+    }
+
+    internal bool FollowScriptReference(int view, ObjectId target, NavigationFrame frame)
+    {
+        var snapshot = World.Graph.Evaluate(_views[view].Epoch);
+        if (!World.TryNavigationState(target, snapshot, out var state, DeltaT))
+            return false;
+        Basis3d basis = Basis3d.Identity;
+        if (frame == NavigationFrame.Equatorial && !NavigationCamera.TryMeanEquator(snapshot, target, out basis))
+            return false;
+        return FollowFrame(view, snapshot, target, state.PositionKilometers, basis, false, frame, null);
     }
 
     private bool FollowFrame(int view, WorldSnapshot snapshot, ObjectId target, Vector3d origin, Basis3d basis,

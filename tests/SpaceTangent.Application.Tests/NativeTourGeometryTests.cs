@@ -255,6 +255,71 @@ public sealed class NativeTourGeometryTests
         finally { folder.Delete(recursive: true); }
     }
 
+    [TourArchiveFact]
+    [Trait("Category", "ExternalData")]
+    public void ClassicReferenceFramesPreserveTheEyeAndDoNotChangeSelectionOrAnotherView()
+    {
+        var world = new SimulationWorld(De440Ephemeris.Load(Environment.GetEnvironmentVariable("SPACETANGENT_DE440")!), []);
+        var epoch = JulianInstant.FromJulianDate(2451545, TimeScale.Tdb);
+        var session = new SimulationSession(world, epoch, DeltaTModel.MorrisonStephenson2004);
+        session.OpenSpaceView(0);
+        session.Split();
+        session.SelectObject(0, PlanetCatalogue.MarsId);
+        var untouched = session[1];
+        var snapshot = world.Graph.Evaluate(epoch);
+        var start = session[0].Navigation!.Value;
+        Vector3d eye = start.AnchorKilometers + start.ResolvePlacement(snapshot, session.DeltaT).OffsetKilometers;
+        var folder = Directory.CreateTempSubdirectory("st-cel-frames-");
+        try
+        {
+            string source = Path.Combine(folder.FullName, "frames.cel");
+            File.WriteAllText(source, """
+                {
+                    setframe { coordsys "equatorial" ref "Sol/Earth" }
+                    wait { duration 1 }
+                    setframe { coordsys "bodyfixed" ref "Sol/Earth" }
+                    wait { duration 1 }
+                    setframe { coordsys "phaselock" ref "Sol/Earth" target "Sol/Earth/Moon" }
+                    wait { duration 1 }
+                    setframe { coordsys "chase" ref "Sol/Earth" }
+                    wait { duration 1 }
+                    setframe { coordsys "observer" ref "Sol/Earth" }
+                    wait { duration 1 }
+                    setframe { coordsys "universal" }
+                    setframe { coordsys "unknown" }
+                }
+                """);
+            var conversion = TourConverter.ConvertFile(source);
+            Assert.Equal(["line 13: setframe unknown"], conversion.Unapplied);
+            string lua = Path.Combine(folder.FullName, "frames.lua");
+            File.WriteAllText(lua, conversion.Lua);
+            var script = LuaSessionScript.Load(lua, session, 0, false, _ => { });
+            Check(0, NavigationFrame.Equatorial, SolarSystemSample.EarthId);
+            Check(1, NavigationFrame.Inertial, SolarSystemSample.EarthId, bodyFixed: true);
+            Check(1, NavigationFrame.PhaseLock, SolarSystemSample.EarthId, SolarSystemSample.MoonId);
+            Check(1, NavigationFrame.Chase, SolarSystemSample.EarthId, SolarSystemSample.SunId);
+            Check(1, NavigationFrame.Inertial, SolarSystemSample.EarthId);
+            Check(1, NavigationFrame.Inertial, null);
+            Assert.True(script.Finished);
+            Assert.Null(script.Error);
+
+            void Check(double seconds, NavigationFrame frame, ObjectId? target, ObjectId? reference = null, bool bodyFixed = false)
+            {
+                script.Step(seconds);
+                var pose = session[0].Navigation!.Value;
+                Assert.Equal(target, pose.Target);
+                Assert.Equal(target.HasValue, pose.Tracking);
+                Assert.Equal(frame, pose.Placement!.Value.Frame);
+                Assert.Equal(bodyFixed, pose.Placement.Value.BodyFixed);
+                Assert.Equal(reference, pose.Placement.Value.Reference);
+                Assert.Equal(PlanetCatalogue.MarsId, session[0].Selection);
+                Assert.InRange((pose.AnchorKilometers + pose.ResolvePlacement(snapshot, session.DeltaT).OffsetKilometers - eye).Length, 0, 1e-6);
+                Assert.Equal(untouched, session[1]);
+            }
+        }
+        finally { folder.Delete(recursive: true); }
+    }
+
     private sealed class TourArchiveFactAttribute : FactAttribute
     {
         public TourArchiveFactAttribute()

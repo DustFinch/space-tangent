@@ -183,6 +183,39 @@ public static partial class TourConverter
                 case "synchronous":
                     lua.AppendLine("if selected then st.legacybodylock() end");
                     break;
+                case "chase":
+                case "lock":
+                    lua.AppendLine($"if selected then st.legacyframe({Quote(command.Name)}, st.selection()) end");
+                    break;
+                case "setframe":
+                    string? frame = (command.Fields.GetValueOrDefault("coordsys") ?? "universal").ToLowerInvariant() switch
+                    {
+                        "universal" => "universal",
+                        "ecliptic" or "ecliptical" or "observer" => "inertial",
+                        "equatorial" => "equatorial",
+                        "geographic" or "bodyfixed" or "planetographic" => "bodyfixed",
+                        "chase" => "chase",
+                        "lock" or "phaselock" => "lock",
+                        _ => null
+                    };
+                    if (frame is null)
+                    {
+                        Report("setframe " + command.Get("coordsys"));
+                        continue;
+                    }
+                    if (frame == "universal")
+                        lua.AppendLine("st.legacyframe(\"universal\")");
+                    else
+                    {
+                        string subject = command.Fields.TryGetValue("ref", out string? reference)
+                            ? $"st.find({Quote(reference)})" : "(selected and st.selection() or nil)";
+                        if (frame == "lock" && command.Fields.TryGetValue("target", out string? secondary))
+                            lua.AppendLine($"do local subject, other = {subject}, st.find({Quote(secondary)}); " +
+                                "if subject and other then st.legacyframe(\"lock\", subject, other) end end");
+                        else
+                            lua.AppendLine($"do local subject = {subject}; if subject then st.legacyframe({Quote(frame)}, subject) end end");
+                    }
+                    break;
                 case "cancel":
                     lua.AppendLine("st.cancelflight()");
                     break;

@@ -84,7 +84,7 @@ public readonly record struct NavigationCamera(Vector3d AnchorKilometers, double
         return true;
     }
 
-    private static bool TryMeanEquator(WorldSnapshot snapshot, ObjectId target, out Basis3d basis)
+    internal static bool TryMeanEquator(WorldSnapshot snapshot, ObjectId target, out Basis3d basis)
     {
         if (target == SolarSystemSample.EarthId)
         {

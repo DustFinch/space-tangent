@@ -32,7 +32,33 @@ public sealed partial class LuaSessionScript
                 : DynValue.Nil;
         });
         Bind(api, "legacyclearmarks", (_, _) => Change(() => _session.ClearScriptMarkers(View)));
+        Bind(api, "legacyframe", (_, args) => SetClassicFrame(Text(args[0]), args[1], args[2]));
         BindTourGeometry(api);
+    }
+
+    private DynValue SetClassicFrame(string frame, DynValue subject, DynValue secondary)
+    {
+        if (frame == "universal")
+            return Change(() => _session.StartFreeFlight(View));
+        if (subject.IsNil())
+            return DynValue.Nil;
+
+        ObjectId target = LuaObjectId(subject);
+        bool applied = frame switch
+        {
+            "inertial" => _session.FollowScriptReference(View, target, NavigationFrame.Inertial),
+            "equatorial" => _session.FollowScriptReference(View, target, NavigationFrame.Equatorial),
+            "bodyfixed" => _session.FollowBodyRotation(View, target),
+            "chase" => _session.FollowRelativeFrame(View, target, NavigationFrame.Chase, null),
+            "lock" => _session.FollowRelativeFrame(View, target, NavigationFrame.PhaseLock,
+                secondary.IsNil() ? null : LuaObjectId(secondary)),
+            _ => throw new ScriptRuntimeException("Unknown classic observer frame.")
+        };
+        if (applied)
+            _changed = true;
+        else
+            Log($"Observer frame {frame} is unavailable for {target} at this epoch.");
+        return DynValue.Nil;
     }
 
     private DynValue TrySelectForTour(string query)

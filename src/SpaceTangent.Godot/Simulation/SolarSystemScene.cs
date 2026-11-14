@@ -21,6 +21,7 @@ public partial class SolarSystemScene : Control
     {
         internal Label? PointerReadout { get; set; }
         internal Vector2? PointerPosition { get; set; }
+        internal WorldEvaluation OrbitalHistory { get; } = new();
         internal WorldSnapshot? Snapshot { get; set; }
         internal SimulationWorld? SnapshotWorld { get; set; }
         internal ProjectionScale? Perspective { get; set; }
@@ -804,6 +805,7 @@ public partial class SolarSystemScene : Control
     }
 
     internal SimulationViewport Renderer(int view) => _views[view].Renderer;
+    internal WorldSnapshot? ViewSnapshot(int view) => _views[view].Snapshot;
     internal MeasurementOverlay Measurements(int view) => _views[view].Measurements;
 
     private void MeasureSelectedDistance(bool clear)
@@ -2026,7 +2028,7 @@ public partial class SolarSystemScene : Control
             var snapshot = _addOns?.Decoded.AllowAddonLua != true && ReferenceEquals(controls.SnapshotWorld, session.World) &&
                 controls.Snapshot is { } cached && cached.Epoch == epoch
                     ? cached
-                    : session.World.Graph.Evaluate(epoch);
+                    : session.World.Graph.Evaluate(epoch, controls.OrbitalHistory);
             controls.SnapshotWorld = session.World;
             session.UpdateCamera(index, snapshot, elapsed);
             if (!controls.DraggingCamera && !controls.Looking)

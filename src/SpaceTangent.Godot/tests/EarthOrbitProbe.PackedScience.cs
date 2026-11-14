@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
 using Godot;
 using SpaceTangent.Application;
+using SpaceTangent.Contracts;
+using SpaceTangent.Core.Addons;
 using SpaceTangent.Core.Time;
 using SpaceTangent.Godot.Simulation;
 
@@ -8,6 +10,38 @@ namespace SpaceTangent.Godot.Tests;
 
 public partial class EarthOrbitProbe
 {
+    private static async Task ExerciseArchivedOrbitHistory(SolarSystemScene scene, ScienceSatellite track, string directory)
+    {
+        var session = scene.Session!;
+        var saved = Path.Combine(directory, "deep-space-history.stscene");
+        var read = new ObserverView(track.Epoch, CameraMode.Solar, track.Id, false);
+        var scenario = new SimulationScenario([read, read], false, 0, 0, session.DeltaT);
+        Show(scenario);
+        var initial = State(1);
+        foreach (double minutes in new[] { 1, 29.9, 30, 30.1, 31, 1440, 1439, -5, 0 })
+            Show(scenario with { Views = [read with { Epoch = track.Epoch.AddSeconds(minutes * 60) }, read] });
+        var advanced = State(0);
+        double displacement = (advanced.PositionKilometers - initial.PositionKilometers).Length;
+        if (displacement is < .0045 or > .0047)
+            throw new InvalidOperationException($"Expected the archived DeepProbe history offset, measured {displacement:R} km.");
+        if (!await scene.ReloadAddOns() || State(0) != advanced || State(1) != initial ||
+            session[0] != read || session[1] != read || session.DeltaT != scenario.DeltaT)
+            throw new InvalidOperationException("Reloading the original archive changed a view, its orbital history or ΔT.");
+
+        GD.Print(FormattableString.Invariant($"Archived SDP4 history: {displacement * 1000:F3} m at the same epoch, retained across reload in independent views."));
+
+        void Show(SimulationScenario value)
+        {
+            ScenarioFile.Save(saved, value);
+            if (!scene.LoadScenario(saved))
+                throw new InvalidOperationException("Could not open the archived orbit history scenario.");
+        }
+
+        CartesianState State(int view) => scene.ViewSnapshot(view)?.TryState(track.Id, out var state) == true
+            ? state : throw new InvalidOperationException("The archived DeepProbe state is missing.");
+    }
+
+
     private async Task CapturePackedScience(SolarSystemScene scene, string directory)
     {
         if (System.Environment.GetEnvironmentVariable("SPACETANGENT_CAPTURE_PACKED_SCIENCE") is not ("1" or "only") ||
@@ -17,6 +51,8 @@ public partial class EarthOrbitProbe
         int expected = System.Environment.GetEnvironmentVariable("SPACETANGENT_ARCHIVED_DEEP_PROBE") is { Length: > 0 } ? 3 : 2;
         if (world.Satellites.Count != expected || world.Satellites.Any(track => Path.GetExtension(track.MeshPath) != ".glb"))
             throw new InvalidOperationException("The GPU probe requires the expected set of archived GLB spacecraft.");
+        if (expected == 3)
+            await ExerciseArchivedOrbitHistory(scene, world.Satellites.Single(track => track.Id.Value == "norad/24208"), directory);
         foreach (var track in world.Satellites)
         {
             var epochs = track.Id.Value == "norad/24208"

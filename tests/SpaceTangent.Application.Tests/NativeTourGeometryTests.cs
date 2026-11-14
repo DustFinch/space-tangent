@@ -670,6 +670,33 @@ public sealed class NativeTourGeometryTests
         finally { folder.Delete(recursive: true); }
     }
 
+    [TourArchiveFact]
+    [Trait("Category", "ExternalData")]
+    public void OriginalRecursiveTourExecutesItsOwnLua()
+    {
+        string sources = Environment.GetEnvironmentVariable("SPACETANGENT_TOUR_SOURCES")!;
+        string path = Path.Combine(sources, "tour-system.celx");
+        var world = new SimulationWorld(De440Ephemeris.Load(Environment.GetEnvironmentVariable("SPACETANGENT_DE440")!), []);
+        var epoch = JulianInstant.FromJulianDate(2451545, TimeScale.Tdb);
+        var session = new SimulationSession(world, epoch, DeltaTModel.MorrisonStephenson2004);
+        Assert.Equal(File.ReadAllText(path), TourConverter.ConvertFile(path).Lua);
+        var script = LuaSessionScript.Load(path, session, 0, false, _ => { });
+        var seen = new HashSet<ObjectId>();
+        var snapshot = world.Graph.Evaluate(epoch);
+        for (int step = 0; !script.Finished && step < 1400; step++)
+        {
+            script.Step(.125);
+            session.UpdateCamera(0, snapshot, .125);
+            if (!session.IsFlying(0) && session[0].Navigation?.Target is { } target)
+                seen.Add(target);
+        }
+        Assert.True(script.Finished);
+        Assert.Null(script.Error);
+        Assert.Contains(SolarSystemSample.MoonId, seen);
+        Assert.Contains(new ObjectId("sol/titan"), seen);
+        Assert.Contains(new ObjectId("sol/neptune"), seen);
+    }
+
     private sealed class TourArchiveFactAttribute : FactAttribute
     {
         public TourArchiveFactAttribute()

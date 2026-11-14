@@ -109,7 +109,9 @@ public partial class WorkspaceInputSmoke
             "The converted original demo must contain runnable Lua and visible notes for unsupported commands.");
 
         string tour = Path.Combine(directory, "tour-system.lua");
-        TourConversion system = TourConverter.ConvertFile(Path.Combine(sources, "tour-system.celx"));
+        string originalSystem = Path.Combine(sources, "tour-system.celx");
+        TourConversion system = TourConverter.ConvertFile(originalSystem);
+        Require(system.Lua == File.ReadAllText(originalSystem), "The original recursive tour must run with its own Lua source.");
         File.WriteAllText(tour, system.Lua);
         var (demoTargets, advanced) = RunToEnd(demo);
         Require(demoTargets.Contains(SolarSystemSample.MoonId) && demoTargets.Contains(PlanetCatalogue.SaturnId) &&

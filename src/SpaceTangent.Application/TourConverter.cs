@@ -1,6 +1,5 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
 using System.Globalization;
-using System.Security.Cryptography;
 using System.Text;
 using System.Text.RegularExpressions;
 using MoonSharp.Interpreter;
@@ -17,7 +16,6 @@ public sealed record TourConversion(string Lua, int Commands, IReadOnlyList<stri
 public static partial class TourConverter
 {
     private const int MaximumBytes = 32 * 1024;
-    private const string RecursiveTourSha256 = "bd3f8522a7854b51cbdb1ea8a00f22b0b13a955a38bdc4095bf10070e55f182c";
     private static readonly Regex Tokens = new(
         """\s+|#[^\r\n]*|"(?:\\.|[^"\\])*"|[{}\[\]]|[^\s{}\[\]"#]+""",
         RegexOptions.CultureInvariant, TimeSpan.FromSeconds(1));
@@ -360,34 +358,14 @@ public static partial class TourConverter
 
     private static TourConversion ConvertLuaTour(string source)
     {
-        string normalized = source.Replace("\r\n", "\n", StringComparison.Ordinal).Trim();
-        string hash = Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(normalized)));
-        if (!hash.Equals(RecursiveTourSha256, StringComparison.OrdinalIgnoreCase))
+        try { new Script(CoreModules.None).LoadString(source); }
+        catch (InterpreterException error)
         {
-            try { new Script(CoreModules.None).LoadString(source); }
-            catch (InterpreterException error)
-            {
-                throw new InvalidDataException(error.DecoratedMessage ?? error.Message, error);
-            }
-            // Other scripts already use Lua. The ordinary runner applies its sandbox and quotas on execution.
-            return new(source, 1, Array.Empty<string>());
+            throw new InvalidDataException(error.DecoratedMessage ?? error.Message, error);
         }
-        const string lua = """
-            local targets = st.cataloguetour()
-            local flight = math.min(3, 96 / #targets)
-            for _, target in ipairs(targets) do
-                if st.tryselect(target) then
-                    local object = st.selection()
-                    st.celxprint(object:type() .. " - " .. object:name(), 1.5)
-                    st.gotoobject(flight, 4.2)
-                    st.wait(flight + 0.05)
-                    st.follow()
-                    st.wait(0.35)
-                end
-            end
-            """;
-        return new(lua, 1, Array.Empty<string>());
+        return new(source, 1, Array.Empty<string>());
     }
+
 
     private static List<string> Tokenize(string input, out List<int> lines)
     {

@@ -129,6 +129,7 @@ public sealed partial class LuaSessionScript
         Bind(item, "getposition", (_, _) => ObjectPosition(id));
         Bind(item, "absmag", (_, _) => AbsoluteMagnitude(id));
         Bind(item, "children", (_, _) => Children(id));
+        Bind(item, "getchildren", (_, _) => Children(id));
         item.MetaTable = ObjectEquality();
         Bind(item, "mark", (_, arguments) => Mark(id, arguments.SkipMethodCall()));
         Bind(item, "unmark", (_, _) => Change(() => _session.RemoveScriptMarker(View, id)));

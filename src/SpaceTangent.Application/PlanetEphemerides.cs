@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
 using SpaceTangent.Contracts;
 using SpaceTangent.Core.Ephemerides;
+using SpaceTangent.Core.Addons;
 using SpaceTangent.Core.Orbits;
 using SpaceTangent.Core.Spice;
 using SpaceTangent.Core.World;
@@ -54,6 +55,42 @@ public sealed class PlanetEphemerides
             string path = Path.Combine(root, file);
             if (File.Exists(path))
                 _sampled.Add(body.Id, SampledStateTrajectory.ReadXyzv(path, new("icrf3")));
+        }
+    }
+
+    public SscCustomModels CatalogueModels(ISolarSystemEphemeris ephemeris)
+    {
+        var planets = PlanetCatalogue.Planets.ToDictionary(body => body.Name, StringComparer.OrdinalIgnoreCase);
+        return new(Orbit, Rotation);
+
+        Func<JulianInstant, CartesianState?>? Orbit(string name)
+        {
+            string key = name.ToLowerInvariant();
+            if (key.StartsWith("vsop87-", StringComparison.Ordinal))
+            {
+                if (ephemeris is not HistoricalSolarEphemeris historical ||
+                    !planets.TryGetValue(key[7..], out var seriesPlanet) || seriesPlanet.NaifId / 100 is not (>= 1 and <= 8))
+                    return null;
+                return epoch => historical.SamplePlanetarySeries(seriesPlanet.NaifId / 100, epoch);
+            }
+            bool barycentric = key.StartsWith("jpl-", StringComparison.Ordinal) && key.EndsWith("-ssb", StringComparison.Ordinal);
+            string body = key.StartsWith("jpl-", StringComparison.Ordinal) && (barycentric || key.EndsWith("-sun", StringComparison.Ordinal)) ? key[4..^4] :
+                key.EndsWith("-sun", StringComparison.Ordinal) || key.EndsWith("-jpl", StringComparison.Ordinal) ? key[..^4] : key;
+            ObjectId? target = planets.TryGetValue(body, out var planet) ? planet.SystemId :
+                body == "sun" ? SolarSystemSample.SunId : body == "emb" ? SolarSystemSample.EarthMoonBarycenterId : null;
+            if (!target.HasValue)
+                return null;
+            var origin = barycentric || body == "sun" ? SolarSystemSample.BarycenterId : SolarSystemSample.SunId;
+            return epoch => epoch.CompareTo(ephemeris.Start) >= 0 && epoch.CompareTo(ephemeris.End) <= 0
+                ? ephemeris.Sample(epoch).RelativeState(target.Value, origin) : null;
+        }
+
+        Func<JulianInstant, FrameKinematics?>? Rotation(string name)
+        {
+            if (!name.StartsWith("iau-", StringComparison.OrdinalIgnoreCase) ||
+                !planets.TryGetValue(name[4..], out var planet) || !_frames.TryGetValue(planet.NaifId, out var model))
+                return null;
+            return epoch => model.Sample(epoch);
         }
     }
 

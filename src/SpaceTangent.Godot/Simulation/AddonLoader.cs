@@ -150,14 +150,14 @@ internal static partial class AddonLoader
                 previous?.Science.FirstOrDefault(source => source.Path == path), path,
                 "Science satellites", ReadScience, cancellation)).ToArray();
             bool sameScience = previous is not null && previous.Science.SequenceEqual(satellites);
+            PlanetEphemerides planets = previous?.Planets ?? new(planetPath.Resolve(), pckPath.Resolve());
             var bodies = LoadBodyCatalogues(bodySources, missionsPath, mission,
                 sameScience && previous?.AllowAddonLua == allowAddonLua ? previous.BodyCatalogues : null,
-                satellites.SelectMany(source => source.Value).Select(item => item.Track).ToArray(), allowAddonLua, cancellation);
+                satellites.SelectMany(source => source.Value).Select(item => item.Track).ToArray(), allowAddonLua, planets.CatalogueModels(ephemeris), cancellation);
             var missions = bodies.Missions;
             var spice = bodies.Dedicated;
             var sampled = Read(previous?.Timeline, timeline, "Sampled timeline", ReadTimeline);
             var relief = Read(previous?.Terrain, terrain, "Lunar terrain", ReadTerrain);
-            PlanetEphemerides planets = previous?.Planets ?? new(planetPath.Resolve(), pckPath.Resolve());
             string marsPath = Path.Combine(planetPath.Resolve(), "terrain-mars.bin");
             Cached<DecodedBodyTerrain>? marsTerrain = planets.HasOrientation(499) && File.Exists(marsPath)
                 ? Read(previous?.MarsTerrain, new LocalDataPath(marsPath, "", "", "", false), "Mars terrain",
@@ -441,7 +441,7 @@ internal static partial class AddonLoader
 
     private static (IReadOnlyList<DecodedSscBody> Bodies, DecodedMissionContent Missions, DecodedMission? Dedicated) ReadMissionCatalogues(
         IEnumerable<string> bodyRoots, LocalDataPath location, LocalDataPath? dedicatedPath, IReadOnlyList<ScienceSatellite> science,
-        bool allowLua, CancellationToken cancellation)
+        bool allowLua, SscCustomModels custom, CancellationToken cancellation)
     {
         string root = location.Resolve();
         string[] catalogues = AddonDependencies.DirectoryExists(root) ? FindMissionCatalogues(root) : [];
@@ -451,7 +451,7 @@ internal static partial class AddonLoader
         var imported = SscBodyCatalogue.LoadWithMissions(bodyRoots, catalogues, root, Resolve,
             message => global::Godot.GD.Print("SSC bodies: " + message),
             message => global::Godot.GD.Print("Sampled mission: " + message), cancellation,
-            allowLua ? new LuaCatalogueFactories() : null, dedicated, overlays);
+            allowLua ? new LuaCatalogueFactories() : null, dedicated, overlays, custom);
         var mission = imported.DedicatedMission is { } data
             ? AddonDiagnostics.Read(AddonStage.Catalog, dedicated, () => DecodeDedicatedMission(dedicated!, data, cancellation))
             : null;
@@ -537,7 +537,7 @@ internal static partial class AddonLoader
 
     private static SscInstallation LoadBodyCatalogues(LocalDataPath[] paths, LocalDataPath missionsPath,
         LocalDataPath? dedicatedPath, SscInstallation? previous,
-        IReadOnlyList<ScienceSatellite> science, bool allowLua, CancellationToken cancellation)
+        IReadOnlyList<ScienceSatellite> science, bool allowLua, SscCustomModels custom, CancellationToken cancellation)
     {
         if (previous is not null && previous.MissionsPath == missionsPath && previous.DedicatedPath == dedicatedPath && previous.Paths.SequenceEqual(paths) &&
             previous.Dependencies.IsCurrent(cancellation))
@@ -545,7 +545,7 @@ internal static partial class AddonLoader
         try
         {
             var (content, dependencies) = AddonDependencies.Capture(
-                () => ReadMissionCatalogues(paths.Select(path => path.Resolve()), missionsPath, dedicatedPath, science, allowLua, cancellation),
+                () => ReadMissionCatalogues(paths.Select(path => path.Resolve()), missionsPath, dedicatedPath, science, allowLua, custom, cancellation),
                 cancellation);
             return new SscInstallation(paths, missionsPath, dedicatedPath, dependencies, content.Bodies, content.Missions, content.Dedicated);
         }

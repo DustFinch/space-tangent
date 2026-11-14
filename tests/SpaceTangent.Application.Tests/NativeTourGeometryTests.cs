@@ -433,6 +433,69 @@ public sealed class NativeTourGeometryTests
         finally { folder.Delete(recursive: true); }
     }
 
+    [TourArchiveFact]
+    [Trait("Category", "ExternalData")]
+    public void ClassicMoveUsesCameraAxesAndExitStopsOnlyTheTour()
+    {
+        var world = new SimulationWorld(De440Ephemeris.Load(Environment.GetEnvironmentVariable("SPACETANGENT_DE440")!), []);
+        var epoch = JulianInstant.FromJulianDate(2451545, TimeScale.Tdb);
+        var session = new SimulationSession(world, epoch, DeltaTModel.MorrisonStephenson2004);
+        session.OpenSpaceView(0);
+        session.Split();
+        var other = session[1] with { Epoch = epoch.AddSeconds(3600), Playing = false };
+        session.RestoreScenario(new([session[0] with { Playing = false }, other], false, 0, 0, session.DeltaT));
+        var folder = Directory.CreateTempSubdirectory("st-cel-move-");
+        try
+        {
+            string source = Path.Combine(folder.FullName, "move.cel");
+            File.WriteAllText(source, """
+                {
+                    select { object "Earth" }
+                    synchronous {}
+                    move { velocity [12 20 -28] duration 2 }
+                    exit {}
+                    wait { duration 300 }
+                    set { name "FOV" value 33 }
+                }
+                """);
+            var conversion = TourConverter.ConvertFile(source);
+            Assert.Empty(conversion.Unapplied);
+            Assert.Equal(4, conversion.Commands);
+            string lua = Path.ChangeExtension(source, ".lua");
+            File.WriteAllText(lua, conversion.Lua);
+            var script = LuaSessionScript.Load(lua, session, 0, false, _ => { });
+            var snapshot = world.Graph.Evaluate(epoch);
+            script.Step(0);
+            var before = session[0].Navigation!.Value;
+            var basis = before.ResolvePlacement(snapshot, session.DeltaT);
+            Vector3d velocity = Vector3d.Cross(basis.Forward, basis.Up) * 12 + basis.Up * 20 + basis.Forward * 28;
+            script.Step(.375);
+            Check(.375);
+            script.Step(.625);
+            Check(1);
+            script.Step(2);
+            Check(2);
+            Assert.True(script.Finished);
+            Assert.Null(script.Error);
+            Assert.NotEqual(33, session[0].EffectiveFieldOfView);
+
+            void Check(double seconds)
+            {
+                var pose = session[0].Navigation!.Value;
+                var placement = pose.ResolvePlacement(snapshot, session.DeltaT);
+                Vector3d traveled = (pose.AnchorKilometers - before.AnchorKilometers) + (placement.OffsetKilometers - basis.OffsetKilometers);
+                Assert.InRange((traveled - velocity * seconds).Length, 0, 1e-6);
+                Assert.Equal(before.Target, pose.Target);
+                Assert.True(pose.Tracking);
+                Assert.Equal(before.Placement!.Value.Frame, pose.Placement!.Value.Frame);
+                Assert.InRange((placement.Forward - basis.Forward).Length, 0, 1e-12);
+                Assert.Equal(other, session[1]);
+            }
+        }
+        finally { folder.Delete(recursive: true); }
+    }
+
+
     private sealed class TourArchiveFactAttribute : FactAttribute
     {
         public TourArchiveFactAttribute()

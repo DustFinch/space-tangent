@@ -34,6 +34,15 @@ public sealed partial class LuaSessionScript
             _session.TurnScriptView(View, Vector(a, 0), Number(a[3]), Boolean(a[4]), NativeSnapshot())));
         Bind(api, "legacylookback", (_, _) => Change(() => _session.LookBackForScript(View, NativeSnapshot())));
         Bind(api, "travelling", (_, _) => DynValue.NewBoolean(_session.IsFlying(View)));
+        Bind(api, "legacymove", (_, a) =>
+        {
+            Vector3d velocity = Vector(a, 0);
+            double duration = Number(a[3]), seconds = Number(a[4]);
+            Vector3d distance = velocity * duration;
+            if (duration < 0 || seconds < 0 || !distance.IsFinite || distance.Length > 1e14)
+                throw new ScriptRuntimeException("Invalid timed camera movement.");
+            return WaitFor(seconds, moveVelocity: seconds > 0 ? distance / seconds : default);
+        });
         Bind(api, "legacydolly", (_, a) =>
         {
             double amount = Number(a[0]), seconds = Number(a[1]);

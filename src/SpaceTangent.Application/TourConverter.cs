@@ -53,7 +53,8 @@ public static partial class TourConverter
             return ConvertGuide(words);
         Command[] commands = Parse(words, lines);
         var unapplied = new SortedSet<string>(StringComparer.Ordinal);
-        double wait = commands.Where(command => command.Name is "wait" or "orbit" or "rotate" or "changedistance")
+        double wait = commands.TakeWhile(command => command.Name != "exit")
+            .Where(command => command.Name is "wait" or "orbit" or "rotate" or "changedistance" or "move")
             .Sum(command => Duration(command.Number("duration", command.Name == "wait" ? 0 : 1)));
         double scale = wait > 110 ? 110 / wait : 1;
         if (scale < 1)
@@ -249,6 +250,13 @@ public static partial class TourConverter
                 case "cancel":
                     lua.AppendLine("st.cancelflight()");
                     break;
+                case "exit":
+                    lua.AppendLine("do return end");
+                    break;
+                case "move":
+                    double moveDuration = Duration(command.Number("duration", 1));
+                    lua.AppendLine($"st.legacymove({Vector(command, "velocity", "0 0 0")}, {Number(moveDuration)}, {Number(moveDuration * scale)})");
+                    break;
                 case "wait":
                     lua.AppendLine($"st.wait({Number(Duration(command.Number("duration")) * scale)})");
                     break;
@@ -278,6 +286,8 @@ public static partial class TourConverter
                     continue;
             }
             converted++;
+            if (command.Name == "exit")
+                break;
         }
         foreach (string item in unapplied.Reverse())
             lua.Insert(0, "-- Unapplied: " + item + "\n");

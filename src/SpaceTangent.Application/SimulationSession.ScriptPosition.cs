@@ -44,6 +44,17 @@ public sealed partial class SimulationSession
         FlyToScriptPose(view, destination, 0, snapshot);
     }
 
+    internal bool MoveClassicView(int view, Vector3d localOffset, WorldSnapshot snapshot)
+    {
+        if (InShip(view))
+            return false;
+        var camera = ScriptCamera(view, snapshot);
+        var placement = camera.ResolvePlacement(snapshot, DeltaT);
+        Vector3d displacement = CameraAxis(placement, localOffset);
+        SetClassicPose(view, snapshot, ScriptObserverEye(view, snapshot) + displacement, null);
+        return true;
+    }
+
     internal Vector3d ScriptObserverEye(int view, WorldSnapshot snapshot)
     {
         ObserverView observer = _views[view];

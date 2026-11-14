@@ -24,6 +24,13 @@ public sealed partial class LuaSessionScript
         Bind(api, "turn", (_, arguments) => Change(() =>
             _session.AdjustCamera(View, Number(arguments[0]), Number(arguments[1]), 1)));
         Bind(api, "sky", (_, arguments) => SetTourSky(Text(arguments[0]), Boolean(arguments[1])));
+        Bind(api, "legacyfov", (_, arguments) =>
+        {
+            double degrees = Number(arguments[0]);
+            return ObserverView.ValidFieldOfView(degrees)
+                ? Change(() => _session.SetScriptFieldOfView(View, degrees, synchronizeZoom: false, synchronizeOtherViews: false))
+                : DynValue.Nil;
+        });
         BindTourGeometry(api);
     }
 

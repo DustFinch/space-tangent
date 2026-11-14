@@ -4,6 +4,8 @@ using System.Security.Cryptography;
 using System.Text;
 using System.Text.RegularExpressions;
 using MoonSharp.Interpreter;
+using SpaceTangent.Contracts;
+using SpaceTangent.Core.Time;
 
 namespace SpaceTangent.Application;
 
@@ -92,6 +94,9 @@ public static partial class TourConverter
                     break;
                 case "overlay":
                     mediaFiles.Add(command.Get("filename"));
+                    foreach (string field in new[] { "fitscreen", "color", "colortop", "colorbottom", "colortopleft",
+                        "colortopright", "colorbottomleft", "colorbottomright", "fadeafter" }.Where(command.Fields.ContainsKey))
+                        Report("overlay " + field);
                     lua.AppendLine($"st.overlay({Quote(command.Get("filename"))}, {Number(command.Number("duration", 3) * scale)}, " +
                         $"{Number(.5 + command.Number("xoffset"))}, {Number(.5 - command.Number("yoffset"))}, " +
                         $"{Number(command.Number("width"))}, {Number(command.Number("height"))}, {Number(command.Number("alpha", 1))})");
@@ -132,6 +137,23 @@ public static partial class TourConverter
                     break;
                 case "time" when command.Fields.ContainsKey("jd"):
                     lua.AppendLine($"st.settime({Number(command.Number("jd"))})");
+                    break;
+                case "time" when command.Fields.TryGetValue("utc", out string? utc) &&
+                    DateTimeOffset.TryParse(utc, CultureInfo.InvariantCulture,
+                        DateTimeStyles.AssumeUniversal | DateTimeStyles.AdjustToUniversal, out var date):
+                    var label = new UtcDateTime(DateOnly.FromDateTime(date.UtcDateTime), date.Hour, date.Minute,
+                        date.Second, (int)(date.Ticks % TimeSpan.TicksPerSecond) * 100);
+                    var instant = TimeConversion.FromUtc(label, TimeScale.Tdb);
+                    lua.AppendLine($"st.settime({Number(instant.ToJulianDate())})");
+                    break;
+                case "set" when string.Equals(command.Fields.GetValueOrDefault("name"), "FOV", StringComparison.OrdinalIgnoreCase):
+                    double degrees = command.Number("value", 45);
+                    if (!ObserverView.ValidFieldOfView(degrees))
+                    {
+                        Report("set FOV outside the supported range");
+                        continue;
+                    }
+                    lua.AppendLine($"st.legacyfov({Number(degrees)})");
                     break;
                 case "center":
                     lua.AppendLine($"if selected then st.center({Number(Duration(command.Number("time", 1.65)) * scale)}) end");

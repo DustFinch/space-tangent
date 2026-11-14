@@ -163,6 +163,52 @@ public sealed class NativeTourGeometryTests
         }
     }
 
+    [TourArchiveFact]
+    [Trait("Category", "ExternalData")]
+    public void ClassicTourRestoresUtcAndFieldOfViewInItsOwnObserver()
+    {
+        var world = new SimulationWorld(De440Ephemeris.Load(Environment.GetEnvironmentVariable("SPACETANGENT_DE440")!), []);
+        var epoch = JulianInstant.FromJulianDate(2451545, TimeScale.Tdb);
+        var session = new SimulationSession(world, epoch, DeltaTModel.MorrisonStephenson2004);
+        session.Split();
+        session.RestoreScenario(new([session[0], session[1] with { FieldOfViewDegrees = 62 }], false, 0, 0, session.DeltaT));
+        var other = session[1];
+        var folder = Directory.CreateTempSubdirectory("st-cel-view-");
+        try
+        {
+            string source = Path.Combine(folder.FullName, "view.cel");
+            File.WriteAllText(source, """
+                {
+                  time { utc "2004-07-01T02:34:56.125+02:00" }
+                  set { name "FOV" value 36 }
+                  wait { duration 1 }
+                  set { name "FOV" value 999 }
+                }
+                """);
+            var conversion = TourConverter.ConvertFile(source);
+            Assert.Equal(["line 5: set FOV outside the supported range"], conversion.Unapplied);
+            string lua = Path.Combine(folder.FullName, "view.lua");
+            File.WriteAllText(lua, conversion.Lua);
+            var script = LuaSessionScript.Load(lua, session, 0, false, _ => { });
+            script.Step(0);
+            var expected = TimeConversion.FromUtc(new(new(2004, 7, 1), 0, 34, 56, 125_000_000), TimeScale.Tdb);
+            Assert.InRange((long)session[0].Epoch.DifferenceNanoseconds(expected), -25_000, 25_000);
+            Assert.Equal(36, session[0].EffectiveFieldOfView, 12);
+            Assert.Equal(other, session[1]);
+            script.Step(1);
+            Assert.True(script.Finished);
+            Assert.Null(script.Error);
+            Assert.Equal(36, session[0].EffectiveFieldOfView, 12);
+            Assert.Equal(other, session[1]);
+
+            File.WriteAllText(source, """{ overlay { filename "banner.png" fitscreen true colortop [1 0 0] } }""");
+            conversion = TourConverter.ConvertFile(source);
+            Assert.Equal(["banner.png"], conversion.MediaFiles);
+            Assert.Equal(["line 1: overlay colortop", "line 1: overlay fitscreen"], conversion.Unapplied);
+        }
+        finally { folder.Delete(recursive: true); }
+    }
+
     private sealed class TourArchiveFactAttribute : FactAttribute
     {
         public TourArchiveFactAttribute()

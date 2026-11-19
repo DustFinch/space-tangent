@@ -163,8 +163,11 @@ public sealed partial class SimulationWorld
         if (FindSurfaceSite(id) is { } site && TrySurfaceFrame(site, snapshot, deltaT, out CartesianState body, out Basis3d frame))
         {
             Vector3d offset = frame.Transform(site.OffsetKilometers);
-            Vector3d spin = site.Body == SolarSystemSample.EarthId ? frame.Z * (2 * Math.PI / 86164.0905) :
-                snapshot.TryOrientation(site.Body, out var rotation) ? rotation.AngularVelocityRadiansPerSecond.GetValueOrDefault() : default;
+            Vector3d spin = snapshot.TryOrientation(site.Body, out var rotation)
+                ? rotation.AngularVelocityRadiansPerSecond.GetValueOrDefault()
+                : site.Body == SolarSystemSample.EarthId
+                    ? SpaceTangent.Core.Coordinates.EarthOrientation.TerrestrialToWorld(snapshot.Epoch, deltaT)
+                        .AngularVelocityRadiansPerSecond.GetValueOrDefault() : default;
             state = body + new CartesianState(offset, Vector3d.Cross(spin, offset));
             return true;
         }
@@ -337,6 +340,8 @@ public sealed partial class SimulationSession
         Synchronized = scenario.Synchronized;
         NightMode = scenario.NightMode;
         _clockOwner = scenario.ClockOwner;
+        if (Synchronized)
+            SharePlaybackRate(owner.PlaybackRate ?? DefaultPlaybackRate(owner.Mode));
         SplitLayout = scenario.SplitLayout;
         DeltaT = scenario.DeltaT;
     }
@@ -407,6 +412,8 @@ public sealed partial class SimulationSession
             throw new ArgumentOutOfRangeException(nameof(direction));
         if (_views.Count == ObserverLayout.MaximumViews)
             return false;
+        if (Synchronized)
+            SharePlaybackRate(CurrentPlaybackRate(copyFrom));
         ObserverView source = _views[copyFrom];
         Layout = Layout.Insert(view, _views.Count, direction, share, newFirst);
         SplitLayout = Layout.Direction;
@@ -459,6 +466,7 @@ public sealed partial class SimulationSession
         Synchronized = enabled;
         if (enabled)
         {
+            SharePlaybackRate(anchor.PlaybackRate ?? DefaultPlaybackRate(anchor.Mode));
             SetClock(source, anchor.Epoch, anchor.Playing);
             for (int index = 0; index < _views.Count; index++)
                 _views[index] = _views[index] with
@@ -513,7 +521,10 @@ public sealed partial class SimulationSession
         }
         CancelFlight(view);
         LeaveShip(view);
+        double sharedRate = CurrentPlaybackRate(view);
         _views[view] = _views[view] with { Mode = mode, Navigation = null };
+        if (Synchronized && ViewCount > 1)
+            SharePlaybackRate(sharedRate);
     }
 
     public void SetLunarTerrainCamera(int view, LunarTerrainCamera camera)
@@ -660,9 +671,16 @@ public sealed partial class SimulationSession
             _views[view] = _views[view] with { Epoch = epoch, Playing = playing };
             return;
         }
+        double sharedRate = CurrentPlaybackRate(view);
         _clockOwner = view;
         for (int index = 0; index < _views.Count; index++)
-            _views[index] = _views[index] with { Epoch = epoch, Playing = playing };
+            _views[index] = _views[index] with { Epoch = epoch, Playing = playing, PlaybackRate = sharedRate };
+    }
+
+    private void SharePlaybackRate(double rate)
+    {
+        for (int index = 0; index < _views.Count; index++)
+            _views[index] = _views[index] with { PlaybackRate = rate };
     }
 
     private static bool Covers(SimulationWorld world, JulianInstant epoch) =>

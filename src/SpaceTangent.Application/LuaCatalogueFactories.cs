@@ -60,14 +60,12 @@ public sealed class LuaCatalogueFactories : ISscScriptModels
         internal FactoryEnvironment(string root)
         {
             _root = root;
-            Script = new(CoreModules.Basic | CoreModules.GlobalConsts | CoreModules.TableIterators |
-                CoreModules.Metatables | CoreModules.Math | CoreModules.String);
-            Script.Globals["collectgarbage"] = DynValue.Nil;
+            // The shared sandbox bounds gsub and the pattern functions. Catalogue models never needed rep and format.
+            Script = LuaSandbox.Create(metatables: true);
             Script.Globals["print"] = DynValue.Nil;
             Table strings = Script.Globals.Get("string").Table;
             strings["rep"] = DynValue.Nil;
             strings["format"] = DynValue.Nil;
-            strings["dump"] = DynValue.Nil;
             _lookup = BoundedLuaCall.Invoke(Script, Script.LoadString("return function(t, k) return t[k] end"));
             DynValue bootstrap = Script.LoadString("""
                 return function(load_local)

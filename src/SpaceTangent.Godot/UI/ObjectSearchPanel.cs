@@ -21,6 +21,10 @@ internal sealed class ObjectSearchPanel
     private ObjectId? _selection;
     private ObjectId? _menuTarget;
     private int _filter;
+    // Searching scans the whole catalogue. With the star archives installed that is hundreds of thousands of entries,
+    // so typing waits for a short pause before searching.
+    private const int LargeCatalogue = 20_000;
+    private readonly global::Godot.Timer _debounce = new() { OneShot = true, WaitTime = .15 };
 
     internal ObjectSearchPanel(VBoxContainer panel, ObjectCatalogue catalogue, Action<ObjectId> select, Func<string, bool> aimAtMarker,
         Action<ObjectId> navigate, Func<ObjectId, (string Label, bool Enabled)> navigationAction)
@@ -41,9 +45,22 @@ internal sealed class ObjectSearchPanel
             Name = "ObjectQuery", ClearButtonEnabled = true,
             PlaceholderText = WorkspaceText.Choose("Name or catalogue ID", "Имя или ID каталога")
         };
-        _query.TextChanged += _ => Refresh();
+        panel.AddChild(_debounce);
+        _debounce.Timeout += () => Refresh();
+        _query.TextChanged += _ =>
+        {
+            if (_catalogue.Objects.Count > LargeCatalogue)
+                _debounce.Start();
+            else
+                Refresh();
+        };
         _query.TextSubmitted += text =>
         {
+            if (!_debounce.IsStopped())
+            {
+                _debounce.Stop();
+                Refresh();
+            }
             if (aimAtMarker(text))
                 _query.ReleaseFocus();
             else if (_first is { } match)

@@ -46,10 +46,9 @@ public partial class WorkspaceInputSmoke
             await WaitForAddOns("Reloading both views with light-time correction");
             RequireScenario(delayed, Session.CaptureScenario(0), "Reloading with the light-time state");
             GetViewport().GuiGetFocusOwner()?.ReleaseFocus();
-            double delayAtShiftedEpoch = Session.LightTimeSeconds(0)!.Value;
             await KeyPress(Key.Minus, '-');
-            Require(!Session[0].LightTimeDelayed && Session[0].Epoch == delayed.Views[0].Epoch.AddSeconds(delayAtShiftedEpoch),
-                "Turning off light time must measure the forward shift at the current epoch.");
+            Require(!Session[0].LightTimeDelayed && Session[0].Epoch == epoch,
+                "Turning off light time after reload must undo the original displacement exactly.");
 
             await KeyPress(Key.K);
             Require(Session[0].PlaybackRate == 60 && !Session[0].Playing, "K must slow a paused clock without starting it.");

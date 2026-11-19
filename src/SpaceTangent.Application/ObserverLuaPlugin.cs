@@ -8,6 +8,8 @@ namespace SpaceTangent.Application;
 public sealed class ObserverLuaPlugin
 {
     private const int MaxJobs = 16;
+    private const long MaximumRetainedBytes = 64L * 1024 * 1024;
+    private long _allocatedSinceHeapCheck;
     private sealed record Job(string Label, LuaSessionScript.Invocation Work);
     private sealed record Command(string Title, DynValue Function);
     private sealed record Importer(string Title, DynValue Function);
@@ -74,6 +76,7 @@ public sealed class ObserverLuaPlugin
             return null;
         if (Encoding.UTF8.GetByteCount(input) > 32 * 1024)
             throw new InvalidDataException("Plugin importer input exceeds its size quota.");
+        long before = GC.GetAllocatedBytesForCurrentThread();
         try
         {
             var result = BoundedLuaCall.Invoke(_vm, importer.Function, DynValue.NewString(input), DynValue.NewString(name));
@@ -85,6 +88,12 @@ public sealed class ObserverLuaPlugin
         catch (InterpreterException error)
         {
             throw new InvalidDataException(error.DecoratedMessage ?? error.Message, error);
+        }
+        finally
+        {
+            _allocatedSinceHeapCheck += GC.GetAllocatedBytesForCurrentThread() - before;
+            if (!CheckRetainedHeap(force: true))
+                throw new InvalidDataException(Error);
         }
     }
 
@@ -117,7 +126,11 @@ public sealed class ObserverLuaPlugin
         int slice = 1024 / _jobs.Count;
         foreach (var job in _jobs.ToArray())
         {
+            long before = GC.GetAllocatedBytesForCurrentThread();
             changed |= _runtime.Step(job.Work, elapsed, slice);
+            _allocatedSinceHeapCheck += GC.GetAllocatedBytesForCurrentThread() - before;
+            if (!CheckRetainedHeap(job.Work.Complete))
+                break;
             if (!job.Work.Complete)
                 continue;
             _jobs.Remove(job);
@@ -127,14 +140,32 @@ public sealed class ObserverLuaPlugin
         return changed;
     }
 
-    public bool Disable()
+    private bool CheckRetainedHeap(bool force)
+    {
+        // Allocation-based checks also work with paused clocks and zero elapsed time. Per-invocation allocation limits
+        // bound overshoot within one slice; completed callbacks are checked before the next callback can allocate.
+        if (!force && _allocatedSinceHeapCheck < 512 * 1024)
+            return true;
+        _allocatedSinceHeapCheck = 0;
+        var roots = _events.Values.Concat(_commands.Values.Select(command => command.Function))
+            .Concat(_importers.Values.Select(importer => importer.Function));
+        if (LuaSandbox.WithinRetainedLimit(_vm, roots, MaximumRetainedBytes))
+            return true;
+        Disable(runCleanup: false);
+        Error = $"The plugin exceeded its retained memory quota of {MaximumRetainedBytes / (1024 * 1024)} MiB.";
+        return false;
+    }
+
+    public bool Disable() => Disable(runCleanup: true);
+
+    private bool Disable(bool runCleanup)
     {
         if (!_enabled)
             return false;
         _enabled = false;
         _jobs.Clear();
         bool changed = false;
-        if (View >= 0 && _events.TryGetValue("disable", out var cleanup))
+        if (runCleanup && View >= 0 && _events.TryGetValue("disable", out var cleanup))
         {
             var work = _runtime.NewInvocation(cleanup);
             changed = _runtime.Step(work, 0, 4096);

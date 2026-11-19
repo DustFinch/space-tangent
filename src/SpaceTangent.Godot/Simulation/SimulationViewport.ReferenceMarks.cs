@@ -54,7 +54,7 @@ internal partial class SimulationViewport
             Axes(body, new("f37e78"), new("81d29a"), new("83b7ff"));
         if ((flags & BodyReferenceMarks.FrameAxes) != 0)
         {
-            var (sin, cos) = Math.SinCos(23.4392911 * Math.PI / 180);
+            var (sin, cos) = Math.SinCos(EclipticJ2000.ObliquityRadians);
             Axes(new(new(1, 0, 0), new(0, cos, sin), new(0, -sin, cos)), new("ffd2ba"), new("bee8ce"), new("b9d6f3"), 1.65);
         }
         if ((flags & BodyReferenceMarks.SunDirection) != 0 && geometry.ToSun is { } sun)

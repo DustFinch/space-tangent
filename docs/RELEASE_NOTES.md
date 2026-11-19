@@ -4,9 +4,11 @@ The simulator and its engine-independent core live in separate repositories. The
 
 ## Observer workspace update
 
+The review update adds historical Julian/Gregorian calendar input, bounded native Lua string operations, allocation-triggered plugin heap checks and asynchronous planetary map decoding with cancellation-safe cleanup. New scenarios retain the exact light-time clock displacement across splitting, saving and add-on reload; older scenes without a saved displacement retain the measured-forward fallback. The Earth sky reference uses the same local atmosphere eye as the GPU renderer.
+
 The workspace adds target-relative flight and tracking, per-view Earth observing sites and horizon controls, and geometric altitude, azimuth and civil twilight. Local add-on sources can be installed and switched independently. Search and sky picking use the same Hipparcos IDs across two views with independent sky layers. [Observer controls](OBSERVERS.md) · [Local sources](ADDON_CACHE.md) · [Bright sky data](SKY_DATA.md)
 
-The Windows update was built from clean simulator and core checkouts with the pinned core and locked dependencies. The current external-data run passed 151 core and 2 application tests with zero skips. The Godot input and bootstrap suites exercised original Jason-1, SORCE, Cassini and Huygens inputs, saved observers, layer switches and atomic add-on reload. The Windows export restored the two-view scenarios, including the full-Moon case and the bright sky on Earth and in space. Rendering checks ran on a separate Windows desktop.
+The Windows update was built from clean simulator and core checkouts with the pinned core and locked dependencies. At the time of this update, the external-data run passed 151 core and 2 application tests with zero skips. The suites have grown since; run them for current counts. The Godot input and bootstrap suites exercised original Jason-1, SORCE, Cassini and Huygens inputs, saved observers, layer switches and atomic add-on reload. The Windows export restored the two-view scenarios, including the full-Moon case and the bright sky on Earth and in space. Rendering checks ran on a separate Windows desktop.
 
 ## Verified inputs and workflows
 

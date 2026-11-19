@@ -16,7 +16,7 @@ public sealed partial class SimulationSession
             reference = state.PositionKilometers - center.PositionKilometers;
 
         const double radians = Math.PI / 180;
-        double obliquity = 23.4392911 * radians;
+        double obliquity = EclipticJ2000.ObliquityRadians;
         Vector3d pole = viewpoint.EquatorialUp ? new(0, 0, 1) : new(0, -Math.Sin(obliquity), Math.Cos(obliquity));
         Vector3d x = reference - pole * Vector3d.Dot(reference, pole);
         if (x.Length < 1e-6)

@@ -74,9 +74,9 @@ public static partial class SceneLink
         var link = new StringBuilder(LegacyScheme).Append(mode);
         foreach (ObjectId id in references)
             link.Append('/').Append(CataloguePath(world.Catalogue, id));
-        var sinceJ2000 = observer.Epoch.DifferenceNanoseconds(new(JulianInstant.J2000Day, 0, TimeScale.Tdb));
-        var date = new DateTime(2000, 1, 1, 12, 0, 0).AddTicks(checked((long)(sinceJ2000 / 100)));
-        link.Append('/').Append(date.ToString("yyyy-MM-dd'T'HH:mm:ss.fffffff", CultureInfo.InvariantCulture));
+        // The TDB calendar date is Julian before 1582 October 15, as the legacy reader expects.
+        var (date, timeOfDay) = HistoricalDate.FromInstant(observer.Epoch);
+        link.Append('/').Append(HistoricalDate.Format(date, timeOfDay));
         link.Append("?x=").Append(WriteCoordinate(offset.X)).Append("&y=").Append(WriteCoordinate(offset.Y))
             .Append("&z=").Append(WriteCoordinate(offset.Z));
         link.Append("&ow=").Append(Number(orientation.W)).Append("&ox=").Append(Number(orientation.X))
@@ -110,7 +110,7 @@ public static partial class SceneLink
 
     private static Vector3d ToEcliptic(Vector3d vector)
     {
-        var (sin, cos) = Math.SinCos(23.4392911 * Math.PI / 180);
+        var (sin, cos) = Math.SinCos(EclipticJ2000.ObliquityRadians);
         return new(vector.X, vector.Z * cos - vector.Y * sin, -vector.Y * cos - vector.Z * sin);
     }
 

@@ -9,27 +9,79 @@ internal sealed record PlanetTextures(IReadOnlyDictionary<ObjectId, Texture2D> S
 {
     internal IReadOnlyDictionary<char, Texture2D> StellarSurfaces { get; init; } = new Dictionary<char, Texture2D>();
 
-    internal static PlanetTextures Load()
+    private enum MapKind { Surface, Ring, Star, VenusClouds }
+    private readonly record struct MapRequest(MapKind Kind, ObjectId Body, char Star, string Directory, string File);
+
+    /// <summary>
+    /// Decodes the planetary maps on a worker thread and creates their textures on the calling thread. Hi-res maps
+    /// take seconds to decode, which used to freeze the window during startup.
+    /// </summary>
+    internal static async Task<PlanetTextures> LoadAsync(CancellationToken cancellation = default, Func<bool>? canPublish = null)
     {
         string root = LocalDataPaths.Find("SPACETANGENT_PLANET_TEXTURES", "planets", directory: true);
-        var surfaces = new Dictionary<ObjectId, Texture2D>();
-        foreach (PlanetDefinition planet in PlanetCatalogue.Planets)
-            if (planet.NaifId != 399 && Read(root, planet.Texture) is { } image)
-                surfaces.Add(planet.Id, image);
-        foreach (NaturalBodyDefinition body in NaturalBodyCatalogue.Bodies)
-            if (body.Texture is { } texture && Read(root, texture) is { } image)
-                surfaces.Add(body.Id, image);
         string ringsRoot = System.Environment.GetEnvironmentVariable("SPACETANGENT_RING_TEXTURES") is { Length: > 0 } overrideRoot
             ? Path.GetFullPath(overrideRoot) : root;
-        var rings = new Dictionary<ObjectId, Texture2D>();
+        var requests = new List<MapRequest>();
+        foreach (PlanetDefinition planet in PlanetCatalogue.Planets)
+            if (planet.NaifId != 399)
+                requests.Add(new(MapKind.Surface, planet.Id, default, root, planet.Texture));
+        foreach (NaturalBodyDefinition body in NaturalBodyCatalogue.Bodies)
+            if (body.Texture is { } texture)
+                requests.Add(new(MapKind.Surface, body.Id, default, root, texture));
         foreach (PlanetRingProfile profile in PlanetRingRendering.Profiles)
-            if (Read(ringsRoot, profile.Texture) is { } ring)
-                rings.Add(profile.Id, ring);
-        var stars = new Dictionary<char, Texture2D>();
+            requests.Add(new(MapKind.Ring, profile.Id, default, ringsRoot, profile.Texture));
         foreach (char surface in "obafgkm")
-            if (Read(root, $"star-{surface}.jpg") is { } image)
-                stars.Add(surface, image);
-        return new(surfaces, rings, Read(root, "venus-clouds.jpg")) { StellarSurfaces = stars };
+            requests.Add(new(MapKind.Star, default, surface, root, $"star-{surface}.jpg"));
+        requests.Add(new(MapKind.VenusClouds, default, default, root, "venus-clouds.jpg"));
+
+        Image?[] images = new Image?[requests.Count];
+        var createdTextures = new List<Texture2D>();
+        bool published = false;
+        try
+        {
+            await Task.Run(() =>
+            {
+                for (int index = 0; index < requests.Count; index++)
+                {
+                    cancellation.ThrowIfCancellationRequested();
+                    images[index] = Decode(requests[index].Directory, requests[index].File);
+                }
+            }, cancellation);
+            // This continuation runs on Godot's main thread. A closed/replaced scene must never publish GPU resources.
+            cancellation.ThrowIfCancellationRequested();
+            if (canPublish is not null && !canPublish())
+                throw new OperationCanceledException("The texture owner is no longer active.", cancellation);
+            var surfaces = new Dictionary<ObjectId, Texture2D>();
+            var rings = new Dictionary<ObjectId, Texture2D>();
+            var stars = new Dictionary<char, Texture2D>();
+            Texture2D? venus = null;
+            for (int index = 0; index < requests.Count; index++)
+            {
+                if (images[index] is not { } image)
+                    continue;
+                Texture2D created = ImageTexture.CreateFromImage(image);
+                createdTextures.Add(created);
+                MapRequest request = requests[index];
+                switch (request.Kind)
+                {
+                    case MapKind.Surface: surfaces.Add(request.Body, created); break;
+                    case MapKind.Ring: rings.Add(request.Body, created); break;
+                    case MapKind.Star: stars.Add(request.Star, created); break;
+                    default: venus = created; break;
+                }
+            }
+            var result = new PlanetTextures(surfaces, rings, venus) { StellarSurfaces = stars };
+            published = true;
+            return result;
+        }
+        finally
+        {
+            foreach (Image? image in images)
+                image?.Dispose();
+            if (!published)
+                foreach (Texture2D texture in createdTextures)
+                    texture.Dispose();
+        }
     }
 
     internal Texture2DArray? CreateGroundSurfaceArray()
@@ -94,13 +146,32 @@ internal sealed record PlanetTextures(IReadOnlyDictionary<ObjectId, Texture2D> S
 
     internal static Texture2D? Read(string root, string file)
     {
+        using Image? image = Decode(root, file);
+        return image is null ? null : ImageTexture.CreateFromImage(image);
+    }
+
+    /// <summary>Decodes a map with its mipmaps. Safe on a worker thread; it creates no rendering resources.</summary>
+    private static Image? Decode(string root, string file)
+    {
         string path = Path.Combine(root, file);
         if (!File.Exists(path))
             return null;
-        using Image image = Image.LoadFromFile(path);
+        Image image = Image.LoadFromFile(path);
         if (image is null || image.IsEmpty())
+        {
+            image?.Dispose();
             throw new InvalidDataException($"Could not decode the planetary texture {file}.");
-        image.GenerateMipmaps();
-        return ImageTexture.CreateFromImage(image);
+        }
+        try
+        {
+            if (image.GenerateMipmaps() != Error.Ok)
+                throw new InvalidDataException($"Could not generate mipmaps for {file}.");
+            return image;
+        }
+        catch
+        {
+            image.Dispose();
+            throw;
+        }
     }
 }

@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
 using Godot;
+using SpaceTangent.Application;
 using SpaceTangent.Contracts;
 using SpaceTangent.Core.Coordinates;
 
@@ -7,7 +8,7 @@ namespace SpaceTangent.Godot.Simulation;
 
 internal static class ZodiacalGlow
 {
-    private const double Obliquity = 23.4392911 * Math.PI / 180;
+    private const double Obliquity = EclipticJ2000.ObliquityRadians;
 
     internal static Texture2D? LoadMap()
     {

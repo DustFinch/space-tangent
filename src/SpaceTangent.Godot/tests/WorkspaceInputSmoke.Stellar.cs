@@ -2,6 +2,7 @@
 using Godot;
 using SpaceTangent.Application;
 using SpaceTangent.Contracts;
+using SpaceTangent.Core.Time;
 
 namespace SpaceTangent.Godot.Tests;
 
@@ -147,12 +148,12 @@ public partial class WorkspaceInputSmoke
                 "The original Proxima planet must have its local rocky surface map.");
             var planet = world.Exoplanets.Find(id)!;
             var frame = world.Graph.Evaluate(Session[1].Epoch);
-            world.TryNavigationState(id, frame, out var location);
-            world.TryNavigationState(planet.Host, frame, out var host);
+            world.TryNavigationState(id, frame, out var location, DeltaTModel.MorrisonStephenson2004);
+            world.TryNavigationState(planet.Host, frame, out var host, DeltaTModel.MorrisonStephenson2004);
             Require(((location - host).PositionKilometers - planet.ParentRelativeState(frame.Epoch).PositionKilometers).Length < .05,
                 "The exoplanet camera must use the correct stellar origin and local orbit.");
             var embedded = world.Exoplanets.Hosts.First(star => world.Stellar.Find(star.Id) is null);
-            Require(world.Catalogue.Find(embedded.Id) is not null && world.TryNavigationState(embedded.Id, frame, out _),
+            Require(world.Catalogue.Find(embedded.Id) is not null && world.TryNavigationState(embedded.Id, frame, out _, DeltaTModel.MorrisonStephenson2004),
                 "An original host outside the local stellar archive must remain a searchable navigation target.");
             var accepted = Session.CaptureScenario(1);
             Require(await _scene.ReloadAddOns(), "Reloading with a selected exoplanet must succeed.");

@@ -85,8 +85,17 @@ public sealed class ObserverBookmarkFile(string path)
                 throw new InvalidDataException("The favorites file is too large.");
             using var reader = new StreamReader(input);
             foreach (ObserverFavorite item in ObserverFavorites.Parse(reader.ReadToEnd()))
-                Add(string.IsNullOrWhiteSpace(item.Folder) ? item.Name : $"{item.Folder} / {item.Name}",
-                    SceneLink.RestoreFavorite(item, world, deltaT));
+            {
+                // As for archived bookmarks, one unusable entry is skipped instead of stopping the import.
+                SimulationScenario? scene;
+                try { scene = SceneLink.RestoreFavorite(item, world, deltaT); }
+                catch (Exception error) when (error is InvalidDataException or FormatException or ArgumentException or
+                    InvalidOperationException or OverflowException)
+                {
+                    scene = null;
+                }
+                Add(string.IsNullOrWhiteSpace(item.Folder) ? item.Name : $"{item.Folder} / {item.Name}", scene);
+            }
         }
         if (result.Count > current.Count)
             Save(result);

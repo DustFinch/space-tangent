@@ -81,6 +81,7 @@ public sealed class PlanetEphemerides
             graph.AddTrajectory(planet.Id, epoch => center?.Sample(epoch) ?? default(CartesianState), planet.SystemId);
         }
         if (planet.Id == SolarSystemSample.EarthId)
+            // The default model applies only to Graph.Evaluate(tdb); the session evaluates with its own model.
             graph.AddMeanEarthRotation();
         else
             AddFrame(graph, planet.Id, planet.NaifId, source);
@@ -153,7 +154,7 @@ public sealed class PlanetEphemerides
     }
 
     private const double Degrees = Math.PI / 180;
-    private static readonly Basis3d EclipticToEquatorial = SpinAxes(23.4392911, 0, 0);
+    private static readonly Basis3d EclipticToEquatorial = SpinAxes(EclipticJ2000.ObliquityDegrees, 0, 0);
 
     private static FrameKinematics HyperionSpin(JulianInstant epoch)
     {

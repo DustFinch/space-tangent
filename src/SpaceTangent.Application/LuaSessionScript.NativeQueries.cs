@@ -15,6 +15,7 @@ public sealed partial class LuaSessionScript
 
     private DynValue FindObject(DynValue name)
     {
+        Charge(CatalogueScanCost);
         try { return LuaObject(SceneLink.ResolveObject(Text(name), _session.World.Catalogue)); }
         catch (InvalidDataException) { return DynValue.Nil; }
     }

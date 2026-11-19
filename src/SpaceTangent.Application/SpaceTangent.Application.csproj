@@ -3,6 +3,9 @@
     <TargetFramework>net8.0</TargetFramework>
   </PropertyGroup>
   <ItemGroup>
+    <InternalsVisibleTo Include="SpaceTangent.Application.Tests" />
+  </ItemGroup>
+  <ItemGroup>
     <PackageReference Include="MoonSharp" Version="2.0.0" />
     <ProjectReference Include="../../deps/space-tangent-core/src/SpaceTangent.Core/SpaceTangent.Core.csproj" />
   </ItemGroup>

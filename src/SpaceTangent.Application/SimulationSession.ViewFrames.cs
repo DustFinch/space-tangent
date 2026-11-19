@@ -101,7 +101,7 @@ public sealed partial class SimulationSession
         var snapshot = World.Graph.Evaluate(_views[view].Epoch, DeltaT);
         if ((reference ?? World.Catalogue.Find(target)?.Parent) is not { } other || other == target ||
             !NavigationCamera.TryRelativeBasis(snapshot, frame, target, other, out Basis3d basis) ||
-            !World.TryNavigationState(target, snapshot, out var state))
+            !World.TryNavigationState(target, snapshot, out var state, DeltaT))
             return false;
         return FollowFrame(view, snapshot, target, state.PositionKilometers, basis, false, frame, other);
     }
@@ -113,7 +113,7 @@ public sealed partial class SimulationSession
     {
         var snapshot = World.Graph.Evaluate(_views[view].Epoch, DeltaT);
         if (!NavigationCamera.TryBodyBasis(snapshot, target, DeltaT, out Basis3d basis) ||
-            !World.TryNavigationState(target, snapshot, out CartesianState state))
+            !World.TryNavigationState(target, snapshot, out CartesianState state, DeltaT))
             return false;
         return FollowFrame(view, snapshot, target, state.PositionKilometers, basis, true, NavigationFrame.Inertial, null);
     }

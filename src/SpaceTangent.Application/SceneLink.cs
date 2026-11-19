@@ -62,13 +62,12 @@ public static partial class SceneLink
         if (parameters.GetValueOrDefault("ver") is not ("3" or "4"))
             throw new FormatException("This link importer reads versions 3 and 4.");
 
-        string[] formats = ["yyyy-MM-dd", "yyyy-MM-dd'T'HH:mm:ss", "yyyy-MM-dd'T'HH:mm:ss.FFFFFFF",
-            "yyyy-MM-dd'T'HH:mm:ss'Z'", "yyyy-MM-dd'T'HH:mm:ss.FFFFFFF'Z'"];
-        if (!DateTime.TryParseExact(Uri.UnescapeDataString(path[^1]), formats, CultureInfo.InvariantCulture,
-                DateTimeStyles.None, out DateTime date))
+        // Legacy links carry a TDB calendar date, Julian before 1582 October 15 like the program that wrote them.
+        if (!HistoricalDate.TryParse(Uri.UnescapeDataString(path[^1]), out HistoricalDate date, out long timeOfDay))
             throw new FormatException("The link has an invalid TDB calendar date.");
-        DateTime j2000 = new(2000, 1, 1, 12, 0, 0);
-        var epoch = new JulianInstant(JulianInstant.J2000Day, 0, TimeScale.Tdb).AddNanoseconds((Int128)(date.Ticks - j2000.Ticks) * 100);
+        JulianInstant epoch;
+        try { epoch = date.ToInstant(timeOfDay, TimeScale.Tdb); }
+        catch (ArgumentOutOfRangeException) { throw new InvalidDataException("The linked epoch lies outside the ephemeris."); }
         if (epoch.CompareTo(world.Ephemeris.Start) < 0 || epoch.CompareTo(world.Ephemeris.End) > 0)
             throw new InvalidDataException("The linked epoch lies outside the ephemeris.");
         var snapshot = world.Graph.Evaluate(epoch, deltaT);
@@ -181,7 +180,7 @@ public static partial class SceneLink
 
     internal static Vector3d FromEcliptic(Vector3d value)
     {
-        var (sin, cos) = Math.SinCos(23.4392911 * Math.PI / 180);
+        var (sin, cos) = Math.SinCos(EclipticJ2000.ObliquityRadians);
         return new(value.X, -value.Z * cos - value.Y * sin, value.Y * cos - value.Z * sin);
     }
 

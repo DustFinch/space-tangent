@@ -67,6 +67,7 @@ public sealed partial class LuaSessionScript
 
     private DynValue TrySelectForTour(string query)
     {
+        Charge(CatalogueScanCost);
         ObjectId id;
         try
         {
@@ -87,8 +88,7 @@ public sealed partial class LuaSessionScript
             }
             id = planet.Id;
         }
-        var snapshot = _session.World.Graph.Evaluate(_session[View].Epoch, _session.DeltaT);
-        if (!_session.World.TryNavigationState(id, snapshot, out _))
+        if (!_session.World.TryNavigationState(id, NativeSnapshot(), out _, _session.DeltaT))
         {
             Log($"Tour target has no state at the current epoch: {query}");
             return DynValue.False;
@@ -118,8 +118,15 @@ public sealed partial class LuaSessionScript
     private DynValue TourTargets(Script script)
     {
         const int limit = 32;
-        var children = _session.World.Catalogue.Objects.Where(body => body.Parent.HasValue && body.Kind != CatalogueKind.SurfaceLocation)
-            .ToLookup(body => body.Parent!.Value);
+        Charge(CatalogueScanCost);
+        if (!ReferenceEquals(_tourWorld, _session.World))
+        {
+            _tourWorld = _session.World;
+            _tourChildren = _session.World.Catalogue.Objects
+                .Where(body => body.Parent.HasValue && body.Kind != CatalogueKind.SurfaceLocation)
+                .ToLookup(body => body.Parent!.Value);
+        }
+        var children = _tourChildren!;
         var table = new Table(script);
         var seen = new HashSet<ObjectId>();
         var secondary = new List<ObjectId>();

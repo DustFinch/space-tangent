@@ -26,7 +26,7 @@ internal partial class BrightSkyOverlay
             MarkCircle(GalacticDirection(0, 90), rightAngle, GalacticMark);
         if (marks.HasFlag(SkyMarkings.PrecessionCircles))
         {
-            const float obliquity = 23.4392911f * MathF.PI / 180;
+            const float obliquity = (float)EclipticJ2000.ObliquityRadians;
             Vector3 eclipticPole = EclipticDirection(0, 90);
             MarkCircle(eclipticPole, obliquity, PrecessionMark);
             MarkCircle(-eclipticPole, obliquity, PrecessionMark);
@@ -173,7 +173,7 @@ internal partial class BrightSkyOverlay
         }
         if (marks.HasFlag(SkyMarkings.ArchaeoLines))
         {
-            const float obliquity = 23.4392911f, lunarInclination = 5.145f;
+            const float obliquity = (float)EclipticJ2000.ObliquityDegrees, lunarInclination = 5.145f;
             DrawPair(obliquity, new(1, .85f, .4f, .5f));
             DrawPair(16.4f, new(.8f, .8f, .8f, .35f));
             DrawPair(obliquity + lunarInclination, new(.6f, .7f, 1, .45f));

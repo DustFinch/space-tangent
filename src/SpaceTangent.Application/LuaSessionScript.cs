@@ -11,7 +11,10 @@ public sealed partial class LuaSessionScript
     private const int MaximumSourceBytes = 32 * 1024;
     private const int StepsPerFrame = 1024, MaximumSteps = 131072;
     private const long MaximumAllocatedBytes = 16 * 1024 * 1024;
-    private const double MaximumWaitSeconds = 120;
+    // Waiting costs no work, so the limit only guards against a script that never ends. Tours run for minutes.
+    internal const double MaximumWaitSeconds = 6 * 3600;
+    // Host callbacks that evaluate the world or scan a catalogue count as this many instructions.
+    private const int WorldEvaluationCost = 256, CatalogueScanCost = 256;
     private static readonly UTF8Encoding StrictUtf8 = new(false, true);
     private readonly SimulationSession _session;
     private int _viewIdentity;
@@ -44,10 +47,8 @@ public sealed partial class LuaSessionScript
         if (StrictUtf8.GetByteCount(source) > MaximumSourceBytes)
             throw new InvalidDataException("Lua source exceeds the size quota.");
 
-        var script = _vm = new Script(CoreModules.Basic | CoreModules.GlobalConsts | CoreModules.TableIterators |
-            CoreModules.Math | CoreModules.Bit32 | CoreModules.String);
+        var script = _vm = LuaSandbox.Create();
         script.Options.DebugPrint = Log;
-        script.Globals.Set("collectgarbage", DynValue.Nil);
         var api = new Table(script);
         Bind(api, "pause", Pause);
         Bind(api, "settime", SetTime);
@@ -180,7 +181,8 @@ public sealed partial class LuaSessionScript
             work.MoveVelocity = default;
             work.TurnRate = 0;
             long frameStart = work.Allocated;
-            for (int step = 0; step < slice; step++)
+            int frameSteps = work.Steps;
+            for (int step = 0; step < slice && work.Steps - frameSteps < slice; step++)
             {
                 if (work.Steps++ >= MaximumSteps + work.CatalogueReads * 192)
                     throw new ScriptRuntimeException($"Lua instruction quota exceeded ({work.Steps} instructions, {work.CatalogueReads} records).");
@@ -246,6 +248,13 @@ public sealed partial class LuaSessionScript
         work.MoveVelocity = moveVelocity;
         work.Yielded = true;
         return DynValue.NewYieldReq([]);
+    }
+
+    /// <summary>Counts an expensive host callback against the running invocation's instruction quota.</summary>
+    private void Charge(int instructions)
+    {
+        if (_running is { } work)
+            work.Steps += instructions;
     }
 
     private DynValue Change(Action action)

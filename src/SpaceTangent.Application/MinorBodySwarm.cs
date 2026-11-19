@@ -46,7 +46,7 @@ public static class MinorBodySwarm
     private const double Au = AstronomicalUnits.KilometersPerAstronomicalUnit;
     private const double Gaussian = .01720209895;
     private const double Radians = Math.PI / 180;
-    private const double Obliquity = 23.4392911 * Radians;
+    private const double Obliquity = EclipticJ2000.ObliquityRadians;
 
     public static MinorBodyEntry[] Read(TextReader reader)
     {

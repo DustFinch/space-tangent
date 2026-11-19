@@ -70,7 +70,7 @@ public sealed class NativeTourGeometryTests
                 var result = Run(dolly, uneven: true);
                 var completed = result.Final.Navigation!.Value;
                 Assert.Equal(starting.Target, completed.Target);
-                Assert.Equal(starting.ResolvePlacement(world.Graph.Evaluate(epoch)).Forward, completed.Placement!.Value.Forward);
+                Assert.Equal(starting.ResolvePlacement(world.Graph.Evaluate(epoch), DeltaTModel.MorrisonStephenson2004).Forward, completed.Placement!.Value.Forward);
                 Assert.Contains(result.Poses, pose => pose.RangeKilometers > starting.RangeKilometers &&
                     pose.RangeKilometers < starting.RangeKilometers * Math.Exp(rate * seconds) * .999);
                 Assert.InRange(completed.RangeKilometers / (starting.RangeKilometers * Math.Exp(rate * seconds)), 1 - 1e-11, 1 + 1e-11);
@@ -557,7 +557,9 @@ public sealed class NativeTourGeometryTests
             string lua = Path.ChangeExtension(source, ".lua");
             File.WriteAllText(lua, conversion.Lua);
             var script = LuaSessionScript.Load(lua, session, 0, false, _ => { });
-            script.Step(0);
+            // Native catalogue/world queries now consume the same bounded frame budget as Lua instructions.
+            for (int frame = 0; frame < 16 && !script.Finished; frame++)
+                script.Step(0);
             Assert.True(script.Finished);
             Assert.Null(script.Error);
             var initial = session[0].Navigation!.Value;
@@ -586,7 +588,7 @@ public sealed class NativeTourGeometryTests
                 Assert.Equal(PlanetCatalogue.MarsId, session[0].Selection);
                 Assert.Equal(expected.Placement!.Value.Frame, camera.Placement!.Value.Frame);
                 Assert.Equal(expected.Placement.Value.OffsetKilometers, camera.Placement.Value.OffsetKilometers);
-                Assert.True(world.TryNavigationState(SolarSystemSample.MoonId, snapshot, out var target));
+                Assert.True(world.TryNavigationState(SolarSystemSample.MoonId, snapshot, out var target, DeltaTModel.MorrisonStephenson2004));
                 var placement = camera.ResolvePlacement(snapshot, session.DeltaT);
                 Vector3d sight = target.PositionKilometers - (camera.AnchorKilometers + placement.OffsetKilometers);
                 Assert.InRange((placement.Forward - sight / sight.Length).Length, 0, 1e-12);

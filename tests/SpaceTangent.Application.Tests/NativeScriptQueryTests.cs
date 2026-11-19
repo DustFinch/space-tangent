@@ -29,7 +29,7 @@ public sealed class NativeScriptQueryTests
         session.RestoreScenario(new([observer, untouched], false, 0, 0, session.DeltaT));
         var vegaEntry = world.Stellar.Find(vega)!;
         double magnitude = vegaEntry.AbsoluteMagnitude ?? vegaEntry.VisualMagnitude + 5 - 5 * Math.Log10(vegaEntry.DistanceParsecs);
-        Assert.True(world.TryNavigationState(vega, world.Graph.Evaluate(epoch), out var star));
+        Assert.True(world.TryNavigationState(vega, world.Graph.Evaluate(epoch), out var star, DeltaTModel.MorrisonStephenson2004));
         Vector3d eye = observer.Navigation!.Value.AnchorKilometers + observer.Navigation.Value.Placement!.Value.OffsetKilometers;
         double expectedDistance = (star.PositionKilometers - eye).Length;
         Assert.InRange(Math.Abs(NumberAfterEquals(Run("distanceto.celx"), " km") / expectedDistance - 1), 0, 1e-12);

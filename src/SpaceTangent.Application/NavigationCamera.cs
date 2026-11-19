@@ -25,7 +25,7 @@ public readonly record struct NavigationCamera(Vector3d AnchorKilometers, double
         (Placement is not { } placement || (placement.IsValid(RangeKilometers) &&
             (!placement.UsesFrame || Tracking) && (placement.Reference is null || placement.Reference != Target)));
 
-    public NavigationPlacement ResolvePlacement(WorldSnapshot snapshot, DeltaTModel deltaT = DeltaTModel.MorrisonStephenson2004)
+    public NavigationPlacement ResolvePlacement(WorldSnapshot snapshot, DeltaTModel deltaT)
     {
         if (Placement is { } local)
         {
@@ -145,7 +145,7 @@ public readonly record struct NavigationCamera(Vector3d AnchorKilometers, double
         Vector3d y = guide - x * Vector3d.Dot(x, guide);
         if (y.Length < 1e-9 * Math.Max(guide.Length, 1e-300))
         {
-            var (sin, cos) = Math.SinCos(23.4392911 * Math.PI / 180);
+            var (sin, cos) = Math.SinCos(EclipticJ2000.ObliquityRadians);
             Vector3d north = new(0, -sin, cos);
             Vector3d fallback = Math.Abs(Vector3d.Dot(x, north)) < .9 ? north : new(1, 0, 0);
             y = fallback - x * Vector3d.Dot(x, fallback);

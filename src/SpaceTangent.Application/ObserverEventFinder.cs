@@ -97,10 +97,21 @@ public static class ObserverEventFinder
                     events.Add(new(solar.Partial.Peak, SolarSystemSample.SunId, $"{solar.Class} solar eclipse"));
                 if (observer.Selection != SolarSystemSample.SunId)
                     foreach (var lunar in ObservationEventSearch.FindLunarEclipses(ephemeris, from, end, cancellation))
-                        events.Add(new(lunar.Penumbral.Peak, SolarSystemSample.MoonId, $"{lunar.Class} lunar eclipse"));
+                        if (MoonAboveHorizon(lunar.Penumbral.First) || MoonAboveHorizon(lunar.Penumbral.Peak) ||
+                            MoonAboveHorizon(lunar.Penumbral.Last))
+                            events.Add(new(lunar.Penumbral.Peak, SolarSystemSample.MoonId, $"{lunar.Class} lunar eclipse"));
             }
         }
         return events.OrderBy(item => item.Epoch).FirstOrDefault();
+
+        // A lunar eclipse is offered only when the Moon is up at the site at its first contact, maximum or last contact.
+        bool MoonAboveHorizon(JulianInstant? epoch)
+        {
+            if (epoch is not { } instant)
+                return false;
+            try { return EarthSurfaceLighting.Sample(ephemeris.Sample(instant), site, deltaT).LunarAltitudeRadians > 0; }
+            catch (ArgumentOutOfRangeException) { return false; }
+        }
 
         JulianInstant SearchEnd(double days)
         {

@@ -19,7 +19,10 @@ public sealed partial class SimulationSession
     {
         double previous = CurrentPlaybackRate(view);
         double magnitude = Math.Clamp(Math.Abs(previous) * (faster ? 10 : .1), 1, KeyboardMaximumRate);
-        _views[view] = _views[view] with { PlaybackRate = Math.CopySign(magnitude, previous) };
+        double next = Math.CopySign(magnitude, previous);
+        for (int index = 0; index < _views.Count; index++)
+            if (index == view || Synchronized)
+                _views[index] = _views[index] with { PlaybackRate = next };
         SetClock(view, _views[view].Epoch, _views[view].Playing);
     }
 
@@ -53,23 +56,45 @@ public sealed partial class SimulationSession
         return double.IsFinite(seconds) ? seconds : null;
     }
 
-    /// <summary>Shift the view's clock by the light time to the selected body as measured at the current epoch.</summary>
+    /// <summary>
+    /// Shifts the view's clock back by the light time to the selected body, measured at the current epoch. Turning the
+    /// delay off undoes the shift that was applied, even when the selection or the distance has changed since. In
+    /// synchronized views the shift moves the shared clock, so every view is marked.
+    /// </summary>
     public bool TrySetLightTimeDelay(int view, bool enabled, out double seconds)
     {
         ObserverView observer = _views[view];
         seconds = 0;
         if (observer.LightTimeDelayed == enabled)
             return true;
-        if (LightTimeSeconds(view) is not { } travel)
+        double travel;
+        if (!enabled && observer.LightTimeOffsetNanoseconds is { } applied)
+            travel = (double)applied / JulianInstant.NanosecondsPerSecond;
+        else if (LightTimeSeconds(view) is { } measured)
+            travel = measured;
+        else
             return false;
-        double shift = enabled ? -travel : travel;
-        double first = (double)World.Ephemeris.Start.DifferenceNanoseconds(observer.Epoch) / JulianInstant.NanosecondsPerSecond;
-        double last = (double)World.Ephemeris.End.DifferenceNanoseconds(observer.Epoch) / JulianInstant.NanosecondsPerSecond;
-        if (shift < first || shift > last)
+        double nanoseconds = Math.Round(travel * JulianInstant.NanosecondsPerSecond, MidpointRounding.ToEven);
+        if (!double.IsFinite(nanoseconds) || nanoseconds < 0 || nanoseconds >= long.MaxValue)
             return false;
-        SetClock(view, observer.Epoch.AddSeconds(shift), observer.Playing);
-        _views[view] = _views[view] with { LightTimeDelayed = enabled };
+        long offset = !enabled && observer.LightTimeOffsetNanoseconds is { } saved ? saved : (long)nanoseconds;
+        Int128 shift = enabled ? -(Int128)offset : offset;
+        if (shift < World.Ephemeris.Start.DifferenceNanoseconds(observer.Epoch) ||
+            shift > World.Ephemeris.End.DifferenceNanoseconds(observer.Epoch))
+            return false;
+        SetClock(view, observer.Epoch.AddNanoseconds(shift), observer.Playing);
+        for (int index = 0; index < _views.Count; index++)
+        {
+            if (index != view && !Synchronized)
+                continue;
+            _views[index] = _views[index] with
+            {
+                LightTimeDelayed = enabled,
+                LightTimeOffsetNanoseconds = enabled ? offset : null
+            };
+        }
         seconds = travel;
         return true;
     }
+
 }

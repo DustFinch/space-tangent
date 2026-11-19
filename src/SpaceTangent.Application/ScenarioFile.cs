@@ -18,7 +18,7 @@ public sealed record SimulationScenario(IReadOnlyList<ObserverView> Views, bool 
 /// <summary>Persists observer settings with exact TDB epochs and stable catalog IDs.</summary>
 public static class ScenarioFile
 {
-    private const int Version = 49;
+    private const int Version = 50;
     internal const int MaximumBytes = 32 * 1024;
     private static readonly JsonSerializerOptions Json = new()
     {
@@ -61,9 +61,12 @@ public static class ScenarioFile
             throw new InvalidDataException("The scenario has an invalid camera orbit period.");
         if (scenario.Views.Any(view => view.MouseSensitivity is { } sensitivity && !ObserverView.ValidMouseSensitivity(sensitivity)))
             throw new InvalidDataException("The scenario has an invalid camera sensitivity.");
+        if (scenario.Views.Any(view => view.LightTimeOffsetNanoseconds is { } offset && (offset < 0 || !view.LightTimeDelayed)))
+            throw new InvalidDataException("The scenario has an invalid light-time offset.");
         var document = new Document
         {
-            Version = scenario.Views.Any(view => view.ScriptAimTarget is not null) ? 49 :
+            Version = scenario.Views.Any(view => view.LightTimeOffsetNanoseconds is not null) ? 50 :
+                scenario.Views.Any(view => view.ScriptAimTarget is not null) ? 49 :
                 scenario.Views.Any(view => view.EarthObserver?.CivilClock is not null) ? 48 :
                 scenario.Views.Any(view => view.Sky.Markings.HasFlag(SkyMarkings.SelectedBodyPath)) ? 47 :
                 scenario.Views.Any(view => (view.Sky.Markings & ~SkyLayerSettings.GeometricalMarkings) != 0) ? 46 :
@@ -131,7 +134,8 @@ public static class ScenarioFile
                 Sky = view.Sky.Visible || view.Sky.HasCultureSettings || view.Sky.HasSurveySettings || view.Sky.HasMeteorSettings || view.Sky.MinorBodyLabels || view.Sky.HideSatellites || view.Sky.HasBodyLayerSettings || view.Sky.CinematicBlackHoles || view.Sky.HasDeepSkyPreferences || view.Sky.HideClouds || view.Sky.HideAtmospheres || view.Sky.HideTerrain || view.Sky.PointerCoordinates || view.Sky.ZodiacalLight || view.Sky.Starlink.HasValue || view.Sky.SmallBodies.HasValue ? view.Sky : null,
                 ReferenceMarks = view.ReferenceMarks,
                 Optics = view.Optics,
-                LightTimeDelayed = view.LightTimeDelayed
+                LightTimeDelayed = view.LightTimeDelayed,
+                LightTimeOffsetNanoseconds = view.LightTimeOffsetNanoseconds
             }).ToArray()
         };
         byte[] bytes = JsonSerializer.SerializeToUtf8Bytes(document, Json);
@@ -282,6 +286,8 @@ public static class ScenarioFile
                 throw new InvalidDataException("The scenario has an invalid optics profile.");
             if (document.Version < 10 && data.LightTimeDelayed)
                 throw new InvalidDataException("Light-time correction requires a version 10 scenario.");
+            if (data.LightTimeOffsetNanoseconds is { } offset && (document.Version < 50 || offset < 0 || !data.LightTimeDelayed))
+                throw new InvalidDataException("The scene light-time offset is invalid or unsupported.");
             if (data.AutoOrbit is { } orbit && (document.Version < 20 || !orbit.IsValid()))
                 throw new InvalidDataException("The scenario has an invalid or unsupported camera orbit period.");
             if (data.MouseSensitivity is { } sensitivity && (document.Version < 21 || !ObserverView.ValidMouseSensitivity(sensitivity)))
@@ -302,7 +308,8 @@ public static class ScenarioFile
                 Sky = data.Sky ?? default,
                 ReferenceMarks = data.ReferenceMarks,
                 Optics = data.Optics,
-                LightTimeDelayed = data.LightTimeDelayed
+                LightTimeDelayed = data.LightTimeDelayed,
+                LightTimeOffsetNanoseconds = data.LightTimeOffsetNanoseconds
             };
         }
         return new(Array.AsReadOnly(views), document.Synchronized, document.ClockOwner, document.ActiveView, document.DeltaT)
@@ -358,6 +365,8 @@ public static class ScenarioFile
         public ObserverOptics? Optics { get; init; }
         [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingDefault)]
         public bool LightTimeDelayed { get; init; }
+        [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+        public long? LightTimeOffsetNanoseconds { get; init; }
     }
 
     private sealed record Camera(double AnchorX, double AnchorY, double AnchorZ, double RangeKilometers,

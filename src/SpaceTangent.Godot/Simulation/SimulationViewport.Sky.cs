@@ -40,8 +40,12 @@ internal partial class SimulationViewport
         _surface?.SetSkyData(data);
     }
 
+    // The observer's ΔT model for the frame being drawn, for helpers that place Earth surface targets.
+    private DeltaTModel _frameDeltaT = DeltaTModel.MorrisonStephenson2004;
+
     internal bool Draw(ObserverView observer, WorldSnapshot snapshot, DeltaTModel deltaT)
     {
+        _frameDeltaT = deltaT;
         if (ArchivedGeometry is not null)
             observer = observer with
             {

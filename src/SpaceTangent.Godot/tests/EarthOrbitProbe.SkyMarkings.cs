@@ -196,7 +196,7 @@ public partial class EarthOrbitProbe
         var poleBefore = CelestialPoleOfDate.Direction(j2000.AddSeconds(-36525d * 86400))!.Value;
         if ((poleAtEpoch - new Vector3d(0, 0, 1)).Length > 1e-5 || Math.Abs(poleAfter.Length - 1) > 1e-12 ||
             poleAfter.X is < .009 or > .011 || poleBefore.X is < -.011 or > -.009)
-            throw new InvalidOperationException($"Incorrect P03 pole: {poleAtEpoch}, {poleBefore}, {poleAfter}.");
+            throw new InvalidOperationException($"Incorrect pole of date: {poleAtEpoch}, {poleBefore}, {poleAfter}.");
         string path = Path.Combine(directory, "paranal-sky-markings.stscene");
         ScenarioFile.Save(path, new([marked, marked with { Sky = view.Sky }], false, 0, 0, session.DeltaT));
         if (!scene.LoadScenario(path) || !await scene.ReloadAddOns() ||

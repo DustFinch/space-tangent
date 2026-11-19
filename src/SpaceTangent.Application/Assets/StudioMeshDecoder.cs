@@ -16,7 +16,7 @@ public static class StudioMeshDecoder
     private static readonly DecodedMaterial DefaultMaterial = new(new(.8, .8, .8), 1, null);
 
     private readonly record struct Triangle(int A, int B, int C);
-    private sealed record Part(Vector3d[] Vertices, Triangle[] Faces, string[] Materials, float[]? Uvs);
+    private sealed record Part(Vector3d[] Vertices, Triangle[] Faces, string[] Materials, float[]? Uvs, uint[]? SmoothingGroups);
     private sealed record Surface(List<Vector3d> Points, List<Vector3d> Normals, List<float> Uvs);
     private delegate void ChunkVisitor(ushort id, ReadOnlySpan<byte> data);
 
@@ -107,17 +107,27 @@ public static class StudioMeshDecoder
             triangleCount += part.Faces.Length;
             if (triangleCount > MaximumTriangles)
                 throw new InvalidDataException("3DS file exceeds the supported triangle count.");
+            // Area-weighted face normals, and for smoothing groups the faces that meet at each vertex.
+            var crosses = new Vector3d[part.Faces.Length];
+            List<int>[]? incident = part.SmoothingGroups is null ? null : new List<int>[part.Vertices.Length];
+            for (int index = 0; index < part.Faces.Length; index++)
+            {
+                var (a, b, c) = part.Faces[index];
+                if (a >= part.Vertices.Length || b >= part.Vertices.Length || c >= part.Vertices.Length)
+                    throw new InvalidDataException("3DS face refers to a missing vertex.");
+                crosses[index] = Vector3d.Cross(part.Vertices[b] - part.Vertices[a], part.Vertices[c] - part.Vertices[a]);
+                if (incident is not null)
+                    foreach (int vertex in new[] { a, b, c })
+                        (incident[vertex] ??= []).Add(index);
+            }
             for (int index = 0; index < part.Faces.Length; index++)
             {
                 if ((index & 1023) == 0)
                     cancellation.ThrowIfCancellationRequested();
                 var (a, b, c) = part.Faces[index];
-                if (a >= part.Vertices.Length || b >= part.Vertices.Length || c >= part.Vertices.Length)
-                    throw new InvalidDataException("3DS face refers to a missing vertex.");
                 Vector3d first = part.Vertices[a], second = part.Vertices[b], third = part.Vertices[c];
-                Vector3d cross = Vector3d.Cross(second - first, third - first);
-                double length = cross.Length;
-                Vector3d normal = length > 0 ? cross / length : new(0, 0, 1);
+                double length = crosses[index].Length;
+                Vector3d normal = length > 0 ? crosses[index] / length : new(0, 0, 1);
                 string name = part.Materials[index] ?? "";
                 if (!surfaces.TryGetValue(name, out var surface))
                 {
@@ -132,12 +142,26 @@ public static class StudioMeshDecoder
                 void Append(Vector3d point, int vertex)
                 {
                     surface.Points.Add(point);
-                    surface.Normals.Add(normal);
+                    surface.Normals.Add(Smoothed(index, vertex, normal));
                     surface.Uvs.Add(part.Uvs is { } uv ? uv[vertex * 2] : 0);
                     surface.Uvs.Add(part.Uvs is { } uvValues ? uvValues[vertex * 2 + 1] : 0);
                     min = new(Math.Min(min.X, point.X), Math.Min(min.Y, point.Y), Math.Min(min.Z, point.Z));
                     max = new(Math.Max(max.X, point.X), Math.Max(max.Y, point.Y), Math.Max(max.Z, point.Z));
                 }
+            }
+
+            // A vertex normal averages the faces at that vertex that share a smoothing group bit with the face, as the
+            // modelling tools that write 3DS files do. Faces without a group keep their flat normal.
+            Vector3d Smoothed(int face, int vertex, Vector3d flat)
+            {
+                if (part.SmoothingGroups is not { } groups || groups[face] == 0)
+                    return flat;
+                Vector3d sum = default;
+                foreach (int other in incident![vertex])
+                    if ((groups[other] & groups[face]) != 0)
+                        sum += crosses[other];
+                double length = sum.Length;
+                return length > 0 ? sum / length : flat;
             }
         }
     }
@@ -148,6 +172,7 @@ public static class StudioMeshDecoder
         Triangle[]? faces = null;
         string[]? materials = null;
         float[]? uvs = null;
+        uint[]? smoothing = null;
         ReadChunks(bytes, (id, data) =>
         {
             if (id == 0x4110)
@@ -194,13 +219,22 @@ public static class StudioMeshDecoder
                 {
                     if (faceKind == 0x4130)
                         AssignMaterial(group, groups);
+                    else if (faceKind == 0x4150)
+                    {
+                        if (smoothing is not null || group.Length != count * 4)
+                            throw new InvalidDataException("Invalid or repeated 3DS smoothing group list.");
+                        var masks = new uint[count];
+                        for (int index = 0; index < count; index++)
+                            masks[index] = BinaryPrimitives.ReadUInt32LittleEndian(group[(index * 4)..]);
+                        smoothing = masks;
+                    }
                 });
                 materials = groups;
             }
         });
         if (vertices is null || faces is null)
             throw new InvalidDataException("3DS mesh needs vertex and face lists.");
-        return new(vertices, faces, materials!, uvs?.Length == vertices.Length * 2 ? uvs : null);
+        return new(vertices, faces, materials!, uvs?.Length == vertices.Length * 2 ? uvs : null, smoothing);
     }
 
     private static void AssignMaterial(ReadOnlySpan<byte> group, string[] assignments)

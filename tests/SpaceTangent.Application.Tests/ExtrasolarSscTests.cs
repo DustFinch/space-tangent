@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
 using SpaceTangent.Application;
 using SpaceTangent.Contracts;
+using SpaceTangent.Core.Time;
 using SpaceTangent.Core.Addons;
 using SpaceTangent.Core.Ephemerides;
 using SpaceTangent.Core.Observing;
@@ -25,10 +26,10 @@ public sealed class ExtrasolarSscTests
         var snapshot = world.Graph.Evaluate(JulianInstant.FromJulianDate(2460600.5, TimeScale.Tdb));
         Assert.Equal(component.Id, world.Catalogue.Find(planet.Id)!.Parent);
         Assert.Equal(component.Id, world.FindStellarTarget(planet.Host)!.Id);
-        Assert.True(world.TryNavigationState(component.Id, snapshot, out var primary));
-        Assert.True(world.TryNavigationState(planet.Host, snapshot, out var legacy));
+        Assert.True(world.TryNavigationState(component.Id, snapshot, out var primary, DeltaTModel.MorrisonStephenson2004));
+        Assert.True(world.TryNavigationState(planet.Host, snapshot, out var legacy, DeltaTModel.MorrisonStephenson2004));
         Assert.Equal(primary, legacy);
-        Assert.True(world.TryNavigationState(planet.Id, snapshot, out var observed));
+        Assert.True(world.TryNavigationState(planet.Id, snapshot, out var observed, DeltaTModel.MorrisonStephenson2004));
         Assert.InRange(((observed - primary).PositionKilometers -
             planet.ParentRelativeState(snapshot.Epoch).PositionKilometers).Length, 0, 3);
     }

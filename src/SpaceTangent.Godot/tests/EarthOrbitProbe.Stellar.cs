@@ -29,7 +29,7 @@ public partial class EarthOrbitProbe
         double Distance()
         {
             var snapshot = session.World.Graph.Evaluate(session[0].Epoch);
-            if (!session.World.TryNavigationState(alcyone, snapshot, out var state))
+            if (!session.World.TryNavigationState(alcyone, snapshot, out var state, DeltaTModel.MorrisonStephenson2004))
                 throw new InvalidOperationException("Alcyone has no state in the published catalogue.");
             return (state.PositionKilometers - session.World.StellarOrigin).Length / StellarEntry.KilometersPerLightYear;
         }
@@ -70,7 +70,7 @@ public partial class EarthOrbitProbe
         bool archive = System.Environment.GetEnvironmentVariable("SPACETANGENT_STELLAR_ARCHIVE") is { Length: > 0 };
         bool stc = System.Environment.GetEnvironmentVariable("SPACETANGENT_STC_ROOT") is { Length: > 0 };
         int baseCount = archive ? 182_625 : 109_400;
-        if ((stc ? world.Stellar.Stars.Count <= baseCount : world.Stellar.Stars.Count != baseCount) || !world.TryNavigationState(star, snapshot, out var proxima))
+        if ((stc ? world.Stellar.Stars.Count <= baseCount : world.Stellar.Stars.Count != baseCount) || !world.TryNavigationState(star, snapshot, out var proxima, DeltaTModel.MorrisonStephenson2004))
             throw new InvalidOperationException("The spatial catalogue count or Proxima Centauri does not match the verified source.");
         var sky = new SkyLayerSettings(true, false, false, false) { DeepSky = true };
         await Capture("proxima-distant", star, proxima.PositionKilometers, 6e8, sky);
@@ -87,7 +87,7 @@ public partial class EarthOrbitProbe
                 world.Catalogue.Search("HIP 40").FirstOrDefault()?.Id != target ||
                 world.FindStellarTarget(target) is not { } resolved ||
                 world.Stellar.Find(target) is not null ||
-                !world.TryNavigationState(target, snapshot, out var state))
+                !world.TryNavigationState(target, snapshot, out var state, DeltaTModel.MorrisonStephenson2004))
                 throw new InvalidOperationException("The original distant catalogue or its aliases were not published.");
             await Capture("distant-star-solar-neighborhood", null, world.StellarOrigin, StellarEntry.KilometersPerLightYear, sky);
             if (scene.Renderer(0).VisibleDistantStars != 0)
@@ -126,8 +126,8 @@ public partial class EarthOrbitProbe
         if (world.Exoplanets.Bodies.Count > 0)
         {
             var exoplanet = world.Exoplanets.Find(new("exo/113357/dimidium"))!;
-            if (!world.TryNavigationState(exoplanet.Id, snapshot, out var state) ||
-                !world.TryNavigationState(exoplanet.Host, snapshot, out var host))
+            if (!world.TryNavigationState(exoplanet.Id, snapshot, out var state, DeltaTModel.MorrisonStephenson2004) ||
+                !world.TryNavigationState(exoplanet.Host, snapshot, out var host, DeltaTModel.MorrisonStephenson2004))
                 throw new InvalidOperationException("The original Dimidium system must have orbital states.");
             Vector3d light = (host - state).PositionKilometers;
             light /= light.Length;
@@ -175,8 +175,8 @@ public partial class EarthOrbitProbe
             world.Exoplanets.Find(new("exo/4294958019/kepler-931-ab")) is { } kepler)
         {
             if (world.Exoplanets.CanonicalHost(kepler.Host) != primary.Id ||
-                !world.TryNavigationState(primary.Id, snapshot, out var host) ||
-                !world.TryNavigationState(kepler.Id, snapshot, out var planet))
+                !world.TryNavigationState(primary.Id, snapshot, out var host, DeltaTModel.MorrisonStephenson2004) ||
+                !world.TryNavigationState(kepler.Id, snapshot, out var planet, DeltaTModel.MorrisonStephenson2004))
                 throw new InvalidOperationException("The original Kepler-931 Ab orbit must use the positioned component A.");
             var light = (host - planet).PositionKilometers;
             light /= light.Length;

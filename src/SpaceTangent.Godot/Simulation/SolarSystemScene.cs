@@ -86,6 +86,23 @@ public partial class SolarSystemScene : Control
 
     public override async void _Ready()
     {
+        // Godot cannot await _Ready, so an unexpected exception after an await would otherwise vanish into the
+        // synchronization context and leave a half-built window.
+        try
+        {
+            await ReadyAsync();
+        }
+        catch (Exception error)
+        {
+            GD.PushError($"SpaceTangent startup failed: {error}");
+            if (_status is not null)
+                _status.Text = "Startup failed: " + error.Message;
+            InitializationFinished = true;
+        }
+    }
+
+    private async Task ReadyAsync()
+    {
         _workspace = new(this, GoToActiveObject, TrackActiveObject);
         _panels = _workspace.Views;
         _status = _workspace.Status;
@@ -187,7 +204,7 @@ public partial class SolarSystemScene : Control
         try
         {
             _earthOrbitTextures = EarthOrbitTextures.Load(_surfaceTextures);
-            _planetTextures = PlanetTextures.Load();
+            _planetTextures = await PlanetTextures.LoadAsync(token, () => CanPublish(generation, token));
             _groundRingAtlas = _planetTextures.CreateGroundRingAtlas();
             _groundSurfaceMaps = _planetTextures.CreateGroundSurfaceArray();
             _orbitAtmospheres = OrbitAtmosphereTextures.LoadAll();
@@ -196,6 +213,10 @@ public partial class SolarSystemScene : Control
             foreach (string profile in world.Exoplanets.Bodies.Select(planet => planet.TextureClass).Distinct(StringComparer.OrdinalIgnoreCase))
                 if (PlanetTextures.Read(maps, profile + ".jpg") is { } texture)
                     _exoplanetTextures.Add(profile, texture);
+        }
+        catch (OperationCanceledException) when (!CanPublish(generation, token))
+        {
+            return;
         }
         catch (Exception error) when (IsLoadError(error))
         {
@@ -555,6 +576,11 @@ public partial class SolarSystemScene : Control
         GD.Print($"SpaceTangent world ready: DE440, {Assets.Count} science satellites, surface view {_surfaceTextures is not null}.");
         if (world.Ephemeris is HistoricalSolarEphemeris)
             GD.Print("SpaceTangent historical ephemeris ready: years 1–4000.");
+        if (world.Catalogue.DuplicateIds.Count > 0)
+            GD.PushWarning("SpaceTangent catalogue: later definitions of " +
+                string.Join(", ", world.Catalogue.DuplicateIds.Take(10).Select(id => id.Value)) +
+                (world.Catalogue.DuplicateIds.Count > 10 ? $" and {world.Catalogue.DuplicateIds.Count - 10} more" : "") +
+                " were ignored because an earlier source defined the same ID.");
         if (world.MissionName is { } mission)
             GD.Print($"SpaceTangent mission ready: {mission}.");
         if (world.TimelineId is not null)
@@ -1472,8 +1498,6 @@ public partial class SolarSystemScene : Control
             if (!CanPublish(generation, token))
                 return false;
             AddonGeneration next = AddonDiagnostics.Read(AddonStage.RenderResources, null, () => AddonLoader.Publish(decoded, previous));
-            if (requested is not null)
-                _localAddonFile.Save(requested);
             if (!ReferenceEquals(previous, next))
             {
                 if (!Session.TryReplaceWorld(decoded.World))
@@ -1487,6 +1511,9 @@ public partial class SolarSystemScene : Control
                     ReplaceAssets(view);
                 Refresh();
             }
+            // Persist the request only once the world that uses it is live, so a failed reload keeps the old settings.
+            if (requested is not null)
+                _localAddonFile.Save(requested);
             _localAddons = settings;
             _status.Text = "Add-ons reloaded.";
             _status.TooltipText = "";
@@ -1877,22 +1904,30 @@ public partial class SolarSystemScene : Control
     private void SeekUtc(string dateText, string clockText)
     {
         string[] clock = clockText.Split(':');
-        if (!DateOnly.TryParseExact(dateText, "yyyy-MM-dd", CultureInfo.InvariantCulture, DateTimeStyles.None, out DateOnly date) ||
+        if (!HistoricalDate.TryParse(dateText, out HistoricalDate date, out long dateTime) || dateTime != 0 ||
             clock.Length != 3 || !Parse(clock[0], out int hour) || !Parse(clock[1], out int minute) ||
-            !Parse(clock[2], out int second))
+            !Parse(clock[2], out int second) || hour > 23 || minute > 59 || second > 60)
         {
-            _status.Text = "Enter a UTC date and time as YYYY-MM-DD and HH:MM:SS.";
+            _status.Text = "Enter a date as YYYY-MM-DD (Julian before 1582-10-15) and a time as HH:MM:SS.";
             return;
         }
         try
         {
-            JulianInstant epoch = TimeConversion.FromUtc(new(date, hour, minute, second), TimeScale.Tdb);
+            // UTC exists from 1972 on. Earlier dates are read as UT1 from the selected ΔT model.
+            JulianInstant epoch;
+            if (date.DayNumber >= UtcStartDayNumber)
+                epoch = TimeConversion.FromUtc(new(date.ToGregorian(), hour, minute, second), TimeScale.Tdb);
+            else if (second < 60)
+                epoch = EarthCivilTime.FromModeledUt1(date,
+                    ((hour * 60L + minute) * 60 + second) * JulianInstant.NanosecondsPerSecond, Session!.DeltaT);
+            else
+                throw new ArgumentOutOfRangeException(nameof(clockText), "Leap seconds exist only in UTC.");
             Seek(_active, epoch);
             _status.Text = "";
         }
         catch (ArgumentOutOfRangeException)
         {
-            _status.Text = "The UTC date or time is outside the supported calendar or ephemeris.";
+            _status.Text = "The date or time is outside the supported calendar or ephemeris.";
         }
 
         static bool Parse(string value, out int field) =>
@@ -1908,10 +1943,15 @@ public partial class SolarSystemScene : Control
         }
         catch (ArgumentOutOfRangeException)
         {
-            return EarthCivilTime.ModeledUt1(epoch, model) is { } modeled
-                ? FormattableString.Invariant($"{modeled.Date:yyyy-MM-dd}  {modeled.Time:HH:mm:ss} UT1 (modeled)") : "TDB";
+            return EarthCivilTime.ModeledHistoricalUt1(epoch, model) is { } modeled
+                ? FormattableString.Invariant(
+                    $"{modeled.Date}  {modeled.Time:HH:mm:ss} UT1 (modeled{(modeled.Date.IsJulian ? ", Julian" : "")})")
+                : "TDB";
         }
     }
+
+    // 1972 January 1, the first day of UTC with leap seconds.
+    private const long UtcStartDayNumber = 2_441_318;
 
     private void SeekTimeline(int view, string text)
     {
@@ -2130,10 +2170,20 @@ public partial class SolarSystemScene : Control
         UpdateActiveFrame();
     }
 
-    private static bool IsLoadError(Exception error) =>
-        error is IOException or UnauthorizedAccessException or InvalidDataException or FormatException
-            or OverflowException or System.Text.Json.JsonException or KeyNotFoundException or InvalidOperationException
-            or ArgumentException or NotSupportedException;
+    private static bool IsLoadError(Exception error)
+    {
+        // Out-of-range values usually come from the data itself, such as an epoch outside the supported calendar.
+        if (error is IOException or UnauthorizedAccessException or InvalidDataException or FormatException
+            or System.Text.Json.JsonException or ArgumentOutOfRangeException)
+            return true;
+        if (error is not (OverflowException or KeyNotFoundException or InvalidOperationException or ArgumentException
+            or NotSupportedException))
+            return false;
+        // These usually mean a defect rather than bad input. The user still gets the short message, and the log keeps
+        // the stack so that the defect can be found.
+        GD.PushError($"SpaceTangent: unexpected {error.GetType().Name} while loading: {error}");
+        return true;
+    }
 
     private static string SettingsPath()
     {

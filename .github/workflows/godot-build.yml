@@ -1,0 +1,25 @@
+# SPDX-License-Identifier: GPL-2.0-or-later
+name: Godot build
+
+on: [push, pull_request]
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    # The Godot project's lock file pins the package hashes of the Windows engine build, so locked restore works on
+    # Windows only. Move this job to Linux once the lock file is platform independent.
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+      - uses: actions/setup-dotnet@v4
+        with:
+          global-json-file: global.json
+          dotnet-version: 8.0.x
+      - run: dotnet restore src/SpaceTangent.Godot/SpaceTangent.Godot.csproj --locked-mode
+      - run: dotnet build src/SpaceTangent.Godot/SpaceTangent.Godot.csproj --no-restore
+      - run: dotnet restore tools/SpaceTangent.ModelTool/SpaceTangent.ModelTool.csproj --locked-mode
+      - run: dotnet build tools/SpaceTangent.ModelTool/SpaceTangent.ModelTool.csproj --no-restore -c Release

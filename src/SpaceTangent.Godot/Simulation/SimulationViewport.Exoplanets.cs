@@ -25,13 +25,13 @@ internal partial class SimulationViewport
         if (pose.Target is not { } target)
             return;
         ObjectId host = world.Exoplanets.Find(target)?.Host ?? target;
-        if (!world.TryNavigationState(host, snapshot, out var hostState))
+        if (!world.TryNavigationState(host, snapshot, out var hostState, _frameDeltaT))
             return;
         var lights = AddonLoader.PhotometricStars(world, host);
         int count = 0;
         foreach (ExoplanetEntry planet in world.Exoplanets.BodiesOf(host))
         {
-            if (count >= 32 || !world.TryNavigationState(planet.Id, snapshot, out var state))
+            if (count >= 32 || !world.TryNavigationState(planet.Id, snapshot, out var state, _frameDeltaT))
                 continue;
             var (center, projection) = project(state.PositionKilometers);
             float radius = (float)(planet.RadiusKilometers * projection / units);

@@ -106,7 +106,7 @@ internal partial class SimulationViewport
             if (!sky.HideTerrain && nearTarget &&
                 DemoWorlds.CreateSurface(body) is { HasSurface: true } surface)
             {
-                var placement = pose.ResolvePlacement(snapshot);
+                var placement = pose.ResolvePlacement(snapshot, _frameDeltaT);
                 Vector3d nativeEye = Native(inertialToFixed.Transform(
                     (pose.AnchorKilometers - state.PositionKilometers) + placement.OffsetKilometers));
                 Vector3d nativeLook = Native(inertialToFixed.Transform(placement.Forward));

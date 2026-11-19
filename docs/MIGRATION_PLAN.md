@@ -2,7 +2,7 @@
 
 The migration plan is approved. Each milestone is accepted against its verification criteria.
 
-Use the legacy checkout at `E:/Projects/karyonika/gamedev/space_tangent_legacy` as a reference for behavior, source provenance and tests. The refactor inputs are `docs/review/13-local-fix-progress.md` and `godot-dotnet/docs/LOCAL_FIX_LIMITS.md` in that checkout. Each step below has a way to verify its result.
+Use a local checkout of the legacy simulator as a reference for behavior, source provenance and tests. Its review and local-fix notes were the refactor inputs. Each step below has a way to verify its result.
 
 ## 1. Engine-independent math, time and identity
 

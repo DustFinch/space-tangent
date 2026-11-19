@@ -21,6 +21,7 @@ public partial class EarthAccuracyProbe : Node
             if (DisplayServer.GetName() == "headless") throw new InvalidOperationException("This test requires a real renderer.");
             string output = System.Environment.GetEnvironmentVariable("SPACETANGENT_ACCURACY_OUTPUT")!;
             Directory.CreateDirectory(output);
+            await ExerciseTextureLifetime();
             var ephemeris = De440Ephemeris.Load(System.Environment.GetEnvironmentVariable("SPACETANGENT_DE440")!);
             var sample = ephemeris.Sample(SurfaceProjection.FullMoonEpoch);
             var textures = SurfaceProjection.LoadTextures() ?? throw new InvalidOperationException("Install the original surface maps.");

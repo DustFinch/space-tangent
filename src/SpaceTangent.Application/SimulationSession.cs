@@ -37,6 +37,8 @@ public readonly record struct ObserverView(JulianInstant Epoch, CameraMode Mode,
     public static bool ValidMouseSensitivity(double value) => value is >= .25 and <= 4;
     public double? PlaybackRate { get; init; }
     public bool LightTimeDelayed { get; init; }
+    /// <summary>Applied clock displacement, retained across splitting, saving and reloading. Null for older scenes.</summary>
+    public long? LightTimeOffsetNanoseconds { get; init; }
     public ObserverOptics? Optics { get; init; }
     public bool SupportsOptics => Mode == CameraMode.Surface || Navigation is not null;
     public VisualOptics? ActiveOptics => SupportsOptics && Optics is { Active: true } optical ? optical.Profile : null;
@@ -153,8 +155,8 @@ public sealed partial class SimulationWorld
         return snapshot.TryState(site.Body, out body) && NavigationCamera.TryBodyBasis(snapshot, site.Body, model, out orientation);
     }
 
-    public bool TryNavigationState(ObjectId id, WorldSnapshot snapshot, out CartesianState state,
-        DeltaTModel deltaT = DeltaTModel.MorrisonStephenson2004)
+    /// <summary>The state of any navigable target. Earth surface sites depend on the observer's ΔT model.</summary>
+    public bool TryNavigationState(ObjectId id, WorldSnapshot snapshot, out CartesianState state, DeltaTModel deltaT)
     {
         if (snapshot.TryState(id, out state))
             return true;
@@ -293,6 +295,8 @@ public sealed partial class SimulationSession
                 throw new InvalidDataException("The scenario has an invalid optics profile.");
             if (view.PlaybackRate is { } rate && !ObserverView.ValidPlaybackRate(rate))
                 throw new InvalidDataException("The scenario has an invalid playback rate.");
+            if (view.LightTimeOffsetNanoseconds is { } offset && (offset < 0 || !view.LightTimeDelayed))
+                throw new InvalidDataException("The scenario has an invalid light-time offset.");
             if ((view.ReferenceMarks & ~BodyReferenceMarks.All) != 0)
                 throw new InvalidDataException("The scenario has unsupported reference marks.");
             if (view.Terrain is { } terrain && !terrain.IsValid())
@@ -454,7 +458,15 @@ public sealed partial class SimulationSession
             return;
         Synchronized = enabled;
         if (enabled)
+        {
             SetClock(source, anchor.Epoch, anchor.Playing);
+            for (int index = 0; index < _views.Count; index++)
+                _views[index] = _views[index] with
+                {
+                    LightTimeDelayed = anchor.LightTimeDelayed,
+                    LightTimeOffsetNanoseconds = anchor.LightTimeOffsetNanoseconds
+                };
+        }
     }
 
     public void SetDeltaT(DeltaTModel model)
@@ -536,7 +548,9 @@ public sealed partial class SimulationSession
 
     public void SetPlaying(int view, bool playing) => SetClock(view, _views[view].Epoch, playing);
 
-    public void SetPlaybackRate(int view, double rate) => SetPlaybackRate(view, rate, synchronizeRate: false);
+    // Synchronized views share one clock, so they share its rate. Otherwise the rate would change whenever another view
+    // became the clock owner.
+    public void SetPlaybackRate(int view, double rate) => SetPlaybackRate(view, rate, synchronizeRate: true);
 
     internal void SetPlaybackRate(int view, double rate, bool synchronizeRate)
     {

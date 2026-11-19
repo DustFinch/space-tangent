@@ -214,7 +214,7 @@ internal partial class SimulationViewport
         void Draw(StellarEntry star)
         {
             if (star.IsBarycenter || star.RadiusKilometers <= 0 || _visibleStars.ContainsKey(star.Id) ||
-                !world.TryNavigationState(star.Id, snapshot, out CartesianState state))
+                !world.TryNavigationState(star.Id, snapshot, out CartesianState state, _frameDeltaT))
                 return;
             var (center, projection) = project(state.PositionKilometers);
             if (_navigationCamera.IsPositionBehind(center))

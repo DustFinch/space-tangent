@@ -54,7 +54,9 @@ public static partial class TourConverter
         double wait = commands.TakeWhile(command => command.Name != "exit")
             .Where(command => command.Name is "wait" or "orbit" or "rotate" or "changedistance" or "move")
             .Sum(command => Duration(command.Number("duration", command.Name == "wait" ? 0 : 1)));
-        double scale = wait > 110 ? 110 / wait : 1;
+        // Timing is kept unless the tour waits longer in total than a script may.
+        double budget = LuaSessionScript.MaximumWaitSeconds - 10;
+        double scale = wait > budget ? budget / wait : 1;
         if (scale < 1)
             unapplied.Add("original timing compressed to fit the Lua wait quota");
         var lua = new StringBuilder("""

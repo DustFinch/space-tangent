@@ -279,7 +279,7 @@ internal partial class BrightSkyOverlay : Control
 
     internal static Vector3 EclipticDirection(float longitude, float latitude)
     {
-        const float obliquity = 23.4392911f * MathF.PI / 180;
+        const float obliquity = (float)EclipticJ2000.ObliquityRadians;
         return BrightSkyData.Equatorial(longitude, latitude).Rotated(Vector3.Right, obliquity);
     }
 

@@ -182,8 +182,10 @@ public partial class MoonLightingProbe : Node
         }
     }
 
+    private const double SiteHeightKilometers = .15;
+
     private static SurfaceLighting Sample(SolarSystemScene scene, JulianInstant epoch) =>
-        EarthSurfaceLighting.Sample(scene.Session!.World.Ephemeris.Sample(epoch), new EarthSite(55.7558, 37.6173, .15),
+        EarthSurfaceLighting.Sample(scene.Session!.World.Ephemeris.Sample(epoch), new EarthSite(55.7558, 37.6173, SiteHeightKilometers),
             scene.Session.DeltaT);
 
     private static double SolarElevation(SurfaceLighting lighting)
@@ -210,7 +212,7 @@ public partial class MoonLightingProbe : Node
         foreach (int y in new[] { image.GetHeight() / 4, image.GetHeight() / 2, 3 * image.GetHeight() / 4 })
         {
             int x = image.GetWidth() / 2;
-            Vector3d expected = EarthSkyReference.Pixel(lighting, image.GetWidth(), image.GetHeight(), x, y, pitch);
+            Vector3d expected = EarthSkyReference.Pixel(lighting, SiteHeightKilometers, image.GetWidth(), image.GetHeight(), x, y, pitch);
             Color actual = image.GetPixel(x, y);
             error = Math.Max(error, Math.Max(Math.Abs(expected.X - actual.R),
                 Math.Max(Math.Abs(expected.Y - actual.G), Math.Abs(expected.Z - actual.B))));

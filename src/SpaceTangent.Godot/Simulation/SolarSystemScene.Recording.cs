@@ -73,13 +73,30 @@ public partial class SolarSystemScene
             return;
         }
         if (name.Length > 120 || name is "." or ".." || name.EndsWith('.') || name.EndsWith(' ') ||
-            name.Any(character => char.IsControl(character) || "<>:\"/\\|?*".Contains(character)))
+            name.Any(character => char.IsControl(character) || "<>:\"/\\|?*".Contains(character)) ||
+            ReservedWindowsName(name))
             throw new InvalidDataException("A script screenshot needs a plain filename in the captures folder.");
         if (_scriptScreenshots.Count >= 32)
             throw new InvalidOperationException("Too many script screenshots are queued.");
         string output = name.Length == 0 ? CaptureStem() + ".png" :
             Path.Combine(CaptureDirectory(), name.EndsWith(".png", StringComparison.OrdinalIgnoreCase) ? name : name + ".png");
+        // A script never replaces an existing capture: the name gets the first free numeric suffix instead.
+        string directory = Path.GetDirectoryName(output)!, stem = Path.GetFileNameWithoutExtension(output);
+        for (int suffix = 2; File.Exists(output) || _scriptScreenshots.Contains(output, StringComparer.OrdinalIgnoreCase); suffix++)
+        {
+            if (suffix > 9999)
+                throw new IOException("No free screenshot name remains for this script capture.");
+            output = Path.Combine(directory, FormattableString.Invariant($"{stem}-{suffix}.png"));
+        }
         _scriptScreenshots.Enqueue(output);
+    }
+
+    private static bool ReservedWindowsName(string name)
+    {
+        string device = name.Split('.')[0].TrimEnd().ToUpperInvariant();
+        return device is "CON" or "PRN" or "AUX" or "NUL" ||
+            device.Length == 4 && (device.StartsWith("COM", StringComparison.Ordinal) || device.StartsWith("LPT", StringComparison.Ordinal)) &&
+            device[3] is >= '1' and <= '9';
     }
 
     private void ToggleRecording()

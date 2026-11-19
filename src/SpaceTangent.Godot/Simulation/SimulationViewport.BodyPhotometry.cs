@@ -63,7 +63,7 @@ internal partial class SimulationViewport
             double phase = Math.Clamp((1 + Vector3d.Dot(sunDirection, eyeDirection)) / 2, 0, 1);
             if (parentId != lightId && CatalogueWorld?.FindStellarTarget(parentId) is null &&
                 (CatalogueWorld is { } parentWorld
-                    ? parentWorld.TryNavigationState(parentId, snapshot, out var parent)
+                    ? parentWorld.TryNavigationState(parentId, snapshot, out var parent, _frameDeltaT)
                     : snapshot.TryState(parentId, out parent)))
             {
                 Vector3d parentOffset = bodyPosition - parent.PositionKilometers;

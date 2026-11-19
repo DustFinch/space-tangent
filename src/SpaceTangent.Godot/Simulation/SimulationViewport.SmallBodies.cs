@@ -81,7 +81,7 @@ internal partial class SimulationViewport
         if (distance <= bodyRadius || _navigationCamera.IsPositionBehind(position))
             return;
         if (parentId is { } primary &&
-            (CatalogueWorld is { } world ? world.TryNavigationState(primary, snapshot, out var parent) :
+            (CatalogueWorld is { } world ? world.TryNavigationState(primary, snapshot, out var parent, _frameDeltaT) :
                 snapshot.TryState(primary, out parent)))
         {
             Vector3d relativeParent = parent.PositionKilometers - center;

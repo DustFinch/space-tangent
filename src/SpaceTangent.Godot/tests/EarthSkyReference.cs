@@ -13,7 +13,8 @@ internal static class EarthSkyReference
     private const double Ground = EarthSurfaceLighting.EarthRadiusKilometers, Top = Ground + 100;
     private const double Mie = .01, Anisotropy = .76, Exposure = 7;
 
-    internal static Vector3d Pixel(SurfaceLighting lighting, int width, int height, int x, int y, double pitchDegrees)
+    internal static Vector3d Pixel(SurfaceLighting lighting, double siteHeightKilometers, int width, int height, int x, int y,
+        double pitchDegrees)
     {
         const double Degree = Math.PI / 180;
         const double Heading = 237 * Degree;
@@ -26,8 +27,10 @@ internal static class EarthSkyReference
         double screenX = (2 * (x + .5) / width - 1) * width / height;
         double screenY = 1 - 2 * (y + .5) / height;
         Vector3d ray = Unit(forward + (right * screenX + up * screenY) * Math.Tan(5 * Degree));
-        Vector3d observer = lighting.PositionKilometers;
-        Vector3d sun = Unit(lighting.EarthToSun - observer);
+        // Like the shader, integrate a local spherical atmosphere tangent to the geodetic site: its eye is on the
+        // vertical at the site's height. The Sun's direction is still taken from the physical ellipsoidal position.
+        Vector3d sun = Unit(lighting.EarthToSun - lighting.PositionKilometers);
+        Vector3d observer = enu.Z * (Ground + siteHeightKilometers);
         double cosine = Vector3d.Dot(ray, sun);
         double rayleighPhase = (3d / 16 / Math.PI) * (1 + cosine * cosine);
         double miePhase = (1 - Anisotropy * Anisotropy) /

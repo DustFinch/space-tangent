@@ -14,6 +14,8 @@ jobs:
           submodules: recursive
       - uses: actions/setup-dotnet@v4
         with:
+          # global.json pins SDK 10; the tests target the .NET 8 runtime.
+          global-json-file: global.json
           dotnet-version: '8.0.x'
       - run: dotnet restore tests/SpaceTangent.Application.Tests --locked-mode
       - run: dotnet test tests/SpaceTangent.Application.Tests -c Release --no-restore --logger trx

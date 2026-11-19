@@ -12,6 +12,8 @@ public sealed partial class LuaSessionScript
     private ILookup<ObjectId, CatalogueObject>? _solarChildren;
     private readonly Dictionary<int, DynValue> _nativeObservers = [];
     private (SimulationWorld World, WorldSnapshot Snapshot)? _nativeSnapshot;
+    private SimulationWorld? _tourWorld;
+    private ILookup<ObjectId, CatalogueObject>? _tourChildren;
 
     private void BindNativeObjects(Table api)
     {
@@ -161,6 +163,7 @@ public sealed partial class LuaSessionScript
         JulianInstant epoch = _session[observer ?? View].Epoch;
         if (_nativeSnapshot is { } recent && ReferenceEquals(recent.World, world) && recent.Snapshot.Epoch == epoch && recent.Snapshot.DeltaT == _session.DeltaT)
             return recent.Snapshot;
+        Charge(WorldEvaluationCost);
         WorldSnapshot snapshot = world.Graph.Evaluate(epoch, _session.DeltaT);
         _nativeSnapshot = (world, snapshot);
         return snapshot;

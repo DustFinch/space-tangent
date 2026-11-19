@@ -2,6 +2,7 @@
 using Godot;
 using SpaceTangent.Application;
 using SpaceTangent.Contracts;
+using SpaceTangent.Core.Time;
 using SpaceTangent.Core.Ephemerides;
 using SpaceTangent.Core.Spice;
 
@@ -28,15 +29,15 @@ public partial class WorkspaceInputSmoke
         Require(chase.Navigation is { Placement: { Frame: NavigationFrame.Chase, Reference: { } parent } } && parent == sun &&
             phase.Navigation is { Placement: { Frame: NavigationFrame.PhaseLock, Reference: { } partner } } && partner == moon,
             "Chase uses the parent, while phase lock uses the linked second body.");
-        var chaseDirection = chase.Navigation!.Value.ResolvePlacement(world).OffsetKilometers;
-        var phaseDirection = phase.Navigation!.Value.ResolvePlacement(world).OffsetKilometers;
+        var chaseDirection = chase.Navigation!.Value.ResolvePlacement(world, DeltaTModel.MorrisonStephenson2004).OffsetKilometers;
+        var phaseDirection = phase.Navigation!.Value.ResolvePlacement(world, DeltaTModel.MorrisonStephenson2004).OffsetKilometers;
         var velocity = (s - e).VelocityKilometersPerSecond;
         var position = (m - e).PositionKilometers;
         Require(Vector3d.Dot(chaseDirection / chaseDirection.Length, velocity / velocity.Length) > .999999 &&
             Vector3d.Dot(phaseDirection / phaseDirection.Length, position / position.Length) > .999999,
             "The local X axes must follow parent-relative velocity and partner-relative position, respectively.");
         var later = Session.World.Graph.Evaluate(chase.Epoch.AddSeconds(3600));
-        Require((phaseDirection - phase.Navigation.Value.ResolvePlacement(later).OffsetKilometers).Length > 100,
+        Require((phaseDirection - phase.Navigation.Value.ResolvePlacement(later, DeltaTModel.MorrisonStephenson2004).OffsetKilometers).Length > 100,
             "Advancing the epoch must rotate the phase-lock camera in the same local coordinates.");
         var original = new SimulationScenario([phase], true, 0, 0, Session.DeltaT);
         var restored = SceneLink.Read(SceneLink.Write(original), Session.World, Session.DeltaT).Scenario;
@@ -82,10 +83,10 @@ public partial class WorkspaceInputSmoke
             Math.Abs(rotatedOffset.Length / distance - 1) < 1e-10,
             $"Orbiting must move the eye at constant distance ({distance:R} to {rotatedOffset.Length:R} km).");
         mars = orbited;
-        var before = mars.ResolvePlacement(Session.World.Graph.Evaluate(Session[0].Epoch));
+        var before = mars.ResolvePlacement(Session.World.Graph.Evaluate(Session[0].Epoch), DeltaTModel.MorrisonStephenson2004);
         await Click(Find<Button>("AdvanceHour0"));
         NavigationCamera rotated = Session[0].Navigation!.Value;
-        var after = rotated.ResolvePlacement(Session.World.Graph.Evaluate(Session[0].Epoch));
+        var after = rotated.ResolvePlacement(Session.World.Graph.Evaluate(Session[0].Epoch), DeltaTModel.MorrisonStephenson2004);
         Require(mars.Placement == rotated.Placement && (before.Forward - after.Forward).Length > .001,
             "A time step must rotate the inertial orientation while preserving the local frame.");
 

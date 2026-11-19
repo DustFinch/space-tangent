@@ -174,7 +174,7 @@ internal sealed class EarthObserverPanel
             _coordinates.Text += FormattableString.Invariant($"\nBortle {conditions.Bortle} · {conditions.PressureAt(camera.Site):F0} hPa");
         if (night is not null)
         {
-            _coordinates.Text += FormattableString.Invariant($"\nNight of {night.EveningDate:yyyy-MM-dd}");
+            _coordinates.Text += "\nNight of " + HistoricalLabel(night.EveningDate);
             if (night.UpperCulmination is { Target: { } peak } culmination)
                 _coordinates.Text += FormattableString.Invariant(
                     $"\nCulmination {peak.AltitudeDegrees:F1}° · {Time(culmination.Epoch, model)}");
@@ -191,7 +191,7 @@ internal sealed class EarthObserverPanel
             _twilightKey = key;
             CivilTwilight twilight = EarthObserving.Twilight(ephemeris, date, camera.Site, model, clock);
             string dateKind = clock.HasOffset ? "local civil date" : "local mean solar date";
-            _twilight.Text = FormattableString.Invariant($"{date:yyyy-MM-dd} · {dateKind}\n") +
+            _twilight.Text = HistoricalLabel(date) + $" · {dateKind}\n" +
                 (twilight.Horizon.AlwaysAbove ? "Sun above the horizon all day." :
                  twilight.CivilLimit.AlwaysBelow ? "Sun below the civil limit all day." :
                  twilight.Horizon.AlwaysBelow
@@ -253,9 +253,16 @@ internal sealed class EarthObserverPanel
         }
         catch (ArgumentOutOfRangeException)
         {
-            return EarthCivilTime.ModeledUt1(time, model) is { } modeled
-                ? FormattableString.Invariant($"{modeled.Date:MM-dd} {modeled.Time:HH:mm} UT1") : "—";
+            return EarthCivilTime.ModeledHistoricalUt1(time, model) is { } modeled
+                ? FormattableString.Invariant($"{modeled.Date.Month:00}-{modeled.Date.Day:00} {modeled.Time:HH:mm} UT1") : "—";
         }
+    }
+
+    /// <summary>A calendar label that follows the historical calendar, Julian before 1582 October 15.</summary>
+    private static string HistoricalLabel(DateOnly date)
+    {
+        var historical = HistoricalDate.FromGregorian(date);
+        return historical.IsJulian ? historical + " (Julian)" : historical.ToString();
     }
 
     private static bool Read(LineEdit field, out double value) =>

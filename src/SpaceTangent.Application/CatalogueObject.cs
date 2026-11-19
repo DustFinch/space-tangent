@@ -83,18 +83,33 @@ public sealed class ObjectCatalogue
                 if (existing.Add(id))
                     objects.Add(new(id, name, CatalogueKind.Star) { Aliases = aliases });
         }
-        Objects = objects.AsReadOnly();
-        _byId = objects.ToDictionary(body => body.Id);
+        // Sources are independent add-ons, so two of them may claim one ID. The first definition wins, as in the
+        // world graph, and the others are reported instead of failing the whole world.
+        var unique = new List<CatalogueObject>(objects.Count);
+        var duplicates = new List<ObjectId>();
+        _byId = new Dictionary<ObjectId, CatalogueObject>(objects.Count);
+        foreach (CatalogueObject item in objects)
+            if (_byId.TryAdd(item.Id, item))
+                unique.Add(item);
+            else
+                duplicates.Add(item.Id);
+        Objects = unique.AsReadOnly();
         SurfaceSites = SurfaceSite.Bind(this, locations);
         foreach (SurfaceSite site in SurfaceSites)
         {
             var location = new CatalogueObject(site.Id, site.Definition.Name, CatalogueKind.SurfaceLocation, site.Body);
-            objects.Add(location);
-            _byId.Add(location.Id, location);
+            if (_byId.TryAdd(location.Id, location))
+                unique.Add(location);
+            else
+                duplicates.Add(location.Id);
         }
+        DuplicateIds = duplicates.AsReadOnly();
     }
 
     private readonly Dictionary<ObjectId, CatalogueObject> _byId;
+
+    /// <summary>IDs that more than one source defined; only the first definition is in the catalogue.</summary>
+    public IReadOnlyList<ObjectId> DuplicateIds { get; }
     public IReadOnlyList<CatalogueObject> Objects { get; }
     internal IReadOnlyList<SurfaceSite> SurfaceSites { get; }
     private readonly DistantStarIndex? _distantStars;

@@ -14,11 +14,12 @@ internal sealed class LocalAddonsPanel
     private readonly Func<LocalAddonKind, bool, Task> _setDefault;
     private readonly Func<LocalAddonSource, bool, Task> _setSource;
     private readonly List<CheckButton> _switches = [];
+    private readonly CheckButton _offline;
     private bool _busy, _updatingSatellites;
 
     internal LocalAddonsPanel(Control owner, Container page, Func<Task<bool>> reload,
         Func<LocalAddonKind, string, Task> add, Func<LocalAddonKind, bool, Task> setDefault,
-        Func<LocalAddonSource, bool, Task> setSource, Func<Task> updateSatellites)
+        Func<LocalAddonSource, bool, Task> setSource, Func<Task> updateSatellites, Action<bool> setOffline)
     {
         _reloadAction = reload;
         _setDefault = setDefault;
@@ -26,6 +27,12 @@ internal sealed class LocalAddonsPanel
         _reload = new Button { Name = "ReloadAddOns", Text = WorkspaceText.Choose("Reload add-ons", "Перечитать дополнения") };
         _reload.Pressed += async () => await _reloadAction();
         page.AddChild(_reload);
+        _offline = new CheckButton { Name = "HipsOffline",
+            ClipText = true, Text = WorkspaceText.Choose("HiPS: offline", "HiPS: без сети"),
+            TooltipText = WorkspaceText.Choose("Sky surveys use local files and cache without downloading tiles.",
+                "Обзоры неба используют локальные файлы и кэш без загрузки тайлов из сети.") };
+        _offline.Toggled += value => setOffline(value);
+        page.AddChild(_offline);
 
         var import = new Button
         {
@@ -80,6 +87,7 @@ internal sealed class LocalAddonsPanel
     {
         _busy = busy;
         bool disabled = busy || _updatingSatellites;
+        _offline.Disabled = disabled || System.Environment.GetEnvironmentVariable("SPACETANGENT_HIPS_OFFLINE") == "1";
         _kind.Disabled = _browse.Disabled = _reload.Disabled = _updateSatellites.Disabled = disabled;
         foreach (CheckButton toggle in _switches)
             toggle.Disabled = disabled;
@@ -87,6 +95,8 @@ internal sealed class LocalAddonsPanel
 
     internal void ShowSources(LocalAddonSettings settings, LocalAddonSettingsFile file, AddonLoader.DecodedAddOns? loaded)
     {
+        _offline.SetPressedNoSignal(settings.HipsOffline || System.Environment.GetEnvironmentVariable("SPACETANGENT_HIPS_OFFLINE") == "1");
+        _offline.Disabled = _busy || _updatingSatellites || System.Environment.GetEnvironmentVariable("SPACETANGENT_HIPS_OFFLINE") == "1";
         foreach (Node row in _rows.GetChildren())
         {
             _rows.RemoveChild(row);

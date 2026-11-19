@@ -26,8 +26,25 @@ internal sealed partial class SkySurveyTiles
     private readonly string _remoteRoot = Path.GetFullPath(
         System.Environment.GetEnvironmentVariable("SPACETANGENT_HIPS_CACHE") ??
         ProjectSettings.GlobalizePath("user://hips"));
-    private readonly bool _offline = System.Environment.GetEnvironmentVariable("SPACETANGENT_HIPS_OFFLINE") == "1";
-    private readonly CancellationTokenSource _remoteLifetime = new();
+    private readonly bool _forcedOffline = System.Environment.GetEnvironmentVariable("SPACETANGENT_HIPS_OFFLINE") == "1";
+    private bool _offline;
+    private readonly System.Net.Http.HttpClient _http;
+    private CancellationTokenSource _remoteLifetime = new();
+    internal bool Offline => _offline || _forcedOffline;
+
+    internal void SetOffline(bool offline)
+    {
+        if (_offline == offline)
+            return;
+        _offline = offline;
+        _remoteLifetime.Cancel();
+        _remoteLifetime.Dispose();
+        _remoteLifetime = new();
+        _pending.Clear();
+        _missing.Clear();
+        _unavailable.Clear();
+        Revision++;
+    }
     private readonly Dictionary<string, RemoteRequest> _pending = new(StringComparer.Ordinal);
     private readonly Dictionary<string, long> _unavailable = new(StringComparer.Ordinal);
     private long? _cacheBytes;
@@ -38,7 +55,7 @@ internal sealed partial class SkySurveyTiles
     private void RequestRemote(string id, string relative, bool properties = false, LocalSkySurvey? survey = null,
         bool allSky = false)
     {
-        if (_offline || DisplayServer.GetName() == "headless" || _pending.Count >= MaximumRequests)
+        if (Offline || DisplayServer.GetName() == "headless" || _pending.Count >= MaximumRequests)
             return;
         string path = Path.Combine(_remoteRoot, id, relative.Replace('/', Path.DirectorySeparatorChar));
         if (_pending.ContainsKey(path) ||
@@ -122,14 +139,14 @@ internal sealed partial class SkySurveyTiles
         }
     }
 
-    private static async Task<byte[]?> Download(Uri url, int limit, CancellationToken lifetime)
+    private async Task<byte[]?> Download(Uri url, int limit, CancellationToken lifetime)
     {
         using var timeout = CancellationTokenSource.CreateLinkedTokenSource(lifetime);
         timeout.CancelAfter(TimeSpan.FromSeconds(12));
         var token = timeout.Token;
         try
         {
-            using var response = await Http.GetAsync(url, HttpCompletionOption.ResponseHeadersRead, token).ConfigureAwait(false);
+            using var response = await _http.GetAsync(url, HttpCompletionOption.ResponseHeadersRead, token).ConfigureAwait(false);
             if (!response.IsSuccessStatusCode || response.Content.Headers.ContentLength > limit)
                 return null;
             await using var input = await response.Content.ReadAsStreamAsync(token).ConfigureAwait(false);

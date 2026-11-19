@@ -17,8 +17,9 @@ internal sealed partial class SkySurveyTiles : IDisposable
 
     internal IReadOnlyList<LocalSkyPhotograph> Photographs { get; } = [];
 
-    internal SkySurveyTiles(string root, string photographs)
+    internal SkySurveyTiles(string root, string photographs, System.Net.Http.HttpClient? http = null)
     {
+        _http = http ?? Http;
         if (File.Exists(Path.Combine(photographs, "textures.json")))
         {
             try { Photographs = LocalSkyPhotographs.Read(photographs); }

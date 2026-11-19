@@ -49,6 +49,7 @@ public partial class WorkspaceInputSmoke : Node
                 "DE440 and the original Jason-1 add-on must load.");
             Tree.Root.NotifyMouseEntered();
             await ExerciseDuplicateSources(scratch.FullName, science!);
+            await ExerciseSurveyOffline(scratch.FullName);
 
             if (System.Environment.GetEnvironmentVariable("SPACETANGENT_STARTUP_WORKSPACE_SMOKE") is { Length: > 0 } profile)
             {
@@ -140,6 +141,7 @@ public partial class WorkspaceInputSmoke : Node
             {
                 view!.AsObject().Remove("earthObserver");
                 view.AsObject().Remove("sky");
+                view.AsObject().Remove("playbackRate"); // Shared rates are explicit now; v2 did not have this field.
             }
             const string oldFilename = "version-two.stscene";
             File.WriteAllText(Path.Combine(scratch.FullName, oldFilename), oldScene.ToJsonString());
@@ -650,11 +652,18 @@ public partial class WorkspaceInputSmoke : Node
         }
     }
 
-    private static void RequireScenario(SimulationScenario expected, SimulationScenario actual, string action) =>
+    private static void RequireScenario(SimulationScenario expected, SimulationScenario actual, string action)
+    {
+        if (!expected.Views.SequenceEqual(actual.Views))
+            for (int index = 0; index < Math.Min(expected.Views.Count, actual.Views.Count); index++)
+                foreach (var property in typeof(ObserverView).GetProperties())
+                    if (!Equals(property.GetValue(expected.Views[index]), property.GetValue(actual.Views[index])))
+                        GD.Print($"Scenario difference ({action}), view {index}, {property.Name}: {property.GetValue(expected.Views[index])} -> {property.GetValue(actual.Views[index])}");
         Require(expected.Views.SequenceEqual(actual.Views) && expected.DeltaT == actual.DeltaT &&
                 expected.Synchronized == actual.Synchronized && expected.ClockOwner == actual.ClockOwner &&
                 expected.ActiveView == actual.ActiveView && expected.SplitLayout == actual.SplitLayout && expected.Layout == actual.Layout,
             $"{action} must preserve both cameras, epochs, selections, sync settings and ΔT.");
+    }
 
     private static void Require(bool condition, string message)
     {

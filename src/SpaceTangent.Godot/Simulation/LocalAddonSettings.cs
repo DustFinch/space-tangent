@@ -21,6 +21,7 @@ internal sealed record LocalAddonSettings(LocalAddonKind[] DisabledDefaults, Loc
 {
     internal string[] DisabledPlugins { get; init; } = [];
     internal string[] DisabledPacks { get; init; } = [];
+    internal bool HipsOffline { get; init; }
 
     internal static LocalAddonSettings Empty { get; } = new([], []);
 
@@ -101,7 +102,8 @@ internal sealed class LocalAddonSettingsFile
         var settings = new LocalAddonSettings(data.DisabledDefaults, data.Sources)
         {
             DisabledPlugins = data.DisabledPlugins ?? [],
-            DisabledPacks = data.DisabledPacks ?? []
+            DisabledPacks = data.DisabledPacks ?? [],
+            HipsOffline = data.HipsOffline
         };
         Validate(settings);
         return settings;
@@ -111,7 +113,7 @@ internal sealed class LocalAddonSettingsFile
     {
         Validate(settings);
         byte[] bytes = JsonSerializer.SerializeToUtf8Bytes(new Document(1, settings.DisabledDefaults, settings.Sources, settings.DisabledPlugins.Length == 0 ? null : settings.DisabledPlugins,
-            settings.DisabledPacks.Length == 0 ? null : settings.DisabledPacks), Json);
+            settings.DisabledPacks.Length == 0 ? null : settings.DisabledPacks, settings.HipsOffline), Json);
         if (bytes.Length > MaximumBytes)
             throw new InvalidDataException("The local add-on settings are too large.");
         string directory = Path.GetDirectoryName(_file)!;
@@ -184,5 +186,6 @@ internal sealed class LocalAddonSettingsFile
 
     private sealed record Document(int Version, LocalAddonKind[] DisabledDefaults, LocalAddonSource[] Sources,
         [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] string[]? DisabledPlugins,
-        [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] string[]? DisabledPacks);
+        [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] string[]? DisabledPacks,
+        [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingDefault)] bool HipsOffline = false);
 }

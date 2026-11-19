@@ -160,6 +160,7 @@ public partial class SolarSystemScene : Control
         try
         {
             _brightSky = BrightSkyData.Load();
+            _brightSky.Surveys.SetOffline(_localAddons.HipsOffline);
         }
         catch (Exception error) when (IsLoadError(error))
         {
@@ -403,7 +404,7 @@ public partial class SolarSystemScene : Control
         addOns.AddChild(_dataSummary);
         _localAddonPanel = new(this, addOns, ReloadAddOns, InstallLocalAddon,
             (kind, enabled) => ReloadAddOns(ApplyPackOverride(_localAddons.SetDefault(kind, enabled), AddonLoader.DefaultPath(kind), enabled)),
-            (source, enabled) => ReloadAddOns(ApplyPackOverride(_localAddons.SetSource(source, enabled), AddonLoader.SourcePath(source, _localAddonFile), enabled)), UpdateSatelliteGroups);
+            (source, enabled) => ReloadAddOns(ApplyPackOverride(_localAddons.SetSource(source, enabled), AddonLoader.SourcePath(source, _localAddonFile), enabled)), UpdateSatelliteGroups, SetSurveyOffline);
         _localAddonPanel.ShowSources(_localAddons, _localAddonFile, _addOns?.Decoded);
         var scripts = _workspace.AddPage("Scripts", WorkspaceText.Choose("Observer scripts", "Скрипты наблюдателя"), "Bookmarks", WorkspaceText.Choose("Scripts", "Скрипты"));
         scripts.AddChild(SimulatorTheme.Section(WorkspaceText.Choose("Observer scripts", "Скрипты наблюдателя")));
@@ -1463,6 +1464,27 @@ public partial class SolarSystemScene : Control
         Refresh();
     }
 
+    internal bool SurveysOffline => _brightSky?.Surveys.Offline ?? _localAddons.HipsOffline;
+
+    private void SetSurveyOffline(bool offline)
+    {
+        try
+        {
+            var next = _localAddons with { HipsOffline = offline };
+            _localAddonFile.Save(next);
+            _localAddons = next;
+            _brightSky?.Surveys.SetOffline(offline);
+            _status.Text = offline ? WorkspaceText.Choose("Sky surveys use local files and cache only.", "Обзоры неба используют только локальные файлы и кэш.")
+                : WorkspaceText.Choose("Sky survey downloads enabled.", "Загрузка обзоров неба из сети включена.");
+            Refresh();
+        }
+        catch (Exception error) when (IsLoadError(error))
+        {
+            _status.Text = error.Message;
+            _localAddonPanel.ShowSources(_localAddons, _localAddonFile, _addOns?.Decoded);
+        }
+    }
+
     internal Task<bool> ReloadAddOns() => ReloadAddOns(null);
 
     private LocalAddonSettings ApplyPackOverride(LocalAddonSettings settings, LocalDataPath path, bool enabled) =>
@@ -1515,6 +1537,7 @@ public partial class SolarSystemScene : Control
             if (requested is not null)
                 _localAddonFile.Save(requested);
             _localAddons = settings;
+            _brightSky?.Surveys.SetOffline(settings.HipsOffline);
             _status.Text = "Add-ons reloaded.";
             _status.TooltipText = "";
             LastAddonDiagnostic = null;

@@ -184,6 +184,8 @@ public static class ScenarioFile
     {
         if (bytes.Length is <= 0 or > MaximumBytes)
             throw new InvalidDataException("The scenario has an invalid size.");
+        using (var syntax = JsonDocument.Parse(bytes.ToArray(), new JsonDocumentOptions { MaxDepth = Json.MaxDepth }))
+            UniqueFields(syntax.RootElement);
         Document document = JsonSerializer.Deserialize<Document>(bytes, Json)
             ?? throw new InvalidDataException("The scenario is empty.");
         if (document.Version is < 1 or > Version)
@@ -314,6 +316,23 @@ public static class ScenarioFile
         }
         return new(Array.AsReadOnly(views), document.Synchronized, document.ClockOwner, document.ActiveView, document.DeltaT)
             { SplitLayout = document.SplitLayout, Layout = layout.IsDefault ? null : layout, NightMode = document.NightMode };
+    }
+
+    private static void UniqueFields(JsonElement value)
+    {
+        if (value.ValueKind == JsonValueKind.Object)
+        {
+            var names = new HashSet<string>(StringComparer.Ordinal);
+            foreach (JsonProperty field in value.EnumerateObject())
+            {
+                if (!names.Add(field.Name))
+                    throw new InvalidDataException($"Duplicate scenario field {field.Name}.");
+                UniqueFields(field.Value);
+            }
+        }
+        else if (value.ValueKind == JsonValueKind.Array)
+            foreach (JsonElement item in value.EnumerateArray())
+                UniqueFields(item);
     }
 
     private sealed class Document

@@ -329,6 +329,9 @@ public sealed partial class SimulationSession
                 throw new InvalidDataException("The scenario has an invalid optics profile.");
             if (view.PlaybackRate is { } rate && !ObserverView.ValidPlaybackRate(rate))
                 throw new InvalidDataException("The scenario has an invalid playback rate.");
+            if (!view.Sky.IsValid() || view.AutoOrbit is { } autoOrbit && !autoOrbit.IsValid() ||
+                view.MouseSensitivity is { } sensitivity && !ObserverView.ValidMouseSensitivity(sensitivity))
+                throw new InvalidDataException("The scenario has invalid sky or camera settings.");
             if (view.LightTimeOffsetNanoseconds is { } offset && (offset < 0 || !view.LightTimeDelayed))
                 throw new InvalidDataException("The scenario has an invalid light-time offset.");
             if ((view.ReferenceMarks & ~BodyReferenceMarks.All) != 0)

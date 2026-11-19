@@ -69,6 +69,38 @@ public sealed class ClockPersistenceTests
         finally { root.Delete(true); }
     }
 
+    [Fact]
+    public void RetainedPluginHeapIsNotWalkedOnEveryCompletedTick()
+    {
+        var root = Directory.CreateTempSubdirectory("st-plugin-tick-");
+        try
+        {
+            File.WriteAllText(Path.Combine(root.FullName, "main.lua"), """
+                local keep = { ('a'):rep(20000):byte(1, -1) }
+                plugin.on('tick', function() local x = keep[1] end)
+                plugin.importer('.test', function(s) return 'return 1' end, 'Test')
+                """);
+            var session = new SimulationSession(new(new FixedEphemeris(), []),
+                JulianInstant.FromJulianDate(2451545, TimeScale.Tdb), DeltaTModel.FixedOffset);
+            long now = 1000;
+            var plugin = new ObserverLuaPlugin(new(root.FullName, "tick", "Tick", "1", "main.lua", []),
+                session, 0, false, _ => { }, null, null, () => now);
+            for (int tick = 0; tick < 160; tick++) plugin.Step(0);
+            Assert.Null(plugin.Error);
+            Assert.InRange(plugin.HeapChecks, 0, 2);
+            int before = plugin.HeapChecks;
+            now += 2000;
+            plugin.Step(0);
+            Assert.Equal(before + 1, plugin.HeapChecks);
+            for (int tick = 0; tick < 60; tick++) plugin.Step(0);
+            Assert.Equal(before + 1, plugin.HeapChecks);
+            // Importers still force a check, even without any simulated or wall-clock time passing.
+            Assert.Equal("return 1", plugin.Convert(".test", "", "test.lua"));
+            Assert.Equal(before + 2, plugin.HeapChecks);
+        }
+        finally { root.Delete(true); }
+    }
+
     private sealed class FixedEphemeris : ISolarSystemEphemeris
     {
         public JulianInstant Start => new(1, 0, TimeScale.Tdb);

@@ -16,7 +16,8 @@ namespace SpaceTangent.Application;
 /// processor that never yields.</item>
 /// <item><c>string.format</c> accepts at most two-digit widths and precisions, as standard Lua does, and refuses tables
 /// with metatables, whose <c>__tostring</c> would run Lua code that cannot yield.</item>
-/// <item>Native pattern matching has a conservative work budget, including backtracking and repeated searches.</item>
+/// <item>Ordinary ASCII patterns use bounded non-backtracking matching. Other patterns retain a conservative native
+/// work budget, including backtracking and repeated searches.</item>
 /// </list>
 /// </remarks>
 internal static class LuaSandbox
@@ -35,7 +36,8 @@ internal static class LuaSandbox
     // Runs on the coroutine: find, the replacement and every concatenation are separate instructions.
     private const string ScriptedSubstitution = """
         local find, sub, select, type, tostring, error = string.find, string.sub, select, type, tostring, error
-        return function(s, pattern, repl, n)
+        return function(s, pattern, repl, n, boundedFind)
+            local find = boundedFind or find
             local anchored = sub(pattern, 1, 1) == "^"
             local output, count, init, length = "", 0, 1, #s
             local function replace(first, last, ...)
@@ -91,15 +93,23 @@ internal static class LuaSandbox
         Table strings = script.Globals.Get("string").Table;
         DynValue format = strings.Get("format"), substitute = strings.Get("gsub");
         DynValue find = strings.Get("find"), match = strings.Get("match"), iterate = strings.Get("gmatch");
-        // The Lua substitution captures the native find before the wrappers replace it.
+        var patterns = new Dictionary<string, LuaLinearPattern?>(StringComparer.Ordinal);
+        LuaLinearPattern? Linear(string subject, string pattern)
+        {
+            if (pattern.Length > 256 || subject.Any(c => c > 127)) return null;
+            if (patterns.TryGetValue(pattern, out var cached)) return cached;
+            if (patterns.Count == 64) patterns.Clear();
+            return patterns[pattern] = LuaLinearPattern.Create(pattern);
+        }
+        strings["find"] = Pattern(find, "find", Linear);
+        strings["match"] = Pattern(match, "match", Linear);
+        strings["gmatch"] = Pattern(iterate, "gmatch", Linear);
+        // Callback substitution must capture the bounded find too: its searches run inside a native instruction.
         DynValue scripted = script.Call(script.LoadString(ScriptedSubstitution, codeFriendlyName: "sandbox"));
         strings["dump"] = DynValue.Nil;
         strings["rep"] = DynValue.NewCallback((_, args) => Repeat(args), "rep");
         strings["format"] = DynValue.NewCallback((_, args) => Format(args, format), "format");
-        strings["gsub"] = DynValue.NewCallback((_, args) => Substitute(args, substitute, scripted), "gsub");
-        strings["find"] = Pattern(find, "find");
-        strings["match"] = Pattern(match, "match");
-        strings["gmatch"] = Pattern(iterate, "gmatch");
+        strings["gsub"] = DynValue.NewCallback((_, args) => Substitute(args, substitute, scripted, Linear), "gsub");
         return script;
     }
 
@@ -250,14 +260,22 @@ internal static class LuaSandbox
         }
     }
 
-    private static DynValue Substitute(CallbackArguments args, DynValue native, DynValue scripted)
+    private static DynValue Substitute(CallbackArguments args, DynValue native, DynValue scripted,
+        Func<string, string, LuaLinearPattern?> linear)
     {
         string subject = Text(args[0], "gsub", 1), pattern = Text(args[1], "gsub", 2);
-        CheckSubject(subject, pattern, repeatedSearch: true);
+        var bounded = linear(subject, pattern);
+        if (bounded is null) CheckSubject(subject, pattern, repeatedSearch: true);
+        else bounded.Check(subject);
         DynValue replacement = args[2], limit = args[3].IsNil() ? DynValue.Nil : args[3];
         DynValue[] call = [DynValue.NewString(subject), DynValue.NewString(pattern), replacement, limit];
         if (replacement.Type is DataType.Function or DataType.ClrFunction or DataType.Table)
-            return DynValue.NewTailCallReq(scripted, call);
+        {
+            // Validate/translate once, rather than rescanning the complete ASCII subject on every replacement.
+            DynValue search = bounded is null ? DynValue.Nil : DynValue.NewCallback((_, findArgs) =>
+                bounded.Call(subject, findArgs, "find"));
+            return DynValue.NewTailCallReq(scripted, [.. call, search]);
+        }
         if (replacement.Type is not (DataType.String or DataType.Number))
             throw new ScriptRuntimeException("bad argument #3 to 'gsub' (string/function/table expected)");
 
@@ -266,17 +284,25 @@ internal static class LuaSandbox
         string text = replacement.CastToString();
         double maximum = limit.Type == DataType.Number && !double.IsNaN(limit.Number) ? Math.Floor(limit.Number) : double.PositiveInfinity;
         double matches = Math.Max(0, Math.Min(subject.Length + 1d, maximum));
-        double bound = subject.Length + matches * text.Length + CaptureReferences(text) * (double)subject.Length;
+        // Position captures may add up to ten decimal digits per match, including empty matches.
+        double captured = Math.Max(subject.Length, 10 * matches);
+        double bound = subject.Length + matches * text.Length + CaptureReferences(text) * captured;
         if (bound > MaximumStringLength)
             throw new ScriptRuntimeException("string.gsub would exceed the sandbox string limit.");
-        return DynValue.NewTailCallReq(native, call);
+        return bounded is null ? DynValue.NewTailCallReq(native, call) : bounded.Substitute(subject, text, limit);
     }
 
-    private static DynValue Pattern(DynValue native, string name) => DynValue.NewCallback((_, args) =>
+    private static DynValue Pattern(DynValue native, string name, Func<string, string, LuaLinearPattern?> linear) => DynValue.NewCallback((_, args) =>
     {
         string subject = Text(args[0], name, 1), pattern = Text(args[1], name, 2);
         if (!(name == "find" && args[3].CastToBool()))
+        {
+            var bounded = linear(subject, pattern);
+            // Unlike find/match, Lua gmatch treats a leading caret as literal text.
+            if (bounded is not null && !(name == "gmatch" && bounded.Anchored))
+                return bounded.Call(subject, args, name);
             CheckSubject(subject, pattern, repeatedSearch: name == "gmatch");
+        }
         return DynValue.NewTailCallReq(native, args.GetArray(0));
     }, name);
 

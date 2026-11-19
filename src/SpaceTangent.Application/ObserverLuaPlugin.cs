@@ -10,6 +10,9 @@ public sealed class ObserverLuaPlugin
     private const int MaxJobs = 16;
     private const long MaximumRetainedBytes = 64L * 1024 * 1024;
     private long _allocatedSinceHeapCheck;
+    private readonly Func<long> _heapClock;
+    private long _lastHeapCheck;
+    internal int HeapChecks { get; private set; }
     private sealed record Job(string Label, LuaSessionScript.Invocation Work);
     private sealed record Command(string Title, DynValue Function);
     private sealed record Importer(string Title, DynValue Function);
@@ -37,7 +40,13 @@ public sealed class ObserverLuaPlugin
 
     public ObserverLuaPlugin(ObserverPluginManifest manifest, SimulationSession session, int view, bool hasSurface,
         Action<string> log, Action<ScriptMediaRequest>? media = null, Action? clearMedia = null)
+        : this(manifest, session, view, hasSurface, log, media, clearMedia, () => Environment.TickCount64) { }
+
+    internal ObserverLuaPlugin(ObserverPluginManifest manifest, SimulationSession session, int view, bool hasSurface,
+        Action<string> log, Action<ScriptMediaRequest>? media, Action? clearMedia, Func<long> heapClock)
     {
+        _heapClock = heapClock;
+        _lastHeapCheck = heapClock();
         Manifest = manifest;
         _session = session;
         _clearMedia = clearMedia;
@@ -129,7 +138,7 @@ public sealed class ObserverLuaPlugin
             long before = GC.GetAllocatedBytesForCurrentThread();
             changed |= _runtime.Step(job.Work, elapsed, slice);
             _allocatedSinceHeapCheck += GC.GetAllocatedBytesForCurrentThread() - before;
-            if (!CheckRetainedHeap(job.Work.Complete))
+            if (!CheckRetainedHeap(force: false))
                 break;
             if (!job.Work.Complete)
                 continue;
@@ -142,11 +151,15 @@ public sealed class ObserverLuaPlugin
 
     private bool CheckRetainedHeap(bool force)
     {
-        // Allocation-based checks also work with paused clocks and zero elapsed time. Per-invocation allocation limits
-        // bound overshoot within one slice; completed callbacks are checked before the next callback can allocate.
-        if (!force && _allocatedSinceHeapCheck < 512 * 1024)
+        // Use real monotonic time, independent of simulation pause/rate. Allocation checks bound growth between
+        // timed walks; completing a cheap tick does not justify walking an unchanged retained heap every frame.
+        long now = _heapClock();
+        if (!force && (_allocatedSinceHeapCheck == 0 ||
+            _allocatedSinceHeapCheck < 16L * 1024 * 1024 && now - _lastHeapCheck < 2000))
             return true;
         _allocatedSinceHeapCheck = 0;
+        _lastHeapCheck = now;
+        HeapChecks++;
         var roots = _events.Values.Concat(_commands.Values.Select(command => command.Function))
             .Concat(_importers.Values.Select(importer => importer.Function));
         if (LuaSandbox.WithinRetainedLimit(_vm, roots, MaximumRetainedBytes))

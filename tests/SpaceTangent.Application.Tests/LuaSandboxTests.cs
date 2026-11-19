@@ -110,6 +110,69 @@ public sealed class LuaSandboxTests
         Assert.True(LuaSandbox.WithinRetainedLimit(script, [], 64L * 1024 * 1024));
     }
 
+    [Theory]
+    [InlineData("local n=0 for line in input:gmatch('[^\\n]+') do n=n+1 end return n", 32768)]
+    [InlineData("local n=0 for w in input:gmatch('%S+') do n=n+1 end return n", 32768)]
+    [InlineData("return (input:gsub('%s+', ' '))", 32768)]
+    [InlineData("local n=0 for f in input:gmatch('([^,\\n]*)') do n=n+1 end return n", 32768)]
+    [InlineData("return input:match('^(%d+)%s+(%d+)')", 200)]
+    [InlineData("return input:find('(%d+)%s+(%d+)%s+(%d+)')", 1000)]
+    [InlineData("local n=0 for a,b in input:gmatch('(%d+)%s+(%d+)') do n=n+1 end return n", 32768)]
+    public void ImporterSizedOrdinaryParsingMatchesTheNativeResult(string code, int length)
+    {
+        string text = string.Concat(Enumerable.Repeat("1 2 3 4 5 6 7 8 9\n", length / 18 + 1))[..length];
+        Script bounded = LuaSandbox.Create(), native = new(CoreModules.Preset_SoftSandbox);
+        bounded.Globals["input"] = native.Globals["input"] = text;
+        Assert.Equal(Values(native.DoString(code)), Values(Run(bounded, code)));
+    }
+
+    [Fact]
+    public void RecognizedPatternsPreserveNativeCapturesClassesAndIteration()
+    {
+        Script bounded = LuaSandbox.Create(), native = new(CoreModules.Preset_SoftSandbox);
+        string ascii = new(Enumerable.Range(0, 128).Select(c => (char)c).ToArray());
+        string[] patterns = ["", "()", "(%d+)%s+(%d+)", "([^,\n]*)", "%S+", "%s+", "a*", "a-", "a?b",
+            "^a", "^", "$", "(a(b))", "()%d+()", "[%dA-F]+", "[^\n]+", "[a-c]+", "[%-]+", "%.", "%%",
+                "a$", "(a*)", "(%d+)%s+(%d+)%s+(%d+)", "a*b*c", "a*b?c", "a-b-c", "a-b?c", "(()a)", "()a()"];
+        patterns = patterns.Concat("acdlpsuwxz".SelectMany(c => new[] { "%" + c, "%" + char.ToUpperInvariant(c) })).ToArray();
+        foreach (string pattern in patterns)
+        foreach (string input in new[] { "", "aaa", "abc\na b,12 34 56", "12 34\n56 78\n", ascii })
+        {
+            bounded.Globals["input"] = native.Globals["input"] = input;
+            bounded.Globals["pattern"] = native.Globals["pattern"] = pattern;
+            foreach (string code in new[] { "return input:find(pattern)", "return input:find(pattern, 2)",
+                "return input:find(pattern, -2)", "return input:match(pattern)", "return input:gsub(pattern, '[%0]')",
+                "return input:gsub(pattern, '[%1]', 2)",
+                "local t='' for x in input:gmatch(pattern) do t=t..tostring(x)..'|' end return t" })
+                Assert.True(Values(native.DoString(code)) == Values(bounded.DoString(code)), $"Pattern {pattern}, input length {input.Length}: {code}\n" +
+                    $"native {Values(native.DoString(code))}; bounded {Values(bounded.DoString(code))}");
+        }
+    }
+
+    [Theory]
+    [InlineData("return input:find('(%d+)%s+(%d+)')")]
+    [InlineData("return input:gsub('(%d+)%s+(%d+)', '%2:%1')")]
+    [InlineData("return input:gsub('(%d+)%s+(%d+)', function(a,b) return b..a end)")]
+    [InlineData("local n=0 for x in input:gmatch('(%d+)%s+(%d+)') do n=n+1 end return n")]
+    public async Task MissingSeparatorsDoNotCauseOverlappingQuadraticNativeSearches(string code)
+    {
+        await Task.Run(() =>
+        {
+            Script script = LuaSandbox.Create();
+            script.Globals["input"] = new string('1', 32768);
+            DynValue value = Run(script, code);
+            Assert.True(value.IsNil() || value.Type == DataType.Tuple || value.Number == 0);
+        }).WaitAsync(TimeSpan.FromSeconds(10));
+    }
+
+    private static string Values(DynValue result)
+    {
+        DynValue[] values = result.Type == DataType.Tuple ? result.Tuple : [result];
+        int length = values.Length;
+        while (length > 0 && values[length - 1].IsNil()) length--;
+        return string.Join("|", values.Take(length).Select(value => value.Type + ":" + value.ToPrintString()));
+    }
+
     private static DynValue Run(Script script, string code, int maximumSteps = 1_000_000)
     {
         Coroutine coroutine = script.CreateCoroutine(script.LoadString(code)).Coroutine;

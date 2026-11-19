@@ -252,23 +252,14 @@ internal static partial class AddonLoader
                         previous.FilteredPacks.TryGetValue(pair.Key, out var keys) && keys.SequenceEqual(pair.Value)))
                     return previous;
 
-                var tracks = new List<ScienceSatellite>();
-                var ids = new HashSet<ObjectId>();
-                foreach (var source in satellites)
-                foreach (DecodedSatellite item in source.Value)
-                {
-                    if (!ids.Add(item.Track.Id))
-                    {
-                        var error = new InvalidDataException($"Two enabled science sources provide {item.Track.Id.Value}.");
-                        AddonDiagnostics.Annotate(error, AddonStage.Catalog, item.Track.MeshPath, source: "Science satellites");
-                        throw error;
-                    }
-                    tracks.Add(item.Track);
-                }
+                var tracks = satellites.SelectMany(source => source.Value).Select(item => item.Track).ToArray();
                 var world = AddonDiagnostics.Read(AddonStage.World, null, () => new SimulationWorld(ephemeris, tracks,
                     spice?.Track, sampled?.Value?.Track, sampled?.Value?.Probe, relief?.Value?.Frame, brightStars, planets, marsTerrain is not null, corrections.Value.Catalogue,
                     bodies.Bodies.Select(body => body.Body), locations.Value, deepSky.Value.Index, exoplanets.Value, missions.Tracks.Select(mission => mission.Track), tle.Value, earthPlaces.Value, distantStars.Value));
-                var observations = PrepareObservations(world, missions.Tracks, cancellation);
+                foreach (string warning in world.SourceWarnings)
+                    global::Godot.GD.PushWarning(warning);
+                var observations = PrepareObservations(world,
+                    missions.Tracks.DistinctBy(item => item.Track.Id), cancellation);
                 var decoded = new DecodedAddOns(world, sameScience ? previous!.Science : satellites, spice, sampled, relief, planets, marsTerrain, stellar, archive, definitions, corrections, bodies, locations, deepSky, exoplanets, missions, tle, tleUpdates, earthPlaces, savedEarthPlacesPath, allowAddonLua, observations, galacticDust, distantStars) { FilteredPacks = filteredPacks };
                 openedDistantStars = null;
                 return decoded;
@@ -350,7 +341,7 @@ internal static partial class AddonLoader
             var reusable = new Dictionary<ScienceSatellite, PreparedSatellite>(ReferenceEqualityComparer.Instance);
             foreach (PreparedSatellite satellite in previous)
                 reusable.Add(satellite.Track, satellite);
-            return Array.AsReadOnly(sources.SelectMany(source => source.Value).Select(item =>
+            return Array.AsReadOnly(sources.SelectMany(source => source.Value).DistinctBy(item => item.Track.Id).Select(item =>
                 reusable.TryGetValue(item.Track, out PreparedSatellite? satellite) ? satellite :
                     new PreparedSatellite(item.Track, ScienceMeshLoader.Publish(item.Model, item.Track.MeshPath),
                         Scale(item.Model))).ToArray());
@@ -416,7 +407,7 @@ internal static partial class AddonLoader
         });
         var textures = new Dictionary<string, global::Godot.Texture2D>(StringComparer.Ordinal);
         var swarmResources = new Dictionary<string, (global::Godot.ArrayMesh Mesh, global::Godot.Texture2D Data)>(StringComparer.OrdinalIgnoreCase);
-        var missions = decoded.SampledMissions.Tracks.Select(item =>
+        var missions = decoded.SampledMissions.Tracks.DistinctBy(item => item.Track.Id).Select(item =>
         {
             var track = item.Track;
             if (track.Observation is null && ReferenceEquals(decoded.SampledMissions, previous?.Decoded.SampledMissions) &&

@@ -57,7 +57,10 @@ public sealed partial class SimulationWorld
         IEnumerable<SscSurfaceLocation>? locations = null, DeepSkyIndex? deepSky = null, ExoplanetCatalogue? exoplanets = null, IEnumerable<SampledMission>? sampledMissions = null, IEnumerable<LocalTleSatellite>? localSatellites = null, EarthPlaceCatalogue? earthPlaces = null, DistantStarIndex? distantStars = null)
     {
         Ephemeris = ephemeris;
-        Satellites = Array.AsReadOnly(satellites.ToArray());
+        var sourceWarnings = new List<string>();
+        SourceWarnings = sourceWarnings.AsReadOnly();
+        Satellites = Array.AsReadOnly(UniqueSources(satellites, item => item.Id,
+            item => item.MeshPath, sourceWarnings));
         BrightStars = brightStars ?? BrightStarCatalogue.Empty;
         HasMarsTerrain = hasMarsTerrain;
         Stellar = stellar ?? StellarCatalogue.Empty;
@@ -76,7 +79,8 @@ public sealed partial class SimulationWorld
         foreach (NaturalBodyDefinition body in NaturalBodyCatalogue.Bodies)
             if (!replacedMinorPlanets.Contains(body.Id))
                 PlanetEphemerides.AddNaturalBody(graph, body, planets);
-        _localSatellites = (localSatellites ?? []).ToDictionary(satellite => satellite.Id);
+        _localSatellites = UniqueSources(localSatellites ?? [], item => item.Id,
+            item => "TLE " + item.Name, sourceWarnings).ToDictionary(item => item.Id);
         var scienceIds = Satellites.Select(satellite => satellite.Id).ToHashSet();
         foreach (LocalTleSatellite local in _localSatellites.Values)
             if (!scienceIds.Contains(local.Id))
@@ -112,9 +116,23 @@ public sealed partial class SimulationWorld
             PlanetEphemerides.AddMoonFrame(graph, planets);
         SscBodies = InstalledSscBody.Install(graph, bodyDefinitions, Stellar, Exoplanets, BrightStars, StellarOrigin, planets);
         _sscById = SscBodies.ToDictionary(body => body.Id);
-        _sampledMissions = (sampledMissions ?? []).ToDictionary(mission => mission.Id);
+        _sampledMissions = UniqueSources(sampledMissions ?? [], item => item.Id,
+            item => item.MeshPath ?? item.Name, sourceWarnings).ToDictionary(item => item.Id);
+        var reserved = PlanetCatalogue.Planets.SelectMany(body => new[] { body.Id, body.SystemId })
+            .Concat(NaturalBodyCatalogue.Bodies.Select(body => body.Id))
+            .Concat(DemoWorlds.Bodies.Select(body => body.Id))
+            .Concat(BlackHoleCatalogue.Default.Entries.Select(body => body.Id))
+            .Concat([SolarSystemSample.SunId, SolarSystemSample.BarycenterId, SolarSystemSample.MoonId, CygnusCompanionId])
+            .Concat(_sscById.Keys).Concat(scienceIds).Concat(_localSatellites.Keys).ToHashSet();
+        if (MissionId is { } missionId) reserved.Add(missionId);
+        if (TimelineId is { } timelineId) reserved.Add(timelineId);
+        if (Probe is { } probeMission) reserved.Add(probeMission.Id);
         foreach (var imported in _sampledMissions.Values)
+        {
+            if (reserved.Contains(imported.Id))
+                throw new InvalidDataException($"Mission {imported.Name} ({imported.MeshPath ?? "catalogue"}) conflicts with an existing body {imported.Id.Value}. Disable one of the conflicting sources.");
             graph.AddSampledMission(imported);
+        }
         EarthPlaces = earthPlaces ?? EarthPlaceCatalogue.Empty;
         DistantStars = distantStars;
         Catalogue = new(Satellites,  BrightStars, Stellar, DeepSky, Exoplanets, SscBodies, locations ?? [], _sampledMissions.Values, _localSatellites, EarthPlaces, distantStars);
@@ -125,6 +143,17 @@ public sealed partial class SimulationWorld
     }
 
     public ISolarSystemEphemeris Ephemeris { get; }
+    public IReadOnlyList<string> SourceWarnings { get; }
+
+    private static T[] UniqueSources<T>(IEnumerable<T> sources, Func<T, ObjectId> id,
+        Func<T, string> source, List<string> warnings)
+    {
+        var kept = new Dictionary<ObjectId, T>();
+        foreach (T item in sources)
+            if (!kept.TryAdd(id(item), item))
+                warnings.Add($"Duplicate {id(item).Value}: kept {source(kept[id(item)])}; ignored {source(item)}.");
+        return kept.Values.ToArray();
+    }
     public IReadOnlyList<ScienceSatellite> Satellites { get; }
     private readonly Dictionary<ObjectId, InstalledSscBody> _sscById;
     private readonly Dictionary<ObjectId, SampledMission> _sampledMissions;

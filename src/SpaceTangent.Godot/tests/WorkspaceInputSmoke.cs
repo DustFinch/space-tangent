@@ -48,6 +48,7 @@ public partial class WorkspaceInputSmoke : Node
             Require(_scene.Session is not null && Session.World.Satellites.Any(satellite => satellite.Id == Jason),
                 "DE440 and the original Jason-1 add-on must load.");
             Tree.Root.NotifyMouseEntered();
+            await ExerciseDuplicateSources(scratch.FullName, science!);
 
             if (System.Environment.GetEnvironmentVariable("SPACETANGENT_STARTUP_WORKSPACE_SMOKE") is { Length: > 0 } profile)
             {

@@ -106,11 +106,12 @@ public sealed partial class SimulationSession
             SetShipThrottle(view, ship.Speed);
             return true;
         }
-        if (!TrySelectedState(view, out ObjectId target, out _, out var state))
+        if (!TrySelectedState(view, out ObjectId target, out var snapshot, out var state))
             return false;
         Vector3d offset = ship.Position - state.PositionKilometers;
         if (offset.Length <= NavigationCamera.MinRange)
             return false;
+        CommitSelectedEpoch(view, target, snapshot);
         ship.Offset = offset;
         ship.Standoff = Math.Max(World.TargetRadiusKilometers(target) * 4, 1);
         Vector3d radial = offset / offset.Length;

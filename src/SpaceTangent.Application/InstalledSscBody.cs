@@ -53,7 +53,11 @@ public sealed record InstalledSscBody(ObjectId Id, ObjectId Parent, SscBodyDefin
             primaryPaths.Add(planet.Id, path);
         }
         foreach (NaturalBodyDefinition natural in NaturalBodyCatalogue.Bodies)
-            paths.Add(primaryPaths[natural.Parent] + "/" + natural.Name, natural.Id);
+        {
+            string path = primaryPaths[natural.Parent] + "/" + natural.Name;
+            paths.Add(path, natural.Id);
+            primaryPaths.TryAdd(natural.Id, path);
+        }
         var stellarPaths = new Dictionary<string, StellarEntry>(StringComparer.OrdinalIgnoreCase);
         foreach (var star in stars.Stars.Concat(exoplanets.Hosts.Where(host => exoplanets.CanonicalHost(host.Id) == host.Id)))
         {

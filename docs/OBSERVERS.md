@@ -50,7 +50,9 @@ To measure distance, select the first object and press **Ctrl+M**, then select t
 
 Use J to start reverse playback, K and L to change the active clock's rate by a factor of ten, and Space to pause or resume. Changing the rate with K or L preserves pause. The existing UTC fields accept a published leap second, for example `2016-12-31 23:59:60`.
 
-With a body selected, press ? for its light travel time or − to move the clock back by that amount. Press − again to move forward by the light time measured at the current epoch. The existing view caption shows when light time is applied. Independent clocks shift only in their own view. Scenarios with this flag use version 10, and ordinary earlier scenes retain their format.
+With a body selected, press ? for its light travel time or − to move the clock back by that amount. Press − again to undo the original displacement exactly, even after changing the selection, splitting views, saving or reloading add-ons. The view caption shows the applied clock offset. This is a reversible clock shift, not continuous retarded-time rendering. Synchronized views share it; independent clocks shift only in their own view. Saved offsets use scenario version 50. Older scenes without a stored offset retain the measured-forward fallback when the shift is turned off.
+
+Selecting or navigating to an orbit outside its coverage can move the clock to the object's available epoch. The status reports the object, new epoch and whether shared clocks moved. Object details also identify approximate barycentre positions and missing centre kernels or coverage.
 
 ## Observation events
 

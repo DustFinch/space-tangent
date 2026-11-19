@@ -33,6 +33,7 @@ public sealed partial class SimulationSession
         {
             Placement = new(local * range, local * -1, up / up.Length, BodyFixed: true)
         };
+        CommitSelectedEpoch(view, target, snapshot);
         FlyToScriptPose(view, destination, FlightDuration, snapshot);
         _flights[view] = _flights[view]! with { SurfaceStartOffset = relative.Length > 0 ? relative : outward * range };
         return true;

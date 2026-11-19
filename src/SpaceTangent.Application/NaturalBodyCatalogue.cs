@@ -40,6 +40,7 @@ public static class NaturalBodyCatalogue
         new(new("sol/proteus"), "Proteus", CatalogueKind.Moon, new("sol/neptune"), ProteusNaifId, 212, "b2aca8", "proteus.jpg"),
         new(new("sol/nereid"), "Nereid", CatalogueKind.Moon, new("sol/neptune"), NereidNaifId, 196.65, "9d908c", null),
         new(PlutoId, "Pluto", CatalogueKind.DwarfPlanet, SolarSystemSample.SunId, 999, 1188.3, "d9b6a0", "pluto.jpg"),
+        new(new("sol/charon"), "Charon", CatalogueKind.Moon, PlutoId, 901, 606, "b2a89d", null),
         new(new("sol/ceres"), "Ceres", CatalogueKind.DwarfPlanet, SolarSystemSample.SunId, 2000001, 469.7, "b5b0a6", "ceres.jpg", "ceres.xyzv"),
         new(new("sol/vesta"), "Vesta", CatalogueKind.Asteroid, SolarSystemSample.SunId, 2000004, 262.7, "b9ac99", "vesta.jpg", "vesta.xyzv"),
         new(CometId, "67P/Churyumov–Gerasimenko", CatalogueKind.Comet, SolarSystemSample.SunId, 1000012, 2, "827065", null, "67p.xyzv")

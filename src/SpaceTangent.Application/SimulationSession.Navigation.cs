@@ -65,6 +65,8 @@ public sealed partial class SimulationSession
         if (start.Placement is not null)
             start = start with { Placement = start.ResolvePlacement(snapshot, DeltaT) };
         double targetRange = Math.Clamp(range ?? FramingRange(target), MinimumRange(target), NavigationCamera.MaxRange);
+        CommitSelectedEpoch(view, target, snapshot);
+        observer = _views[view];
         _flights[view] = new(start, 0, Math.Max(duration, .001), targetRange);
         _views[view] = observer with { Navigation = start with { Target = target, Tracking = false } };
         return true;
@@ -90,6 +92,8 @@ public sealed partial class SimulationSession
         NavigationCamera pose = observer.Navigation ?? PresetCamera(observer, snapshot);
         double minimum = MinimumRange(target);
         double range = pose.Target == target ? Math.Max(pose.RangeKilometers, minimum) : FramingRange(target);
+        CommitSelectedEpoch(view, target, snapshot);
+        observer = _views[view];
         _flights[view] = null;
         _trackingEpochs[view] = (target, snapshot.Epoch);
         _views[view] = observer with
@@ -310,9 +314,22 @@ public sealed partial class SimulationSession
         snapshot = World.Graph.Evaluate(satellite.Epoch, DeltaT);
         if (!snapshot.TryState(id, out state))
             return false;
-        Seek(view, satellite.Epoch);
         return true;
     }
+
+    private void CommitSelectedEpoch(int view, ObjectId target, WorldSnapshot snapshot)
+    {
+        if (_views[view].Epoch == snapshot.Epoch)
+            return;
+        var before = _views[view].Epoch;
+        Seek(view, snapshot.Epoch);
+        LastNavigationEpochChange = new(++_navigationEpochRevision, target, before, snapshot.Epoch, Synchronized);
+    }
+
+    public sealed record NavigationEpochChange(long Revision, ObjectId Target, JulianInstant Before,
+        JulianInstant After, bool Shared);
+    public NavigationEpochChange? LastNavigationEpochChange { get; private set; }
+    private long _navigationEpochRevision;
 
     private static NavigationCamera PresetCamera(ObserverView observer, WorldSnapshot snapshot)
     {

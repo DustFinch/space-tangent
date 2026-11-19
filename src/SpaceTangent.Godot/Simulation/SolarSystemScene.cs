@@ -2047,6 +2047,12 @@ public partial class SolarSystemScene : Control
             return "";
         SimulationWorld world = Session!.World;
         var details = $"Catalogue ID: {target.Id.Value}";
+        if (PlanetEphemerides.CenterAt(world.Planets, target.Id, Session[_active].Epoch) is { } center)
+            details += "\n" + (center.ApproximateBarycenter
+                ? WorkspaceText.Choose("Approximate: system barycenter; centre correction unavailable: ",
+                    "Приблизительно: барицентр системы; нет поправки центра: ")
+                : WorkspaceText.Choose("Position unavailable; missing kernel or coverage: ",
+                    "Положение недоступно; нет ядра или покрытия: ")) + center.RequiredKernel;
         if (world.EarthPlaces.Find(target.Id) is { } place)
         {
             string region = place.Region.Length == 0 ? "" : "\n" + place.Region;
@@ -2077,10 +2083,22 @@ public partial class SolarSystemScene : Control
         return details + "\nState unavailable at this epoch";
     }
 
+    private long _reportedNavigationEpoch;
+
     private void Refresh(double elapsed = 0)
     {
         RefreshMissionViewpoints();
         SimulationSession session = Session!;
+        if (session.LastNavigationEpochChange is { } jump && jump.Revision != _reportedNavigationEpoch)
+        {
+            _reportedNavigationEpoch = jump.Revision;
+            string name = session.World.Catalogue.Find(jump.Target)?.Name ?? jump.Target.Value;
+            _status.Text = name + ": " + WorkspaceText.Choose("orbit unavailable at the previous epoch; ",
+                "орбита недоступна в прежнюю эпоху; ") +
+                (jump.Shared ? WorkspaceText.Choose("shared clocks moved to ", "общие часы переведены на ")
+                    : WorkspaceText.Choose("view clock moved to ", "часы вида переведены на ")) +
+                FormattableString.Invariant($"JD {jump.After.ToJulianDate():F6} TDB.");
+        }
         _deltaT.Select((int)session.DeltaT);
         UpdateNightMode(session.NightMode);
         for (int index = 0; index < _views.Count; index++)
@@ -2115,7 +2133,9 @@ public partial class SolarSystemScene : Control
             controls.Measurements.Update(controls.Renderer, view, snapshot, session.World, session.DeltaT);
             controls.Epoch.Text = FormattableString.Invariant($"{WorkspaceText.Choose("View", "Вид")} {index + 1}   JD {view.Epoch.ToJulianDate():F6} TDB");
             if (view.LightTimeDelayed)
-                controls.Epoch.Text += "   ·   Light time";
+                controls.Epoch.Text += "   ·   " + WorkspaceText.Choose("Clock offset", "Сдвиг часов") +
+                    (view.LightTimeOffsetNanoseconds is { } offset
+                        ? FormattableString.Invariant($" −{offset / 1e9:G6} s") : " (legacy)");
             if (ship is not null)
             {
                 string targetName = ship.Target is { } aim ? session.World.Catalogue.Find(aim)?.Name ?? aim.Value : "—";

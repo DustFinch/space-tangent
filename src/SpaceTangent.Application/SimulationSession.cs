@@ -57,6 +57,7 @@ public sealed partial class SimulationWorld
         IEnumerable<SscSurfaceLocation>? locations = null, DeepSkyIndex? deepSky = null, ExoplanetCatalogue? exoplanets = null, IEnumerable<SampledMission>? sampledMissions = null, IEnumerable<LocalTleSatellite>? localSatellites = null, EarthPlaceCatalogue? earthPlaces = null, DistantStarIndex? distantStars = null)
     {
         Ephemeris = ephemeris;
+        Planets = planets;
         var sourceWarnings = new List<string>();
         SourceWarnings = sourceWarnings.AsReadOnly();
         Satellites = Array.AsReadOnly(UniqueSources(satellites, item => item.Id,
@@ -143,6 +144,7 @@ public sealed partial class SimulationWorld
     }
 
     public ISolarSystemEphemeris Ephemeris { get; }
+    public PlanetEphemerides? Planets { get; }
     public IReadOnlyList<string> SourceWarnings { get; }
 
     private static T[] UniqueSources<T>(IEnumerable<T> sources, Func<T, ObjectId> id,
@@ -581,7 +583,10 @@ public sealed partial class SimulationSession
 
         _views[view] = previous with { Selection = selection };
         if (needsEpoch)
+        {
             SetClock(view, target.Epoch, previous.Playing);
+            LastNavigationEpochChange = new(++_navigationEpochRevision, target.Id, previous.Epoch, target.Epoch, Synchronized);
+        }
     }
 
     public void TogglePlaying(int view) => SetPlaying(view, !_views[view].Playing);

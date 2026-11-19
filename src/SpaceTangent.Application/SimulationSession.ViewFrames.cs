@@ -87,9 +87,10 @@ public sealed partial class SimulationSession
         camera = camera with { Placement = start };
         if (!camera.IsValid() || !end.IsValid(camera.RangeKilometers))
             return false;
+        CommitSelectedEpoch(view, selected, snapshot);
         _flights[view] = new(camera, 0, .65, camera.RangeKilometers) { CenteringEnd = end };
         _trackingEpochs[view] = (camera.Target!.Value, snapshot.Epoch);
-        _views[view] = observer with { Navigation = camera };
+        _views[view] = _views[view] with { Navigation = camera };
         return true;
     }
 

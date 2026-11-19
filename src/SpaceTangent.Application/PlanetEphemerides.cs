@@ -64,6 +64,31 @@ public sealed class PlanetEphemerides
 
     public bool HasOrientation(int naifId) => _frames.ContainsKey(naifId);
 
+    /// <summary>Describes missing centre corrections, including gaps in an installed kernel's coverage.</summary>
+    public static CenterStatus? CenterAt(PlanetEphemerides? source, ObjectId id, JulianInstant epoch)
+    {
+        int naif;
+        bool approximate;
+        if (PlanetCatalogue.Find(id) is { } planet && planet.Id != planet.SystemId)
+        {
+            naif = planet.NaifId;
+            approximate = true;
+        }
+        else if (NaturalBodyCatalogue.Bodies.FirstOrDefault(body => body.Id == id) is { NaifId: 999 or 901 } natural)
+        {
+            naif = natural.NaifId;
+            approximate = naif == 999;
+        }
+        else
+            return null;
+        int system = naif / 100;
+        bool precise = source?._centers.GetValueOrDefault(system) is { } kernel &&
+            kernel.TryState(naif, system, epoch, out _);
+        return precise ? null : new(approximate, $"center-{system}.bsp");
+    }
+
+    public sealed record CenterStatus(bool ApproximateBarycenter, string RequiredKernel);
+
     internal double? EquatorialRadiusKilometers(ObjectId body)
     {
         int? naif = PlanetCatalogue.Find(body)?.NaifId ?? NaturalBodyCatalogue.Find(body)?.NaifId;

@@ -8,8 +8,14 @@ permissions:
 
 jobs:
   build:
-    # Build against the public NuGet packages pinned by both lock files, without the engine-bundled user cache.
-    runs-on: windows-latest
+    strategy:
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 15
+    defaults:
+      run:
+        shell: pwsh
     steps:
       - uses: actions/checkout@v4
         with:
@@ -20,7 +26,15 @@ jobs:
           dotnet-version: 8.0.x
       - run: dotnet restore src/SpaceTangent.Godot/SpaceTangent.Godot.csproj --locked-mode
       - run: dotnet build src/SpaceTangent.Godot/SpaceTangent.Godot.csproj --no-restore
-      - run: dotnet restore src/SpaceTangent.Godot/SpaceTangent.Godot.csproj -p:Configuration=ExportRelease -r win-x64 --locked-mode
-      - run: dotnet build src/SpaceTangent.Godot/SpaceTangent.Godot.csproj -c ExportRelease -r win-x64 --no-restore
+      - uses: actions/cache@v4
+        with:
+          path: .ci/de440.440
+          key: de440-29915576d0a6555766b99485ac3056ee415e86df4fce282611c31afb329ad062
+      - name: Import and launch the simulator with public DE440
+        run: ./scripts/ci/godot-smoke.ps1
+      - if: runner.os == 'Windows'
+        run: dotnet restore src/SpaceTangent.Godot/SpaceTangent.Godot.csproj -p:Configuration=ExportRelease -r win-x64 --locked-mode
+      - if: runner.os == 'Windows'
+        run: dotnet build src/SpaceTangent.Godot/SpaceTangent.Godot.csproj -c ExportRelease -r win-x64 --no-restore
       - run: dotnet restore tools/SpaceTangent.ModelTool/SpaceTangent.ModelTool.csproj --locked-mode
       - run: dotnet build tools/SpaceTangent.ModelTool/SpaceTangent.ModelTool.csproj --no-restore -c Release

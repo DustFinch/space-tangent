@@ -25,6 +25,10 @@ public partial class BootstrapSmoke : Node
                 Require(startup.Elapsed.TotalSeconds < 20, "World initialization timed out.");
                 await ToSignal(GetTree(), SceneTree.SignalName.ProcessFrame);
             }
+            if (System.Environment.GetEnvironmentVariable("SPACETANGENT_REQUIRE_SIMULATION") == "1")
+                Require(scene.Session is not null && !string.IsNullOrWhiteSpace(
+                    System.Environment.GetEnvironmentVariable("SPACETANGENT_DE440")),
+                    "The CI smoke requires a running simulation with the public ephemeris.");
             if (System.Environment.GetEnvironmentVariable("SPACETANGENT_CASSINI_RADIATOR_SMOKE") == "1")
             {
                 Require(scene.Session?.World.MissionId == new ObjectId("naif/-82"), "Cassini radiator mission must load.");

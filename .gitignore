@@ -5,5 +5,6 @@
 **/TestResults/
 **/.stopwords
 .vs/
+.ci/
 *.user
 src/SpaceTangent.Godot/.local-data/

@@ -80,7 +80,7 @@ public sealed partial class SimulationSession
         if (observer.Navigation is { Tracking: true } tracked && tracked.Target == observer.Selection)
         {
             NavigationPlacement? placement = tracked.Placement is { UsesFrame: true }
-                ? tracked.ResolvePlacement(World.Graph.Evaluate(observer.Epoch), DeltaT) : tracked.Placement;
+                ? tracked.ResolvePlacement(World.Graph.Evaluate(observer.Epoch, DeltaT), DeltaT) : tracked.Placement;
             _views[view] = observer with { Navigation = tracked with { Tracking = false, Placement = placement } };
             return true;
         }
@@ -198,7 +198,7 @@ public sealed partial class SimulationSession
                     _views[view] = observer with { Navigation = pose with
                     {
                         Target = null, Tracking = false,
-                        Placement = pose.ResolvePlacement(World.Graph.Evaluate(last.Epoch), DeltaT)
+                        Placement = pose.ResolvePlacement(World.Graph.Evaluate(last.Epoch, DeltaT), DeltaT)
                     } };
                 _trackingEpochs[view] = null;
                 return;
@@ -215,7 +215,7 @@ public sealed partial class SimulationSession
         }
         if (pose.Placement is { UsesFrame: true } && !pose.TryFrameBasis(snapshot, DeltaT, out _) &&
             _trackingEpochs[view] is { } previous)
-            pose = pose with { Placement = pose.ResolvePlacement(World.Graph.Evaluate(previous.Epoch), DeltaT) };
+            pose = pose with { Placement = pose.ResolvePlacement(World.Graph.Evaluate(previous.Epoch, DeltaT), DeltaT) };
         if (_flights[view] is { } flight)
         {
             double elapsed = Math.Min(flight.Duration, flight.Elapsed + elapsedSeconds);
@@ -295,7 +295,8 @@ public sealed partial class SimulationSession
         WorldSnapshot? evaluated = null)
     {
         ObserverView observer = _views[view];
-        snapshot = evaluated?.Epoch == observer.Epoch ? evaluated : World.Graph.Evaluate(observer.Epoch);
+        snapshot = evaluated?.Epoch == observer.Epoch && evaluated.DeltaT == DeltaT
+            ? evaluated : World.Graph.Evaluate(observer.Epoch, DeltaT);
         target = observer.Selection.GetValueOrDefault();
         state = default;
         if (observer.Selection is null)
@@ -306,7 +307,7 @@ public sealed partial class SimulationSession
         if (World.Satellites.FirstOrDefault(satellite => satellite.Id == id) is not { } satellite ||
             !Covers(World, satellite.Epoch))
             return false;
-        snapshot = World.Graph.Evaluate(satellite.Epoch);
+        snapshot = World.Graph.Evaluate(satellite.Epoch, DeltaT);
         if (!snapshot.TryState(id, out state))
             return false;
         Seek(view, satellite.Epoch);

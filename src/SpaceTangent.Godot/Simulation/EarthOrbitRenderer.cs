@@ -72,7 +72,8 @@ internal sealed class EarthOrbitRenderer
         Vector3 sun = Axis(light.EarthToSun).Normalized();
         _ground.SetShaderParameter("sun_direction", sun);
         _ground.SetShaderParameter("moon_direction", Axis(light.EarthToMoon).Normalized());
-        _ground.SetShaderParameter("earth_angle", (float)light.EarthRotationRadians);
+        _ground.SetShaderParameter("world_to_earth", new Basis(Axis(light.EarthToWorld.X),
+            Axis(light.EarthToWorld.Y), Axis(light.EarthToWorld.Z)).Transposed());
         _ground.SetShaderParameter("lunar_strength", (float)Math.Clamp(.12 * light.RelativeLunarFlux, 0, 1));
         _ground.SetShaderParameter("show_atmosphere", useAtmosphere);
         _ground.SetShaderParameter("has_cloud_map", _hasCloudMap && showClouds);

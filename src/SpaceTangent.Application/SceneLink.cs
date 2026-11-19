@@ -71,7 +71,7 @@ public static partial class SceneLink
         var epoch = new JulianInstant(JulianInstant.J2000Day, 0, TimeScale.Tdb).AddNanoseconds((Int128)(date.Ticks - j2000.Ticks) * 100);
         if (epoch.CompareTo(world.Ephemeris.Start) < 0 || epoch.CompareTo(world.Ephemeris.End) > 0)
             throw new InvalidDataException("The linked epoch lies outside the ephemeris.");
-        var snapshot = world.Graph.Evaluate(epoch);
+        var snapshot = world.Graph.Evaluate(epoch, deltaT);
         ObjectId? parent = follow ? ResolveObject(Uri.UnescapeDataString(path[1]), world.Catalogue) : null;
         ObjectId? partner = mode switch
         {

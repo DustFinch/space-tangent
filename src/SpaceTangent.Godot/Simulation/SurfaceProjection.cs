@@ -173,6 +173,10 @@ internal sealed partial class SurfaceProjection
         _hideObserverClouds = sky.HideClouds;
         _material.SetShaderParameter("show_clouds", _cloudsEnabled && !_hideObserverClouds);
         _material.SetShaderParameter("observer", Convert(lighting.PositionKilometers));
+        // A local spherical atmosphere is tangent to the geodetic site. Physical sky positions remain ellipsoidal.
+        Vector3 atmosphereEye = up * (float)(EarthSurfaceLighting.EarthRadiusKilometers + observer.Site.HeightKilometers);
+        _material.SetShaderParameter("atmosphere_observer", atmosphereEye);
+        _material.SetShaderParameter("air_origin_offset", Convert(lighting.PositionKilometers) - atmosphereEye);
         _material.SetShaderParameter("forward", forward);
         _material.SetShaderParameter("right", right);
         _material.SetShaderParameter("camera_up", cameraUp);
@@ -199,7 +203,8 @@ internal sealed partial class SurfaceProjection
         _material.SetShaderParameter("moon_seen_distance", (float)moonOffset.Length);
         _material.SetShaderParameter("sky_glow", (float)(sky.HideAtmospheres ? 0 : observer.Conditions?.ZenithGlow() ?? 0));
         EclipseRendering.SetEarthShadow(_material, lighting, godotAxes: false);
-        _material.SetShaderParameter("earth_angle", (float)lighting.EarthRotationRadians);
+        _material.SetShaderParameter("world_to_earth", new Basis(Convert(lighting.EarthToWorld.X),
+            Convert(lighting.EarthToWorld.Y), Convert(lighting.EarthToWorld.Z)).Transposed());
         _material.SetShaderParameter("earth_radius", (float)EarthSurfaceLighting.EarthRadiusKilometers);
         _material.SetShaderParameter("moon_radius", (float)EarthSurfaceLighting.MoonRadiusKilometers);
         float moonDiskScale = trueAngularScale || optics is not null ? 1 : (float)(observer.MoonScale ?? 4);

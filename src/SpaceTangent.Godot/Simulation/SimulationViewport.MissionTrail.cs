@@ -12,7 +12,7 @@ internal partial class SimulationViewport
 {
     private MeshInstance3D? _missionTrailNode;
     private ImmediateMesh? _missionTrailMesh;
-    private (SimulationWorld World, ObjectId Id, ObjectId Center, JulianInstant Epoch, MissionDisplay Style)? _missionTrailKey;
+    private (SimulationWorld World, ObjectId Id, ObjectId Center, JulianInstant Epoch, MissionDisplay Style, DeltaTModel? Model)? _missionTrailKey;
     private (Vector3d? Offset, float Shade)[] _missionTrailSamples = [];
 
     internal (Color First, Color Last)? MissionTrailEdgeColors { get; private set; }
@@ -39,10 +39,10 @@ internal partial class SimulationViewport
             return;
         var epoch = snapshot.Epoch;
         if (_missionTrailKey is not { } key || !ReferenceEquals(key.World, world) || key.Id != id ||
-            key.Center != center || key.Style != style ||
+            key.Center != center || key.Style != style || key.Model != snapshot.DeltaT ||
             Math.Abs((double)epoch.DifferenceNanoseconds(key.Epoch)) > span * JulianInstant.NanosecondsPerSecond / 256)
         {
-            _missionTrailKey = (world, id, center, epoch, style);
+            _missionTrailKey = (world, id, center, epoch, style, snapshot.DeltaT);
             const int count = 65;
             _missionTrailSamples = new (Vector3d?, float)[count];
             var minimum = new JulianInstant(0, 0, TimeScale.Tdb);
@@ -53,7 +53,7 @@ internal partial class SimulationViewport
             {
                 double fraction = index / (double)(count - 1);
                 var at = epoch.AddSeconds(first + (last - first) * fraction);
-                var point = world.Graph.Evaluate(at);
+                var point = snapshot.DeltaT is { } model ? world.Graph.Evaluate(at, model) : world.Graph.Evaluate(at);
                 Vector3d? offset = point.TryStateCenter(id, out var sampleCenter) && sampleCenter == center &&
                     point.TryState(id, out var state) && point.TryState(center, out var parent)
                     ? (state - parent).PositionKilometers : null;

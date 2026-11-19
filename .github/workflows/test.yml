@@ -1,0 +1,20 @@
+name: Application checks
+on: [push, pull_request]
+permissions:
+  contents: read
+jobs:
+  test:
+    strategy:
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+      - run: dotnet restore tests/SpaceTangent.Application.Tests --locked-mode
+      - run: dotnet test tests/SpaceTangent.Application.Tests -c Release --no-restore --logger trx
+# Godot rendering and dataset-dependent acceptance runs are performed separately on the release machine.

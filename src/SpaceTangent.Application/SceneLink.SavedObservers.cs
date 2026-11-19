@@ -103,7 +103,7 @@ public static partial class SceneLink
             ? lens.GetDouble() : null;
         if (!ObserverView.ValidPlaybackRate(rate) || field is { } fov && !ObserverView.ValidFieldOfView(fov))
             throw new InvalidDataException("The saved observer has an unsupported playback rate or field of view.");
-        if (!TryRestoreAbsoluteCamera(world, world.Graph.Evaluate(epoch), deltaT, eye, attitude, selected,
+        if (!TryRestoreAbsoluteCamera(world, world.Graph.Evaluate(epoch, deltaT), deltaT, eye, attitude, selected,
                 target, mode == 1, frame, reference, out NavigationCamera camera, catalogueFrame))
             throw new InvalidDataException("The saved observer camera or reference frame is unavailable.");
         var observer = new ObserverView(epoch, CameraMode.Solar, selected, rate != 0)

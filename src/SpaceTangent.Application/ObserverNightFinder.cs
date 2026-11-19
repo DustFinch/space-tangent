@@ -21,7 +21,7 @@ public static class ObserverNightFinder
                 return EarthObserving.HorizontalDirection(light, star.DirectionAt(solar.Epoch));
             if (observer.Selection is not { } target)
                 return null;
-            var snapshot = world.Graph.Evaluate(solar.Epoch);
+            var snapshot = world.Graph.Evaluate(solar.Epoch, model);
             return world.TryNavigationState(target, snapshot, out CartesianState state, model)
                 ? EarthObserving.Horizontal(light, (state - solar.Earth).PositionKilometers) : null;
         }, cancellation: cancellation, clock: clock);

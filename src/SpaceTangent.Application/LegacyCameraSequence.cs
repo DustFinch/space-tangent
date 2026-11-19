@@ -71,7 +71,7 @@ public sealed class LegacyCameraSequence : IObserverReplay
             {
                 if (epoch.CompareTo(world.Ephemeris.Start) < 0 || epoch.CompareTo(world.Ephemeris.End) > 0)
                     throw new InvalidDataException("An archived camera epoch lies outside the installed ephemeris.");
-                snapshot = world.Graph.Evaluate(epoch);
+                snapshot = world.Graph.Evaluate(epoch, deltaT);
                 lastEpoch = epoch;
             }
 

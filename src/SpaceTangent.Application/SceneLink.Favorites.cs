@@ -15,7 +15,7 @@ public static partial class SceneLink
             favorite.JulianDay > world.Ephemeris.End.ToJulianDate())
             return null;
         JulianInstant epoch = JulianInstant.FromJulianDate(favorite.JulianDay, TimeScale.Tdb);
-        WorldSnapshot snapshot = world.Graph.Evaluate(epoch);
+        WorldSnapshot snapshot = world.Graph.Evaluate(epoch, deltaT);
         if (!snapshot.TryState(SolarSystemSample.SunId, out CartesianState sun))
             return null;
         ObjectId selected = SolarSystemSample.SunId;

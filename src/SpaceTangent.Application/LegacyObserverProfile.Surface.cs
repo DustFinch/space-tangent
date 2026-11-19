@@ -25,7 +25,7 @@ public static partial class LegacyObserverProfiles
         if (world.Catalogue.Find(body)?.Kind is not (CatalogueKind.Planet or CatalogueKind.DwarfPlanet or CatalogueKind.Moon
             or CatalogueKind.Asteroid or CatalogueKind.Comet))
             return observer;
-        var snapshot = world.Graph.Evaluate(observer.Epoch);
+        var snapshot = world.Graph.Evaluate(observer.Epoch, profile.DeltaT);
         if (!world.TryNavigationState(body, snapshot, out var state, profile.DeltaT) ||
             !NavigationCamera.TryBodyBasis(snapshot, body, profile.DeltaT, out _))
             return observer;

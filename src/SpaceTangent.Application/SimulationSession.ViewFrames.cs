@@ -10,7 +10,7 @@ public sealed partial class SimulationSession
     {
         LeaveShip(view);
         ObserverView observer = _views[view];
-        var snapshot = World.Graph.Evaluate(observer.Epoch);
+        var snapshot = World.Graph.Evaluate(observer.Epoch, DeltaT);
         NavigationCamera camera = observer.Navigation ?? PresetCamera(observer, snapshot);
         NavigationPlacement placement = camera.ResolvePlacement(snapshot, DeltaT);
         CancelFlight(view);
@@ -39,7 +39,7 @@ public sealed partial class SimulationSession
             return false;
         double distance = camera.RangeKilometers;
         if (observer.Selection is { } target &&
-            World.TryNavigationState(target, World.Graph.Evaluate(observer.Epoch), out var state, DeltaT))
+            World.TryNavigationState(target, World.Graph.Evaluate(observer.Epoch, DeltaT), out var state, DeltaT))
             distance = ((state.PositionKilometers - camera.AnchorKilometers) - placement.OffsetKilometers).Length;
         double speed = Math.Clamp(distance * .2, 1, 1e12);
         Vector3d axisRight = Vector3d.Cross(placement.Forward, placement.Up);
@@ -98,7 +98,7 @@ public sealed partial class SimulationSession
 
     internal bool FollowRelativeFrame(int view, ObjectId target, NavigationFrame frame, ObjectId? reference)
     {
-        var snapshot = World.Graph.Evaluate(_views[view].Epoch);
+        var snapshot = World.Graph.Evaluate(_views[view].Epoch, DeltaT);
         if ((reference ?? World.Catalogue.Find(target)?.Parent) is not { } other || other == target ||
             !NavigationCamera.TryRelativeBasis(snapshot, frame, target, other, out Basis3d basis) ||
             !World.TryNavigationState(target, snapshot, out var state))
@@ -111,7 +111,7 @@ public sealed partial class SimulationSession
 
     internal bool FollowBodyRotation(int view, ObjectId target)
     {
-        var snapshot = World.Graph.Evaluate(_views[view].Epoch);
+        var snapshot = World.Graph.Evaluate(_views[view].Epoch, DeltaT);
         if (!NavigationCamera.TryBodyBasis(snapshot, target, DeltaT, out Basis3d basis) ||
             !World.TryNavigationState(target, snapshot, out CartesianState state))
             return false;
@@ -120,7 +120,7 @@ public sealed partial class SimulationSession
 
     internal bool FollowScriptReference(int view, ObjectId target, NavigationFrame frame)
     {
-        var snapshot = World.Graph.Evaluate(_views[view].Epoch);
+        var snapshot = World.Graph.Evaluate(_views[view].Epoch, DeltaT);
         if (!World.TryNavigationState(target, snapshot, out var state, DeltaT))
             return false;
         Basis3d basis = Basis3d.Identity;

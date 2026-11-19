@@ -31,7 +31,7 @@ public sealed partial class SimulationSession
         if (observer.Selection is not { } id || World.Catalogue.Find(id) is not { } selected ||
             selected.Kind is CatalogueKind.Star or CatalogueKind.Galaxy or CatalogueKind.Nebula or CatalogueKind.Cluster)
             return null;
-        var snapshot = World.Graph.Evaluate(observer.Epoch);
+        var snapshot = World.Graph.Evaluate(observer.Epoch, DeltaT);
         if (snapshot.SolarSystem is not { } solar || !World.TryNavigationState(id, snapshot, out var state, DeltaT))
             return null;
 

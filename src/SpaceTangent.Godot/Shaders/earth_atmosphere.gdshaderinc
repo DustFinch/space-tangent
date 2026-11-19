@@ -5,6 +5,8 @@
 uniform bool solar_eclipse_active = false;
 uniform vec3 eclipse_sun_km;
 uniform vec3 eclipse_moon_km;
+// Translation from a local spherical atmosphere to the physical ellipsoidal observer's neighbourhood.
+uniform vec3 air_origin_offset = vec3(0.0);
 
 const float AIR_TOP_KM = 100.0;
 const vec2 AIR_SCALE_KM = vec2(8.5, 1.2);
@@ -15,6 +17,7 @@ const float AIR_MIE_G = 0.76;
 const float AIR_EXPOSURE = 7.0;
 
 float earth_solar_visibility(vec3 position) {
+    position += air_origin_offset;
     float visibility = solar_eclipse_active ? solar_visibility(eclipse_sun_km - position, eclipse_moon_km - position, 1737.4) : 1.0;
 #ifdef ARCHIVED_EARTH_LIMB
     visibility *= archived_light_visibility(position * vec3(1.0, archived_polar_ratio, 1.0) / earth_radius_km,

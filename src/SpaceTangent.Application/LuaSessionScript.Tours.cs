@@ -87,7 +87,7 @@ public sealed partial class LuaSessionScript
             }
             id = planet.Id;
         }
-        var snapshot = _session.World.Graph.Evaluate(_session[View].Epoch);
+        var snapshot = _session.World.Graph.Evaluate(_session[View].Epoch, _session.DeltaT);
         if (!_session.World.TryNavigationState(id, snapshot, out _))
         {
             Log($"Tour target has no state at the current epoch: {query}");

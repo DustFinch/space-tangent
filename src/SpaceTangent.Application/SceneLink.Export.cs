@@ -17,7 +17,7 @@ public static partial class SceneLink
     {
         if (observer.Navigation is not { } pose)
             throw new InvalidDataException("Open a perspective camera before exporting a legacy scene link.");
-        var snapshot = world.Graph.Evaluate(observer.Epoch);
+        var snapshot = world.Graph.Evaluate(observer.Epoch, deltaT);
         NavigationPlacement placement = pose.ResolvePlacement(snapshot, deltaT);
         string mode = "Freeflight";
         List<ObjectId> references = [];

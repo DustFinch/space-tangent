@@ -16,6 +16,7 @@ uniform float survey_brightness = 1.0;
 uniform sampler2D cloud_texture : filter_linear_mipmap, repeat_enable;
 uniform sampler2D moon_texture : source_color, filter_linear_mipmap;
 uniform vec3 observer;
+uniform vec3 atmosphere_observer;
 uniform float tan_half_field = 0.087488664;
 uniform vec3 forward;
 uniform vec3 right;
@@ -25,7 +26,7 @@ uniform vec3 earth_to_moon;
 uniform vec3 moon_seen;
 uniform float moon_seen_distance = 0.0;
 uniform float sky_glow = 0.0;
-uniform float earth_angle;
+uniform mat3 world_to_earth = mat3(1.0);
 uniform float earth_radius;
 uniform float moon_radius;
 uniform float moon_disk_scale = 4.0;
@@ -71,9 +72,7 @@ float cloud_noise(vec3 position) {
 
 float cloud_cover(vec3 cloud, float regional_cover) {
     // The map provides regional coverage. A ground observer resolves local cloud detail.
-    float c = cos(earth_angle);
-    float s = sin(earth_angle);
-    vec3 local = vec3(c * cloud.x + s * cloud.y, -s * cloud.x + c * cloud.y, cloud.z);
+    vec3 local = world_to_earth * cloud;
     float detail = 0.55 * cloud_noise(local / 2.8) + 0.30 * cloud_noise(local / 1.1) +
         0.15 * cloud_noise(local / 0.4);
     float shape = smoothstep(0.33, 0.66, detail + (regional_cover - 0.5) * 0.60);
@@ -179,12 +178,12 @@ void fragment() {
     vec2 screen = vec2(2.0 * UV.x - 1.0, 1.0 - 2.0 * UV.y);
     screen.x *= SCREEN_PIXEL_SIZE.y / SCREEN_PIXEL_SIZE.x;
     vec3 ray = normalize(forward + tan_half_field * (screen.x * right + screen.y * camera_up));
-    vec3 site_up = normalize(observer);
+    vec3 site_up = normalize(cross(site_east, site_north));
     vec3 sun_dir = normalize(earth_to_sun - observer);
     vec3 moon_delta = earth_to_moon - observer;
     vec3 moon_dir = normalize(moon_delta);
-    float eye_projection = dot(observer, ray);
-    float eye_radius = length(observer);
+    float eye_projection = dot(atmosphere_observer, ray);
+    float eye_radius = length(atmosphere_observer);
     float ground_offset = max(0.0, eye_radius - earth_radius) * (eye_radius + earth_radius);
     float ground_discriminant = eye_projection * eye_projection - ground_offset;
     bool ground = eye_projection < 0.0 && ground_discriminant >= 0.0;
@@ -228,11 +227,12 @@ void fragment() {
     float cloud_distance = 0.0;
     float coverage = 0.0;
     if (show_clouds && eye_radius < earth_radius + 8.0 && dot(ray, site_up) > 0.0) {
-        cloud_distance = air_exit(observer, ray, earth_radius + 8.0);
-        vec3 cloud = observer + ray * cloud_distance;
+        cloud_distance = air_exit(atmosphere_observer, ray, earth_radius + 8.0);
+        vec3 cloud = atmosphere_observer + ray * cloud_distance;
         vec3 normal = normalize(cloud);
-        float longitude = atan(normal.y, normal.x) - earth_angle;
-        float latitude = asin(clamp(normal.z, -1.0, 1.0));
+        vec3 terrestrial = world_to_earth * normal;
+        float longitude = atan(terrestrial.y, terrestrial.x);
+        float latitude = asin(clamp(terrestrial.z, -1.0, 1.0));
         float regional_cover = texture(cloud_texture, vec2(fract(0.5 + longitude / TAU), 0.5 - latitude / PI)).r;
         coverage = cloud_cover(cloud, regional_cover);
         float solar_incidence = dot(normal, sun_dir);
@@ -240,26 +240,26 @@ void fragment() {
         float sunlight = max(0.0, solar_incidence) * earth_solar_visibility(cloud);
         float moonlight = 0.0;
         if (lunar_cloud_light) {
-            moonlight = lunar_strength * night * max(0.0, dot(normal, normalize(earth_to_moon - cloud)));
+            moonlight = lunar_strength * night * max(0.0, dot(normal, normalize(earth_to_moon - cloud - air_origin_offset)));
         }
         float cloud_value = (0.045 + 0.88 * sunlight + 1.65 * moonlight) * (1.0 - 0.40 * coverage);
         if (coverage > 0.0) {
             cloud_radiance = vec3(cloud_value);
             if (show_atmosphere) {
-                air_integrate(observer, ray, sun_dir, earth_radius, 0.0, cloud_distance, 12, view_column, air_radiance);
+                air_integrate(atmosphere_observer, ray, sun_dir, earth_radius, 0.0, cloud_distance, 12, view_column, air_radiance);
                 cloud_radiance = air_compose(cloud_radiance, view_column, air_radiance);
             }
         }
     }
 
-    float sky_distance = air_exit(observer, ray, earth_radius + AIR_TOP_KM);
+    float sky_distance = air_exit(atmosphere_observer, ray, earth_radius + AIR_TOP_KM);
     if (ground) {
         sky_distance = ground_offset / (-eye_projection + sqrt(ground_discriminant));
     }
     float start = coverage > 0.0 ? cloud_distance : 0.0;
     vec3 sky = background;
     if (show_atmosphere) {
-        air_integrate(observer, ray, sun_dir, earth_radius, start, sky_distance, 20, view_column, air_radiance);
+        air_integrate(atmosphere_observer, ray, sun_dir, earth_radius, start, sky_distance, 20, view_column, air_radiance);
         sky = air_compose(background, view_column, air_radiance);
     }
     vec3 composite = mix(sky, cloud_radiance, coverage);

@@ -32,7 +32,7 @@ internal sealed partial class SurfaceProjection
         for (int day = 0; day < directions.Length; day++)
         {
             var instant = JulianInstant.FromJulianDate(first + day, TimeScale.Tdb);
-            var snapshot = world.Graph.Evaluate(instant);
+            var snapshot = world.Graph.Evaluate(instant, model);
             if (snapshot.SolarSystem is not { } solar || !world.TryNavigationState(target, snapshot, out var state, model))
                 continue;
             Vector3d offset = (state - solar.Earth).PositionKilometers;

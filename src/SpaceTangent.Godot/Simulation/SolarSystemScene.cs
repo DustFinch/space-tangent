@@ -21,7 +21,6 @@ public partial class SolarSystemScene : Control
     {
         internal Label? PointerReadout { get; set; }
         internal Vector2? PointerPosition { get; set; }
-        internal WorldEvaluation OrbitalHistory { get; } = new();
         internal WorldSnapshot? Snapshot { get; set; }
         internal SimulationWorld? SnapshotWorld { get; set; }
         internal ProjectionScale? Perspective { get; set; }
@@ -2051,9 +2050,9 @@ public partial class SolarSystemScene : Control
             var epoch = session[index].Epoch;
             // Catalogue Lua callbacks can change internal state even at the same epoch.
             var snapshot = _addOns?.Decoded.AllowAddonLua != true && ReferenceEquals(controls.SnapshotWorld, session.World) &&
-                controls.Snapshot is { } cached && cached.Epoch == epoch
+                controls.Snapshot is { } cached && cached.Epoch == epoch && cached.DeltaT == session.DeltaT
                     ? cached
-                    : session.World.Graph.Evaluate(epoch, controls.OrbitalHistory);
+                    : session.World.Graph.Evaluate(epoch, session.DeltaT);
             controls.SnapshotWorld = session.World;
             session.UpdateCamera(index, snapshot, elapsed);
             if (!controls.DraggingCamera && !controls.Looking)

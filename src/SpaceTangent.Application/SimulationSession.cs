@@ -307,7 +307,7 @@ public sealed partial class SimulationSession
                 (!camera.IsValid() || (camera.Target is { } target && World.Catalogue.Find(target) is null)))
                 throw new InvalidDataException("The scenario has an invalid camera pose or unavailable camera target.");
             if (view.Navigation is { Placement.UsesFrame: true } framed &&
-                !framed.TryFrameBasis(World.Graph.Evaluate(view.Epoch), scenario.DeltaT, out _))
+                !framed.TryFrameBasis(World.Graph.Evaluate(view.Epoch, scenario.DeltaT), scenario.DeltaT, out _))
                 throw new InvalidDataException("The scene needs an unavailable observer frame.");
         }
         ObserverView owner = views[scenario.ClockOwner];
@@ -483,20 +483,20 @@ public sealed partial class SimulationSession
         if (mode == CameraMode.Mission)
         {
             ObjectId mission = World.MissionId ?? throw new InvalidOperationException("The current world has no mission.");
-            WorldSnapshot snapshot = World.Graph.Evaluate(previous.Epoch);
+            WorldSnapshot snapshot = World.Graph.Evaluate(previous.Epoch, DeltaT);
             if (!snapshot.TryState(mission, out _) || !snapshot.TryOrientation(mission, out _))
                 Seek(view, MissionPreview);
         }
         if (mode == CameraMode.Timeline)
         {
             ObjectId id = World.TimelineId ?? throw new InvalidOperationException("The current world has no sampled timeline.");
-            if (!World.Graph.Evaluate(previous.Epoch).TryState(id, out _))
+            if (!World.Graph.Evaluate(previous.Epoch, DeltaT).TryState(id, out _))
                 Seek(view, World.TimelineStart!.Value);
         }
         if (mode == CameraMode.Probe)
         {
             var probe = World.Probe ?? throw new InvalidOperationException("The current world has no Huygens track.");
-            if (!World.Graph.Evaluate(previous.Epoch).TryOrientation(probe.Id, out _))
+            if (!World.Graph.Evaluate(previous.Epoch, DeltaT).TryOrientation(probe.Id, out _))
                 Seek(view, probe.Separation);
         }
         CancelFlight(view);
@@ -621,11 +621,11 @@ public sealed partial class SimulationSession
             {
                 bool lostTarget = next.Catalogue.Find(target) is null;
                 bool lostFrame = camera.Placement is { UsesFrame: true } &&
-                    !camera.TryFrameBasis(next.Graph.Evaluate(previous.Epoch), DeltaT, out _);
+                    !camera.TryFrameBasis(next.Graph.Evaluate(previous.Epoch, DeltaT), DeltaT, out _);
                 if (lostTarget || lostFrame)
                 {
                     NavigationPlacement? placement = camera.Placement is { UsesFrame: true }
-                        ? camera.ResolvePlacement(World.Graph.Evaluate(previous.Epoch), DeltaT) : camera.Placement;
+                        ? camera.ResolvePlacement(World.Graph.Evaluate(previous.Epoch, DeltaT), DeltaT) : camera.Placement;
                     bool release = lostTarget || camera.Placement?.CatalogueFrame is not null;
                     navigation = camera with { Target = release ? null : target, Tracking = !release && camera.Tracking,
                         Placement = placement };

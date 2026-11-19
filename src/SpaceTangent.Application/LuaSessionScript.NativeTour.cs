@@ -159,9 +159,9 @@ public sealed partial class LuaSessionScript
     {
         SimulationWorld world = _session.World;
         JulianInstant epoch = _session[observer ?? View].Epoch;
-        if (_nativeSnapshot is { } recent && ReferenceEquals(recent.World, world) && recent.Snapshot.Epoch == epoch)
+        if (_nativeSnapshot is { } recent && ReferenceEquals(recent.World, world) && recent.Snapshot.Epoch == epoch && recent.Snapshot.DeltaT == _session.DeltaT)
             return recent.Snapshot;
-        WorldSnapshot snapshot = world.Graph.Evaluate(epoch);
+        WorldSnapshot snapshot = world.Graph.Evaluate(epoch, _session.DeltaT);
         _nativeSnapshot = (world, snapshot);
         return snapshot;
     }

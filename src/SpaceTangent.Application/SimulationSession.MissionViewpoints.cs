@@ -8,7 +8,7 @@ public sealed partial class SimulationSession
 {
     public bool OpenMissionViewpoint(int view, MissionViewpoint viewpoint)
     {
-        var snapshot = World.Graph.Evaluate(_views[view].Epoch);
+        var snapshot = World.Graph.Evaluate(_views[view].Epoch, DeltaT);
         if (!World.TryNavigationState(viewpoint.Center, snapshot, out var center, DeltaT))
             return false;
         var reference = new Vector3d(1, 0, 0);

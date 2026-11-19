@@ -12,7 +12,7 @@ uniform sampler2D cloud_map : filter_linear_mipmap, repeat_enable;
 uniform bool has_night_map = false;
 uniform bool has_cloud_map = false;
 uniform bool show_atmosphere = true;
-uniform float earth_angle;
+uniform mat3 world_to_earth = mat3(1.0);
 uniform float lunar_strength;
 uniform vec3 moon_direction;
 varying vec3 model_surface;
@@ -24,8 +24,9 @@ void vertex() {
 }
 
 vec2 globe_uv(vec3 normal) {
-    float longitude = atan(-normal.z, normal.x) - earth_angle;
-    float latitude = asin(clamp(normal.y, -1.0, 1.0));
+    vec3 terrestrial = world_to_earth * normal;
+    float longitude = atan(terrestrial.y, terrestrial.x);
+    float latitude = asin(clamp(terrestrial.z, -1.0, 1.0));
     return vec2(fract(0.5 + longitude / TAU), clamp(0.5 - latitude / PI, 0.0001, 0.9999));
 }
 

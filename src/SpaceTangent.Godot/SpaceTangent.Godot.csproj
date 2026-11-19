@@ -2,6 +2,8 @@
   <PropertyGroup>
     <TargetFramework>net8.0</TargetFramework>
     <CopyLocalLockFileAssemblies>true</CopyLocalLockFileAssemblies>
+    <!-- Engine-bundled packages can have different archive hashes from nuget.org despite identical assemblies. -->
+    <RestorePackagesPath Condition="'$(RestorePackagesPath)' == '' And '$(NUGET_PACKAGES)' == ''">$(MSBuildProjectDirectory)/.godot/mono/nuget</RestorePackagesPath>
   </PropertyGroup>
   <ItemGroup Condition="'$(Configuration)' == 'ExportRelease'">
     <Compile Remove="tests/**/*.cs" />

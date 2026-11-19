@@ -8,8 +8,7 @@ permissions:
 
 jobs:
   build:
-    # The Godot project's lock file pins the package hashes of the Windows engine build, so locked restore works on
-    # Windows only. Move this job to Linux once the lock file is platform independent.
+    # Build against the public NuGet packages pinned by both lock files, without the engine-bundled user cache.
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
@@ -21,5 +20,7 @@ jobs:
           dotnet-version: 8.0.x
       - run: dotnet restore src/SpaceTangent.Godot/SpaceTangent.Godot.csproj --locked-mode
       - run: dotnet build src/SpaceTangent.Godot/SpaceTangent.Godot.csproj --no-restore
+      - run: dotnet restore src/SpaceTangent.Godot/SpaceTangent.Godot.csproj -p:Configuration=ExportRelease -r win-x64 --locked-mode
+      - run: dotnet build src/SpaceTangent.Godot/SpaceTangent.Godot.csproj -c ExportRelease -r win-x64 --no-restore
       - run: dotnet restore tools/SpaceTangent.ModelTool/SpaceTangent.ModelTool.csproj --locked-mode
       - run: dotnet build tools/SpaceTangent.ModelTool/SpaceTangent.ModelTool.csproj --no-restore -c Release

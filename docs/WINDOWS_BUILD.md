@@ -2,6 +2,8 @@
 
 Install the Godot .NET export templates matching the project version. Restore the Windows export dependencies in locked mode and export the Windows Desktop preset from the application checkout.
 
+The lock files pin the public nuget.org packages. Godot restores into its ignored project-local `.godot/mono/nuget` cache by default: packages bundled with the editor can contain the same assemblies but have different archive hashes in the shared user cache. An explicit `NUGET_PACKAGES` or `RestorePackagesPath` overrides this default; use a cache populated from nuget.org for locked restore.
+
 ```powershell
 dotnet restore src/SpaceTangent.Godot/SpaceTangent.Godot.csproj -p:Configuration=ExportRelease -r win-x64 --locked-mode
 godot --headless --path src/SpaceTangent.Godot --editor --import --quit

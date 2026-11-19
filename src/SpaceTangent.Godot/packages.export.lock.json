@@ -6,13 +6,13 @@
         "type": "Direct",
         "requested": "[4.7.2, )",
         "resolved": "4.7.2",
-        "contentHash": "Utbu3S+af5/+SVRUlSZZJb2M52mcL3RbHl5sW6lmvRkG2klS/KFjZ+6ldAmOlp1mTqvxZ+5QsEvl/Dis7a4ZMA=="
+        "contentHash": "PeYESFlRxlmeClrPhlMINhVvt2HiKnx2Ux/FYA10rimDevHljji3/jmRZOMo9XDNQsZzPH4uQmDyPgQgzTFvAg=="
       },
       "GodotSharp": {
         "type": "Direct",
         "requested": "[4.7.2, )",
         "resolved": "4.7.2",
-        "contentHash": "7lbJgYB1o96H23sX0idzwhnY0DbRx0oJucYKP9xGQv5IcghlXUuxUv/xTMV+I1mW3Wh9uDdtuwtpwNurk2y7Fw=="
+        "contentHash": "EPvfayB7b7MrBNdASvy86jRS5AbM9dprkVivcRD80g+ngn2M8KAIrBQH4NhyQL+pwxni0xVnuqhD9AFpZeNQpw=="
       },
       "MoonSharp": {
         "type": "Transitive",

@@ -1,5 +1,15 @@
 # Add-on reload
 
+## Repeated definitions
+
+When enabled science sources repeat an object ID, the first source in the configured order supplies both its trajectory and model. The log reports the retained and ignored paths. Repeated mission IDs reaching world installation follow the same first-definition policy. Existing SSC override and TLE catalogue/update rules remain in force. An unsupported mission/body conflict rejects the new world with a diagnostic; the running world remains available.
+
+## Sky-survey network policy
+
+The **HiPS: offline** switch in Packs and add-ons saves its setting with local add-on preferences. It cancels pending tile requests and keeps local files and cached textures available. Turning it off permits fresh requests. `SPACETANGENT_HIPS_OFFLINE=1` forces offline behavior and disables the control. This setting applies to HiPS surveys; it does not add other map-server protocols.
+
+## Reload validation
+
 Reloading validates four independent sources: the science catalogue, the SPICE mission, the sampled timeline and the lunar terrain pack. Each source records the contents it read, the resource paths it checked, and the file listings that selected its SSC overrides. A previously missing resource can change the selected input on the next reload.
 
 File sizes are a quick rejection check. Matching sizes still require matching SHA-256 content, even when modification times agree. Unrelated files do not invalidate a source. The cache is in memory and lasts for the current simulator session.

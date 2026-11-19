@@ -1,5 +1,7 @@
 # Windows build
 
+CI compiles the Godot project on Windows and Linux and runs a headless simulator startup with pinned public DE440. Run `pwsh ./scripts/ci/godot-smoke.ps1` for the same download, hash verification, import and startup procedure. This verifies a real simulation session; GPU and original-add-on acceptance are separate checks. Keep generated `.uid` files for scripts and shaders under version control, and verify that a clean editor import leaves the checkout unchanged.
+
 Install the Godot .NET export templates matching the project version. Restore the Windows export dependencies in locked mode and export the Windows Desktop preset from the application checkout.
 
 The lock files pin the public nuget.org packages. Godot restores into its ignored project-local `.godot/mono/nuget` cache by default: packages bundled with the editor can contain the same assemblies but have different archive hashes in the shared user cache. An explicit `NUGET_PACKAGES` or `RestorePackagesPath` overrides this default; use a cache populated from nuget.org for locked restore.

@@ -23,6 +23,7 @@ public partial class SolarSystemScene
     internal int RecordedFrames => _movie?.FramesWritten ?? 0;
     internal bool Replaying => _replay is not null;
     private bool MovieActive => _movie is not null;
+    private bool PathsRequireImmediate => MovieActive || Replaying || _screenshotPath is not null || _scriptScreenshots.Count > 0;
 
     private void ConnectCapture()
     {
@@ -56,6 +57,7 @@ public partial class SolarSystemScene
         try
         {
             _screenshotPath = output is null ? CaptureStem() + ".png" : Path.GetFullPath(output);
+            if (Session is not null) Refresh();
             return true;
         }
         catch (Exception error) when (IsLoadError(error))
@@ -89,6 +91,7 @@ public partial class SolarSystemScene
             output = Path.Combine(directory, FormattableString.Invariant($"{stem}-{suffix}.png"));
         }
         _scriptScreenshots.Enqueue(output);
+        if (Session is not null) Refresh();
     }
 
     private static bool ReservedWindowsName(string name)
@@ -124,6 +127,7 @@ public partial class SolarSystemScene
             _moviePreviousFps = Engine.MaxFps;
             Engine.MaxFps = WindowRecording.FramesPerSecond;
             _movieFrameLimit = frameLimit;
+            Refresh();
             _status.Text = "Recording · Shift+F10 to stop.";
             return true;
         }

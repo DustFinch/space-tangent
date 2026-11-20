@@ -32,6 +32,22 @@ public partial class EarthOrbitProbe
             throw new InvalidOperationException("The archived path flag and the second observer must survive reload.");
 
         await Frames();
+        foreach (double rate in new double[] { 1_000_000, -1_000_000 })
+        {
+            session.SetPlaybackRate(0, rate);
+            for (int frame = 0; frame < 120; frame++)
+            {
+                await ToSignal(GetTree(), SceneTree.SignalName.ProcessFrame);
+                await ToSignal(RenderingServer.Singleton, RenderingServer.SignalName.FramePostDraw);
+                double today = Math.Floor(session[0].Epoch.ToJulianDate() - .5) + .5;
+                if (scene.Renderer(0).SelectedBodyPathDay != today || session[1] != first)
+                    throw new InvalidOperationException("The high-warp Moon path disappeared, used another day or changed the independent view.");
+            }
+            session.SetPlaying(0, false);
+            scene.Seek(0, epoch);
+            await Frames();
+        }
+        GD.Print("Rolling body-path GPU: Moon path stayed on the current day for 120 frames each at +1000000x and -1000000x.");
         using var enabled = scene.Renderer(0).GetViewport().GetTexture().GetImage();
         var menu = ((MenuButton)scene.FindChild("SkyMarkings", recursive: true, owned: false)).GetPopup();
         menu.EmitSignal(PopupMenu.SignalName.IdPressed, (long)SkyMarkings.SelectedBodyPath);

@@ -31,6 +31,26 @@ public partial class EarthOrbitProbe
             throw new InvalidOperationException("The archived display pack could not reload.");
         await WaitForTrail();
         Check();
+        foreach (double rate in new double[] { 1000, -1000 })
+        {
+            session.SetPlaybackRate(0, rate);
+            for (int frame = 0; frame < 120; frame++)
+            {
+                await ToSignal(GetTree(), SceneTree.SignalName.ProcessFrame);
+                await ToSignal(RenderingServer.Singleton, RenderingServer.SignalName.FramePostDraw);
+                CheckCurrentTrail();
+                if (scene.Renderer(1).MissionTrailVisible || session[1] != hidden)
+                    throw new InvalidOperationException("Warp changed the independent hidden trail view.");
+            }
+            session.SetPlaying(0, false);
+            scene.Seek(0, epoch);
+            await WaitForTrail();
+            Check();
+        }
+        GD.Print("Rolling mission GPU: real Jason-1 remained visible and within span/256 for 120 frames each at +1000x and -1000x.");
+        await ExerciseTrailCaptures(scene, directory, path, CheckCurrentTrail);
+        await WaitForTrail();
+        Check();
         await ToSignal(GetTree(), SceneTree.SignalName.ProcessFrame);
         await ToSignal(RenderingServer.Singleton, RenderingServer.SignalName.FramePostDraw);
         using var image = GetViewport().GetTexture().GetImage();
@@ -63,12 +83,119 @@ public partial class EarthOrbitProbe
                 throw new InvalidOperationException("The archived orbit window, fade or label tint differs.");
         }
 
+        void CheckCurrentTrail()
+        {
+            var shown = scene.Renderer(0);
+            if (!shown.MissionTrailVisible || shown.MissionTrailEpoch is not { } at ||
+                Math.Abs((double)session[0].Epoch.DifferenceNanoseconds(at)) / JulianInstant.NanosecondsPerSecond > 3300d / 256 ||
+                shown.MissionTrailPointCount != 65 || shown.MissionTrailFirstPoint is not { } first ||
+                shown.MissionTrailLastPoint is not { } last ||
+                (first - OffsetAt(at.AddSeconds(-2700))).Length > 1e-6 ||
+                (last - OffsetAt(at.AddSeconds(600))).Length > 1e-6)
+                throw new InvalidOperationException("The rolling real mission trail disappeared, aged or changed its endpoint states.");
+        }
+
         Vector3d OffsetAt(JulianInstant time)
         {
             var snapshot = session.World.Graph.Evaluate(time);
             if (!snapshot.TryState(jason, out var satellite) || !snapshot.TryState(earth, out var parent))
                 throw new InvalidOperationException("The reference state for the orbit trail is missing.");
             return (satellite - parent).PositionKilometers;
+        }
+    }
+
+    private async Task ExerciseTrailCaptures(SolarSystemScene scene, string directory, string scenario, Action check)
+    {
+        const string setting = "SPACETANGENT_CAPTURE_OUTPUT";
+        string? previous = System.Environment.GetEnvironmentVariable(setting);
+        string output = Path.Combine(directory, "trail-captures");
+        Directory.CreateDirectory(output);
+        System.Environment.SetEnvironmentVariable(setting, output);
+        int coldEpoch = 0;
+        try
+        {
+            Cold();
+            string png = Path.Combine(output, "paused-first-frame.png");
+            if (!scene.QueueScreenshot(png)) throw new InvalidOperationException("Could not queue the first paused capture.");
+            check();
+            await FramesUntil(() => File.Exists(png));
+            CheckCapture(png);
+
+            Cold();
+            string script = Path.Combine(directory, "trail-capture.lua");
+            File.WriteAllText(script, "st.capture('script-first-frame.png')");
+            var running = scene.RunScript(script) ?? throw new InvalidOperationException("Could not start the trail capture script.");
+            running.Step(.05);
+            if (running.Error is not null) throw new InvalidOperationException(running.Error);
+            check();
+            await FramesUntil(() => File.Exists(Path.Combine(output, "script-first-frame.png")));
+            CheckCapture(Path.Combine(output, "script-first-frame.png"));
+
+            Cold();
+            if (!scene.StartRecording()) throw new InvalidOperationException("Could not start the trail movie.");
+            check();
+            for (int frame = 0; frame < 8; frame++)
+            {
+                await ToSignal(GetTree(), SceneTree.SignalName.ProcessFrame);
+                await ToSignal(RenderingServer.Singleton, RenderingServer.SignalName.FramePostDraw);
+                check();
+            }
+            var movie = await scene.StopRecording() ?? throw new InvalidOperationException("The trail movie did not finish.");
+            if (movie.Frames < 8 || !File.Exists(movie.Video)) throw new InvalidOperationException("The trail movie has missing frames.");
+            if (!await scene.ReloadAddOns()) throw new InvalidOperationException("Could not create a fresh world for the first replay frame.");
+            Cold();
+            if (!scene.StartReplay(movie.ObserverFrames)) throw new InvalidOperationException("Could not replay the trail recording.");
+            check();
+            await FramesUntil(() => !scene.Replaying);
+            check();
+            if (!scene.LoadScenario(scenario)) throw new InvalidOperationException("Could not restore the trail review scene.");
+            GD.Print("Trail capture GPU: first paused PNG, same-frame Lua PNG, eight-frame movie and first/final replay frames have a complete trail.");
+        }
+        finally { System.Environment.SetEnvironmentVariable(setting, previous); }
+
+        void Cold()
+        {
+            var source = ScenarioFile.Load(scenario);
+            double offset = ++coldEpoch * 3600;
+            source = source with { Views = source.Views.Select(view =>
+            {
+                var at = view.Epoch.AddSeconds(offset);
+                var navigation = view.Navigation!.Value;
+                if (!scene.Session!.World.Graph.Evaluate(at).TryState(navigation.Target!.Value, out var state))
+                    throw new InvalidOperationException("The cold capture needs a real tracked target state.");
+                return view with { Epoch = at, Navigation = navigation with { AnchorKilometers = state.PositionKilometers } };
+            }).ToArray() };
+            string hidden = Path.Combine(directory, "hidden-trail.stscene");
+            ScenarioFile.Save(hidden, source with { Views = source.Views.Select(view => view with { Sky = view.Sky with { HideOrbits = true } }).ToArray() });
+            string fresh = Path.Combine(directory, "cold-trail.stscene");
+            ScenarioFile.Save(fresh, source);
+            if (!scene.LoadScenario(hidden) || !scene.LoadScenario(fresh) || scene.Renderer(0).MissionTrailVisible)
+                throw new InvalidOperationException("The capture fixture must start with an incomplete cold trail.");
+        }
+
+        static void CheckCapture(string path)
+        {
+            using var image = Image.LoadFromFile(path);
+            int trail = 0;
+            for (int y = 112; y < image.GetHeight() - 30; y++)
+            for (int x = 354; x < image.GetWidth() * .62; x++)
+            {
+                var color = image.GetPixel(x, y);
+                if (color.G > .2f && Math.Abs(color.R / color.G - .375f) < .035f &&
+                    Math.Abs(color.B / color.G - .5625f) < .035f) trail++;
+            }
+            if (trail < 25) throw new InvalidOperationException($"The first captured frame contains no visible styled trail ({trail} pixels).");
+        }
+
+        async Task FramesUntil(Func<bool> ready)
+        {
+            for (int frame = 0; !ready(); frame++)
+            {
+                if (frame == 200) throw new TimeoutException("The trail capture or replay did not finish.");
+                await ToSignal(GetTree(), SceneTree.SignalName.ProcessFrame);
+                await ToSignal(RenderingServer.Singleton, RenderingServer.SignalName.FramePostDraw);
+                check();
+            }
         }
     }
 

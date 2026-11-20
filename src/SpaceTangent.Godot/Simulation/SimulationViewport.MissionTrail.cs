@@ -12,18 +12,21 @@ internal partial class SimulationViewport
 {
     private MeshInstance3D? _missionTrailNode;
     private ImmediateMesh? _missionTrailMesh;
-    private (SimulationWorld World, ObjectId Id, ObjectId Center, JulianInstant Epoch, MissionDisplay Style, DeltaTModel? Model)? _missionTrailKey;
+    private readonly RollingSamples<(SimulationWorld World, ObjectId Id, ObjectId Center, MissionDisplay Style, DeltaTModel? Model), JulianInstant,
+        (Vector3d? Offset, float Shade)> _missionTrail = new();
     private (Vector3d? Offset, float Shade)[] _missionTrailSamples = [];
-    private FrameSamples<(Vector3d? Offset, float Shade)>? _missionTrailBatch;
     private static readonly FrameSamplesCache<(ObjectId, ObjectId, JulianInstant, MissionDisplay, DeltaTModel?), (Vector3d? Offset, float Shade)> TrailBatches = new();
     internal bool IncrementalPaths { get; set; } = true;
-    internal bool HasPendingPaths => _missionTrailBatch is not null || _surface?.HasPendingPath == true;
+    internal bool HasPendingPaths => _missionTrail.HasPending || _surface?.HasPendingPath == true;
+    internal JulianInstant? MissionTrailEpoch => _missionTrail.PublishedEpoch;
+    internal double? SelectedBodyPathDay => _surface?.BodyPathDay;
     internal IReadOnlyList<(Vector3d? Offset, float Shade)> MissionTrailSamples => Array.AsReadOnly(_missionTrailSamples);
     private void CancelMissionTrail()
     {
-        if (_missionTrailBatch is null) return;
-        _missionTrailBatch = null;
-        _missionTrailKey = null;
+        _missionTrail.Reset();
+        _missionTrailSamples = [];
+        _missionTrailNode?.Hide();
+        MissionTrailEdgeColors = null;
     }
 
     internal (Color First, Color Last)? MissionTrailEdgeColors { get; private set; }
@@ -55,39 +58,31 @@ internal partial class SimulationViewport
         if (!double.IsFinite(span) || span > JulianInstant.MaximumDay * (double)JulianInstant.SecondsPerDay)
         { CancelMissionTrail(); return; }
         var epoch = snapshot.Epoch;
-        if (_missionTrailKey is not { } key || !ReferenceEquals(key.World, world) || key.Id != id ||
-            key.Center != center || key.Style != style || key.Model != snapshot.DeltaT ||
-            Math.Abs((double)epoch.DifferenceNanoseconds(key.Epoch)) > span * JulianInstant.NanosecondsPerSecond / 256)
+        _missionTrail.Continuous((world, id, center, style, snapshot.DeltaT), epoch, (long)Engine.GetProcessFrames(), span / 256,
+            static (a, b) => Math.Abs((double)a.DifferenceNanoseconds(b)) / JulianInstant.NanosecondsPerSecond,
+            CreateBatch, !IncrementalPaths || ArchivedGeometry is not null);
+        if (_missionTrail.LastSamples > 0) RuntimeProfile.Record("trail.slice", _missionTrail.LastMilliseconds);
+        _missionTrailSamples = _missionTrail.Published ?? [];
+
+        FrameSamples<(Vector3d? Offset, float Shade)> CreateBatch(JulianInstant atEpoch)
         {
             using var profile = RuntimeProfile.Measure("trail.request");
-            _missionTrailKey = (world, id, center, epoch, style, snapshot.DeltaT);
             const int count = 65;
-            _missionTrailSamples = [];
             var minimum = new JulianInstant(0, 0, TimeScale.Tdb);
             var maximum = new JulianInstant(JulianInstant.MaximumDay, JulianInstant.NanosecondsPerDay - 1, TimeScale.Tdb);
-            double first = Math.Max(-duration, (double)minimum.DifferenceNanoseconds(epoch) / JulianInstant.NanosecondsPerSecond);
-            double last = Math.Min(lead, (double)maximum.DifferenceNanoseconds(epoch) / JulianInstant.NanosecondsPerSecond);
+            double first = Math.Max(-duration, (double)minimum.DifferenceNanoseconds(atEpoch) / JulianInstant.NanosecondsPerSecond);
+            double last = Math.Min(lead, (double)maximum.DifferenceNanoseconds(atEpoch) / JulianInstant.NanosecondsPerSecond);
             var deltaT = snapshot.DeltaT;
-            _missionTrailBatch = TrailBatches.Get(world, (id, center, epoch, style, snapshot.DeltaT), () => new(count, index =>
+            return TrailBatches.Get(world, (id, center, atEpoch, style, snapshot.DeltaT), () => new(count, index =>
             {
                 double fraction = index / (double)(count - 1);
-                var at = epoch.AddSeconds(first + (last - first) * fraction);
+                var at = atEpoch.AddSeconds(first + (last - first) * fraction);
                 var point = deltaT is { } model ? world.Graph.Evaluate(at, model) : world.Graph.Evaluate(at);
                 Vector3d? offset = point.TryStateCenter(id, out var sampleCenter) && sampleCenter == center &&
                     point.TryState(id, out var state) && point.TryState(center, out var parent)
                     ? (state - parent).PositionKilometers : null;
                 return (offset, (float)(1 - style.OrbitFade * (1 - fraction)));
             }), IncrementalPaths && ArchivedGeometry is null);
-        }
-
-        if (_missionTrailBatch is { } batch)
-        {
-            int previous = batch.Progress;
-            bool ready = batch.Advance((long)Engine.GetProcessFrames(), !IncrementalPaths || ArchivedGeometry is not null);
-            if (batch.Progress != previous) RuntimeProfile.Record("trail.slice", batch.LastSliceMilliseconds);
-            if (!ready) return;
-            _missionTrailSamples = batch.Completed!;
-            _missionTrailBatch = null;
         }
 
         if (!_missionTrailSamples.Zip(_missionTrailSamples.Skip(1)).Any(pair => pair.First.Offset.HasValue && pair.Second.Offset.HasValue))

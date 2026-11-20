@@ -821,7 +821,7 @@ public partial class SolarSystemScene : Control
         if (MovieActive)
             delta = 1.0 / WindowRecording.FramesPerSecond;
         FlyShip(delta);
-        bool changed = Session?.Tick(delta) == true;
+        bool changed = Session?.Tick(delta) == true || PathsRequireImmediate;
         if (Session is not null)
         {
             changed |= StepCameraInertia(delta);
@@ -2162,7 +2162,7 @@ public partial class SolarSystemScene : Control
             controls.Snapshot = snapshot;
             controls.Renderer.ShowPlanetOrbits = !view.Sky.HideOrbits;
             // Stateful add-on factories keep their original synchronous evaluation order.
-            controls.Renderer.IncrementalPaths = _addOns?.Decoded.AllowAddonLua != true;
+            controls.Renderer.IncrementalPaths = _addOns?.Decoded.AllowAddonLua != true && !PathsRequireImmediate;
             controls.Renderer.ShowSurfaceSiteLabels = view.Sky.SurfacePlaces;
             controls.Renderer.SetLandscape(ViewLandscape(view), view.EarthObserver?.HideLandscapeFog != true);
             controls.Renderer.ArchivedGeometry = index == 0 ? (_replay as LegacyCameraSequence)?.CurrentGeometry : null;

@@ -76,9 +76,42 @@ public partial class RuntimeProfileProbe : Node
             ScenarioFile.Save(scenario, new([near], false, 0, 0, session.DeltaT));
             if (!scene.LoadScenario(scenario)) throw new InvalidOperationException("Kerr scene failed.");
             await Frames("kerr-physical");
+            var logicalSize = scene.Renderer(0).GetViewport().GetVisibleRect().Size;
+            var centerPixel = logicalSize / 2;
+            var fullPointer = scene.Renderer(0).PointerDirection(centerPixel);
+            var fullPick = scene.Renderer(0).PickObject(centerPixel);
+            scene.LensRenderScale = .5f;
+            scene.Seek(0, epoch);
+            await Frames("kerr-physical-half");
+            if (!scene.Renderer(0).CompactLensVisible || scene.Renderer(0).GetViewport().Scaling3DScale != .5f ||
+                scene.Renderer(0).GetViewport().GetVisibleRect().Size != logicalSize ||
+                scene.Renderer(0).PointerDirection(centerPixel) != fullPointer || scene.Renderer(0).PickObject(centerPixel) != fullPick)
+                throw new InvalidOperationException("Lens scaling changed logical picking or projection coordinates.");
+            using (Image full = Image.LoadFromFile(Path.Combine(output, "kerr-physical.png")))
+            using (Image reduced = Image.LoadFromFile(Path.Combine(output, "kerr-physical-half.png")))
+            {
+                double difference = 0;
+                int pixels = 0;
+                for (int y = 112; y < full.GetHeight(); y += 2)
+                for (int x = 354; x < full.GetWidth(); x += 2)
+                {
+                    Color a = full.GetPixel(x, y), b = reduced.GetPixel(x, y);
+                    difference += (Math.Abs(a.R - b.R) + Math.Abs(a.G - b.G) + Math.Abs(a.B - b.B)) / 3;
+                    pixels++;
+                }
+                if (difference / pixels > .02) throw new InvalidOperationException("Reduced lens resolution changed the physical image excessively.");
+                GD.Print(FormattableString.Invariant($"Lens resolution check: mean absolute RGB difference {difference / pixels:F6}; logical picking preserved."));
+            }
+            scene.LensRenderScale = 1;
             ScenarioFile.Save(scenario, new([near with { Sky = near.Sky with { CinematicBlackHoles = true } }], false, 0, 0, session.DeltaT));
             if (!scene.LoadScenario(scenario)) throw new InvalidOperationException("Cinematic scene failed.");
             await Frames("kerr-cinematic");
+            scene.LensRenderScale = .5f;
+            scene.Seek(0, epoch);
+            await Frames("kerr-cinematic-half");
+            ScenarioFile.Save(scenario, new([near with { Navigation = null, Selection = SolarSystemSample.EarthId }], false, 0, 0, session.DeltaT));
+            if (!scene.LoadScenario(scenario) || scene.Renderer(0).GetViewport().Scaling3DScale != 1)
+                throw new InvalidOperationException("Ordinary views must restore full 3D resolution.");
             File.WriteAllText(Path.Combine(output, "profile.json"), JsonSerializer.Serialize(new
             {
                 Engine = Engine.GetVersionInfo()["string"].AsString(),

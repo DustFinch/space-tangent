@@ -82,6 +82,7 @@ public partial class SolarSystemScene : Control
     private PopupMenu _scriptMenu = null!;
     internal SimulationSession? Session { get; private set; }
     internal bool InitializationFinished { get; private set; }
+    internal float LensRenderScale { get; set; } = 1;
     internal AddonDiagnostic? LastAddonDiagnostic { get; private set; }
 
     public override async void _Ready()
@@ -104,6 +105,9 @@ public partial class SolarSystemScene : Control
     private async Task ReadyAsync()
     {
         using var startupProfile = RuntimeProfile.Measure("startup.total");
+        if (float.TryParse(System.Environment.GetEnvironmentVariable("SPACETANGENT_LENS_RENDER_SCALE"),
+            NumberStyles.Float, CultureInfo.InvariantCulture, out float lensScale) && lensScale is >= .5f and <= 1f)
+            LensRenderScale = lensScale;
         _workspace = new(this, GoToActiveObject, TrackActiveObject);
         _panels = _workspace.Views;
         _status = _workspace.Status;
@@ -2163,6 +2167,10 @@ public partial class SolarSystemScene : Control
             controls.Renderer.SetLandscape(ViewLandscape(view), view.EarthObserver?.HideLandscapeFog != true);
             controls.Renderer.ArchivedGeometry = index == 0 ? (_replay as LegacyCameraSequence)?.CurrentGeometry : null;
             bool available = controls.Renderer.Draw(view, snapshot, session.DeltaT);
+            // Scale only the 3D buffer. Logical coordinates, 2D overlays and the physical ray integrator stay intact.
+            var viewport = (SubViewport)controls.Renderer.GetViewport();
+            float renderScale = controls.Renderer.CompactLensVisible ? LensRenderScale : 1;
+            if (viewport.Scaling3DScale != renderScale) viewport.Scaling3DScale = renderScale;
             UpdatePointerReadout(controls, view.Sky);
             controls.Renderer.DrawShip(ship, view.Navigation);
             controls.Renderer.SetScriptNotice(session.Notice(index));

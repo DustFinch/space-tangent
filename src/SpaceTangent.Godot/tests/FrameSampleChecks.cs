@@ -34,6 +34,7 @@ internal static class FrameSampleChecks
         CheckRolling();
         CheckDays();
         CheckInvalidation();
+        CheckRepeatedRefresh();
     }
 
     private static void CheckRolling()
@@ -120,5 +121,25 @@ internal static class FrameSampleChecks
             if (rolling.Published is not null || rolling.PublishedEpoch is not null || rolling.HasPending)
                 throw new InvalidOperationException("Hidden paths retained a stale publication.");
         }
+    }
+
+    private static void CheckRepeatedRefresh()
+    {
+        int calls = 0;
+        var days = new RollingSamples<int, double, int>();
+        FrameSamples<int> Create(double _) => new(9, index => { calls++; return index; }, () => 0);
+        days.Discrete(1, 0, 1, 0, Create);
+        calls = 0;
+        days.Discrete(1, 0, 1, 1, Create); // Finishes the first day and seeds the next.
+        days.Discrete(1, 0, 1, 1, Create);
+        if (calls != 1 || days.PublishedEpoch != 0 || !days.HasPending)
+            throw new InvalidOperationException("A second refresh spent another ordinary slice after publication.");
+        calls = 0;
+        days.Discrete(1, 0, 1, 2, Create);
+        days.Discrete(1, 0, 1, 2, Create);
+        if (calls != 8) throw new InvalidOperationException("Repeated refreshes exceeded the shared ordinary allowance.");
+        days.Discrete(1, 1, 2, 2, Create); // Boundary override still finishes the remaining point in this frame.
+        if (calls != 9 || days.PublishedEpoch != 1 || !days.LastImmediate)
+            throw new InvalidOperationException("The per-frame guard prevented a necessary day-boundary completion.");
     }
 }

@@ -38,6 +38,7 @@ internal sealed class RollingSamples<TKey, TEpoch, T> where TKey : notnull where
     private TKey? _key;
     private bool _hasKey;
     private Work? _pending;
+    private long _lastSamplingFrame = long.MinValue;
     internal T[]? Published { get; private set; }
     internal TEpoch? PublishedEpoch { get; private set; }
     internal bool HasPending => _pending is { Batch.Completed: null };
@@ -108,6 +109,9 @@ internal sealed class RollingSamples<TKey, TEpoch, T> where TKey : notnull where
 
     private bool Advance(Work work, long frame, bool immediate)
     {
+        // A completed job can seed another job in the same frame; keep the ordinary allowance global to this scheduler.
+        if (!immediate && _lastSamplingFrame == frame) return work.Batch.Completed is not null;
+        _lastSamplingFrame = frame;
         int before = work.Batch.Progress;
         bool complete = work.Batch.Advance(frame, immediate);
         if (work.Batch.Progress != before)

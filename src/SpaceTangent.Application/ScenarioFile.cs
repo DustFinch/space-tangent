@@ -1,4 +1,5 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
+using System.Text;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using SpaceTangent.Contracts;
@@ -18,6 +19,7 @@ public sealed record SimulationScenario(IReadOnlyList<ObserverView> Views, bool 
 /// <summary>Persists observer settings with exact TDB epochs and stable catalog IDs.</summary>
 public static class ScenarioFile
 {
+    private static readonly UTF8Encoding StrictUtf8 = new(false, true);
     private const int Version = 50;
     internal const int MaximumBytes = 32 * 1024;
     private static readonly JsonSerializerOptions Json = new()
@@ -184,6 +186,10 @@ public static class ScenarioFile
     {
         if (bytes.Length is <= 0 or > MaximumBytes)
             throw new InvalidDataException("The scenario has an invalid size.");
+        // JsonDocument may defer invalid UTF-8 property names until access and throw InvalidOperationException.
+        // Treat malformed encoding as input data, before traversing or applying any part of the document.
+        try { _ = StrictUtf8.GetCharCount(bytes); }
+        catch (DecoderFallbackException error) { throw new InvalidDataException("The scenario is not valid UTF-8.", error); }
         using (var syntax = JsonDocument.Parse(bytes.ToArray(), new JsonDocumentOptions { MaxDepth = Json.MaxDepth }))
             UniqueFields(syntax.RootElement);
         Document document = JsonSerializer.Deserialize<Document>(bytes, Json)
@@ -204,6 +210,8 @@ public static class ScenarioFile
         for (int i = 0; i < views.Length; i++)
         {
             View data = document.Views[i];
+            if (data.DayTdb is < 0 or > JulianInstant.MaximumDay || data.NanosecondsOfDay is < 0 or >= JulianInstant.NanosecondsPerDay)
+                throw new InvalidDataException("The scenario has an invalid epoch.");
             var epoch = new JulianInstant(data.DayTdb, data.NanosecondsOfDay, TimeScale.Tdb);
             ObjectId? selection = data.Selection is { } id ? new ObjectId(id) : null;
             if (data.ScriptAimTarget is not null && document.Version < 49)

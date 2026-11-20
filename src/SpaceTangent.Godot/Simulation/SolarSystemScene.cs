@@ -103,6 +103,7 @@ public partial class SolarSystemScene : Control
 
     private async Task ReadyAsync()
     {
+        using var startupProfile = RuntimeProfile.Measure("startup.total");
         _workspace = new(this, GoToActiveObject, TrackActiveObject);
         _panels = _workspace.Views;
         _status = _workspace.Status;
@@ -121,7 +122,7 @@ public partial class SolarSystemScene : Control
         int generation = _loadGeneration;
         try
         {
-            ephemeris = await Task.Run(() => LoadSolarEphemeris(ephemerisPath, historicalPath), token);
+            ephemeris = await RuntimeProfile.RunAsync("startup.ephemeris", () => Task.Run(() => LoadSolarEphemeris(ephemerisPath, historicalPath), token));
             if (!CanPublish(generation, token))
                 return;
         }
@@ -159,7 +160,7 @@ public partial class SolarSystemScene : Control
 
         try
         {
-            _brightSky = BrightSkyData.Load();
+            _brightSky = RuntimeProfile.Run("startup.bright-sky", BrightSkyData.Load);
             _brightSky.Surveys.SetOffline(_localAddons.HipsOffline);
         }
         catch (Exception error) when (IsLoadError(error))
@@ -171,7 +172,8 @@ public partial class SolarSystemScene : Control
         try
         {
             _status.Text = "Loading add-ons…";
-            var decoded = candidate = await AddonLoader.Load(ephemeris, null, _localAddons, _localAddonFile, _brightSky?.Catalogue, token);
+            var decoded = candidate = await RuntimeProfile.RunAsync("startup.addons", () =>
+                AddonLoader.Load(ephemeris, null, _localAddons, _localAddonFile, _brightSky?.Catalogue, token));
             if (!CanPublish(generation, token))
                 return;
             _addOns = AddonDiagnostics.Read(AddonStage.RenderResources, null, () => AddonLoader.Publish(decoded, null));
@@ -195,7 +197,7 @@ public partial class SolarSystemScene : Control
         }
         try
         {
-            _surfaceTextures = SurfaceProjection.LoadTextures();
+            _surfaceTextures = RuntimeProfile.Run("startup.surface", SurfaceProjection.LoadTextures);
         }
         catch (Exception error) when (IsLoadError(error))
         {
@@ -204,12 +206,12 @@ public partial class SolarSystemScene : Control
 
         try
         {
-            _earthOrbitTextures = EarthOrbitTextures.Load(_surfaceTextures);
-            _planetTextures = await PlanetTextures.LoadAsync(token, () => CanPublish(generation, token));
-            _groundRingAtlas = _planetTextures.CreateGroundRingAtlas();
-            _groundSurfaceMaps = _planetTextures.CreateGroundSurfaceArray();
-            _orbitAtmospheres = OrbitAtmosphereTextures.LoadAll();
-            _surfaceTiles = BodyTileTextures.Load();
+            _earthOrbitTextures = RuntimeProfile.Run("startup.earth-orbit", () => EarthOrbitTextures.Load(_surfaceTextures));
+            _planetTextures = await RuntimeProfile.RunAsync("startup.planets", () => PlanetTextures.LoadAsync(token, () => CanPublish(generation, token)));
+            _groundRingAtlas = RuntimeProfile.Run("startup.ring-atlas", _planetTextures.CreateGroundRingAtlas);
+            _groundSurfaceMaps = RuntimeProfile.Run("startup.ground-array", _planetTextures.CreateGroundSurfaceArray);
+            _orbitAtmospheres = RuntimeProfile.Run("startup.atmospheres", OrbitAtmosphereTextures.LoadAll);
+            _surfaceTiles = RuntimeProfile.Run("startup.tiles", BodyTileTextures.Load);
             string maps = LocalDataPaths.Find("SPACETANGENT_EXOPLANET_TEXTURES", "sky/exoplanet-textures", directory: true);
             foreach (string profile in world.Exoplanets.Bodies.Select(planet => planet.TextureClass).Distinct(StringComparer.OrdinalIgnoreCase))
                 if (PlanetTextures.Read(maps, profile + ".jpg") is { } texture)
@@ -226,7 +228,7 @@ public partial class SolarSystemScene : Control
 
         try
         {
-            _planetMoonModels = PlanetMoonModels.Load(_planetTextures);
+            _planetMoonModels = RuntimeProfile.Run("startup.moon-models", () => PlanetMoonModels.Load(_planetTextures));
         }
         catch (Exception error) when (IsLoadError(error))
         {
@@ -1507,6 +1509,8 @@ public partial class SolarSystemScene : Control
 
     internal async Task<bool> ReloadAddOns(LocalAddonSettings? requested)
     {
+        using var reloadProfile = RuntimeProfile.Measure("addons.reload");
+        var originalDeltaT = Session!.DeltaT;
         CancellationToken token = BeginLoad();
         int generation = _loadGeneration;
         AddonLoader.DecodedAddOns? candidate = null;
@@ -1541,7 +1545,10 @@ public partial class SolarSystemScene : Control
             _status.Text = "Add-ons reloaded.";
             _status.TooltipText = "";
             LastAddonDiagnostic = null;
-            GD.Print($"SpaceTangent add-ons reloaded: {Assets.Count} science satellites.");
+            GD.Print($"SpaceTangent add-ons reloaded: {Assets.Count} science satellites. " +
+                $"DeltaT={Session.DeltaT}; preserved={Session.DeltaT == originalDeltaT}; synchronized={Session.Synchronized}; " +
+                string.Join("; ", Enumerable.Range(0, Session.ViewCount).Select(index =>
+                    FormattableString.Invariant($"view[{index}] camera={Session[index].Mode} target={Session[index].Selection} JD={Session[index].Epoch.ToJulianDate():F9}"))));
             return true;
         }
         catch (OperationCanceledException)

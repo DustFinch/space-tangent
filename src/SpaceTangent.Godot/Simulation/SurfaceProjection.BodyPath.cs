@@ -28,6 +28,7 @@ internal sealed partial class SurfaceProjection
 
         // The archived path uses the centre of the observing body as its origin.
         double first = today - 60;
+        using var profile = RuntimeProfile.Measure("ground-path.rebuild");
         var directions = new Vector3?[121];
         for (int day = 0; day < directions.Length; day++)
         {

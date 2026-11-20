@@ -42,6 +42,7 @@ internal partial class SimulationViewport
             key.Center != center || key.Style != style || key.Model != snapshot.DeltaT ||
             Math.Abs((double)epoch.DifferenceNanoseconds(key.Epoch)) > span * JulianInstant.NanosecondsPerSecond / 256)
         {
+            using var profile = RuntimeProfile.Measure("trail.rebuild");
             _missionTrailKey = (world, id, center, epoch, style, snapshot.DeltaT);
             const int count = 65;
             _missionTrailSamples = new (Vector3d?, float)[count];

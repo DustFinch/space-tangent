@@ -30,6 +30,14 @@ public partial class EarthAccuracyProbe
             }
             catch (OperationCanceledException) when (checkedOwner) { }
 
+            int ownerChecks = 0;
+            try
+            {
+                await PlanetTextures.LoadAsync(canPublish: () => ++ownerChecks < 2);
+                throw new InvalidOperationException("A late closed owner retained a partially published batch.");
+            }
+            catch (OperationCanceledException) when (ownerChecks == 2) { }
+
             using var cancellation = new CancellationTokenSource();
             cancellation.Cancel();
             try
@@ -55,12 +63,22 @@ public partial class EarthAccuracyProbe
             {
                 if (maps.Surfaces.Count != 1)
                     throw new InvalidOperationException("The valid texture batch did not recover after cancellation/failure.");
+                // Compare the worker-prepared layer to the former GPU-readback/resize path, independently.
+                using Image expected = maps.Surfaces[PlanetCatalogue.Planets[0].Id].GetImage();
+                expected.ClearMipmaps();
+                expected.Convert(Image.Format.Rgb8);
+                expected.Resize(512, 256, Image.Interpolation.Lanczos);
+                expected.GenerateMipmaps();
+                using Image actual = maps.GroundSurfaceMaps!.GetLayerData(0);
+                if (!expected.GetData().SequenceEqual(actual.GetData()))
+                    throw new InvalidOperationException("Worker-prepared ground map differs from the former resize path.");
             }
             finally
             {
                 foreach (Texture2D texture in maps.Surfaces.Values.Concat(maps.Rings.Values).Concat(maps.StellarSurfaces.Values))
                     texture.Dispose();
                 maps.VenusClouds?.Dispose();
+                maps.GroundSurfaceMaps?.Dispose();
             }
             GD.Print("Texture lifetime passed: closed owner, cancellation, late malformed map, successful recovery.");
         }

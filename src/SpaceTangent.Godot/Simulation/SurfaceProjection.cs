@@ -324,6 +324,20 @@ internal sealed partial class SurfaceProjection
         return new(LoadTexture(clouds), LoadTexture(moon));
     }
 
+    internal static async Task<SurfaceTextures?> LoadTexturesAsync(CancellationToken cancellation, Func<bool> canPublish)
+    {
+        string root = LocalDataPaths.Find("SPACETANGENT_SURFACE_TEXTURES", "surface", directory: true);
+        if (!File.Exists(Path.Combine(root, "earth-clouds.png")) || !File.Exists(Path.Combine(root, "moon.jpg"))) return null;
+        Texture2D? clouds = null, moon = null;
+        try
+        {
+            clouds = await PlanetTextures.ReadAsync(root, "earth-clouds.png", cancellation, canPublish);
+            moon = await PlanetTextures.ReadAsync(root, "moon.jpg", cancellation, canPublish);
+            return new(clouds!, moon!);
+        }
+        catch { clouds?.Dispose(); moon?.Dispose(); throw; }
+    }
+
     private static Texture2D LoadTexture(string path)
     {
         using Image image = Image.LoadFromFile(path);

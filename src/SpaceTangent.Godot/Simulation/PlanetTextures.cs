@@ -8,6 +8,7 @@ namespace SpaceTangent.Godot.Simulation;
 internal sealed record PlanetTextures(IReadOnlyDictionary<ObjectId, Texture2D> Surfaces, IReadOnlyDictionary<ObjectId, Texture2D> Rings, Texture2D? VenusClouds)
 {
     internal IReadOnlyDictionary<char, Texture2D> StellarSurfaces { get; init; } = new Dictionary<char, Texture2D>();
+    internal Texture2DArray? GroundSurfaceMaps { get; init; }
 
     private enum MapKind { Surface, Ring, Star, VenusClouds }
     private readonly record struct MapRequest(MapKind Kind, ObjectId Body, char Star, string Directory, string File);
@@ -16,7 +17,8 @@ internal sealed record PlanetTextures(IReadOnlyDictionary<ObjectId, Texture2D> S
     /// Decodes the planetary maps on a worker thread and creates their textures on the calling thread. Hi-res maps
     /// take seconds to decode, which used to freeze the window during startup.
     /// </summary>
-    internal static async Task<PlanetTextures> LoadAsync(CancellationToken cancellation = default, Func<bool>? canPublish = null)
+    internal static async Task<PlanetTextures> LoadAsync(CancellationToken cancellation = default, Func<bool>? canPublish = null,
+        Func<Task>? yieldFrame = null)
     {
         string root = LocalDataPaths.Find("SPACETANGENT_PLANET_TEXTURES", "planets", directory: true);
         string ringsRoot = System.Environment.GetEnvironmentVariable("SPACETANGENT_RING_TEXTURES") is { Length: > 0 } overrideRoot
@@ -35,7 +37,8 @@ internal sealed record PlanetTextures(IReadOnlyDictionary<ObjectId, Texture2D> S
         requests.Add(new(MapKind.VenusClouds, default, default, root, "venus-clouds.jpg"));
 
         Image?[] images = new Image?[requests.Count];
-        var createdTextures = new List<Texture2D>();
+        Image?[] groundImages = new Image?[PlanetCatalogue.Planets.Count];
+        var createdTextures = new List<Resource>();
         bool published = false;
         try
         {
@@ -46,6 +49,15 @@ internal sealed record PlanetTextures(IReadOnlyDictionary<ObjectId, Texture2D> S
                     cancellation.ThrowIfCancellationRequested();
                     images[index] = Decode(requests[index].Directory, requests[index].File);
                 }
+                using var prepare = RuntimeProfile.Measure("textures.ground-prepare");
+                for (int index = 0; index < PlanetCatalogue.Planets.Count; index++)
+                {
+                    cancellation.ThrowIfCancellationRequested();
+                    var planet = PlanetCatalogue.Planets[index];
+                    int source = requests.FindIndex(item => item.Kind == MapKind.Surface && item.Body == planet.Id);
+                    Image? image = source >= 0 ? images[source] : null;
+                    groundImages[index] = PrepareGroundMap(image);
+                }
             }, cancellation);
             // This continuation runs on Godot's main thread. A closed/replaced scene must never publish GPU resources.
             cancellation.ThrowIfCancellationRequested();
@@ -55,11 +67,12 @@ internal sealed record PlanetTextures(IReadOnlyDictionary<ObjectId, Texture2D> S
             var rings = new Dictionary<ObjectId, Texture2D>();
             var stars = new Dictionary<char, Texture2D>();
             Texture2D? venus = null;
+            var slice = System.Diagnostics.Stopwatch.StartNew();
             for (int index = 0; index < requests.Count; index++)
             {
                 if (images[index] is not { } image)
                     continue;
-                Texture2D created = ImageTexture.CreateFromImage(image);
+                Texture2D created = RuntimeProfile.Run("textures.publish-one", () => ImageTexture.CreateFromImage(image));
                 createdTextures.Add(created);
                 MapRequest request = requests[index];
                 switch (request.Kind)
@@ -69,8 +82,21 @@ internal sealed record PlanetTextures(IReadOnlyDictionary<ObjectId, Texture2D> S
                     case MapKind.Star: stars.Add(request.Star, created); break;
                     default: venus = created; break;
                 }
+                if (yieldFrame is not null && slice.Elapsed.TotalMilliseconds >= 4)
+                {
+                    await yieldFrame();
+                    CheckOwner(cancellation, canPublish);
+                    slice.Restart();
+                }
             }
-            var result = new PlanetTextures(surfaces, rings, venus) { StellarSurfaces = stars };
+            CheckOwner(cancellation, canPublish);
+            var maps = new global::Godot.Collections.Array<Image>();
+            foreach (Image? image in groundImages) maps.Add(image!);
+            var ground = new Texture2DArray();
+            createdTextures.Add(ground);
+            if (ground.CreateFromImages(maps) != Error.Ok)
+                throw new InvalidDataException("The renderer rejected the prepared ground maps.");
+            var result = new PlanetTextures(surfaces, rings, venus) { StellarSurfaces = stars, GroundSurfaceMaps = ground };
             published = true;
             return result;
         }
@@ -78,42 +104,32 @@ internal sealed record PlanetTextures(IReadOnlyDictionary<ObjectId, Texture2D> S
         {
             foreach (Image? image in images)
                 image?.Dispose();
+            foreach (Image? image in groundImages)
+                image?.Dispose();
             if (!published)
-                foreach (Texture2D texture in createdTextures)
+                foreach (Resource texture in createdTextures)
                     texture.Dispose();
         }
     }
 
-    internal Texture2DArray? CreateGroundSurfaceArray()
+    internal Texture2DArray? CreateGroundSurfaceArray() => GroundSurfaceMaps;
+
+    private static Image PrepareGroundMap(Image? source)
     {
         const int width = 512, height = 256;
-        var maps = new global::Godot.Collections.Array<Image>();
+        var map = source is null ? Image.CreateEmpty(width, height, false, Image.Format.Rgb8)
+            : Image.CreateFromData(source.GetWidth(), source.GetHeight(), source.HasMipmaps(), source.GetFormat(), source.GetData());
         try
         {
-            foreach (var planet in PlanetCatalogue.Planets)
-            {
-                var map = Surfaces.TryGetValue(planet.Id, out var texture)
-                    ? texture.GetImage() : Image.CreateEmpty(width, height, false, Image.Format.Rgb8);
-                maps.Add(map);
-                if (map.IsCompressed() && map.Decompress() != Error.Ok)
-                    throw new InvalidDataException($"Could not decompress the ground map for {planet.Name}.");
-                map.ClearMipmaps();
-                map.Convert(Image.Format.Rgb8);
-                if (map.GetWidth() != width || map.GetHeight() != height)
-                    map.Resize(width, height, Image.Interpolation.Lanczos);
-                map.GenerateMipmaps();
-            }
-            var array = new Texture2DArray();
-            if (array.CreateFromImages(maps) == Error.Ok)
-                return array;
-            array.Dispose();
-            return null;
+            if (map.IsCompressed() && map.Decompress() != Error.Ok)
+                throw new InvalidDataException("Could not decompress the ground map.");
+            map.ClearMipmaps();
+            map.Convert(Image.Format.Rgb8);
+            if (map.GetWidth() != width || map.GetHeight() != height) map.Resize(width, height, Image.Interpolation.Lanczos);
+            if (map.GenerateMipmaps() != Error.Ok) throw new InvalidDataException("Could not prepare ground-map mipmaps.");
+            return map;
         }
-        finally
-        {
-            foreach (var map in maps)
-                map.Dispose();
-        }
+        catch { map.Dispose(); throw; }
     }
 
     internal Texture2D? CreateGroundRingAtlas()
@@ -148,6 +164,20 @@ internal sealed record PlanetTextures(IReadOnlyDictionary<ObjectId, Texture2D> S
     {
         using Image? image = Decode(root, file);
         return image is null ? null : ImageTexture.CreateFromImage(image);
+    }
+
+    internal static async Task<Texture2D?> ReadAsync(string root, string file, CancellationToken cancellation, Func<bool> canPublish)
+    {
+        using Image? image = await Task.Run(() => Decode(root, file), cancellation);
+        CheckOwner(cancellation, canPublish);
+        return image is null ? null : RuntimeProfile.Run("textures.publish-one", () => ImageTexture.CreateFromImage(image));
+    }
+
+    private static void CheckOwner(CancellationToken cancellation, Func<bool>? canPublish)
+    {
+        cancellation.ThrowIfCancellationRequested();
+        if (canPublish is not null && !canPublish())
+            throw new OperationCanceledException("The texture owner is no longer active.", cancellation);
     }
 
     /// <summary>Decodes a map with its mipmaps. Safe on a worker thread; it creates no rendering resources.</summary>

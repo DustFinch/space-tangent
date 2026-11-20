@@ -9,6 +9,20 @@ namespace SpaceTangent.Godot.Simulation;
 
 internal sealed record EarthOrbitTextures(Texture2D Day, Texture2D? Night, Texture2D? Clouds)
 {
+    internal static async Task<EarthOrbitTextures?> LoadAsync(SurfaceTextures? surface, CancellationToken cancellation, Func<bool> canPublish)
+    {
+        string root = LocalDataPaths.Find("SPACETANGENT_PLANET_TEXTURES", "planets", directory: true);
+        Texture2D? day = null, night = null;
+        try
+        {
+            day = await PlanetTextures.ReadAsync(root, "earth.jpg", cancellation, canPublish);
+            if (day is null) return null;
+            night = await PlanetTextures.ReadAsync(root, "earth-night.jpg", cancellation, canPublish);
+            return new(day, night, surface?.Clouds);
+        }
+        catch { day?.Dispose(); night?.Dispose(); throw; }
+    }
+
     internal static EarthOrbitTextures? Load(SurfaceTextures? surface)
     {
         string root = LocalDataPaths.Find("SPACETANGENT_PLANET_TEXTURES", "planets", directory: true);

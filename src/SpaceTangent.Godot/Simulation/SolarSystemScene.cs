@@ -197,8 +197,10 @@ public partial class SolarSystemScene : Control
         }
         try
         {
-            _surfaceTextures = RuntimeProfile.Run("startup.surface", SurfaceProjection.LoadTextures);
+            _surfaceTextures = await RuntimeProfile.RunAsync("startup.surface", () =>
+                SurfaceProjection.LoadTexturesAsync(token, () => CanPublish(generation, token)));
         }
+        catch (OperationCanceledException) when (!CanPublish(generation, token)) { return; }
         catch (Exception error) when (IsLoadError(error))
         {
             _status.Text = error.Message;
@@ -206,8 +208,10 @@ public partial class SolarSystemScene : Control
 
         try
         {
-            _earthOrbitTextures = RuntimeProfile.Run("startup.earth-orbit", () => EarthOrbitTextures.Load(_surfaceTextures));
-            _planetTextures = await RuntimeProfile.RunAsync("startup.planets", () => PlanetTextures.LoadAsync(token, () => CanPublish(generation, token)));
+            _earthOrbitTextures = await RuntimeProfile.RunAsync("startup.earth-orbit", () =>
+                EarthOrbitTextures.LoadAsync(_surfaceTextures, token, () => CanPublish(generation, token)));
+            _planetTextures = await RuntimeProfile.RunAsync("startup.planets", () => PlanetTextures.LoadAsync(token,
+                () => CanPublish(generation, token), async () => await ToSignal(GetTree(), SceneTree.SignalName.ProcessFrame)));
             _groundRingAtlas = RuntimeProfile.Run("startup.ring-atlas", _planetTextures.CreateGroundRingAtlas);
             _groundSurfaceMaps = RuntimeProfile.Run("startup.ground-array", _planetTextures.CreateGroundSurfaceArray);
             _orbitAtmospheres = RuntimeProfile.Run("startup.atmospheres", OrbitAtmosphereTextures.LoadAll);

@@ -19,4 +19,6 @@ jobs:
           dotnet-version: '8.0.x'
       - run: dotnet restore tests/SpaceTangent.Application.Tests --locked-mode
       - run: dotnet test tests/SpaceTangent.Application.Tests -c Release --no-restore --logger trx
+      - run: dotnet restore tools/SpaceTangent.Performance --locked-mode
+      - run: dotnet build tools/SpaceTangent.Performance -c Release --no-restore
 # Godot rendering and dataset-dependent acceptance runs are performed separately on the release machine.

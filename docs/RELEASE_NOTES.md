@@ -30,7 +30,7 @@ External catalogues, textures, meshes and kernels retain their own distribution 
 
 ## Acceptance checks
 
-- Restored both clean checkouts in locked mode with the simulator's pinned core. Ran 144 core tests and 2 application tests. The scientific fixtures include independent CSPICE, conic, timing and SGP4 references.
+- Restored both clean checkouts in locked mode with the simulator's pinned core. Current test results are linked above; the scientific fixtures include independent CSPICE, conic, timing and SGP4 references.
 - Ran the simulator's bootstrap suite with real SSC and JSON inputs. Ran the render checks on an RTX 3090, including the shared Jason-1 and full-Moon scenario, two-view reload and the Earth atmosphere comparison against independent numerical quadrature.
 - Exported the Windows Desktop preset from the clean simulator checkout. Launched the exported package with local data beside the executable.
 - Published the Win64 native library from the clean core checkout. Ran the C ABI smoke and loaded the same DLL in both editors. The versioned ABI header and editor smoke entry points live in the core repository.
@@ -39,6 +39,8 @@ To save the restored two-view scenario during the GPU bootstrap test, set `SPACE
 
 ## Compatibility limits
 
-The import surface is the set of formats and workflows above. Arbitrary SSC body models, Lua orbit and rotation factories, and general mission JSON are outside the verified adapters. The Earth atmosphere uses single scattering. The Unreal check runs inside the editor through its Python Script Plugin. A compiled Unreal C++ module and packaged Unity and Unreal builds require separate validation.
+The import surface is the set of documented adapters and workflows above, including installed SSC bodies and explicitly trusted local Lua orbit/rotation factories. See [SSC catalogues](SSC_BODY_CATALOGUES.md), [Lua](LUA_SCRIPTS.md) and [sampled missions](SAMPLED_MISSIONS.md) for supported fields and fallbacks; arbitrary third-party APIs are not implied. The Earth atmosphere uses single scattering. The Unreal check runs inside the editor through its Python Script Plugin. A compiled Unreal C++ module and packaged Unity and Unreal builds require separate validation.
 
 HTTP API, network MultiWMS and an out-of-process Lua runtime are deferred under the migration plan.
+
+The runtime follow-up preserves leftmost Lua matching with an ordered NFA and a cumulative operation budget, bounds search-result allocation, prepares ground maps on workers, and spreads path sampling across frames. An optional lens 3D scale retains the full-resolution default and physical integrator. [Measurements and limits](PERFORMANCE.md) · [Development checks](../CONTRIBUTING.md)

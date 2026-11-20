@@ -53,3 +53,5 @@ The simulator pins [SpaceTangent Core](https://github.com/DustFinch/space-tangen
 The source code is licensed under [GPL-2.0-or-later](COPYING). The linked data guides identify the sources and terms for optional assets.
 
 [Source and verification inventory](docs/SOURCE_PROVENANCE.md)
+
+[Contributing and development checks](CONTRIBUTING.md) · [Runtime profiling and optional lens resolution](docs/PERFORMANCE.md)

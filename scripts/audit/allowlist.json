@@ -58,5 +58,10 @@
     "path": "README.md",
     "sha256": "2b125e93c6c6267894c9acbd37f6e199849186aef43637f59029e4b8268b55b9",
     "reason": "Upstream planetary texture attribution and pinned source link for the README screenshot."
+  },
+  {
+    "path": "docs/LUA_SCRIPTS.md",
+    "sha256": "35765765b5306a62cead420a4f309191173533ee6581f878ea57271f9dc55520",
+    "reason": "Retained upstream fixture provenance with the current adapter scope."
   }
 ]

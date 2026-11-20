@@ -14,6 +14,8 @@ public sealed record CatalogueObject(ObjectId Id, string Name, CatalogueKind Kin
     public IReadOnlyList<string> Aliases { get; init; } = [];
 }
 
+public sealed record CatalogueSearchPage(IReadOnlyList<CatalogueObject> Items, int Total);
+
 public sealed class ObjectCatalogue
 {
     internal ObjectCatalogue(IReadOnlyList<ScienceSatellite> satellites, BrightStarCatalogue stars,
@@ -129,6 +131,56 @@ public sealed class ObjectCatalogue
         if (number.Length is 0 or > 16 || !number.All(character => char.IsAsciiDigit(character) || character == '-'))
             return null;
         return new(value[..3] + "/" + number);
+    }
+
+    /// <summary>Counts matching entries without materializing matches beyond the requested page in each rank.</summary>
+    /// <remarks>Substring matching still scans the catalogue. Include is applied before ranking and the page limit.</remarks>
+    public CatalogueSearchPage SearchPage(string query, int limit, Func<CatalogueObject, bool>? include = null)
+    {
+        ArgumentOutOfRangeException.ThrowIfNegative(limit);
+        query = query.Trim();
+        var counts = new int[3];
+        var ranked = new List<CatalogueObject>[] { [], [], [] };
+        ObjectId? designation = _distantStars is null || query.Length == 0 ? null : DistantDesignation(query);
+        int designationRank = -1;
+        foreach (CatalogueObject body in Objects)
+        {
+            if (include is not null && !include(body)) continue;
+            int rank = query.Length == 0 ? 0 : Math.Min(Rank(body.Name), Rank(body.Id.Value));
+            for (int alias = 0; query.Length != 0 && rank != 0 && alias < body.Aliases.Count; alias++)
+                rank = Math.Min(rank, Rank(body.Aliases[alias]));
+            if (rank >= counts.Length) continue;
+            counts[rank]++;
+            if (ranked[rank].Count < limit) ranked[rank].Add(body);
+            if (body.Id == designation) designationRank = rank;
+        }
+        if (counts[0] == 0 && designation is { } id && Find(id) is { } identified &&
+            (include is null || include(identified)))
+        {
+            if (designationRank >= 0)
+            {
+                counts[designationRank]--;
+                ranked[designationRank].RemoveAll(item => item.Id == id);
+            }
+            counts[0]++;
+            if (limit != 0) ranked[0].Add(identified);
+        }
+        var items = new List<CatalogueObject>(Math.Min(limit, 100));
+        foreach (var rank in ranked)
+            foreach (CatalogueObject item in rank)
+            {
+                if (items.Count == limit) break;
+                items.Add(item);
+            }
+        return new(items.AsReadOnly(), counts.Sum());
+
+        int Rank(string value)
+        {
+            const StringComparison comparison = StringComparison.OrdinalIgnoreCase;
+            if (value.Equals(query, comparison)) return 0;
+            if (value.StartsWith(query, comparison)) return 1;
+            return value.Contains(query, comparison) ? 2 : 3;
+        }
     }
 
     public IReadOnlyList<CatalogueObject> Search(string query)

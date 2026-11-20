@@ -8,7 +8,7 @@ namespace SpaceTangent.Godot.Simulation;
 
 public partial class SolarSystemScene
 {
-    private sealed record AlmanacContext(SimulationWorld World, int View, EarthObserverCamera? Site, DeltaTModel DeltaT);
+    private sealed record AlmanacContext(SimulationWorld World, int View, EarthObserverCamera? Site, DeltaTModel DeltaT, int Generation);
     private CancellationTokenSource? _almanacSearch;
     private VBoxContainer _almanacRows = null!;
     private Label _almanacSummary = null!;
@@ -30,7 +30,7 @@ public partial class SolarSystemScene
     private AlmanacContext CurrentAlmanacContext()
     {
         var session = Session!;
-        return new(session.World, session.ViewIdentity(_active), session[_active].EarthObserver, session.DeltaT);
+        return new(session.World, session.ViewIdentity(_active), session[_active].EarthObserver, session.DeltaT, _loadGeneration);
     }
 
     private async Task FindNearbyEvents()
@@ -55,7 +55,7 @@ public partial class SolarSystemScene
             {
                 string time = entry.DateOnly ? CivilCalendarDisplay.CivilDay(entry.Epoch, context.DeltaT)?.ToString() ?? "—" :
                     CivilTimeLabel(entry.Epoch, context.DeltaT);
-                AddButton(_almanacRows, time + "\n" + entry.Description, () =>
+                var button = AddButton(_almanacRows, time + "\n" + entry.Description, () =>
                 {
                     if (context != CurrentAlmanacContext())
                     {
@@ -68,6 +68,9 @@ public partial class SolarSystemScene
                     Seek(_active, entry.Epoch);
                     _status.Text = entry.Description;
                 });
+                button.ClipText = true;
+                button.TextOverrunBehavior = TextServer.OverrunBehavior.TrimEllipsis;
+                button.TooltipText = time + "\n" + entry.Description;
             }
         }
         catch (OperationCanceledException) when (cancellation.IsCancellationRequested) { }

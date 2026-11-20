@@ -9,7 +9,7 @@ namespace SpaceTangent.Godot.Simulation;
 public partial class SolarSystemScene
 {
     private sealed record ObserverEventContext(SimulationWorld World, int View, ObjectId? Selection,
-        EarthObserverCamera? Site, DeltaTModel DeltaT);
+        EarthObserverCamera? Site, DeltaTModel DeltaT, int Generation);
 
     private CancellationTokenSource? _eventSearch;
     private (ObserverEventContext Context, ObserverEvent Event)? _nextObserverEvent;
@@ -81,6 +81,6 @@ public partial class SolarSystemScene
     {
         var session = Session!;
         var observer = session[_active];
-        return new(session.World, session.ViewIdentity(_active), observer.Selection, observer.EarthObserver, session.DeltaT);
+        return new(session.World, session.ViewIdentity(_active), observer.Selection, observer.EarthObserver, session.DeltaT, _loadGeneration);
     }
 }

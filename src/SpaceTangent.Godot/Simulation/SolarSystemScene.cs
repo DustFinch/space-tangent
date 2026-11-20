@@ -336,6 +336,7 @@ public partial class SolarSystemScene : Control
         calendars.AddChild(_otherCalendars);
         _otherCalendars.VisibilityChanged += () => { if (_otherCalendars.IsVisibleInTree()) UpdateActiveFrame(); };
         BuildAlmanacControls();
+        BuildObserverCharts();
 
         var layers = _workspace.AddPage("Layers", WorkspaceText.Choose("Layers and view", "Слои и вид"), "Search", WorkspaceText.Choose("Layers", "Слои"));
         layers.AddChild(SimulatorTheme.Section("Objects"));
@@ -803,6 +804,7 @@ public partial class SolarSystemScene : Control
         _addOns?.Decoded.DistantStars.Value?.Dispose();
         _eventSearch?.Cancel();
         _almanacSearch?.Cancel();
+        _chartSearch?.Cancel();
         _landscapeLifetime.Cancel();
         _satelliteUpdate?.Cancel();
         DisconnectCapture();

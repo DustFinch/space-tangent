@@ -48,6 +48,13 @@ public partial class WorkspaceInputSmoke : Node
             Require(_scene.Session is not null && Session.World.Satellites.Any(satellite => satellite.Id == Jason),
                 "DE440 and the original Jason-1 add-on must load.");
             Tree.Root.NotifyMouseEntered();
+            if (System.Environment.GetEnvironmentVariable("SPACETANGENT_OBSERVER_CHARTS_SMOKE_ONLY") == "1")
+            {
+                await ExerciseObserverCharts(scratch.FullName);
+                GD.Print("SpaceTangent observer charts input smoke passed");
+                exitCode = 0;
+                return;
+            }
             await ExerciseDuplicateSources(scratch.FullName, science!);
             await ExerciseSurveyOffline(scratch.FullName);
 
@@ -184,6 +191,7 @@ public partial class WorkspaceInputSmoke : Node
             await ExerciseAlmanac(scratch.FullName);
             await ExerciseEarthPlaces(scratch.FullName);
             await ExerciseObserverNight(scratch.FullName);
+            await ExerciseObserverCharts(scratch.FullName);
             await ExerciseMeteors(scratch.FullName);
             await ExercisePanoramas(scratch.FullName);
             await ExerciseOptics(scratch.FullName);
@@ -599,7 +607,7 @@ public partial class WorkspaceInputSmoke : Node
         string? section = control.Name.ToString() switch
         {
             "LayersTab" => "SearchTab",
-            "TimeTab" or "EphemeridesTab" => "LocationTab",
+            "TimeTab" or "EphemeridesTab" or "CalendarsTab" or "EventsTab" or "ChartsTab" => "LocationTab",
             "ScriptsTab" => "BookmarksTab",
             "GoToObject" or "TrackObject" => "ObjectDetailsToggle",
             "LocalAddonKind" or "BrowseLocalAddon" or "UpdateSatelliteGroups" => "AddonImportOptions",
@@ -607,6 +615,10 @@ public partial class WorkspaceInputSmoke : Node
         };
         if (section is not null && !control.IsVisibleInTree())
             await Click(Find<Button>(section));
+        await ToSignal(Tree, SceneTree.SignalName.ProcessFrame);
+        for (Node? parent = control.GetParent(); parent is not null; parent = parent.GetParent())
+            if (parent is ScrollContainer scroll)
+                scroll.EnsureControlVisible(control);
         await ToSignal(Tree, SceneTree.SignalName.ProcessFrame);
         Require(control.IsVisibleInTree() && control.Size.X > 0 && control.Size.Y > 0,
             $"Cannot click hidden or empty control {control.Name}.");

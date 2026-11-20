@@ -118,13 +118,19 @@ The import applies ΔT, observer conditions, Earth site coordinates, landscape s
 
 The startup option `--startup-legacy-settings <path>` can also read archived saved observing sites. It adds valid new sites to the user list and leaves existing entries with the same ID in place. The names are searchable through the existing Earth-place search. When `SPACETANGENT_SAVED_EARTH_PLACES` is set, it identifies the list to update.
 
-## Finder overlays
-
 ## Nearby events
 
 Open **Location → Nearby events** and calculate from the paused active view. The list covers 45 days of geocentric lunar phases, planetary oppositions, inner-planet elongations, seasons and close approaches. Eclipses use the saved Earth site; the first umbral shadow of a Galilean moon on Jupiter is searched over three days using a spherical receiver. These are search models, not an observatory precision service. The shadow calculation uses the built-in natural-body graph, before scripted catalogue overrides.
 
 When a meteor catalogue is installed, major annual showers and strong potential outbursts are included as date-only rows. Their button seeks civil midnight, not a claimed exact maximum. Event buttons pause and seek the active observer; independent views retain their camera and epoch. Results belong to the view, site, data generation and ΔT that requested them. Recalculate after any of those changes. Ctrl+E retains its existing local eclipse, conjunction, pass and flare workflow.
+
+## Observing charts and daily ephemerides
+
+Open **Location → Observing charts**, select a target and calculate. The day chart shows target/Sun/Moon altitude from local midnight to the next midnight, including 23/25-hour dates. The civil-year chart plots target altitude at local midnight with solar shading and a strip of observable nights: target above 10° while the Sun is below −12°, checked at half-hour intervals from 18:00 to 08:00. The best-night label compares qualifying midnight samples. The monthly chart samples the topocentric angle to the Moon every six hours over 30 days.
+
+The 30-day table gives the first rise and set, highest covered altitude, estimated magnitude and solar elongation. CSV preserves full TDB instants, invariant decimal points and coverage flags. Earth rise/set uses a level horizon with standard refraction and an approximate Sun/Moon semidiameter; magnitudes use a simple Lambert model and are estimates. Missing ephemerides remain gaps. The background sampler supports built-in bodies, science tracks and positioned catalogues without running scripted add-on callbacks. Recalculate after selecting another target, site, view, ΔT or reloading sources. Click a chart or table maximum to seek without moving independent observers.
+
+## Finder overlays
 
 Use `--startup-telrad` for the 0.5°, 2°, and 4° rings, and `--startup-camera 1` through `4` for APS-C, full frame, ASI533, and ASI2600. Use sensor index `0` to clear the camera frame. These options apply to the active view. The sensor footprint uses the selected telescope focal length and Barlow. An active eyepiece hides its own finder overlays. The observatory uses the physical lunar diameter when either a finder or eyepiece is active.
 

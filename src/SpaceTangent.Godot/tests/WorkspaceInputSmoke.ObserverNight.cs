@@ -9,6 +9,52 @@ namespace SpaceTangent.Godot.Tests;
 
 public partial class WorkspaceInputSmoke
 {
+    private async Task ExerciseObserverCharts(string directory)
+    {
+        string restore = Path.Combine(directory, "before-observer-charts.stscene");
+        ScenarioFile.Save(restore, Session.CaptureScenario(0));
+        string? previous = System.Environment.GetEnvironmentVariable("SPACETANGENT_OBSERVATIONS_OUTPUT");
+        string output = Path.Combine(directory, "chart-csv");
+        System.Environment.SetEnvironmentVariable("SPACETANGENT_OBSERVATIONS_OUTPUT", output);
+        try
+        {
+            var left = new ObserverView(TimeConversion.FromUtc(new(new(2024, 1, 15), 16), TimeScale.Tdb),
+                CameraMode.Surface, new ObjectId("hip/32349"), false) { EarthObserver = EarthObserverCamera.Moscow };
+            var right = new ObserverView(JulianInstant.FromJulianDate(2455754.35, TimeScale.Tdb), CameraMode.Satellites, Jason, false);
+            string path = Path.Combine(directory, "charts.stscene");
+            ScenarioFile.Save(path, new([left, right], false, 0, 0, DeltaTModel.MorrisonStephenson2004));
+            Require(_scene.LoadScenario(path), "The Sirius chart scene must open.");
+            await Click(Find<Button>("ChartsTab"));
+            await Click(Find<Button>("CalculateCharts"));
+            var table = Find<VBoxContainer>("ObserverChartTable");
+            await Until(() => table.GetChildCount() == 30, "Calculating annual and monthly observer charts", 60);
+            Require(Find<Label>("ChartSummary").Text.Contains("Sirius", StringComparison.Ordinal), "Charts must retain their captured target.");
+            // Use viewport input, without native mouse injection.
+            var chart = Find<Control>("YearAltitudeChart");
+            await Click(chart);
+            Require(Session[0].Epoch != left.Epoch && Session[0].EarthObserver == left.EarthObserver &&
+                Session[1] == right, "Clicking the annual chart must preserve both cameras and the independent epoch.");
+            var export = Find<Button>("ExportCharts");
+            await Click(export);
+            string csv = Directory.GetFiles(output, "*.csv").Single();
+            Require(File.ReadAllLines(csv).Length == 31, "The chart export must contain 30 daily rows.");
+            await KeyPress(Key.Tab);
+            export.EmitSignal(Button.SignalName.Pressed);
+            Require(Directory.GetFiles(output, "*.csv").Length == 1, "A chart export must reject another observer.");
+            await KeyPress(Key.Tab);
+            Require(await _scene.ReloadAddOns(null), "Reloading the chart data.");
+            export.EmitSignal(Button.SignalName.Pressed);
+            Require(Directory.GetFiles(output, "*.csv").Length == 1 && Session[1] == right &&
+                Session.DeltaT == DeltaTModel.MorrisonStephenson2004, "Charts must reject results from a replaced data generation.");
+            GD.Print("UI: calculated daily/yearly Sirius altitude and monthly lunar angles, clicked the year chart, exported 30 days and rejected stale results.");
+        }
+        finally
+        {
+            System.Environment.SetEnvironmentVariable("SPACETANGENT_OBSERVATIONS_OUTPUT", previous);
+            Require(_scene.LoadScenario(restore), "The previous workspace must reopen after charts.");
+        }
+    }
+
     private async Task ExerciseObserverNight(string directory)
     {
         const string outputVariable = "SPACETANGENT_OBSERVATIONS_OUTPUT";

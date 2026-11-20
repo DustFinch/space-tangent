@@ -110,7 +110,7 @@ public partial class BootstrapSmoke : Node
 
     private static void CheckWorkspacePanels(SolarSystemScene scene)
     {
-        string[] panels = ["Search", "Time", "Calendars", "Events", "Layers", "Location", "Ephemerides",
+        string[] panels = ["Search", "Time", "Calendars", "Events", "Charts", "Layers", "Location", "Ephemerides",
             "Bookmarks", "AddOns", "Scripts", "Settings", "Help"];
         foreach (string id in panels)
         {

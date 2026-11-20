@@ -115,6 +115,9 @@ public sealed partial class SimulationWorld
         }
         else
             PlanetEphemerides.AddMoonFrame(graph, planets);
+        // Snapshot before scripted catalogue rules are installed: background almanac searches
+        // must not execute stateful add-on callbacks or change the live world's evaluation order.
+        AlmanacGraph = graph.Build();
         SscBodies = InstalledSscBody.Install(graph, bodyDefinitions, Stellar, Exoplanets, BrightStars, StellarOrigin, planets);
         _sscById = SscBodies.ToDictionary(body => body.Id);
         _sampledMissions = UniqueSources(sampledMissions ?? [], item => item.Id,
@@ -145,6 +148,7 @@ public sealed partial class SimulationWorld
 
     public ISolarSystemEphemeris Ephemeris { get; }
     public PlanetEphemerides? Planets { get; }
+    public WorldGraph AlmanacGraph { get; }
     public IReadOnlyList<string> SourceWarnings { get; }
 
     private static T[] UniqueSources<T>(IEnumerable<T> sources, Func<T, ObjectId> id,

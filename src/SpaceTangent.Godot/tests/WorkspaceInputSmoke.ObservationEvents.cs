@@ -9,6 +9,44 @@ namespace SpaceTangent.Godot.Tests;
 
 public partial class WorkspaceInputSmoke
 {
+    private async Task ExerciseAlmanac(string directory)
+    {
+        string restore = Path.Combine(directory, "before-almanac.stscene");
+        ScenarioFile.Save(restore, Session.CaptureScenario(0));
+        try
+        {
+            var first = new ObserverView(TimeConversion.FromUtc(new(new(2024, 10, 16)), TimeScale.Tdb),
+                CameraMode.Surface, SolarSystemSample.MoonId, false) { EarthObserver = EarthObserverCamera.Moscow };
+            var second = new ObserverView(JulianInstant.FromJulianDate(2455754.35, TimeScale.Tdb),
+                CameraMode.Satellites, Jason, false);
+            string path = Path.Combine(directory, "almanac.stscene");
+            ScenarioFile.Save(path, new([first, second], false, 0, 0, DeltaTModel.MorrisonStephenson2004));
+            Require(_scene.LoadScenario(path), "The almanac scene must open.");
+            await Click(Find<Button>("EventsTab"));
+            await Click(Find<Button>("CalculateAlmanac"));
+            var rows = Find<VBoxContainer>("AlmanacRows");
+            await Until(() => rows.GetChildCount() > 0, "Calculating the nearby almanac", 60);
+            var phase = rows.GetChildren().OfType<Button>().First(button => button.Text.EndsWith("Full Moon", StringComparison.Ordinal));
+            await Click(phase);
+            var expected = TimeConversion.FromUtc(new(new(2024, 10, 17), 11, 26), TimeScale.Tdb);
+            Require(Math.Abs((double)Session[0].Epoch.DifferenceNanoseconds(expected) / JulianInstant.NanosecondsPerSecond) < 120 &&
+                Session[0].EarthObserver == first.EarthObserver && Session[1] == second,
+                "Opening a phase must seek the calculated instant and preserve both observers.");
+            var held = Session[0];
+            await KeyPress(Key.Tab);
+            phase.EmitSignal(Button.SignalName.Pressed);
+            Require(Session[0] == held && Session[1] == second, "An almanac row must reject the other view.");
+            await KeyPress(Key.Tab);
+            Require(await _scene.ReloadAddOns(null), "Reloading the almanac source.");
+            var after = Session[0];
+            phase.EmitSignal(Button.SignalName.Pressed);
+            Require(Session[0] == after && Session[1] == second && Session.DeltaT == DeltaTModel.MorrisonStephenson2004,
+                "Old almanac rows must reject a replaced world without moving either observer.");
+            GD.Print("UI: calculated nearby events, opened the full Moon, rejected rows from another view and reloaded data.");
+        }
+        finally { Require(_scene.LoadScenario(restore), "The previous workspace must reopen after the almanac test."); }
+    }
+
     private async Task ExerciseObservationEvents(string directory)
     {
         string restore = Path.Combine(directory, "before-observation-events.stscene");

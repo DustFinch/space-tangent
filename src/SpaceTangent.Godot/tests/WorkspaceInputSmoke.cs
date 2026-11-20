@@ -181,6 +181,7 @@ public partial class WorkspaceInputSmoke : Node
             await ExerciseReferenceMarks(scratch.FullName);
             await ExerciseClockTools(scratch.FullName);
             await ExerciseObservationEvents(scratch.FullName);
+            await ExerciseAlmanac(scratch.FullName);
             await ExerciseEarthPlaces(scratch.FullName);
             await ExerciseObserverNight(scratch.FullName);
             await ExerciseMeteors(scratch.FullName);

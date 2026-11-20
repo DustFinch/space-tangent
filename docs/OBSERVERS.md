@@ -120,6 +120,12 @@ The startup option `--startup-legacy-settings <path>` can also read archived sav
 
 ## Finder overlays
 
+## Nearby events
+
+Open **Location → Nearby events** and calculate from the paused active view. The list covers 45 days of geocentric lunar phases, planetary oppositions, inner-planet elongations, seasons and close approaches. Eclipses use the saved Earth site; the first umbral shadow of a Galilean moon on Jupiter is searched over three days using a spherical receiver. These are search models, not an observatory precision service. The shadow calculation uses the built-in natural-body graph, before scripted catalogue overrides.
+
+When a meteor catalogue is installed, major annual showers and strong potential outbursts are included as date-only rows. Their button seeks civil midnight, not a claimed exact maximum. Event buttons pause and seek the active observer; independent views retain their camera and epoch. Results belong to the view, site, data generation and ΔT that requested them. Recalculate after any of those changes. Ctrl+E retains its existing local eclipse, conjunction, pass and flare workflow.
+
 Use `--startup-telrad` for the 0.5°, 2°, and 4° rings, and `--startup-camera 1` through `4` for APS-C, full frame, ASI533, and ASI2600. Use sensor index `0` to clear the camera frame. These options apply to the active view. The sensor footprint uses the selected telescope focal length and Barlow. An active eyepiece hides its own finder overlays. The observatory uses the physical lunar diameter when either a finder or eyepiece is active.
 
 Scenario version 18 stores each view's settings. Importing an archived observer profile also restores its Telrad, camera frame and eyepiece-circle settings.

@@ -1,43 +1,44 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
 using System.Globalization;
 using System.Text;
-using System.Text.RegularExpressions;
 using MoonSharp.Interpreter;
+using static SpaceTangent.Application.LuaPatternMachine;
 
 namespace SpaceTangent.Application;
 
 /// <summary>A bounded matcher for the ordinary ASCII parsing subset of Lua patterns.</summary>
-/// <remarks>Unsupported or ambiguous patterns retain the conservative native guard. The non-backtracking engine
-/// also bounds unsuccessful unanchored searches; disjoint character classes alone would not provide that guarantee.</remarks>
-internal sealed class LuaLinearPattern(Regex regex, bool anchored, bool[] positionCaptures, int patternLength)
+/// <remarks>Unsupported patterns retain the conservative native guard. Ordered NFA simulation preserves Lua's first
+/// match, greedy/lazy priority and captures while bounding unsuccessful unanchored searches.</remarks>
+internal sealed class LuaLinearPattern(Instruction[] program, bool anchored, bool[] positionCaptures, long workLimit)
 {
     internal bool Anchored => anchored;
 
-    internal static LuaLinearPattern? Create(string pattern)
+    internal static LuaLinearPattern? Create(string pattern, long workLimit = 4_000_000)
     {
         if (pattern.Length > 256 || pattern.Any(c => c > 127)) return null;
-        var expression = new StringBuilder();
+        var program = new List<Instruction> { new(Op.Save, 0) };
         var captures = new List<bool>();
         var atoms = new List<(bool[] Set, bool Repeat)>();
-        int depth = 0;
+        var groups = new Stack<int>();
         bool anchored = pattern.StartsWith('^');
         for (int index = anchored ? 1 : 0; index < pattern.Length; index++)
         {
             char value = pattern[index];
             if (value == '(')
             {
-                if (++depth > 32 || captures.Count == 32) return null;
+                if (captures.Count == 32) return null;
+                groups.Push(captures.Count);
                 captures.Add(index + 1 < pattern.Length && pattern[index + 1] == ')');
-                expression.Append('(');
+                program.Add(new(Op.Save, 2 * groups.Peek() + 2));
                 continue;
             }
             if (value == ')')
             {
-                if (--depth < 0) return null;
-                expression.Append(')');
+                if (!groups.TryPop(out int group)) return null;
+                program.Add(new(Op.Save, 2 * group + 3));
                 continue;
             }
-            if (value == '$' && index == pattern.Length - 1) { expression.Append("\\z"); continue; }
+            if (value == '$' && index == pattern.Length - 1) { program.Add(new(Op.End)); continue; }
             bool[]? set;
             if (value == '[')
             {
@@ -56,57 +57,77 @@ internal sealed class LuaLinearPattern(Regex regex, bool anchored, bool[] positi
                 if (value == '.') Array.Fill(set, true);
                 else set[value] = true;
             }
-            string? atom = SetExpression(set);
-            if (atom is null) return null;
-            expression.Append(atom);
             bool repeat = index + 1 < pattern.Length && pattern[index + 1] is '*' or '+' or '?' or '-';
-            if (repeat)
-            {
-                char quantifier = pattern[++index];
-                expression.Append(quantifier == '-' ? "*?" : quantifier.ToString());
-            }
+            char quantifier = repeat ? pattern[++index] : '\0';
             atoms.Add((set, repeat));
+            int pc = program.Count;
+            switch (quantifier)
+            {
+                case '*':
+                case '-':
+                    program.Add(quantifier == '*' ? new(Op.Split, pc + 1, pc + 3) : new(Op.Split, pc + 3, pc + 1));
+                    program.Add(new(Op.Character, Set: set));
+                    program.Add(new(Op.Jump, pc));
+                    break;
+                case '+':
+                    program.Add(new(Op.Character, Set: set));
+                    program.Add(new(Op.Split, pc, pc + 2));
+                    break;
+                case '?':
+                    program.Add(new(Op.Split, pc + 1, pc + 2));
+                    program.Add(new(Op.Character, Set: set));
+                    break;
+                default:
+                    program.Add(new(Op.Character, Set: set));
+                    break;
+            }
         }
-        if (depth != 0) return null;
+        if (groups.Count != 0) return null;
+        // Keep the established accepted subset. MoonSharp itself refuses some overlapping repeats as too complex;
+        // broadening this boundary is separate from fixing the wrong answers of previously accepted patterns.
         for (int index = 0; index + 1 < atoms.Count; index++)
             if (atoms[index].Repeat && atoms[index].Set.Where((present, c) => present && atoms[index + 1].Set[c]).Any())
                 return null;
-        try
-        {
-            return new(new Regex(expression.ToString(), RegexOptions.NonBacktracking | RegexOptions.CultureInvariant,
-                TimeSpan.FromMilliseconds(50)), anchored, captures.ToArray(), pattern.Length);
-        }
-        catch (Exception error) when (error is ArgumentException or NotSupportedException) { return null; }
+        program.Add(new(Op.Save, 1));
+        program.Add(new(Op.Match));
+        return new(program.ToArray(), anchored, captures.ToArray(), workLimit);
     }
 
-    internal void Check(string subject)
+    internal LuaPatternMachine Begin(string subject, LuaPatternBudget? budget = null) =>
+        new(program, subject, 2 * positionCaptures.Length + 2, anchored, budget ?? new(workLimit));
+
+    internal DynValue FindCallback(string subject)
     {
-        if ((subject.Length + 1L) * Math.Max(1, patternLength) > 4_000_000)
-            throw new ScriptRuntimeException("The pattern exceeds the sandbox matching work limit.");
+        var operation = Begin(subject);
+        return DynValue.NewCallback((_, args) => FindValue(subject, args, "find", operation));
     }
 
     internal DynValue Call(string subject, CallbackArguments args, string name)
     {
-        Check(subject);
+        var operation = Begin(subject);
         if (name == "gmatch")
         {
             int cursor = 0;
             return DynValue.NewCallback((_, _) =>
             {
-                Match? found = Find(subject, cursor);
+                Match? found = operation.Find(cursor);
                 if (found is null) return DynValue.Nil;
-                cursor = found.Index + Math.Max(1, found.Length);
-                return Captures(found, includeIndices: false);
+                cursor = Math.Max(found.End, found.Start + 1);
+                return Captures(subject, found, includeIndices: false);
             });
         }
-        int start = Start(args[2], subject.Length);
-        Match? match = Find(subject, start);
-        return match is null ? DynValue.Nil : Captures(match, includeIndices: name == "find");
+        return FindValue(subject, args, name, operation);
+    }
+
+    private DynValue FindValue(string subject, CallbackArguments args, string name, LuaPatternMachine operation)
+    {
+        Match? match = operation.Find(Start(args[2], subject.Length));
+        return match is null ? DynValue.Nil : Captures(subject, match, includeIndices: name == "find");
     }
 
     internal DynValue Substitute(string subject, string replacement, DynValue limit)
     {
-        Check(subject);
+        var operation = Begin(subject);
         double requested = limit.IsNil() ? subject.Length + 1d : limit.CastToNumber() ??
             throw new ScriptRuntimeException("bad argument #4 to 'gsub' (number expected)");
         if (double.IsNaN(requested)) throw new ScriptRuntimeException("invalid substitution limit");
@@ -115,9 +136,9 @@ internal sealed class LuaLinearPattern(Regex regex, bool anchored, bool[] positi
         int cursor = 0, count = 0;
         while (cursor <= subject.Length && count < maximum)
         {
-            Match? match = Find(subject, cursor);
+            Match? match = operation.Find(cursor);
             if (match is null) break;
-            output.Append(subject, cursor, match.Index - cursor);
+            output.Append(subject, cursor, match.Start - cursor);
             for (int index = 0; index < replacement.Length; index++)
             {
                 char value = replacement[index];
@@ -125,18 +146,20 @@ internal sealed class LuaLinearPattern(Regex regex, bool anchored, bool[] positi
                 if (++index == replacement.Length) throw new ScriptRuntimeException("invalid replacement escape");
                 char code = replacement[index];
                 if (code == '%') output.Append('%');
-                else if (code == '0' || code == '1' && positionCaptures.Length == 0) output.Append(match.Value);
+                else if (code == '0' || code == '1' && positionCaptures.Length == 0)
+                    output.Append(subject, match.Start, match.End - match.Start);
                 else if (code is >= '1' and <= '9' && code - '0' <= positionCaptures.Length)
                 {
                     int group = code - '0';
-                    output.Append(positionCaptures[group - 1]
-                        ? (match.Groups[group].Index + 1).ToString(CultureInfo.InvariantCulture) : match.Groups[group].Value);
+                    int first = match.Positions[2 * group], last = match.Positions[2 * group + 1];
+                    if (positionCaptures[group - 1]) output.Append((first + 1).ToString(CultureInfo.InvariantCulture));
+                    else output.Append(subject, first, last - first);
                 }
                 else throw new ScriptRuntimeException("invalid capture or replacement escape");
             }
             count++;
-            cursor = match.Index + match.Length;
-            if (match.Length == 0)
+            cursor = match.End;
+            if (match.End == match.Start)
             {
                 if (cursor < subject.Length) output.Append(subject[cursor]);
                 cursor++;
@@ -148,25 +171,16 @@ internal sealed class LuaLinearPattern(Regex regex, bool anchored, bool[] positi
         return DynValue.NewTuple(DynValue.NewString(output.ToString()), DynValue.NewNumber(count));
     }
 
-    private Match? Find(string subject, int start)
-    {
-        if (start > subject.Length) return null;
-        try
-        {
-            Match match = regex.Match(subject, Math.Max(0, start));
-            return match.Success && (!anchored || match.Index == start) ? match : null;
-        }
-        catch (RegexMatchTimeoutException) { throw new ScriptRuntimeException("The pattern exceeded its matching time budget."); }
-    }
-
-    private DynValue Captures(Match match, bool includeIndices)
+    private DynValue Captures(string subject, Match match, bool includeIndices)
     {
         var values = new List<DynValue>();
-        if (includeIndices) { values.Add(DynValue.NewNumber(match.Index + 1)); values.Add(DynValue.NewNumber(match.Index + match.Length)); }
+        if (includeIndices) { values.Add(DynValue.NewNumber(match.Start + 1)); values.Add(DynValue.NewNumber(match.End)); }
         for (int index = 0; index < positionCaptures.Length; index++)
-            values.Add(positionCaptures[index] ? DynValue.NewNumber(match.Groups[index + 1].Index + 1)
-                : DynValue.NewString(match.Groups[index + 1].Value));
-        if (values.Count == 0) return DynValue.NewString(match.Value);
+        {
+            int first = match.Positions[2 * index + 2], last = match.Positions[2 * index + 3];
+            values.Add(positionCaptures[index] ? DynValue.NewNumber(first + 1) : DynValue.NewString(subject[first..last]));
+        }
+        if (values.Count == 0) return DynValue.NewString(subject[match.Start..match.End]);
         return values.Count == 1 ? values[0] : DynValue.NewTuple(values.ToArray());
     }
 
@@ -234,17 +248,4 @@ internal sealed class LuaLinearPattern(Regex regex, bool anchored, bool[] positi
         return set;
     }
 
-    private static string? SetExpression(bool[] set)
-    {
-        var text = new StringBuilder("[");
-        for (int index = 0; index < set.Length; index++)
-        {
-            if (!set[index]) continue;
-            int first = index;
-            while (index + 1 < set.Length && set[index + 1]) index++;
-            text.Append($"\\u{first:x4}");
-            if (index != first) text.Append($"-\\u{index:x4}");
-        }
-        return text.Length == 1 ? null : text.Append(']').ToString();
-    }
 }

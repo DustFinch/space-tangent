@@ -165,6 +165,35 @@ public sealed class LuaSandboxTests
         }).WaitAsync(TimeSpan.FromSeconds(10));
     }
 
+    [Fact]
+    public void AnchoredMissVisitsOneStartRegardlessOfTheRemainingSubject()
+    {
+        var pattern = LuaLinearPattern.Create("^%d+")!;
+        var shortSearch = pattern.Begin("x" + new string('7', 63));
+        var longSearch = pattern.Begin("x" + new string('7', 32767));
+        Assert.Null(shortSearch.Find(0));
+        Assert.Null(longSearch.Find(0));
+        Assert.Equal(shortSearch.Budget.Steps, longSearch.Budget.Steps);
+        Assert.InRange(longSearch.Budget.Steps, 1, 10);
+    }
+
+    [Theory]
+    [InlineData("local n=0 for x in input:gmatch(pattern) do n=n+1 end return n")]
+    [InlineData("return input:gsub(pattern, '')")]
+    [InlineData("return input:gsub(pattern, function() return '' end)")]
+    [InlineData("return input:gsub(pattern, {})")]
+    public void IteratorsAndEveryReplacementKindShareOneOperationBudget(string code)
+    {
+        string pattern = string.Concat(Enumerable.Repeat("a?b?", 30));
+        var first = LuaLinearPattern.Create(pattern, 1000)!.Begin(new string('x', 128));
+        Assert.NotNull(first.Find(0)); // One search is allowed, but the complete iteration is not.
+        Assert.InRange(first.Budget.Steps, 1, 999);
+        Script script = LuaSandbox.Create(patternWorkLimit: 1000);
+        script.Globals["input"] = new string('x', 128);
+        script.Globals["pattern"] = pattern;
+        Assert.Contains("sandbox matching work limit", Assert.Throws<ScriptRuntimeException>(() => Run(script, code)).Message);
+    }
+
     private static string Values(DynValue result)
     {
         DynValue[] values = result.Type == DataType.Tuple ? result.Tuple : [result];

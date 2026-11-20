@@ -86,7 +86,7 @@ internal static class LuaSandbox
         end
         """;
 
-    internal static Script Create(bool metatables = false)
+    internal static Script Create(bool metatables = false, long patternWorkLimit = 4_000_000)
     {
         var script = new Script(metatables ? Modules | CoreModules.Metatables : Modules);
         script.Globals["collectgarbage"] = DynValue.Nil;
@@ -94,12 +94,20 @@ internal static class LuaSandbox
         DynValue format = strings.Get("format"), substitute = strings.Get("gsub");
         DynValue find = strings.Get("find"), match = strings.Get("match"), iterate = strings.Get("gmatch");
         var patterns = new Dictionary<string, LuaLinearPattern?>(StringComparer.Ordinal);
+        WeakReference<string>? lastSubject = null;
+        bool lastAscii = false;
         LuaLinearPattern? Linear(string subject, string pattern)
         {
-            if (pattern.Length > 256 || subject.Any(c => c > 127)) return null;
+            if (pattern.Length > 256) return null;
+            if (lastSubject is null || !lastSubject.TryGetTarget(out var previous) || !ReferenceEquals(previous, subject))
+            {
+                lastAscii = !subject.AsSpan().ContainsAnyExceptInRange('\0', '\x7f');
+                lastSubject = new(subject);
+            }
+            if (!lastAscii) return null;
             if (patterns.TryGetValue(pattern, out var cached)) return cached;
             if (patterns.Count == 64) patterns.Clear();
-            return patterns[pattern] = LuaLinearPattern.Create(pattern);
+            return patterns[pattern] = LuaLinearPattern.Create(pattern, patternWorkLimit);
         }
         strings["find"] = Pattern(find, "find", Linear);
         strings["match"] = Pattern(match, "match", Linear);
@@ -266,14 +274,12 @@ internal static class LuaSandbox
         string subject = Text(args[0], "gsub", 1), pattern = Text(args[1], "gsub", 2);
         var bounded = linear(subject, pattern);
         if (bounded is null) CheckSubject(subject, pattern, repeatedSearch: true);
-        else bounded.Check(subject);
         DynValue replacement = args[2], limit = args[3].IsNil() ? DynValue.Nil : args[3];
         DynValue[] call = [DynValue.NewString(subject), DynValue.NewString(pattern), replacement, limit];
         if (replacement.Type is DataType.Function or DataType.ClrFunction or DataType.Table)
         {
             // Validate/translate once, rather than rescanning the complete ASCII subject on every replacement.
-            DynValue search = bounded is null ? DynValue.Nil : DynValue.NewCallback((_, findArgs) =>
-                bounded.Call(subject, findArgs, "find"));
+            DynValue search = bounded?.FindCallback(subject) ?? DynValue.Nil;
             return DynValue.NewTailCallReq(scripted, [.. call, search]);
         }
         if (replacement.Type is not (DataType.String or DataType.Number))

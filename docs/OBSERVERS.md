@@ -1,5 +1,7 @@
 # Observer views and reloading
 
+**Observing → Calendars** shows the selected view's civil day in the Julian, Hebrew, tabular civil Islamic and Maya calendars, plus its ISO week and day of year. It uses UTC when available and the selected modeled UT1 otherwise. Calendar labels do not seek or synchronize views. These civil-day conversions do not model religious sunset or crescent visibility.
+
 Use **Split view** to open two views. The clock switch next to it shows whether their times are linked. With **Clocks independent**, the hour-step and playback controls affect only their view. Find exact date and ΔT under **Observing → Time**. With synchronization enabled, both views use the epoch of the most recently used view. Each view retains its own camera mode and satellite selection.
 
 **Reload add-ons** decodes source geometry on a worker and publishes meshes and the replacement world on the main thread. The current epochs, camera modes, available selections and ΔT preference carry forward. A failed reload leaves the previous generation visible. The ΔT option is saved in the Godot user profile. The Earth surface view uses the selected model for sidereal rotation.

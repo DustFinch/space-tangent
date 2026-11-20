@@ -110,7 +110,7 @@ public partial class BootstrapSmoke : Node
 
     private static void CheckWorkspacePanels(SolarSystemScene scene)
     {
-        string[] panels = ["Search", "Time", "Layers", "Location", "Ephemerides",
+        string[] panels = ["Search", "Time", "Calendars", "Layers", "Location", "Ephemerides",
             "Bookmarks", "AddOns", "Scripts", "Settings", "Help"];
         foreach (string id in panels)
         {
@@ -120,6 +120,9 @@ public partial class BootstrapSmoke : Node
                 tab.EmitSignal(Button.SignalName.Pressed);
             Require(tab.ButtonPressed && page.IsVisibleInTree() && page.GetChildCount() >= 2,
                 $"The {id} workspace panel must show its controls.");
+            if (id == "Calendars")
+                Require(((Label)scene.FindChild("CalendarLabels", true, false)).Text.Contains("Hebrew:"),
+                    "The paused calendars page must populate on opening.");
         }
         var search = (Button)scene.FindChild("SearchTab", recursive: true, owned: false);
         search.EmitSignal(Button.SignalName.Pressed);

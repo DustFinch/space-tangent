@@ -67,6 +67,8 @@ public partial class SolarSystemScene : Control
     private Button _satelliteLayersMode = null!;
     private Button _playFromPanel = null!;
     private Label _calendarTime = null!;
+    private Label _otherCalendars = null!;
+    private long? _otherCalendarDay;
     private BoxContainer _panels = null!;
     private StyleBoxFlat _activeFrame = null!, _inactiveFrame = null!;
     private Button _spaceMode = null!, _observatoryMode = null!;
@@ -324,6 +326,15 @@ public partial class SolarSystemScene : Control
         _deltaT.AddItem("ΔT · Fixed offset", (int)DeltaTModel.FixedOffset);
         _deltaT.ItemSelected += index => SetDeltaT((DeltaTModel)_deltaT.GetItemId((int)index));
         time.AddChild(_deltaT);
+
+        var calendars = _workspace.AddPage("Calendars", WorkspaceText.Choose("Calendars", "Календари"), "Location");
+        calendars.AddChild(SimulatorTheme.Detail(WorkspaceText.Choose(
+            "Civil day from UTC, or the selected modeled UT1 outside UTC coverage. These calendars do not change the simulation clock.",
+            "Гражданская дата UTC, а вне покрытия — выбранная модель UT1. Эти календари не меняют часы симуляции.")));
+        _otherCalendars = SimulatorTheme.Detail("");
+        _otherCalendars.Name = "CalendarLabels";
+        calendars.AddChild(_otherCalendars);
+        _otherCalendars.VisibilityChanged += () => { if (_otherCalendars.IsVisibleInTree()) UpdateActiveFrame(); };
 
         var layers = _workspace.AddPage("Layers", WorkspaceText.Choose("Layers and view", "Слои и вид"), "Search", WorkspaceText.Choose("Layers", "Слои"));
         layers.AddChild(SimulatorTheme.Section("Objects"));
@@ -2060,6 +2071,15 @@ public partial class SolarSystemScene : Control
         _workspace.Observation.Text = $"{WorkspaceText.Choose("View", "Вид")} {_active + 1} · {playback}";
         _timeHeading.Text = FormattableString.Invariant($"JD {active.Epoch.ToJulianDate():F6}");
         _calendarTime.Text = CivilTimeLabel(active.Epoch, Session!.DeltaT);
+        if (_otherCalendars.IsVisibleInTree())
+        {
+            var civilDay = CivilCalendarDisplay.CivilDay(active.Epoch, Session.DeltaT);
+            if (_otherCalendarDay != civilDay?.DayNumber || _otherCalendars.Text.Length == 0)
+            {
+                _otherCalendarDay = civilDay?.DayNumber;
+                _otherCalendars.Text = civilDay is { } date ? CivilCalendarDisplay.Format(date) : "Civil calendars unavailable at this epoch.";
+            }
+        }
         _playFromPanel.Text = PlaybackButton(active.Playing);
         _earthObserver.Update(_active, active, _views[_active].Snapshot, Session.World.Ephemeris, Session.DeltaT,
             Session.World.BrightStars, CurrentObserverNight(), Session.World.EarthPlaces);

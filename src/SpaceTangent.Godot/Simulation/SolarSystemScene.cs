@@ -826,7 +826,10 @@ public partial class SolarSystemScene : Control
         changed |= _demoSurfaces.PublishReady();
         changed |= _brightSky?.Surveys.PublishRemote() == true;
         foreach (var view in _views)
+        {
             changed |= view.Renderer.PublishDemoTerrain();
+            changed |= view.Renderer.HasPendingPaths;
+        }
         changed |= UpdatePerspectiveScale();
         changed |= StepPlugins(delta);
         if (_script is { } script)
@@ -2154,6 +2157,8 @@ public partial class SolarSystemScene : Control
             ObserverView view = session[index];
             controls.Snapshot = snapshot;
             controls.Renderer.ShowPlanetOrbits = !view.Sky.HideOrbits;
+            // Stateful add-on factories keep their original synchronous evaluation order.
+            controls.Renderer.IncrementalPaths = _addOns?.Decoded.AllowAddonLua != true;
             controls.Renderer.ShowSurfaceSiteLabels = view.Sky.SurfacePlaces;
             controls.Renderer.SetLandscape(ViewLandscape(view), view.EarthObserver?.HideLandscapeFog != true);
             controls.Renderer.ArchivedGeometry = index == 0 ? (_replay as LegacyCameraSequence)?.CurrentGeometry : null;

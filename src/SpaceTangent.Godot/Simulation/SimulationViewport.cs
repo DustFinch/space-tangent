@@ -242,6 +242,8 @@ internal partial class SimulationViewport : Node3D
 
     private bool DrawScene(ObserverView observer, WorldSnapshot snapshot, DeltaTModel deltaT)
     {
+        if (observer.Navigation is null) { _missionTrailBatch = null; _missionTrailKey = null; }
+        if (_surface is not null) _surface.IncrementalPaths = IncrementalPaths && ArchivedGeometry is null;
         SolarSystemSample sample = snapshot.SolarSystem ?? throw new InvalidOperationException("The view needs a solar-system snapshot.");
         _saturn.Hide();
         _missionNode.Hide();

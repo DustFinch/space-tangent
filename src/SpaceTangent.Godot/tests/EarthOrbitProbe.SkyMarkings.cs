@@ -53,6 +53,11 @@ public partial class EarthOrbitProbe
 
         async Task Frames()
         {
+            for (int frame = 0; scene.Renderer(0).HasPendingPaths; frame++)
+            {
+                if (frame == 200) throw new TimeoutException("The paused ground path did not finish.");
+                await ToSignal(GetTree(), SceneTree.SignalName.ProcessFrame);
+            }
             for (int frame = 0; frame < 4; frame++)
             {
                 await ToSignal(GetTree(), SceneTree.SignalName.ProcessFrame);

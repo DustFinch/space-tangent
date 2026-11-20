@@ -25,9 +25,11 @@ public partial class EarthOrbitProbe
         ScenarioFile.Save(path, new([active, hidden], false, 0, 0, session.DeltaT));
         if (!scene.LoadScenario(path))
             throw new InvalidOperationException("The two trail views did not open.");
+        await WaitForTrail();
         Check();
         if (!await scene.ReloadAddOns())
             throw new InvalidOperationException("The archived display pack could not reload.");
+        await WaitForTrail();
         Check();
         await ToSignal(GetTree(), SceneTree.SignalName.ProcessFrame);
         await ToSignal(RenderingServer.Singleton, RenderingServer.SignalName.FramePostDraw);
@@ -35,6 +37,15 @@ public partial class EarthOrbitProbe
         if (image.SavePng(Path.ChangeExtension(path, ".png")) != Error.Ok)
             throw new IOException("Could not capture the archived orbit style.");
         GD.Print("Archived display: Jason-1 label tint, 45-minute trail, 10-minute lead and independent orbit toggle verified after reload.");
+
+        async Task WaitForTrail()
+        {
+            for (int frame = 0; scene.Renderer(0).HasPendingPaths; frame++)
+            {
+                if (frame == 200) throw new TimeoutException("The paused mission trail did not finish.");
+                await ToSignal(GetTree(), SceneTree.SignalName.ProcessFrame);
+            }
+        }
 
         void Check()
         {

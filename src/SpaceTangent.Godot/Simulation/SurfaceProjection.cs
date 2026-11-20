@@ -107,6 +107,7 @@ internal sealed partial class SurfaceProjection
         _surface.Visible = surface;
         if (!surface)
         {
+            CancelBodyPath();
             HideSurvey();
             HideStarlink();
             _meteors?.HideFrame();
@@ -240,6 +241,7 @@ internal sealed partial class SurfaceProjection
             HideStarlink();
         if (_sky is not null && sky.Visible)
         {
+            if (!sky.Markings.HasFlag(SkyMarkings.SelectedBodyPath)) CancelBodyPath();
             _sky.ShowFrame(new(sample.Epoch, sky, selection, forward, right, cameraUp, _tanHalfField,
                 starDarkness, up, Convert(moonSeen), moonRadius,
                 Conditions: observer.Conditions, Site: observer.Site, OpticalLimit: optics?.LimitingMagnitude(), ObserverBeta: observerBeta, SiteAxes: lighting.EastNorthUp,
@@ -247,7 +249,10 @@ internal sealed partial class SurfaceProjection
                     ? BodyPath(world, targetBody, sample.Epoch, model) : null));
         }
         else
+        {
             _sky?.Hide();
+            CancelBodyPath();
+        }
         if (sky.Meteors || sky.ShowMeteorRadiants)
             _meteors?.ShowFrame(sample, lighting, observer.Site, observer.Conditions?.LimitingMagnitude() ?? 6.5,
                 forward, right, cameraUp, _tanHalfField, sky.Meteors, sky.ShowMeteorRadiants, sky.MeteorRateMultiplier ?? 1);

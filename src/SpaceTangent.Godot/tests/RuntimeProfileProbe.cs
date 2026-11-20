@@ -19,6 +19,7 @@ public partial class RuntimeProfileProbe : Node
         int result = 1;
         try
         {
+            FrameSampleChecks.Run();
             string output = System.Environment.GetEnvironmentVariable("SPACETANGENT_PROFILE_OUTPUT")
                 ?? throw new InvalidOperationException("Set SPACETANGENT_PROFILE_OUTPUT.");
             Directory.CreateDirectory(output);
@@ -32,7 +33,28 @@ public partial class RuntimeProfileProbe : Node
                 await ToSignal(GetTree(), SceneTree.SignalName.ProcessFrame);
             }
             var session = scene.Session ?? throw new InvalidOperationException("Install DE440.");
+            for (int frame = 0; scene.Renderer(0).HasPendingPaths || session.ViewCount > 1 && scene.Renderer(1).HasPendingPaths; frame++)
+            {
+                if (frame == 200) throw new TimeoutException("The paused scene did not complete its sampling jobs.");
+                await ToSignal(GetTree(), SceneTree.SignalName.ProcessFrame);
+            }
             await Frames("jason-full-moon");
+            if (session[0].Navigation?.Target is { } trailTarget && session.World.Satellites.FirstOrDefault(item => item.Id == trailTarget) is { Display: { } display } track)
+            {
+                double duration = display.OrbitDurationSeconds ?? track.OrbitPeriodSeconds;
+                var samples = scene.Renderer(0).MissionTrailSamples;
+                if (samples.Count != 65) throw new InvalidOperationException("The complete trail must contain 65 samples.");
+                for (int index = 0; index < samples.Count; index++)
+                {
+                    var at = session[0].Epoch.AddSeconds(-duration + (duration + display.OrbitLeadSeconds) * index / 64d);
+                    var point = session.World.Graph.Evaluate(at, session.DeltaT);
+                    Vector3d? expected = point.TryStateCenter(trailTarget, out var center) && point.TryState(trailTarget, out var body) && point.TryState(center, out var parent)
+                        ? (body - parent).PositionKilometers : null;
+                    if (expected.HasValue != samples[index].Offset.HasValue || expected is { } value && (value - samples[index].Offset!.Value).Length > 1e-6)
+                        throw new InvalidOperationException("A scheduled Jason-1 sample differs from the full graph.");
+                }
+                GD.Print("Scheduled trail passed: all 65 real Jason-1 samples agree with full snapshots.");
+            }
             if (!await scene.ReloadAddOns()) throw new InvalidOperationException("Reload failed.");
             var epoch = JulianInstant.FromJulianDate(2451545, TimeScale.Tdb);
             var snapshot = session.World.Graph.Evaluate(epoch, session.DeltaT);

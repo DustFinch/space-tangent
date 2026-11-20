@@ -15,6 +15,7 @@ public partial class BootstrapSmoke : Node
     {
         try
         {
+            FrameSampleChecks.Run();
             Assembly.Load("SpaceTangent.Core");
             Assembly.Load("SpaceTangent.Contracts");
             var scene = GD.Load<PackedScene>("res://Main.tscn").Instantiate<SolarSystemScene>();

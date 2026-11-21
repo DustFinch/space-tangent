@@ -63,5 +63,10 @@
     "path": "docs/LUA_SCRIPTS.md",
     "sha256": "35765765b5306a62cead420a4f309191173533ee6581f878ea57271f9dc55520",
     "reason": "Retained upstream fixture provenance with the current adapter scope."
+  },
+  {
+    "path": "tests/SpaceTangent.Application.Tests/SavedObserverContractTests.cs",
+    "sha256": "649f14ffb593240cdf5f81ed5a2604f068f147650d909945fd36db5ec767c5e1",
+    "reason": "Exact historical bookmark URI scheme required for interoperability regression; not a product identifier."
   }
 ]

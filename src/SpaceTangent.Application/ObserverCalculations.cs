@@ -22,6 +22,7 @@ public static class ObserverCalculations
         if (observer.Selection is not { } target || world.Catalogue.Find(target) is not { } item)
             throw new ArgumentException("Select a catalogue object before calculating ephemerides.", nameof(observer));
         var camera = observer.EarthObserver ?? EarthObserverCamera.Moscow;
+        SurfaceObserver.RequireCalculationFrame(world, camera, observer.Epoch, model);
         if (target == camera.SurfaceBody) throw new ArgumentException("Select an object other than the observer body.", nameof(observer));
         var brightStar = world.BrightStars.Find(target);
         var spatialStar = world.FindStellarTarget(target);
@@ -49,18 +50,21 @@ public static class ObserverCalculations
             cancellation.ThrowIfCancellationRequested();
             var civil = HistoricalDate.FromDayNumber(day);
             var midnight = Sample(At(civil, 0));
-            var evening = At(civil, 18);
+            // Label the night leading into this row's midnight, rather than the following midnight.
+            var evening = At(HistoricalDate.FromDayNumber(day - 1), 18);
+            var morning = At(civil, 8);
+            double nightSeconds = (double)morning.DifferenceNanoseconds(evening) / JulianInstant.NanosecondsPerSecond;
             int covered = 0;
-            bool visible = false;
-            for (int step = 0; step <= 28; step++)
+            bool visible = midnight.AltitudeDegrees is >= 10 && midnight.SunAltitudeDegrees is <= -12;
+            if (visible && (bestAltitude is null || midnight.AltitudeDegrees > bestAltitude))
+            { bestNight = civil; bestAltitude = midnight.AltitudeDegrees; }
+            for (int step = 0; step <= Math.Ceiling(nightSeconds / 1800); step++)
             {
-                var sample = Sample(evening.AddSeconds(step * 1800));
+                var sample = Sample(evening.AddSeconds(Math.Min(step * 1800, nightSeconds)));
                 if (sample.AltitudeDegrees is not { } altitude || sample.SunAltitudeDegrees is not { } sun) continue;
                 covered++;
                 if (sun > -12 || altitude < 10) continue;
                 visible = true;
-                if (step == 12 && (bestAltitude is null || altitude > bestAltitude))
-                { bestNight = civil; bestAltitude = altitude; }
             }
             year.Add(new(civil, midnight, covered == 0 ? null : visible));
         }

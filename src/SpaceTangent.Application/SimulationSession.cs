@@ -115,9 +115,6 @@ public sealed partial class SimulationWorld
         }
         else
             PlanetEphemerides.AddMoonFrame(graph, planets);
-        // Snapshot before scripted catalogue rules are installed: background almanac searches
-        // must not execute stateful add-on callbacks or change the live world's evaluation order.
-        AlmanacGraph = graph.Build();
         SscBodies = InstalledSscBody.Install(graph, bodyDefinitions, Stellar, Exoplanets, BrightStars, StellarOrigin, planets);
         _sscById = SscBodies.ToDictionary(body => body.Id);
         _sampledMissions = UniqueSources(sampledMissions ?? [], item => item.Id,
@@ -144,11 +141,17 @@ public sealed partial class SimulationWorld
         _sitesByBody = Catalogue.SurfaceSites.GroupBy(site => site.Body)
             .ToDictionary(group => group.Key, group => group.OrderByDescending(site => site.Definition.Importance ?? site.Definition.SizeKilometers).ToArray());
         Graph = graph.Build();
+        // Keep pure SSC rules and all their safe dependencies, without running a Lua factory
+        // or anything transitively depending on one during a background observation query.
+        AlmanacGraph = Graph.WithoutObjects(SscBodies.Where(body => body.Definition.UsesScriptedModels).Select(body => body.Id));
     }
 
     public ISolarSystemEphemeris Ephemeris { get; }
     public PlanetEphemerides? Planets { get; }
     public WorldGraph AlmanacGraph { get; }
+    internal bool HasSurfaceOrientation(ObjectId id) => !_sscById.TryGetValue(id, out var body) ||
+        body.Definition.HasExplicitOrientation || body.Definition.BindTimeline is null &&
+        (body.Definition.SampleRotation is not null || body.Definition.Orientation is not null);
     public IReadOnlyList<string> SourceWarnings { get; }
 
     private static T[] UniqueSources<T>(IEnumerable<T> sources, Func<T, ObjectId> id,

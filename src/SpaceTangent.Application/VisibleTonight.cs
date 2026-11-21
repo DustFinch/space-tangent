@@ -23,6 +23,7 @@ public static class VisibleTonight
         CancellationToken cancellation = default)
     {
         var camera = observer.EarthObserver ?? EarthObserverCamera.Moscow;
+        SurfaceObserver.RequireCalculationFrame(world, camera, observer.Epoch, model);
         var clock = camera.IsEarth ? camera.CivilClock.GetValueOrDefault() : new ObserverSiteClock("UTC", "Etc/UTC", 0);
         var date = clock.DateAt(observer.Epoch, camera.Site, model);
         var noon = clock.At(date, new(12, 0), camera.Site, model);
@@ -40,10 +41,24 @@ public static class VisibleTonight
                 ? new(epoch, at.Frame.Horizontal(at.Solar.Sun.PositionKilometers)?.AltitudeDegrees, null, null)
                 : new(epoch, null, null, null), noon, end, effective, cancellation);
             if (!day.CompleteCoverage) return new(civil, NightVisibility.NoEphemeris, null, null, null, []);
-            if (day.StartsAbove == false && day.Rise is null && day.Set is null)
-            { from = noon; to = end; depth = effective; break; }
-            if (day.Set is { } setting && day.Rise is { } rising && rising.CompareTo(setting) > 0)
-            { from = setting; to = rising; depth = effective; break; }
+            var intervals = new List<(JulianInstant From, JulianInstant To)>();
+            JulianInstant? darkStart = day.StartsAbove == false ? noon : null;
+            foreach (var crossing in day.Crossings)
+            {
+                if (crossing.Rising)
+                {
+                    if (darkStart is { } beginning && crossing.Epoch.CompareTo(beginning) > 0)
+                        intervals.Add((beginning, crossing.Epoch));
+                    darkStart = null;
+                }
+                else darkStart = crossing.Epoch;
+            }
+            if (darkStart is { } last && end.CompareTo(last) > 0) intervals.Add((last, end));
+            if (intervals.Count > 0)
+            {
+                var longest = intervals.MaxBy(interval => interval.To.DifferenceNanoseconds(interval.From));
+                from = longest.From; to = longest.To; depth = effective; break;
+            }
         }
         if (from is not { } start || to is not { } finish) return new(civil, NightVisibility.NoDarkness, null, null, null, []);
         var candidates = PlanetCatalogue.Planets.Where(body => body.Id != camera.SurfaceBody)

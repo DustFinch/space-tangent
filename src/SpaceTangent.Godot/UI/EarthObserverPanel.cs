@@ -271,7 +271,7 @@ internal sealed class EarthObserverPanel
                 return;
             }
         }
-        _setStatus("Use latitude −90–90°, longitude −180–180°, height 0–100 km, azimuth 0–<360° and elevation −90–90°.");
+        _setStatus("Use latitude −90–90°, longitude −180–180°, height −12–100 km, azimuth 0–<360° and elevation −90–90°.");
     }
 
     private static LineEdit Field(Container parent, string name, string title, bool enabled)

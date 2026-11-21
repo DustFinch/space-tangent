@@ -133,6 +133,55 @@ public sealed class SurfaceObserverTests
         }
     }
 
+    [SurfaceFact]
+    [Trait("Category", "ExternalData")]
+    public void StructuredSurfaceObserversExportEquivalentLegacyPoses()
+    {
+        var world = World();
+        var epoch = TimeConversion.FromUtc(new(new(2024, 10, 18)), TimeScale.Tdb);
+        var snapshot = world.Graph.Evaluate(epoch, DeltaTModel.MorrisonStephenson2004);
+        foreach (var id in new[] { SolarSystemSample.EarthId, SolarSystemSample.MoonId, PlanetCatalogue.MarsId })
+        {
+            var camera = new EarthObserverCamera(new(30, 40, -7), 125, 20) { Body = id };
+            var observer = new ObserverView(epoch, CameraMode.Surface, SolarSystemSample.SunId, false) { EarthObserver = camera };
+            Assert.True(SurfaceObserver.TryNavigation(world, camera, snapshot, DeltaTModel.MorrisonStephenson2004, out var expected));
+            Assert.True(SurfaceObserver.TryFrame(world, camera, snapshot, DeltaTModel.MorrisonStephenson2004, out var site));
+            var expectedPose = expected.ResolvePlacement(snapshot, DeltaTModel.MorrisonStephenson2004);
+            Assert.InRange((expected.AnchorKilometers + expectedPose.OffsetKilometers - site.Observer.PositionKilometers).Length, 7.00299, 7.00301);
+            var imported = SceneLink.Read(SceneLink.WriteLegacy(observer, world, DeltaTModel.MorrisonStephenson2004),
+                world, DeltaTModel.MorrisonStephenson2004).Scenario.Views[0];
+            var navigation = imported.Navigation!.Value;
+            var actual = navigation.ResolvePlacement(snapshot, DeltaTModel.MorrisonStephenson2004);
+            Assert.InRange((navigation.AnchorKilometers + actual.OffsetKilometers - expected.AnchorKilometers - expectedPose.OffsetKilometers).Length, 0, .0001);
+            Assert.True(Vector3d.Dot(actual.Forward, expectedPose.Forward) > .999999);
+            Assert.Equal(observer.EffectiveFieldOfView, imported.EffectiveFieldOfView, 5);
+            Assert.Null(observer.Navigation);
+            Assert.Equal(camera, observer.EarthObserver);
+        }
+    }
+
+    [Fact]
+    public void BelowDatumHeightSurvivesProfileSavedPlaceAndScenarioRoundTrips()
+    {
+        var root = Directory.CreateTempSubdirectory("st-negative-site-");
+        try
+        {
+            var epoch = new JulianInstant(2451545, 0, TimeScale.Tdb);
+            var observer = new ObserverView(epoch, CameraMode.Surface, SolarSystemSample.MoonId, false);
+            string profile = Path.Combine(root.FullName, "profile.json");
+            File.WriteAllText(profile, """{"Site":{"LatitudeDegrees":31.5,"LongitudeDegrees":35.5,"AltitudeMeters":-430}}""");
+            var restored = LegacyObserverProfiles.Read(profile, observer, DeltaTModel.FixedOffset).Observer;
+            var site = restored.EarthObserver!.Value.Site;
+            Assert.Equal(-.43, site.HeightKilometers);
+            string places = Path.Combine(root.FullName, "places.tsv");
+            LegacySavedEarthPlaces.Save(places, "Dead Sea", site);
+            Assert.Equal(site, Assert.Single(EarthPlaceCatalogue.ParseSavedText(File.ReadAllText(places))).ObserverSite);
+            var scenario = new SimulationScenario([restored], false, 0, 0, DeltaTModel.FixedOffset);
+            Assert.Equal(restored, ScenarioFile.Decode(ScenarioFile.Encode(scenario)).Views[0]);
+        }
+        finally { root.Delete(true); }
+    }
+
     private sealed class ShortEphemeris(ISolarSystemEphemeris inner, JulianInstant start) : ISolarSystemEphemeris
     {
         public JulianInstant Start => start;

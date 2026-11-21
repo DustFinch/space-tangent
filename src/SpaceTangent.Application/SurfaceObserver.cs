@@ -30,6 +30,7 @@ public static class SurfaceObserver
         }
         ObjectId id = camera.SurfaceBody;
         if (world.Catalogue.Find(id)?.Kind is not (CatalogueKind.Planet or CatalogueKind.Moon or CatalogueKind.DwarfPlanet or CatalogueKind.Asteroid) ||
+            !world.HasSurfaceOrientation(id) ||
             DemoWorlds.Find(id)?.Surface == DemoWorldSurface.GasGiant ||
             !snapshot.TryState(id, out var body) || !snapshot.TryOrientation(id, out var rotation)) return false;
         double radius = world.TargetRadiusKilometers(id);
@@ -44,8 +45,8 @@ public static class SurfaceObserver
         DeltaTModel model, out NavigationCamera navigation)
     {
         navigation = default;
-        // Three metres keep a zero-height site outside the ellipsoid; astronomical coordinates retain the exact site.
-        if (!TryFrame(world, camera with { Site = camera.Site with { HeightKilometers = Math.Min(100, camera.Site.HeightKilometers + .003) } },
+        // A reference ellipsoid has no below-datum terrain: render above it while calculations retain the exact site.
+        if (!TryFrame(world, camera with { Site = camera.Site with { HeightKilometers = Math.Min(100, Math.Max(0, camera.Site.HeightKilometers) + .003) } },
             snapshot, model, out var frame) || !snapshot.TryState(camera.SurfaceBody, out var body)) return false;
         var offset = frame.Observer.PositionKilometers - body.PositionKilometers;
         if (DemoWorlds.Find(camera.SurfaceBody) is { } demo && DemoWorlds.CreateSurface(demo) is { HasSurface: true } surface &&
@@ -68,5 +69,11 @@ public static class SurfaceObserver
         navigation = new(body.PositionKilometers, offset.Length, 0, 0, camera.SurfaceBody, true)
             { Placement = new(offset, forward, up) };
         return navigation.IsValid();
+    }
+
+    internal static void RequireCalculationFrame(SimulationWorld world, EarthObserverCamera camera, JulianInstant epoch, DeltaTModel model)
+    {
+        if (!TryFrame(world, camera, world.AlmanacGraph.Evaluate(epoch, model), model, out _))
+            throw new ArgumentException("The observing body's position and declared orientation are unavailable for background calculations. Scripted bodies and their dependent frames are excluded.", nameof(camera));
     }
 }

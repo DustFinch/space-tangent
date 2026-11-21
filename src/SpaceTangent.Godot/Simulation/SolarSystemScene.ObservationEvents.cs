@@ -28,6 +28,11 @@ public partial class SolarSystemScene
         var context = CurrentEventContext();
         _eventSearch?.Cancel();
         _nextObserverEvent = null;
+        if (observer.EarthObserver is { IsEarth: false })
+        {
+            _status.Text = "Local events need an Earth site. Use nearby events or charts.";
+            return;
+        }
         using var cancellation = new CancellationTokenSource();
         _eventSearch = cancellation;
         _status.Text = "Searching observation events…";

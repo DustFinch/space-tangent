@@ -15,9 +15,10 @@ public static partial class SceneLink
     /// <summary>Exports one perspective observer in the legacy scene link format.</summary>
     public static string WriteLegacy(ObserverView observer, SimulationWorld world, DeltaTModel deltaT)
     {
-        if (observer.Navigation is not { } pose)
-            throw new InvalidDataException("Open a perspective camera before exporting a legacy scene link.");
         var snapshot = world.Graph.Evaluate(observer.Epoch, deltaT);
+        if (observer.Navigation is not { } pose && (observer.Mode != CameraMode.Surface ||
+            !SurfaceObserver.TryNavigation(world, observer.EarthObserver ?? EarthObserverCamera.Moscow, snapshot, deltaT, out pose)))
+            throw new InvalidDataException("Open an available perspective or surface camera before exporting a legacy scene link.");
         NavigationPlacement placement = pose.ResolvePlacement(snapshot, deltaT);
         string mode = "Freeflight";
         List<ObjectId> references = [];

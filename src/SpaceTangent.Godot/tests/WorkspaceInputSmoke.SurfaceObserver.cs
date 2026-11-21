@@ -32,7 +32,7 @@ public partial class WorkspaceInputSmoke
                 Require(Session[0] is { Mode: CameraMode.Surface, Navigation: null, EarthObserver.IsEarth: false } &&
                     Session.World.Catalogue.Find(Session[0].EarthObserver!.Value.SurfaceBody)?.Name == name,
                     "Choosing a body must retain a structured surface observer, not turn it into an orbit camera.");
-                await FillField("ObserverHeight", "0.02");
+                await FillField("ObserverHeight", name == "Moon" ? "-7" : "0.02");
                 await FillField("ObserverLatitude", "45");
                 await FillField("ObserverAzimuth", "0");
                 await FillField("ObserverElevation", "3");
@@ -78,6 +78,24 @@ public partial class WorkspaceInputSmoke
                 RequireScenario(saved, Session.CaptureScenario(0), "Body observer round-trip");
                 Require(await _scene.ReloadAddOns(null), "Reloading the body observer data.");
                 RequireScenario(saved, Session.CaptureScenario(0), "Body observer reload");
+                GetViewport().GuiGetFocusOwner()?.ReleaseFocus();
+                await KeyPress(Key.C, ctrl: true, shift: true);
+                var legacyLink = Find<LineEdit>("SceneLinkInput").Text;
+                Require(legacyLink.StartsWith("cel://", StringComparison.Ordinal) &&
+                    Find<Label>("WorkspaceStatus").Text == "Scene link ready to copy.",
+                    "A structured non-Earth observer must export an equivalent legacy perspective link.");
+                RequireScenario(saved, Session.CaptureScenario(0), "Legacy link export must not mutate either surface camera");
+                GetViewport().GuiGetFocusOwner()?.ReleaseFocus();
+                await KeyPress(Key.E, ctrl: true);
+                await Until(() => Find<Label>("WorkspaceStatus").Text.StartsWith("Local events need an Earth site.", StringComparison.Ordinal),
+                    "Rejecting Earth-only event searches from a non-Earth site");
+                await Click(Find<Button>("SpaceMode"));
+                GetViewport().GuiGetFocusOwner()?.ReleaseFocus();
+                await KeyPress(Key.E, ctrl: true);
+                await Until(() => Find<Label>("WorkspaceStatus").Text.StartsWith("Local events need an Earth site.", StringComparison.Ordinal),
+                    "Rejecting Earth-only events in space mode with a non-Earth site");
+                await Click(Find<Button>("ObservatoryMode"));
+                RequireScenario(saved, Session.CaptureScenario(0), "Earth-only guards and camera toggles must preserve the surface observers");
                 if (DisplayServer.GetName() != "headless" &&
                     System.Environment.GetEnvironmentVariable("SPACETANGENT_SURFACE_OBSERVER_OUTPUT") is { Length: > 0 } output)
                 {

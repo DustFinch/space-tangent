@@ -1589,7 +1589,7 @@ public partial class SolarSystemScene : Control
             _localAddons = settings;
             _brightSky?.Surveys.SetOffline(settings.HipsOffline);
             _status.Text = "Add-ons reloaded." + (surfaceFallbacks.Length == 0 ? "" :
-                " Unavailable surface sites reset to Earth in views " + string.Join(", ", surfaceFallbacks.Select(index => index + 1)) + ".");
+                " Reset unavailable sites: " + string.Join(", ", surfaceFallbacks.Select(index => index + 1)) + ".");
             _status.TooltipText = "";
             LastAddonDiagnostic = null;
             GD.Print($"SpaceTangent add-ons reloaded: {Assets.Count} science satellites. " +

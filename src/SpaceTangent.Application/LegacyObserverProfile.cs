@@ -38,7 +38,7 @@ public static partial class LegacyObserverProfiles
         {
             var site = new EarthSite(Number(position, "LatitudeDegrees") ?? camera.Site.LatitudeDegrees,
                 Number(position, "LongitudeDegrees") ?? camera.Site.LongitudeDegrees,
-                Math.Max(0, (Number(position, "AltitudeMeters") ?? 1000 * camera.Site.HeightKilometers) / 1000));
+                (Number(position, "AltitudeMeters") ?? 1000 * camera.Site.HeightKilometers) / 1000);
             if (site.IsValid())
             {
                 string? name = Word(position, "Name");

@@ -27,3 +27,16 @@ EarthOrbitProbe, EarthAccuracyProbe, MoonLightingProbe, MissionSwarmComputeProbe
 Accept a profile only after a zero exit code, its requested success marker, required tracker-flush markers and nonempty required-module hits. Keep failed logs/XML for diagnosis and exclude them from accepted merged reports. Capture metadata in `run.json` records the profile checksum and controls; profile capture does not establish asset provenance. Record which optional branches actually ran, including blocked branches, rather than counting source methods as tests.
 
 EarthOrbitProbe supports three focused groups through `SPACETANGENT_COVERAGE_PROFILE`: `planets`, `demo-worlds`, and `recording`. The latter two require their existing explicit controls (`SPACETANGENT_DEMO_WORLDS_PROBE=1` plus `SPACETANGENT_PROCEDURAL_TERRAIN_PROBE=1`, or `SPACETANGENT_RECORDING_PROBE=1`). Each group keeps the original assertions and emits `SpaceTangent Earth coverage profile passed: NAME` only after completing them. Unknown groups and missing controls fail. Planet acceptance needs the documented planetary maps, ring profiles, PCK, center kernels and Mars relief dataset; an incomplete installation is not a successful empty probe. A new movie capture is separate evidence from compatibility with an original archived recording.
+
+Additional focused groups use those same acceptance methods and fail when their required inputs or controls are missing:
+
+| Group | Required controls and inputs | Assertions |
+|---|---|---|
+| `compact-lens` | `SPACETANGENT_COMPACT_LENS_PROBE=1` | Captured shadow, physical/cinematic disks, opaque foreground/background and two views after reload |
+| `observing` | `SPACETANGENT_OPTICAL_FINDERS_PROBE=1`, `SPACETANGENT_EARTH_PLACES` | Ground sky, eyepiece, finders, apparent positions, equatorial mount and night mode |
+| `mission-geometry` | `SPACETANGENT_MISSION_GEOMETRY_PROBE=1`, `SPACETANGENT_MISSION_SENSOR_PROBE=1`, `SPACETANGENT_SAMPLED_MISSIONS_ROOT` | Original timed meshes, gaps and recovery; Jason-1 and SORCE native sensor geometry |
+| `swarm-particles` | `SPACETANGENT_MISSION_SWARM_GPU=1`, `SPACETANGENT_SWARM_INSTALL`, `SPACETANGENT_PARTICLE_GPU_ROOT` | Independent swarm epochs, archived/source formats, textured particle births and deterministic reload |
+
+The equatorial-mount check uses the terrestrial pole transformed into the world frame at the selected epoch, including precession/nutation, and waits for renderer publication before inspecting uniforms. It retains its angular tolerance rather than comparing the date-dependent pole with a fixed J2000 axis.
+
+Application CI uploads a separate data-free Cobertura/TRX report on Windows and Linux and runs launch-refusal and model CLI contracts. Set `ST_MODEL_TOOL_DLL` to a built model tool to run its Python acceptance locally. Optional `ST_CLI_COVERLET` and a fresh `ST_CLI_COVERAGE_DIRECTORY` collect each CLI invocation separately using the core's pinned tool; actual child statuses and stderr are preserved in `result.json`. CLI/Native reports have their own denominators. Private GPU data is not supplied to public CI, and no 95% application or Godot gate is claimed from that limited profile.

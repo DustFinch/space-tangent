@@ -68,5 +68,10 @@
     "path": "tests/SpaceTangent.Application.Tests/SavedObserverContractTests.cs",
     "sha256": "649f14ffb593240cdf5f81ed5a2604f068f147650d909945fd36db5ec767c5e1",
     "reason": "Exact historical bookmark URI scheme required for interoperability regression; not a product identifier."
+  },
+  {
+    "path": "scripts/testing/test_model_cli.py",
+    "sha256": "89702e07df71deb615a0d3e9da3dd7a4bd4f12194f66b8a361d89b5af0de41d7",
+    "reason": "Exact CMOD file signature required by independent CLI format acceptance; not a product name."
   }
 ]

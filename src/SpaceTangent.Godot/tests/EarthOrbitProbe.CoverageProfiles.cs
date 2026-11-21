@@ -28,6 +28,34 @@ public partial class EarthOrbitProbe
                 RequireControl("SPACETANGENT_RECORDING_PROBE");
                 await ExerciseRecording(scene, directory);
                 break;
+            case "compact-lens":
+                RequireControl("SPACETANGENT_COMPACT_LENS_PROBE");
+                await ExerciseCompactLens(scene, directory);
+                break;
+            case "observing":
+                RequireControl("SPACETANGENT_OPTICAL_FINDERS_PROBE");
+                RequireInput("SPACETANGENT_EARTH_PLACES");
+                await ExerciseGroundSky(scene, directory);
+                await ExerciseOptics(scene, directory);
+                await ExerciseFinders(scene, directory);
+                await ExerciseApparentPlaces(scene, directory);
+                await ExerciseEquatorialMount(scene, directory);
+                await ExerciseNightMode(scene, directory);
+                break;
+            case "mission-geometry":
+                RequireControl("SPACETANGENT_MISSION_GEOMETRY_PROBE");
+                RequireControl("SPACETANGENT_MISSION_SENSOR_PROBE");
+                RequireInput("SPACETANGENT_SAMPLED_MISSIONS_ROOT");
+                await ExerciseMissionGeometry(scene, directory);
+                await ExerciseMissionSensors(scene, directory);
+                break;
+            case "swarm-particles":
+                RequireControl("SPACETANGENT_MISSION_SWARM_GPU");
+                RequireInput("SPACETANGENT_SWARM_INSTALL");
+                RequireInput("SPACETANGENT_PARTICLE_GPU_ROOT");
+                await ExerciseMissionSwarms(scene, directory);
+                await ExerciseMissionParticles(scene, directory);
+                break;
             default:
                 throw new InvalidOperationException($"Unknown coverage profile: {profile}.");
         }
@@ -38,6 +66,13 @@ public partial class EarthOrbitProbe
         {
             if (System.Environment.GetEnvironmentVariable(variable) != "1")
                 throw new InvalidOperationException($"Coverage profile requires {variable}=1.");
+        }
+
+        static void RequireInput(string variable)
+        {
+            string? path = System.Environment.GetEnvironmentVariable(variable);
+            if (!File.Exists(path) && !Directory.Exists(path))
+                throw new InvalidOperationException($"Coverage profile requires an existing {variable} input.");
         }
     }
 }

@@ -2,6 +2,7 @@
 using Godot;
 using SpaceTangent.Application;
 using SpaceTangent.Contracts;
+using SpaceTangent.Core.Coordinates;
 using SpaceTangent.Core.Observing;
 using SpaceTangent.Core.Time;
 using SpaceTangent.Godot.Simulation;
@@ -26,12 +27,19 @@ public partial class EarthOrbitProbe
             session[0] != equatorial || session[1] != ordinary)
             throw new InvalidOperationException("The two archived mount modes must survive reload with independent cameras.");
 
+        // Reload publishes the session before the next renderer update. Inspect the
+        // material after that frame, including when another profile ran beforehand.
+        await ToSignal(GetTree(), SceneTree.SignalName.ProcessFrame);
+        await ToSignal(RenderingServer.Singleton, RenderingServer.SignalName.FramePostDraw);
         var material = scene.Renderer(0).GetChildren().OfType<CanvasLayer>()
             .SelectMany(layer => layer.GetChildren().OfType<ColorRect>())
             .Select(rect => rect.Material).OfType<ShaderMaterial>()
             .Single(shader => shader.Shader.ResourcePath.EndsWith("/earth_observer.gdshader", StringComparison.Ordinal));
         Vector3 forward = material.GetShaderParameter("forward").AsVector3();
-        Vector3 pole = Vector3.Forward;
+        // The celestial pole of this epoch includes precession and nutation; the
+        // negative J2000 Z axis is not the south pole in the 2024 world frame.
+        Vector3d south = EarthOrientation.TerrestrialToWorld(time, session.DeltaT).ToWorld.Z * -1;
+        Vector3 pole = new((float)south.X, (float)south.Y, (float)south.Z);
         Vector3 expected = (pole - forward * forward.Dot(pole)).Normalized();
         if (material.GetShaderParameter("camera_up").AsVector3().DistanceTo(expected) > 1e-5)
             throw new InvalidOperationException("At Paranal the camera up axis must point toward the south celestial pole.");

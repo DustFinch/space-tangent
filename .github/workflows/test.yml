@@ -21,4 +21,32 @@ jobs:
       - run: dotnet test tests/SpaceTangent.Application.Tests -c Release --no-restore --logger trx
       - run: dotnet restore tools/SpaceTangent.Performance --locked-mode
       - run: dotnet build tools/SpaceTangent.Performance -c Release --no-restore
+      - run: dotnet restore tools/SpaceTangent.ModelTool --locked-mode
+      - run: dotnet build tools/SpaceTangent.ModelTool -c Release --no-restore
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Test launch refusals and model CLI
+        env:
+          ST_MODEL_TOOL_DLL: ${{ github.workspace }}/tools/SpaceTangent.ModelTool/bin/Release/net8.0/SpaceTangent.ModelTool.dll
+        run: python -m unittest discover -s scripts/testing -p 'test_*.py'
+      - name: Collect data-free application line coverage
+        shell: bash
+        run: |
+          mkdir -p .ci/coverage
+          cd deps/space-tangent-core
+          dotnet tool restore
+          dotnet tool run coverlet -- ../../tests/SpaceTangent.Application.Tests/bin/Release/net8.0/SpaceTangent.Application.Tests.dll \
+            --target dotnet --targetargs 'vstest ../../tests/SpaceTangent.Application.Tests/bin/Release/net8.0/SpaceTangent.Application.Tests.dll /ResultsDirectory:../../.ci/coverage /Logger:trx' \
+            --single-hit --include '[SpaceTangent.Application]*' '[SpaceTangent.Core]*' '[SpaceTangent.Contracts]*' \
+            --exclude-by-file '**/obj/**' --format cobertura --output ../../.ci/coverage/coverage.xml
+          python scripts/testing/coverage_report.py ../../.ci/coverage/coverage.xml \
+            --require SpaceTangent.Application --require SpaceTangent.Core --require SpaceTangent.Contracts \
+            --output ../../.ci/coverage/summary.json
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: public-application-coverage-${{ matrix.os }}
+          path: .ci/coverage
+          if-no-files-found: error
 # Godot rendering and dataset-dependent acceptance runs are performed separately on the release machine.

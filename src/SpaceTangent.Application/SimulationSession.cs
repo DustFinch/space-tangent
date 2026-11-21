@@ -268,6 +268,8 @@ public sealed partial class SimulationSession
     // A recorded Cassini Saturn orbit insertion epoch with both state and pointing coverage.
     public static JulianInstant MissionPreview { get; } = JulianInstant.FromTdbSeconds(141917558.4203589);
     private readonly List<ObserverView> _views;
+    /// <summary>View indices whose saved non-Earth site was reset by the last successful world replacement.</summary>
+    public IReadOnlyList<int> SurfaceObserverFallbacks { get; private set; } = [];
     private int _clockOwner;
     private readonly List<int> _viewIds = [0];
     private int _nextViewId = 1;
@@ -327,7 +329,7 @@ public sealed partial class SimulationSession
                 throw new InvalidDataException("The scenario needs the Martian elevation map and orientation kernel.");
             if (view.EarthObserver is { } earth && !earth.IsValid())
                 throw new InvalidDataException("The scenario has an invalid Earth observer camera.");
-            if (view is { Mode: CameraMode.Surface, Navigation: null, EarthObserver: { IsEarth: false } surface } &&
+            if (view.EarthObserver is { IsEarth: false } surface &&
                 !SurfaceObserver.TryFrame(World, surface, World.Graph.Evaluate(view.Epoch, scenario.DeltaT), scenario.DeltaT, out _))
                 throw new InvalidDataException("The scenario needs the observing body's position and orientation at its saved epoch.");
             if (view.FieldOfViewDegrees is { } field && !ObserverView.ValidFieldOfView(field))
@@ -670,6 +672,7 @@ public sealed partial class SimulationSession
         if (_views.Any(view => !Covers(next, view.Epoch)))
             return false;
 
+        var fallbacks = new List<int>();
         for (int index = 0; index < _views.Count; index++)
         {
             ObserverView previous = _views[index];
@@ -702,9 +705,18 @@ public sealed partial class SimulationSession
                 }
             }
             ObjectId? aim = previous.ScriptAimTarget is { } tracked && next.Catalogue.Find(tracked) is not null ? tracked : null;
-            _views[index] = previous with { Selection = selected, Mode = mode, Navigation = navigation, ScriptAimTarget = aim };
+            EarthObserverCamera? site = previous.EarthObserver;
+            if (site is { IsEarth: false } surface &&
+                !SurfaceObserver.TryFrame(next, surface, next.Graph.Evaluate(previous.Epoch, DeltaT), DeltaT, out _))
+            {
+                site = EarthObserverCamera.Moscow;
+                if (mode == CameraMode.Surface && navigation is null) mode = CameraMode.Solar;
+                fallbacks.Add(index);
+            }
+            _views[index] = previous with { Selection = selected, Mode = mode, Navigation = navigation, ScriptAimTarget = aim, EarthObserver = site };
         }
         World = next;
+        SurfaceObserverFallbacks = fallbacks.AsReadOnly();
         return true;
     }
 

@@ -3,13 +3,20 @@ using Godot;
 using SpaceTangent.Application;
 using SpaceTangent.Contracts;
 using SpaceTangent.Core.Time;
+using SpaceTangent.Core.Observing;
 
 namespace SpaceTangent.Godot.Simulation;
 
 public partial class SolarSystemScene
 {
+    private sealed record CalculationSite(ObjectId Body, EarthSite Site, ObserverSiteClock? Clock, GroundSkyConditions? Conditions);
+    private static CalculationSite CalculationSiteOf(ObserverView observer)
+    {
+        var camera = observer.EarthObserver ?? EarthObserverCamera.Moscow;
+        return new(camera.SurfaceBody, camera.Site, camera.CivilClock, camera.Conditions);
+    }
     private sealed record ObserverEventContext(SimulationWorld World, int View, ObjectId? Selection,
-        EarthObserverCamera? Site, DeltaTModel DeltaT, int Generation);
+        CalculationSite Site, DeltaTModel DeltaT, int Generation);
 
     private CancellationTokenSource? _eventSearch;
     private (ObserverEventContext Context, ObserverEvent Event)? _nextObserverEvent;
@@ -81,6 +88,6 @@ public partial class SolarSystemScene
     {
         var session = Session!;
         var observer = session[_active];
-        return new(session.World, session.ViewIdentity(_active), observer.Selection, observer.EarthObserver, session.DeltaT, _loadGeneration);
+        return new(session.World, session.ViewIdentity(_active), observer.Selection, CalculationSiteOf(observer), session.DeltaT, _loadGeneration);
     }
 }

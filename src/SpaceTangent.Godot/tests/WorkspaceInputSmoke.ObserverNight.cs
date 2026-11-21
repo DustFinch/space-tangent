@@ -69,10 +69,13 @@ public partial class WorkspaceInputSmoke
             var table = Find<VBoxContainer>("ObserverChartTable");
             await Until(() => table.GetChildCount() == 30, "Calculating annual and monthly observer charts", 60);
             Require(Find<Label>("ChartSummary").Text.Contains("Sirius", StringComparison.Ordinal), "Charts must retain their captured target.");
+            await TurnSurfaceWithViewportInput();
+            var turned = Session[0].EarthObserver;
+            Require(turned != left.EarthObserver, "The viewport drag must turn the surface camera.");
             // Use viewport input, without native mouse injection.
             var chart = Find<Control>("YearAltitudeChart");
             await Click(chart);
-            Require(Session[0].Epoch != left.Epoch && Session[0].EarthObserver == left.EarthObserver &&
+            Require(Session[0].Epoch != left.Epoch && Session[0].EarthObserver == turned &&
                 Session[1] == right, "Clicking the annual chart must preserve both cameras and the independent epoch.");
             var export = Find<Button>("ExportCharts");
             await Click(export);
@@ -86,13 +89,39 @@ public partial class WorkspaceInputSmoke
             export.EmitSignal(Button.SignalName.Pressed);
             Require(Directory.GetFiles(output, "*.csv").Length == 1 && Session[1] == right &&
                 Session.DeltaT == DeltaTModel.MorrisonStephenson2004, "Charts must reject results from a replaced data generation.");
-            GD.Print("UI: calculated daily/yearly Sirius altitude and monthly lunar angles, clicked the year chart, exported 30 days and rejected stale results.");
+            var edge = left with { Epoch = Session.World.Ephemeris.End.AddSeconds(-3600) };
+            ScenarioFile.Save(path, new([edge, right], false, 0, 0, Session.DeltaT));
+            Require(_scene.LoadScenario(path), "The coverage-edge chart scene must open.");
+            await Click(Find<Button>("ChartsTab"));
+            await Click(Find<Button>("CalculateCharts"));
+            await Until(() => table.GetChildCount() == 30, "Calculating charts at the end of coverage", 60);
+            Session.SetPlaybackRate(0, 1);
+            Session.SetPlaying(0, true);
+            await Click(Find<Control>("MoonAngleChart"));
+            Require(Session[0].Playing && Math.Abs((double)Session[0].Epoch.DifferenceNanoseconds(edge.Epoch) /
+                JulianInstant.NanosecondsPerSecond) < 10 && Session[1] == right,
+                "An unavailable chart sample must neither seek nor pause the clock or affect the other view.");
+            GD.Print("UI: turned the camera after calculating, clicked the year chart, exported 30 days, rejected stale results and ignored a sample beyond coverage without pausing.");
         }
         finally
         {
             System.Environment.SetEnvironmentVariable("SPACETANGENT_OBSERVATIONS_OUTPUT", previous);
             Require(_scene.LoadScenario(restore), "The previous workspace must reopen after charts.");
         }
+    }
+
+    private async Task TurnSurfaceWithViewportInput()
+    {
+        var canvas = Find<SubViewportContainer>("ViewCanvas0");
+        Vector2 point = canvas.GetGlobalRect().GetCenter();
+        using (var enter = new InputEventMouseMotion { Position = point, GlobalPosition = point })
+            Tree.Root.PushInput(enter, inLocalCoords: true);
+        using (var down = MouseButtonAt(point, true, MouseButton.Right)) Tree.Root.PushInput(down, inLocalCoords: true);
+        using (var motion = new InputEventMouseMotion { Position = point + new Vector2(35, 12),
+            GlobalPosition = point + new Vector2(35, 12), Relative = new(35, 12), ButtonMask = MouseButtonMask.Right })
+            Tree.Root.PushInput(motion, inLocalCoords: true);
+        using (var up = MouseButtonAt(point + new Vector2(35, 12), false, MouseButton.Right)) Tree.Root.PushInput(up, inLocalCoords: true);
+        await ToSignal(Tree.CreateTimer(1), SceneTreeTimer.SignalName.Timeout);
     }
 
     private async Task ExerciseObserverNight(string directory)

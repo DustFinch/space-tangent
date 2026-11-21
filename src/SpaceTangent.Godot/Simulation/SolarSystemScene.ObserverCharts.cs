@@ -24,17 +24,17 @@ public partial class SolarSystemScene
         page.AddChild(_chartSummary);
         Heading("Altitude · local civil day (°)");
         _dayChart = new() { Name = "DayAltitudeChart" };
-        _dayChart.SampleChosen += index => { if (CurrentCharts() is { } result) SeekChart(result.Days[0].Day.Samples[index].Epoch); };
+        _dayChart.SampleChosen += index => { if (CurrentCharts() is { } result && result.Days[0].Day.Samples[index].AltitudeDegrees is not null) SeekChart(result.Days[0].Day.Samples[index].Epoch); };
         page.AddChild(_dayChart);
         Heading("Midnight altitude · civil year (°)");
         _yearSummary = SimulatorTheme.Detail("");
         page.AddChild(_yearSummary);
         _yearChart = new() { Name = "YearAltitudeChart" };
-        _yearChart.SampleChosen += index => { if (CurrentCharts() is { } result) SeekChart(result.Year[index].Midnight.Epoch); };
+        _yearChart.SampleChosen += index => { if (CurrentCharts() is { } result && result.Year[index].Midnight.AltitudeDegrees is not null) SeekChart(result.Year[index].Midnight.Epoch); };
         page.AddChild(_yearChart);
         Heading("Angle to Moon · 30 days (°)");
         _moonChart = new() { Name = "MoonAngleChart" };
-        _moonChart.SampleChosen += index => { if (CurrentCharts() is { } result) SeekChart(result.MoonAngles[index].Epoch); };
+        _moonChart.SampleChosen += index => { if (CurrentCharts() is { } result && result.MoonAngles[index].MoonSeparationDegrees is not null) SeekChart(result.MoonAngles[index].Epoch); };
         page.AddChild(_moonChart);
         AddButton(page, "Export 30-day CSV", ExportObserverCharts).Name = "ExportCharts";
         page.AddChild(SimulatorTheme.Detail("Rise / highest altitude / set at a level horizon. Standard Earth refraction and Sun/Moon disc estimates; magnitudes use an approximate Lambert model. A dash is unavailable or has no crossing. Times below use UTC, or modeled UT1 before UTC coverage."));
@@ -107,6 +107,8 @@ public partial class SolarSystemScene
     private void SeekChart(SpaceTangent.Contracts.JulianInstant epoch)
     {
         if (CurrentCharts() is null) { _status.Text = "Recalculate charts for the current observer and data."; return; }
+        if (epoch.CompareTo(Session!.World.Ephemeris.Start) < 0 || epoch.CompareTo(Session.World.Ephemeris.End) > 0)
+        { _status.Text = "No ephemeris at this chart sample."; return; }
         Session!.SetPlaying(_active, false);
         Seek(_active, epoch);
     }

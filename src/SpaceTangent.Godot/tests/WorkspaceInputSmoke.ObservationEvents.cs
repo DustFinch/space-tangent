@@ -27,10 +27,13 @@ public partial class WorkspaceInputSmoke
             var rows = Find<VBoxContainer>("AlmanacRows");
             await Until(() => rows.GetChildCount() > 0, "Calculating the nearby almanac", 60);
             var phase = rows.GetChildren().OfType<Button>().First(button => button.Text.EndsWith("Full Moon", StringComparison.Ordinal));
+            await TurnSurfaceWithViewportInput();
+            var turned = Session[0].EarthObserver;
+            Require(turned != first.EarthObserver, "The almanac test must actually rotate its camera after the query.");
             await Click(phase);
             var expected = TimeConversion.FromUtc(new(new(2024, 10, 17), 11, 26), TimeScale.Tdb);
             Require(Math.Abs((double)Session[0].Epoch.DifferenceNanoseconds(expected) / JulianInstant.NanosecondsPerSecond) < 120 &&
-                Session[0].EarthObserver == first.EarthObserver && Session[1] == second,
+                Session[0].EarthObserver == turned && Session[1] == second,
                 "Opening a phase must seek the calculated instant and preserve both observers.");
             var held = Session[0];
             await KeyPress(Key.Tab);

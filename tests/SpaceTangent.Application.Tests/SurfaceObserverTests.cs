@@ -83,6 +83,63 @@ public sealed class SurfaceObserverTests
         Assert.Throws<ArgumentException>(() => ObserverEventFinder.Next(full, observer, DeltaTModel.FixedOffset));
     }
 
+    [SurfaceFact]
+    [Trait("Category", "ExternalData")]
+    public void LostSurfaceFrameResetsOnlyItsViewAndItsOwnSaveCanReopen()
+    {
+        var full = World();
+        var epoch = TimeConversion.FromUtc(new(new(2024, 10, 18)), TimeScale.Tdb);
+        foreach (var mode in new[] { CameraMode.Surface, CameraMode.Solar })
+        {
+            var site = EarthObserverCamera.Moscow with { Body = PlanetCatalogue.MarsId };
+            var first = new ObserverView(epoch, mode, SolarSystemSample.SunId, false) { EarthObserver = site };
+            var second = new ObserverView(epoch.AddSeconds(3600), CameraMode.Solar, SolarSystemSample.MoonId, false);
+            var session = new SimulationSession(full, epoch, DeltaTModel.FixedOffset);
+            session.RestoreScenario(new([first, second], false, 0, 0, DeltaTModel.MorrisonStephenson2004));
+            Assert.False(session.TryReplaceWorld(new SimulationWorld(new ShortEphemeris(full.Ephemeris, epoch), [])));
+            Assert.Equal(first, session[0]);
+            Assert.True(session.TryReplaceWorld(new SimulationWorld(full.Ephemeris, [])));
+            Assert.Equal(new[] { 0 }, session.SurfaceObserverFallbacks);
+            Assert.Equal(CameraMode.Solar, session[0].Mode);
+            Assert.True(session[0].EarthObserver!.Value.IsEarth);
+            Assert.Equal(second, session[1]);
+            Assert.Equal(DeltaTModel.MorrisonStephenson2004, session.DeltaT);
+            var saved = ScenarioFile.Decode(ScenarioFile.Encode(session.CaptureScenario(0)));
+            session.RestoreScenario(saved);
+            Assert.Equal(saved.Views.ToArray(), session.CaptureScenario(0).Views.ToArray());
+            Assert.True(session.TryReplaceWorld(full));
+            Assert.Empty(session.SurfaceObserverFallbacks);
+        }
+    }
+
+    [SurfaceFact]
+    [Trait("Category", "ExternalData")]
+    public void UnknownSurfaceBodiesRejectTheWholeScenarioInEveryMode()
+    {
+        var world = World();
+        var epoch = TimeConversion.FromUtc(new(new(2024, 10, 18)), TimeScale.Tdb);
+        var session = new SimulationSession(world, epoch, DeltaTModel.FixedOffset);
+        var before = session.CaptureScenario(0);
+        foreach (var mode in new[] { CameraMode.Surface, CameraMode.Solar })
+        {
+            var camera = EarthObserverCamera.Moscow with { Body = new ObjectId("sol/missing") };
+            var invalid = new ObserverView(epoch, mode, SolarSystemSample.SunId, false) { EarthObserver = camera };
+            var scene = new SimulationScenario([before.Views[0], invalid], false, 1, 1, DeltaTModel.MorrisonStephenson2004);
+            Assert.Throws<InvalidDataException>(() => session.RestoreScenario(ScenarioFile.Decode(ScenarioFile.Encode(scene))));
+            Assert.Equal(before.Views.ToArray(), session.CaptureScenario(0).Views.ToArray());
+            Assert.Equal(before.DeltaT, session.DeltaT);
+            Assert.Throws<ArgumentException>(() => ObserverEventFinder.Next(world, invalid with
+                { EarthObserver = camera with { Body = SolarSystemSample.MoonId } }, DeltaTModel.FixedOffset));
+        }
+    }
+
+    private sealed class ShortEphemeris(ISolarSystemEphemeris inner, JulianInstant start) : ISolarSystemEphemeris
+    {
+        public JulianInstant Start => start;
+        public JulianInstant End => start;
+        public SolarSystemSample Sample(JulianInstant epoch) => inner.Sample(epoch);
+    }
+
     private static SimulationWorld World() => new(De440Ephemeris.Load(Environment.GetEnvironmentVariable("SPACETANGENT_DE440")!), [],
         planets: new PlanetEphemerides(Environment.GetEnvironmentVariable("SPACETANGENT_PLANET_TEXTURES")!));
     private sealed class SurfaceFactAttribute : FactAttribute

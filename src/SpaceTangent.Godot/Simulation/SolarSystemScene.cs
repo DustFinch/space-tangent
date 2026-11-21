@@ -1568,10 +1568,12 @@ public partial class SolarSystemScene : Control
             if (!CanPublish(generation, token))
                 return false;
             AddonGeneration next = AddonDiagnostics.Read(AddonStage.RenderResources, null, () => AddonLoader.Publish(decoded, previous));
+            int[] surfaceFallbacks = [];
             if (!ReferenceEquals(previous, next))
             {
                 if (!Session.TryReplaceWorld(decoded.World))
                     throw new InvalidOperationException("The new world does not cover the current epochs.");
+                surfaceFallbacks = Session.SurfaceObserverFallbacks.ToArray();
                 _addOns = next;
                 DisposeSupersededStars(previous?.Decoded);
                 _galacticSky.SetDust(decoded.GalacticDust.Value);
@@ -1586,10 +1588,12 @@ public partial class SolarSystemScene : Control
                 _localAddonFile.Save(requested);
             _localAddons = settings;
             _brightSky?.Surveys.SetOffline(settings.HipsOffline);
-            _status.Text = "Add-ons reloaded.";
+            _status.Text = "Add-ons reloaded." + (surfaceFallbacks.Length == 0 ? "" :
+                " Unavailable surface sites reset to Earth in views " + string.Join(", ", surfaceFallbacks.Select(index => index + 1)) + ".");
             _status.TooltipText = "";
             LastAddonDiagnostic = null;
             GD.Print($"SpaceTangent add-ons reloaded: {Assets.Count} science satellites. " +
+                $"surfaceResets={surfaceFallbacks.Length}; " +
                 $"DeltaT={Session.DeltaT}; preserved={Session.DeltaT == originalDeltaT}; synchronized={Session.Synchronized}; " +
                 string.Join("; ", Enumerable.Range(0, Session.ViewCount).Select(index =>
                     FormattableString.Invariant($"view[{index}] camera={Session[index].Mode} target={Session[index].Selection} JD={Session[index].Epoch.ToJulianDate():F9}"))));

@@ -8,7 +8,7 @@ namespace SpaceTangent.Godot.Simulation;
 
 public partial class SolarSystemScene
 {
-    private sealed record AlmanacContext(SimulationWorld World, int View, EarthObserverCamera? Site, DeltaTModel DeltaT, int Generation);
+    private sealed record AlmanacContext(SimulationWorld World, int View, CalculationSite Site, DeltaTModel DeltaT, int Generation);
     private CancellationTokenSource? _almanacSearch;
     private VBoxContainer _almanacRows = null!;
     private Label _almanacSummary = null!;
@@ -30,7 +30,7 @@ public partial class SolarSystemScene
     private AlmanacContext CurrentAlmanacContext()
     {
         var session = Session!;
-        return new(session.World, session.ViewIdentity(_active), session[_active].EarthObserver, session.DeltaT, _loadGeneration);
+        return new(session.World, session.ViewIdentity(_active), CalculationSiteOf(session[_active]), session.DeltaT, _loadGeneration);
     }
 
     private async Task FindNearbyEvents()

@@ -128,6 +128,8 @@ Mapped natural bodies use a ray-intersected reference ellipsoid near the ground,
 
 Local circumpolar circles follow the observing body's spin pole. Catalogue equatorial grids and the equator of date retain their astronomical Earth-reference definitions.
 
+Saved observing-body IDs and their frames are validated in every camera mode before a scenario is applied. If an add-on reload removes a site's body or orientation, that site's saved settings reset to Earth; an affected structured surface view returns to space. The reload status identifies those views. Other observers, epochs and ΔT are retained, and the resulting scenario can be saved and reopened.
+
 Non-Earth surface controls do not require Earth cloud maps. With no Earth maps installed, editing an Earth site still updates its observing calculations and keeps a space view available.
 
 ## Nearby events
@@ -143,6 +145,8 @@ The **Ephemerides → Visible tonight** button restores the night list. It finds
 Open **Location → Observing charts**, select a target and calculate. The day chart shows target/Sun/Moon altitude from local midnight to the next midnight, including 23/25-hour dates. The civil-year chart plots target altitude at local midnight with solar shading and a strip of observable nights: target above 10° while the Sun is below −12°, checked at half-hour intervals from 18:00 to 08:00. The best-night label compares qualifying midnight samples. The monthly chart samples the topocentric angle to the Moon every six hours over 30 days.
 
 The 30-day table gives the first rise and set, highest covered altitude, estimated magnitude and solar elongation. CSV preserves full TDB instants, invariant decimal points and coverage flags. Earth rise/set uses a level horizon with standard refraction and an approximate Sun/Moon semidiameter; magnitudes use a simple Lambert model and are estimates. Missing ephemerides remain gaps. The background sampler supports built-in bodies, science tracks and positioned catalogues without running scripted add-on callbacks. Recalculate after selecting another target, site, view, ΔT or reloading sources. Click a chart or table maximum to seek without moving independent observers.
+
+Turning or repointing the camera does not invalidate the calculated site geometry or prevent CSV export. Empty chart samples cannot seek or pause the clock. Local Earth eclipse/pass/flare searches require an Earth site even when the camera is currently in space mode.
 
 ## Finder overlays
 

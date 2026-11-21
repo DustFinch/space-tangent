@@ -57,7 +57,7 @@ public sealed class ScenarioCoverageTests
     {
         var minimal = new SimulationScenario([Base], false, 0, 0, DeltaTModel.FixedOffset);
         var json = JsonNode.Parse(ScenarioFile.Encode(minimal))!.AsObject();
-        for (int version = 1; version <= 50; version++)
+        for (int version = 1; version <= 51; version++)
         {
             json["version"] = version;
             Assert.Equal(Base, ScenarioFile.Decode(Encoding.UTF8.GetBytes(json.ToJsonString())).Views[0]);

@@ -15,9 +15,13 @@ internal sealed class EarthObserverPanel
     private readonly Control _ephemerides;
     private readonly EarthSiteMap _map;
     private readonly OptionButton _sites;
+    private readonly OptionButton _bodies;
+    private readonly Control[] _earthOnly;
+    private SimulationWorld? _bodyWorld;
+    private IReadOnlyList<CatalogueObject> _bodyChoices = [];
     private readonly LineEdit _latitude, _longitude, _height, _azimuth, _elevation;
     private readonly CheckButton _horizon, _cardinals, _apparentPlaces;
-    private readonly Label _coordinates, _twilight;
+    private readonly Label _coordinates, _twilight, _twilightTitle;
     private readonly Action<EarthObserverCamera> _apply;
     private readonly Action<string> _setStatus;
     private EarthObserverCamera _camera;
@@ -31,6 +35,17 @@ internal sealed class EarthObserverPanel
         _apply = apply;
         _setStatus = setStatus;
         _ephemerides = ephemerides;
+        location.AddChild(SimulatorTheme.Section("Observer body"));
+        _bodies = new OptionButton { Name = "ObserverBody" };
+        _bodies.GetPopup().MaxSize = new(0, 420);
+        _bodies.ItemSelected += index =>
+        {
+            if (index < 0 || index >= _bodyChoices.Count) return;
+            var body = _bodyChoices[(int)index].Id;
+            _apply(_camera with { Body = body == SolarSystemSample.EarthId ? null : body,
+                Site = new(0, 0, 0), CivilClock = null, LandscapeId = null, Conditions = null, ApparentPlaces = false });
+        };
+        location.AddChild(_bodies);
         location.AddChild(SimulatorTheme.Section("Observing site"));
         _sites = new OptionButton { Name = "ObserverSite", Disabled = !surfaceAvailable };
         _sites.AddItem("Custom");
@@ -69,6 +84,7 @@ internal sealed class EarthObserverPanel
         removeButton.Pressed += () => removeSite(siteName.Text);
         location.AddChild(saveRow);
         location.AddChild(removeButton);
+        _earthOnly = [saveRow, removeButton];
         _latitude = Field(location, "ObserverLatitude", "Latitude (°)", surfaceAvailable);
         _longitude = Field(location, "ObserverLongitude", "Longitude east (°)", surfaceAvailable);
         _height = Field(location, "ObserverHeight", "Height (km)", surfaceAvailable);
@@ -99,18 +115,33 @@ internal sealed class EarthObserverPanel
         _coordinates = SimulatorTheme.Detail("");
         _coordinates.Name = "HorizontalCoordinates";
         ephemerides.AddChild(_coordinates);
-        ephemerides.AddChild(SimulatorTheme.Section("Civil twilight"));
+        _twilightTitle = SimulatorTheme.Section("Civil twilight");
+        ephemerides.AddChild(_twilightTitle);
         _twilight = SimulatorTheme.Detail("");
         _twilight.Name = "CivilTwilight";
         ephemerides.AddChild(_twilight);
     }
 
     internal void Update(int view, ObserverView observer, WorldSnapshot? snapshot, ISolarSystemEphemeris ephemeris,
-        DeltaTModel model, BrightStarCatalogue brightStars, ObserverNight? night, EarthPlaceCatalogue places)
+        DeltaTModel model, BrightStarCatalogue brightStars, ObserverNight? night, EarthPlaceCatalogue places, SimulationWorld world)
     {
         EarthObserverCamera camera = observer.EarthObserver ?? EarthObserverCamera.Moscow;
+        _twilightTitle.Text = camera.IsEarth ? "Civil twilight" : "Surface geometry";
+        if (!ReferenceEquals(_bodyWorld, world))
+        {
+            _bodyWorld = world;
+            _bodyChoices = SurfaceObserver.Bodies(world);
+            _bodies.Clear();
+            foreach (var body in _bodyChoices) _bodies.AddItem(body.Name);
+        }
+        int bodyIndex = _bodyChoices.ToList().FindIndex(body => body.Id == camera.SurfaceBody);
+        if (bodyIndex >= 0 && _bodies.Selected != bodyIndex) _bodies.Select(bodyIndex);
+        _sites.Disabled = !camera.IsEarth;
+        _map.Visible = camera.IsEarth;
+        foreach (var control in _earthOnly) control.Visible = camera.IsEarth;
+        _apparentPlaces.Disabled = !camera.IsEarth;
         if (_view != view || camera.Site != _camera.Site || camera.AzimuthDegrees != _camera.AzimuthDegrees ||
-            camera.ElevationDegrees != _camera.ElevationDegrees)
+            camera.ElevationDegrees != _camera.ElevationDegrees || camera.SurfaceBody != _camera.SurfaceBody)
         {
             _view = view;
             _sites.Select(camera.Site == EarthObserverCamera.Moscow.Site ? 1 :
@@ -128,6 +159,24 @@ internal sealed class EarthObserverPanel
         _apparentPlaces.SetPressedNoSignal(camera.ApparentPlaces);
         if (!_ephemerides.IsVisibleInTree())
             return;
+
+        if (!camera.IsEarth)
+        {
+            _coordinates.Text = "Select an object for geometric surface coordinates.";
+            if (snapshot is not null && SurfaceObserver.TryFrame(world, camera, snapshot, model, out var frame) &&
+                observer.Selection is { } selected)
+            {
+                HorizontalCoordinates? sky = brightStars.Find(selected) is { } star ? frame.Direction(star.DirectionAt(observer.Epoch)) :
+                    selected != camera.SurfaceBody && world.TryNavigationState(selected, snapshot, out var state, model)
+                        ? frame.Horizontal(state.PositionKilometers) : null;
+                if (sky is { } position)
+                    _coordinates.Text = FormattableString.Invariant($"Altitude {position.AltitudeDegrees:F2}°\nAzimuth {position.AzimuthDegrees:F2}°");
+            }
+            _twilight.Text = (world.Catalogue.Find(camera.SurfaceBody)?.Name ?? camera.SurfaceBody.Value) +
+                " · reference ellipsoid\nGeometric coordinates; no Earth atmosphere, civil timezone or landscape. Charts use UTC dates (modeled UT1 before UTC coverage).";
+            _twilightKey = null;
+            return;
+        }
 
         _coordinates.Text = "Select an object to see its altitude and azimuth.";
         if (observer.Selection is { } target)

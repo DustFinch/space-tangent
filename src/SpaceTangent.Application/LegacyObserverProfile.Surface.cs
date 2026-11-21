@@ -14,12 +14,16 @@ public static partial class LegacyObserverProfiles
             (observer.Mode != CameraMode.Surface && observer.Navigation is not { Placement.BodyFixed: true }))
             return observer;
         if (path.Equals("Sol/Earth", StringComparison.OrdinalIgnoreCase))
-            return observer with { Mode = CameraMode.Surface, Navigation = null };
+            return observer with { Mode = CameraMode.Surface, Navigation = null, EarthObserver = camera with { Body = null } };
         ObjectId body;
         try { body = SceneLink.ResolveObject(path, world.Catalogue); }
         catch (InvalidDataException) { return observer; }
         if (body == SolarSystemSample.EarthId)
-            return observer with { Mode = CameraMode.Surface, Navigation = null };
+            return observer with { Mode = CameraMode.Surface, Navigation = null, EarthObserver = camera with { Body = null } };
+        var structured = camera with { Body = body, CivilClock = null, LandscapeId = null, Conditions = null, ApparentPlaces = false };
+        if (DemoWorlds.Find(body) is null && SurfaceObserver.TryFrame(world, structured,
+            world.Graph.Evaluate(observer.Epoch, profile.DeltaT), profile.DeltaT, out _))
+            return observer with { Mode = CameraMode.Surface, Navigation = null, EarthObserver = structured };
         if (DemoWorlds.Find(body) is { Surface: DemoWorldSurface.GasGiant })
             return observer;
         if (world.Catalogue.Find(body)?.Kind is not (CatalogueKind.Planet or CatalogueKind.DwarfPlanet or CatalogueKind.Moon

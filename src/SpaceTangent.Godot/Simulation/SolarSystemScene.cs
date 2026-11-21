@@ -406,6 +406,13 @@ public partial class SolarSystemScene : Control
         var ephemerides = _workspace.AddPage("Ephemerides", WorkspaceText.Choose("Ephemerides", "Эфемериды"), "Location");
         _earthObserver = new(location, ephemerides, _surfaceTextures is not null, camera =>
         {
+            if (!SurfaceObserver.TryFrame(Session!.World, camera,
+                Session.World.Graph.Evaluate(Session[_active].Epoch, Session.DeltaT), Session.DeltaT, out _))
+            {
+                _status.Text = "This body's state or orientation is unavailable at the current epoch.";
+                Refresh();
+                return;
+            }
             Session!.SetEarthObserver(_active, camera);
             _status.Text = "";
             SetMode(_active, CameraMode.Surface);
@@ -500,6 +507,7 @@ public partial class SolarSystemScene : Control
             Session.SetEarthObserver(_active, camera with
             {
                 Site = place.ObserverSite,
+                Body = null,
                 CivilClock = new(place.Name, place.TimeZone, place.FixedOffsetHours),
                 Conditions = place.Bortle is { } bortle ? new GroundSkyConditions(bortle) : camera.Conditions
             });
@@ -547,20 +555,20 @@ public partial class SolarSystemScene : Control
     {
         var observer = Session![_active];
         var camera = observer.EarthObserver ?? EarthObserverCamera.Moscow;
-        if (_views[_active].Snapshot?.SolarSystem is not { } solar || _surfaceTextures is null)
+        if (_views[_active].Snapshot is not { SolarSystem: { } solar } snapshot || (camera.IsEarth && _surfaceTextures is null))
             return;
         try
         {
-            var lighting = EarthSurfaceLighting.Sample(solar, camera.Site, Session.DeltaT);
+            if (!SurfaceObserver.TryFrame(Session.World, camera, snapshot, Session.DeltaT, out var frame)) return;
             var direction = star.DirectionAt(observer.Epoch);
             if (camera.ApparentPlaces)
-                direction = ApparentSky.Aberrate(direction, ApparentSky.ObserverBeta(solar.Earth));
-            if (EarthObserving.HorizontalDirection(lighting, direction) is not { } position)
+                direction = ApparentSky.Aberrate(direction, ApparentSky.ObserverBeta(camera.IsEarth ? solar.Earth : frame.Observer));
+            if (frame.Direction(direction) is not { } position)
                 return;
             Session.SetEarthObserver(_active, camera with
             {
                 AzimuthDegrees = position.AzimuthDegrees ?? camera.AzimuthDegrees,
-                ElevationDegrees = camera.Conditions?.ApparentAltitude(position.AltitudeDegrees, camera.Site) ??
+                ElevationDegrees = (camera.IsEarth ? camera.Conditions?.ApparentAltitude(position.AltitudeDegrees, camera.Site) : null) ??
                     position.AltitudeDegrees
             });
             Session.SetSkyLayers(_active, observer.Sky with { Stars = true });
@@ -1474,7 +1482,7 @@ public partial class SolarSystemScene : Control
 
     private void ApplyScenario(SimulationScenario scenario)
     {
-        if (_surfaceTextures is null && scenario.Views.Any(view => view.Mode == CameraMode.Surface && view.Navigation is null))
+        if (_surfaceTextures is null && scenario.Views.Any(view => view.Mode == CameraMode.Surface && view.Navigation is null && view.EarthObserver?.IsEarth != false))
             throw new InvalidDataException("The scenario needs the Earth surface textures.");
         ObserverLayout previousLayout = Session!.Layout;
         ViewSplit previousDirection = Session.SplitLayout;
@@ -1651,7 +1659,7 @@ public partial class SolarSystemScene : Control
         mode.AddItem(WorkspaceText.Choose("Inner planets", "Внутренние планеты"), (int)CameraMode.Solar);
         mode.AddItem(WorkspaceText.Choose("Earth–Moon view", "Земля и Луна"), (int)CameraMode.Lunar);
         mode.AddItem(WorkspaceText.Choose("Earth satellites", "Спутники Земли"), (int)CameraMode.Satellites);
-        mode.AddItem(WorkspaceText.Choose("Earth surface", "Поверхность Земли"), (int)CameraMode.Surface);
+        mode.AddItem(WorkspaceText.Choose("Surface", "Поверхность"), (int)CameraMode.Surface);
         mode.AddItem(WorkspaceText.Choose("Cassini at Saturn", "Cassini у Сатурна"), (int)CameraMode.Mission);
         mode.AddItem(WorkspaceText.Choose("Cassini timeline", "Полёт Cassini"), (int)CameraMode.Timeline);
         mode.AddItem("Huygens", (int)CameraMode.Probe);
@@ -2086,7 +2094,7 @@ public partial class SolarSystemScene : Control
         }
         _playFromPanel.Text = PlaybackButton(active.Playing);
         _earthObserver.Update(_active, active, _views[_active].Snapshot, Session.World.Ephemeris, Session.DeltaT,
-            Session.World.BrightStars, CurrentObserverNight(), Session.World.EarthPlaces);
+            Session.World.BrightStars, CurrentObserverNight(), Session.World.EarthPlaces, Session.World);
         _showPlanetOrbits.SetPressedNoSignal(!active.Sky.HideOrbits);
         _stars.SetPressedNoSignal(active.Sky.Stars);
         _starLabels.SetPressedNoSignal(active.Sky.Labels);

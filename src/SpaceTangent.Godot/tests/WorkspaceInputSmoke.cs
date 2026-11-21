@@ -48,6 +48,13 @@ public partial class WorkspaceInputSmoke : Node
             Require(_scene.Session is not null && Session.World.Satellites.Any(satellite => satellite.Id == Jason),
                 "DE440 and the original Jason-1 add-on must load.");
             Tree.Root.NotifyMouseEntered();
+            if (System.Environment.GetEnvironmentVariable("SPACETANGENT_SURFACE_OBSERVER_SMOKE_ONLY") == "1")
+            {
+                await ExerciseBodySurfaceObserver(scratch.FullName);
+                GD.Print("SpaceTangent body observer input smoke passed");
+                exitCode = 0;
+                return;
+            }
             if (System.Environment.GetEnvironmentVariable("SPACETANGENT_OBSERVER_CHARTS_SMOKE_ONLY") == "1")
             {
                 await ExerciseObserverCharts(scratch.FullName);
@@ -149,10 +156,13 @@ public partial class WorkspaceInputSmoke : Node
                 view!.AsObject().Remove("earthObserver");
                 view.AsObject().Remove("sky");
                 view.AsObject().Remove("playbackRate"); // Shared rates are explicit now; v2 did not have this field.
+                view.AsObject().Remove("fieldOfViewDegrees"); // Physical layout changes can store a v6 field.
             }
             const string oldFilename = "version-two.stscene";
             File.WriteAllText(Path.Combine(scratch.FullName, oldFilename), oldScene.ToJsonString());
             await UseScenarioDialog("OpenScenario", 0, scratch.FullName, oldFilename);
+            Require(Find<Label>("WorkspaceStatus").Text == "Scenario opened.",
+                "Opening the version 2 scene failed: " + Find<Label>("WorkspaceStatus").Text);
             Require(Session[1].EarthObserver is null && Session[1].Mode == CameraMode.Surface &&
                     Session[0].Navigation == expected.Views[0].Navigation,
                 "A version 2 scenario must restore tracking and keep the original default Earth camera.");
@@ -192,6 +202,7 @@ public partial class WorkspaceInputSmoke : Node
             await ExerciseEarthPlaces(scratch.FullName);
             await ExerciseObserverNight(scratch.FullName);
             await ExerciseObserverCharts(scratch.FullName);
+            await ExerciseBodySurfaceObserver(scratch.FullName);
             await ExerciseMeteors(scratch.FullName);
             await ExercisePanoramas(scratch.FullName);
             await ExerciseOptics(scratch.FullName);

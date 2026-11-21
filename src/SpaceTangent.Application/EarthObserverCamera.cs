@@ -2,6 +2,7 @@
 using System.Text.Json.Serialization;
 using SpaceTangent.Contracts;
 using SpaceTangent.Core.Observing;
+using SpaceTangent.Core.Ephemerides;
 
 namespace SpaceTangent.Application;
 
@@ -11,6 +12,13 @@ public readonly record struct EarthObserverCamera(EarthSite Site, double Azimuth
 {
     public static EarthObserverCamera Moscow { get; } = new(new(55.7558, 37.6173, .15), 237, 28);
     public static EarthObserverCamera Tromso { get; } = new(new(69.6492, 18.9553, .01), 180, 10);
+
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public ObjectId? Body { get; init; }
+    [JsonIgnore]
+    public ObjectId SurfaceBody => Body ?? SolarSystemSample.EarthId;
+    [JsonIgnore]
+    public bool IsEarth => SurfaceBody == SolarSystemSample.EarthId;
 
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public GroundSkyConditions? Conditions { get; init; }
@@ -68,6 +76,7 @@ public readonly record struct EarthObserverCamera(EarthSite Site, double Azimuth
         return this with { AzimuthDegrees = (azimuth % 360 + 360) % 360, ElevationDegrees = Math.Clamp(altitude, -89, 89) };
     }
 
-    public bool IsValid() => (LandscapeId is null || ObservingLandscape.ValidId(LandscapeId)) && CivilClock?.IsValid() != false && Site.IsValid() && Site.HeightKilometers <= 100 && Conditions?.IsValid() != false &&
+    public bool IsValid() => (Body is null || !string.IsNullOrWhiteSpace(Body.Value.Value)) &&
+        (LandscapeId is null || ObservingLandscape.ValidId(LandscapeId)) && CivilClock?.IsValid() != false && Site.IsValid() && Site.HeightKilometers <= 100 && Conditions?.IsValid() != false &&
         MoonScale is null or (>= 1 and <= 10) && PlanetScale is null or (>= 1 and <= 10) && AzimuthDegrees is >= 0 and < 360 && ElevationDegrees is >= -90 and <= 90;
 }

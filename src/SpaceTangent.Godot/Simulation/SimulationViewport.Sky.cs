@@ -46,6 +46,13 @@ internal partial class SimulationViewport
     internal bool Draw(ObserverView observer, WorldSnapshot snapshot, DeltaTModel deltaT)
     {
         _frameDeltaT = deltaT;
+        if (!PrepareBodyObserver(ref observer, snapshot, deltaT))
+        {
+            HideNavigation();
+            _surface?.Draw(false, snapshot.SolarSystem.GetValueOrDefault(), deltaT);
+            _spaceSky?.Hide();
+            return false;
+        }
         if (ArchivedGeometry is not null)
             observer = observer with
             {
@@ -53,6 +60,7 @@ internal partial class SimulationViewport
             };
         PrepareGalacticSky(observer, snapshot, deltaT);
         bool available = DrawScene(observer, snapshot, deltaT);
+        DrawBodyHorizon(snapshot, !observer.Sky.HideTerrain);
         DrawArchivedStars(ArchivedGeometry?.StellarView, observer.Epoch.ToJulianDate());
         DrawArchivedStarPoints(ArchivedGeometry?.StarPoints);
         DrawArchivedGroundGlow(ArchivedGeometry);
@@ -89,7 +97,11 @@ internal partial class SimulationViewport
                 Vector3d observerFromSun = observer.Navigation is { } pose && CatalogueWorld is { } world
                     ? pose.AnchorKilometers + pose.ResolvePlacement(snapshot, deltaT).OffsetKilometers - world.StellarOrigin : default;
                 _spaceSky.ShowFrame(new(observer.Epoch, observer.Sky, observer.Selection,
-                    Icrs(-basis.Z), Icrs(basis.X), Icrs(basis.Y), tangent, ShowCatalogue: catalogue, ObserverFromSun: observerFromSun));
+                    Icrs(-basis.Z), Icrs(basis.X), Icrs(basis.Y), tangent, ShowCatalogue: catalogue, ObserverFromSun: observerFromSun,
+                    SiteAxes: _bodyObserver?.Frame.EastNorthUp,
+                    BodyPath: _bodyObserver is { } site && observer.Sky.Markings.HasFlag(SkyMarkings.SelectedBodyPath) &&
+                        observer.Selection is { } selected && CatalogueWorld is { } data
+                        ? _bodySkyPath.Sample(data, site.Camera.SurfaceBody, selected, observer.Epoch, deltaT, IncrementalPaths) : null));
             }
         }
         DrawEyepiece(observer);

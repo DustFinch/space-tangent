@@ -11,6 +11,8 @@ public static class ObserverNightFinder
         CancellationToken cancellation = default)
     {
         var camera = observer.EarthObserver ?? EarthObserverCamera.Moscow;
+        if (!camera.IsEarth)
+            throw new ArgumentException("Use observing charts for a non-Earth surface site; the Earth night planner requires an Earth civil clock.", nameof(observer));
         var site = camera.Site;
         var clock = camera.CivilClock.GetValueOrDefault();
         var date = clock.DateAt(observer.Epoch, site, model);

@@ -29,11 +29,11 @@ public partial class SolarSystemScene
         var view = views[_active];
         Vector3d direction = new(marker.Direction.X, marker.Direction.Y, marker.Direction.Z);
         if (view.Mode == CameraMode.Surface && view.Navigation is null &&
-            _views[_active].Snapshot?.SolarSystem is { } solar && _surfaceTextures is not null)
+            _views[_active].Snapshot is { } groundSnapshot)
         {
             var camera = view.EarthObserver ?? EarthObserverCamera.Moscow;
-            var light = EarthSurfaceLighting.Sample(solar, camera.Site, session.DeltaT);
-            var place = EarthObserving.HorizontalDirection(light, direction)!.Value;
+            if (!SurfaceObserver.TryFrame(session.World, camera, groundSnapshot, session.DeltaT, out var frame)) return false;
+            var place = frame.Direction(direction)!.Value;
             view = view with { EarthObserver = camera with
             {
                 AzimuthDegrees = place.AzimuthDegrees ?? camera.AzimuthDegrees,

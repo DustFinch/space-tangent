@@ -20,7 +20,7 @@ public sealed record SimulationScenario(IReadOnlyList<ObserverView> Views, bool 
 public static class ScenarioFile
 {
     private static readonly UTF8Encoding StrictUtf8 = new(false, true);
-    private const int Version = 50;
+    private const int Version = 51;
     internal const int MaximumBytes = 32 * 1024;
     private static readonly JsonSerializerOptions Json = new()
     {
@@ -30,6 +30,7 @@ public static class ScenarioFile
         WriteIndented = true,
         Converters =
         {
+            new ObjectIdConverter(),
             new JsonStringEnumConverter<CameraMode>(JsonNamingPolicy.CamelCase, allowIntegerValues: false),
             new JsonStringEnumConverter<ViewSplit>(JsonNamingPolicy.CamelCase, allowIntegerValues: false),
             new JsonStringEnumConverter<NavigationFrame>(JsonNamingPolicy.CamelCase, allowIntegerValues: false),
@@ -39,6 +40,17 @@ public static class ScenarioFile
             new JsonStringEnumConverter<DeltaTModel>(JsonNamingPolicy.CamelCase, allowIntegerValues: false)
         }
     };
+
+    private sealed class ObjectIdConverter : JsonConverter<ObjectId>
+    {
+        public override ObjectId Read(ref Utf8JsonReader reader, Type type, JsonSerializerOptions options)
+        {
+            if (reader.TokenType != JsonTokenType.String) throw new JsonException("Expected an object ID string.");
+            try { return new(reader.GetString()!); }
+            catch (ArgumentException error) { throw new JsonException("Invalid object ID.", error); }
+        }
+        public override void Write(Utf8JsonWriter writer, ObjectId value, JsonSerializerOptions options) => writer.WriteStringValue(value.Value);
+    }
 
     internal static byte[] Encode(SimulationScenario scenario)
     {
@@ -67,7 +79,8 @@ public static class ScenarioFile
             throw new InvalidDataException("The scenario has an invalid light-time offset.");
         var document = new Document
         {
-            Version = scenario.Views.Any(view => view.LightTimeOffsetNanoseconds is not null) ? 50 :
+            Version = scenario.Views.Any(view => view.EarthObserver?.Body is not null) ? 51 :
+                scenario.Views.Any(view => view.LightTimeOffsetNanoseconds is not null) ? 50 :
                 scenario.Views.Any(view => view.ScriptAimTarget is not null) ? 49 :
                 scenario.Views.Any(view => view.EarthObserver?.CivilClock is not null) ? 48 :
                 scenario.Views.Any(view => view.Sky.Markings.HasFlag(SkyMarkings.SelectedBodyPath)) ? 47 :
@@ -227,7 +240,8 @@ public static class ScenarioFile
                     (document.Version < 36 && earth.EquatorialMount) ||
                     (document.Version < 37 && earth.MoonScale is not null) ||
                     (document.Version < 38 && earth.PlanetScale is not null) ||
-                    (document.Version < 41 && earth.ApparentPlaces) || (document.Version < 48 && earth.CivilClock is not null)))
+                    (document.Version < 41 && earth.ApparentPlaces) || (document.Version < 48 && earth.CivilClock is not null) ||
+                    (document.Version < 51 && earth.Body is not null)))
                 throw new InvalidDataException("The scenario has an invalid Earth observer camera.");
             if (data.Sky is { PointerCoordinates: true } && document.Version < 39)
                 throw new InvalidDataException("Pointer coordinates require scenario version 39.");

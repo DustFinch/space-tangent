@@ -118,6 +118,14 @@ The import applies ΔT, observer conditions, Earth site coordinates, landscape s
 
 The startup option `--startup-legacy-settings <path>` can also read archived saved observing sites. It adds valid new sites to the user list and leaves existing entries with the same ID in place. The names are searchable through the existing Earth-place search. When `SPACETANGENT_SAVED_EARTH_PLACES` is set, it identifies the list to update.
 
+## Surface observers beyond Earth
+
+Choose **Location → Observer body**, then enter geodetic latitude, east longitude, height and viewing direction. Bodies with a radius of at least 150 km and an available position and orientation can host a surface observer. The menu includes built-in planets/moons and suitable installed catalogue bodies; unavailable frames are reported instead of replaced by an Earth frame. Gas-planet positions refer to their reference ellipsoid, not a solid landing surface.
+
+The camera remains attached to that body while its clock advances. The view retains its surface mode, field of view, site, horizon grid and cardinal points; the other observer remains independent when time is unlinked. Scenario version 51 saves the body ID and can be used in scene links, bookmarks and frame recordings. Older Earth-only scenes retain their previous interpretation. Archived observing profiles now restore supported non-Earth sites into this structured camera.
+
+Mapped natural bodies use a ray-intersected reference ellipsoid near the ground, with installed surface maps and solar illumination. This removes orbit-mesh faceting and near-plane clipping at metre-scale heights; it is not a terrain elevation model. Existing dedicated lunar/Martian relief modes remain available. Procedural worlds retain their terrain rendering. Horizontal coordinates are geometric; Earth atmospheric conditions, saved Earth places, civil twilight and local Earth eclipse/pass/flare searches do not apply to other bodies. Observing charts use UTC dates (modeled UT1 before UTC coverage) and a zero geometric horizon for these sites; a 24-hour chart is not a claim about the body's solar-day length.
+
 ## Nearby events
 
 Open **Location → Nearby events** and calculate from the paused active view. The list covers 45 days of geocentric lunar phases, planetary oppositions, inner-planet elongations, seasons and close approaches. Eclipses use the saved Earth site; the first umbral shadow of a Galilean moon on Jupiter is searched over three days using a spherical receiver. These are search models, not an observatory precision service. The shadow calculation uses the built-in natural-body graph, before scripted catalogue overrides.

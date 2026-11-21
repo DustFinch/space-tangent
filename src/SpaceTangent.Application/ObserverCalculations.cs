@@ -22,9 +22,10 @@ public static class ObserverCalculations
         if (observer.Selection is not { } target || world.Catalogue.Find(target) is not { } item)
             throw new ArgumentException("Select a catalogue object before calculating ephemerides.", nameof(observer));
         var camera = observer.EarthObserver ?? EarthObserverCamera.Moscow;
+        if (target == camera.SurfaceBody) throw new ArgumentException("Select an object other than the observer body.", nameof(observer));
         var brightStar = world.BrightStars.Find(target);
         var spatialStar = world.FindStellarTarget(target);
-        var clock = camera.CivilClock.GetValueOrDefault();
+        var clock = camera.IsEarth ? camera.CivilClock.GetValueOrDefault() : new ObserverSiteClock("UTC", "Etc/UTC", 0);
         var date = HistoricalDate.FromGregorian(clock.DateAt(observer.Epoch, camera.Site, model));
         var yearStart = new HistoricalDate(date.Year, 1, 1);
         var yearEnd = new HistoricalDate(date.Year + 1, 1, 1);
@@ -40,7 +41,7 @@ public static class ObserverCalculations
             var start = At(day, 0);
             var end = At(HistoricalDate.FromDayNumber(day.DayNumber + 1), 0);
             // Standard level-horizon refraction; add angular semidiameter for Sun/Moon only.
-            double limit = target == SolarSystemSample.SunId || target == SolarSystemSample.MoonId ? -.833 : -.5667;
+            double limit = !camera.IsEarth ? 0 : target == SolarSystemSample.SunId || target == SolarSystemSample.MoonId ? -.833 : -.5667;
             days.Add(new(day, ObserverDaySearch.Find(Sample, start, end, limit, cancellation)));
         }
         for (long day = yearStart.DayNumber; day < yearEnd.DayNumber; day++)
@@ -74,8 +75,15 @@ public static class ObserverCalculations
             if (epoch.CompareTo(world.Ephemeris.Start) < 0 || epoch.CompareTo(world.Ephemeris.End) > 0)
                 return new(epoch, null, null, null);
             var solar = world.Ephemeris.Sample(epoch);
-            var light = EarthSurfaceLighting.Sample(solar, camera.Site, model);
-            var eye = solar.Earth.PositionKilometers + light.PositionKilometers;
+            BodySurfaceFrame frame;
+            if (camera.IsEarth)
+            {
+                var light = EarthSurfaceLighting.Sample(solar, camera.Site, model);
+                frame = new(solar.Earth + new CartesianState(light.PositionKilometers, default), light.EastNorthUp);
+            }
+            else if (!SurfaceObserver.TryFrame(world, camera, world.AlmanacGraph.Evaluate(epoch, model), model, out frame))
+                return new(epoch, null, null, null);
+            var eye = frame.Observer.PositionKilometers;
             CartesianState? bodyState = target == SolarSystemSample.SunId ? solar.Sun :
                 target == SolarSystemSample.MoonId ? solar.Moon : target == SolarSystemSample.EarthId ? solar.Earth : null;
             Vector3d? offset;
@@ -87,7 +95,7 @@ public static class ObserverCalculations
                     bodyState = state;
                 offset = bodyState?.PositionKilometers - eye;
             }
-            var horizontal = offset is { } direction ? EarthObserving.HorizontalDirection(light, direction) : null;
+            var horizontal = offset is { } direction ? frame.Direction(direction) : null;
             var moon = solar.Moon.PositionKilometers - eye;
             var sun = solar.Sun.PositionKilometers - eye;
             double? magnitude = spatialStar?.VisualMagnitude ?? brightStar?.VisualMagnitude;
@@ -107,8 +115,8 @@ public static class ObserverCalculations
                 }
             }
             return new(epoch, horizontal?.AltitudeDegrees, horizontal?.AzimuthDegrees,
-                light.SolarAltitudeRadians * 180 / Math.PI, light.LunarAltitudeRadians * 180 / Math.PI,
-                Angle(offset, moon), Angle(offset, sun), magnitude);
+                frame.Direction(sun)?.AltitudeDegrees, camera.SurfaceBody == SolarSystemSample.MoonId ? null : frame.Direction(moon)?.AltitudeDegrees,
+                camera.SurfaceBody == SolarSystemSample.MoonId ? null : Angle(offset, moon), Angle(offset, sun), magnitude);
         }
     }
 

@@ -17,9 +17,9 @@ internal partial class SimulationViewport
     private (Vector3d? Offset, float Shade)[] _missionTrailSamples = [];
     private static readonly FrameSamplesCache<(ObjectId, ObjectId, JulianInstant, MissionDisplay, DeltaTModel?), (Vector3d? Offset, float Shade)> TrailBatches = new();
     internal bool IncrementalPaths { get; set; } = true;
-    internal bool HasPendingPaths => _missionTrail.HasPending || _surface?.HasPendingPath == true;
+    internal bool HasPendingPaths => _missionTrail.HasPending || _surface?.HasPendingPath == true || _bodyObserver is not null && _bodySkyPath.HasPending;
     internal JulianInstant? MissionTrailEpoch => _missionTrail.PublishedEpoch;
-    internal double? SelectedBodyPathDay => _surface?.BodyPathDay;
+    internal double? SelectedBodyPathDay => _bodyObserver is null ? _surface?.BodyPathDay : _bodySkyPath.PublishedDay;
     internal IReadOnlyList<(Vector3d? Offset, float Shade)> MissionTrailSamples => Array.AsReadOnly(_missionTrailSamples);
     private void CancelMissionTrail()
     {

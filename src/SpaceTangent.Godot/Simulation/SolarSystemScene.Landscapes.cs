@@ -17,7 +17,7 @@ public partial class SolarSystemScene
     private void CycleLandscape(bool clear)
     {
         var current = Session![_active];
-        if (current.Mode != CameraMode.Surface || current.Navigation is not null)
+        if (current.Mode != CameraMode.Surface || current.Navigation is not null || current.EarthObserver?.IsEarth == false)
         {
             _status.Text = "Panoramas apply in the Earth surface view.";
             return;

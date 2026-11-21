@@ -23,10 +23,11 @@ public static class NearbyAlmanac
         var found = SolarSystemEventSearch.Find(ephemeris, from, end, cancellation)
             .Select(item => new AlmanacEntry(item.Epoch, item.Target, Description(item))).ToList();
         var site = (observer.EarthObserver ?? EarthObserverCamera.Moscow).Site;
+        bool earthSite = observer.EarthObserver?.IsEarth != false;
         foreach (var solar in ObservationEventSearch.FindSolarEclipses(ephemeris, site, model, from, end, cancellation))
-            found.Add(new(solar.Partial.Peak, SolarSystemSample.SunId, $"{solar.Class} solar eclipse · local site"));
+            if (earthSite) found.Add(new(solar.Partial.Peak, SolarSystemSample.SunId, $"{solar.Class} solar eclipse · local site"));
         foreach (var lunar in ObservationEventSearch.FindLunarEclipses(ephemeris, from, end, cancellation))
-            if (new[] { lunar.Penumbral.First, lunar.Penumbral.Peak, lunar.Penumbral.Last }.Any(Visible))
+            if (earthSite && new[] { lunar.Penumbral.First, lunar.Penumbral.Peak, lunar.Penumbral.Last }.Any(Visible))
                 found.Add(new(lunar.Penumbral.Peak, SolarSystemSample.MoonId, $"{lunar.Class} lunar eclipse · Moon above local horizon"));
 
         var shadowEnd = from.AddSeconds(Math.Min(3 * JulianInstant.SecondsPerDay, available));
@@ -46,7 +47,7 @@ public static class NearbyAlmanac
                 shadows.Add(new(intervals[0].Peak, jupiter, $"{moon.Name} shadow on Jupiter · global spherical model"));
         }
         if (shadows.MinBy(item => item.Epoch) is { } firstShadow) found.Add(firstShadow);
-        if (meteors is not null)
+        if (meteors is not null && earthSite)
         {
             // Include today's peak until the end of its displayed civil day, even after its nominal maximum.
             var cursor = CivilCalendarDisplay.CivilDay(from, model) is { } today ? Midnight(today, model) : from;

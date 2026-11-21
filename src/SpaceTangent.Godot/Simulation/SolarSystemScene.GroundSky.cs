@@ -9,7 +9,7 @@ public partial class SolarSystemScene
     private void ChangeGroundSky(bool toggle)
     {
         var observer = Session![_active];
-        if (observer.Mode != CameraMode.Surface || observer.Navigation is not null)
+        if (observer.Mode != CameraMode.Surface || observer.Navigation is not null || observer.EarthObserver?.IsEarth == false)
         {
             _status.Text = "Ground sky conditions apply in the Earth surface view.";
             return;

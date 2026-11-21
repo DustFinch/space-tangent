@@ -224,7 +224,8 @@ internal partial class SimulationViewport : Node3D
         if (!_navigationCamera.Current)
             return null;
         Vector3 direction = _navigationCamera.ProjectRayNormal(position);
-        return (new(direction.X, -direction.Z, direction.Y), null);
+        Vector3d ray = new(direction.X, -direction.Z, direction.Y);
+        return (ray, _bodyObserver?.Frame.Direction(ray));
     }
 
     internal void SetSurfaceControls(bool clouds, bool lunarLight) => _surface!.SetControls(clouds, lunarLight);

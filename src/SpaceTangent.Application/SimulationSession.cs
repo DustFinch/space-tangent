@@ -327,6 +327,9 @@ public sealed partial class SimulationSession
                 throw new InvalidDataException("The scenario needs the Martian elevation map and orientation kernel.");
             if (view.EarthObserver is { } earth && !earth.IsValid())
                 throw new InvalidDataException("The scenario has an invalid Earth observer camera.");
+            if (view is { Mode: CameraMode.Surface, Navigation: null, EarthObserver: { IsEarth: false } surface } &&
+                !SurfaceObserver.TryFrame(World, surface, World.Graph.Evaluate(view.Epoch, scenario.DeltaT), scenario.DeltaT, out _))
+                throw new InvalidDataException("The scenario needs the observing body's position and orientation at its saved epoch.");
             if (view.FieldOfViewDegrees is { } field && !ObserverView.ValidFieldOfView(field))
                 throw new InvalidDataException("The scenario has an invalid field of view.");
             if (view.Optics is { } optical && !optical.IsValid())

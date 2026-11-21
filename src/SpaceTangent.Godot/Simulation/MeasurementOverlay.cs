@@ -89,7 +89,8 @@ internal partial class MeasurementOverlay : Control
     internal void Update(SimulationViewport renderer, ObserverView observer, WorldSnapshot snapshot,
         SimulationWorld world, DeltaTModel deltaT)
     {
-        _camera = observer.Navigation.HasValue ? renderer.NavigationCameraNode : null;
+        var renderPose = observer.Navigation ?? renderer.BodySurfacePose;
+        _camera = renderPose.HasValue ? renderer.NavigationCameraNode : null;
         _distancePoints = null;
         DistanceKilometers = null;
         if (_distanceFrom is { } from && _distanceTo is { } to &&
@@ -100,7 +101,7 @@ internal partial class MeasurementOverlay : Control
             DistanceKilometers = distance;
             _distanceText = FormattableString.Invariant(
                 $"{world.Catalogue.Find(from)?.Name} – {world.Catalogue.Find(to)?.Name}   {distance:N1} km · light {distance / SimulationSession.LightKilometersPerSecond:G4} s");
-            if (observer.Navigation is { } pose &&
+            if (renderPose is { } pose &&
                 renderer.ProjectNavigationPoint(pose, first.PositionKilometers) is { } a &&
                 renderer.ProjectNavigationPoint(pose, second.PositionKilometers) is { } b)
                 _distancePoints = (a, b);

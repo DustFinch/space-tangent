@@ -11,7 +11,7 @@ public partial class SolarSystemScene
     private void ToggleMeteors()
     {
         var observer = Session![_active];
-        if (_brightSky is null || observer.Mode != CameraMode.Surface || observer.Navigation is not null)
+        if (_brightSky is null || observer.Mode != CameraMode.Surface || observer.Navigation is not null || observer.EarthObserver?.IsEarth == false)
         {
             _status.Text = "Meteor showers are visible from the Earth surface.";
             return;

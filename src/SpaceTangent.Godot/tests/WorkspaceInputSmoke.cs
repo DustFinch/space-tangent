@@ -229,7 +229,7 @@ public partial class WorkspaceInputSmoke : Node
             System.Environment.SetEnvironmentVariable(bookmarkVariable, oldBookmarks);
             System.Environment.SetEnvironmentVariable(scienceVariable, science);
             scratch?.Delete(recursive: true);
-            Tree.Quit(exitCode);
+            Tree.Quit(CoverageCapture.Complete(exitCode));
         }
     }
 

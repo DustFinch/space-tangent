@@ -39,7 +39,7 @@ public partial class BootstrapSmoke : Node
                     rims.SurfaceGetArrayLen(0) == 128 && rims.SurfaceGetArrayLen(1) == 128,
                     "Both original Cassini radiator rims must publish 32 boundary rays.");
                 GD.Print("Cassini radiator smoke passed: two circular frusta with 32 boundary rays each.");
-                GetTree().Quit();
+                GetTree().Quit(CoverageCapture.Complete(0));
                 return;
             }
 
@@ -75,12 +75,12 @@ public partial class BootstrapSmoke : Node
                 await CaptureWorkspace(scene, workspace);
 
             GD.Print("SpaceTangent bootstrap smoke passed");
-            GetTree().Quit();
+            GetTree().Quit(CoverageCapture.Complete(0));
         }
         catch (Exception exception)
         {
             GD.PushError(exception.ToString());
-            GetTree().Quit(1);
+            GetTree().Quit(CoverageCapture.Complete(1));
         }
     }
 

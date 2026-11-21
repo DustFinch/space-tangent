@@ -15,7 +15,8 @@ public partial class WorkspaceInputSmoke
         ScenarioFile.Save(restore, Session.CaptureScenario(0));
         try
         {
-            var left = new ObserverView(TimeConversion.FromUtc(new(new(2024, 10, 18)), TimeScale.Tdb), CameraMode.Surface,
+            var initialMode = System.Environment.GetEnvironmentVariable("SPACETANGENT_NO_EARTH_MAPS_SMOKE") == "1" ? CameraMode.Solar : CameraMode.Surface;
+            var left = new ObserverView(TimeConversion.FromUtc(new(new(2024, 10, 18)), TimeScale.Tdb), initialMode,
                 SolarSystemSample.EarthId, false) { EarthObserver = EarthObserverCamera.Moscow };
             var right = new ObserverView(JulianInstant.FromJulianDate(2455754.35, TimeScale.Tdb), CameraMode.Satellites, Jason, false);
             string path = Path.Combine(directory, "body-surface.stscene");
@@ -32,9 +33,12 @@ public partial class WorkspaceInputSmoke
                     Session.World.Catalogue.Find(Session[0].EarthObserver!.Value.SurfaceBody)?.Name == name,
                     "Choosing a body must retain a structured surface observer, not turn it into an orbit camera.");
                 await FillField("ObserverHeight", "0.02");
+                await FillField("ObserverLatitude", "45");
                 await FillField("ObserverAzimuth", "0");
                 await FillField("ObserverElevation", "3");
                 await Click(Find<Button>("ApplyObserver"));
+                await Click(Find<Button>("SpaceMode"));
+                await Click(Find<Button>("ObservatoryMode"));
                 if (!Session[0].EarthObserver!.Value.HorizonGrid) await Click(Find<CheckButton>("HorizonGrid"));
                 if (!Session[0].EarthObserver!.Value.CardinalPoints) await Click(Find<CheckButton>("CardinalPoints"));
                 Require(_scene.Renderer(0).NavigationCameraCurrent && _scene.Renderer(0).BodyHorizonVisible && Session[1] == right,
@@ -46,12 +50,17 @@ public partial class WorkspaceInputSmoke
                 Require(pointer is { } sky && Math.Abs(sky.AltitudeDegrees - 3) < .001 &&
                     sky.AzimuthDegrees is { } az && Math.Min(az, 360 - az) < .001,
                     "The pointer must use the current body's local horizon.");
-                Session.SetSkyLayers(0, Session[0].Sky with { Markings = Session[0].Sky.Markings | SkyMarkings.SelectedBodyPath });
+                Session.SetSkyLayers(0, Session[0].Sky with { Markings = Session[0].Sky.Markings | SkyMarkings.SelectedBodyPath | SkyMarkings.CircumpolarCircles });
                 _scene.Seek(0, Session[0].Epoch);
                 double day = Math.Floor(Session[0].Epoch.ToJulianDate() - .5) + .5;
                 await Until(() => _scene.Renderer(0).SelectedBodyPathDay == day && !_scene.Renderer(0).HasPendingPaths,
                     "Sampling the selected body's path from the current observing body", 20);
                 Require(Session[1] == right, "The surface path must not change the other observer.");
+                Require(Session.World.Graph.Evaluate(Session[0].Epoch, Session.DeltaT).TryOrientation(
+                    Session[0].EarthObserver!.Value.SurfaceBody, out var axes), "The observing body's rotation must be available.");
+                var expectedPole = new Vector3((float)axes.ToWorld.Z.X, (float)axes.ToWorld.Z.Y, (float)axes.ToWorld.Z.Z);
+                Require(_scene.Renderer(0).SpaceCultureOverlay?.LocalRotationPole is { } pole && pole.DistanceTo(expectedPole) < 1e-5,
+                    "Circumpolar circles must use the observing body's spin pole rather than the Earth's pole of date.");
                 if (name == "Moon" && DisplayServer.GetName() != "headless")
                 {
                     await ToSignal(RenderingServer.Singleton, RenderingServer.SignalName.FramePostDraw);

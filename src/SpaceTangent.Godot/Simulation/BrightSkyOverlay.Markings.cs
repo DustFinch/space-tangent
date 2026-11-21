@@ -15,6 +15,9 @@ internal partial class BrightSkyOverlay
         .Select(index => MathF.SinCos(MathF.Tau * index / 240)).ToArray();
     private readonly (Vector3 From, Vector3 To)[] _markSegments = new (Vector3, Vector3)[CircleSteps.Length];
 
+    internal Vector3? LocalRotationPole => _frame.LocalPole is { } bodyPole ? Convert(bodyPole) :
+        CelestialPoleOfDate.Direction(_frame.Epoch) is { } earthPole ? Convert(earthPole) : null;
+
     private void DrawSkyMarkings()
     {
         SkyMarkings marks = _frame.Layers.Markings;
@@ -43,7 +46,7 @@ internal partial class BrightSkyOverlay
             MarkCircle(Convert(axes.X), rightAngle, HorizonMark);
         if (marks.HasFlag(SkyMarkings.PrimeVertical))
             MarkCircle(Convert(axes.Y), rightAngle, HorizonMark);
-        if (marks.HasFlag(SkyMarkings.CircumpolarCircles) && pole is { } polarAxis)
+        if (marks.HasFlag(SkyMarkings.CircumpolarCircles) && LocalRotationPole is { } polarAxis)
         {
             float latitude = MathF.Asin(Math.Clamp(zenith.Dot(polarAxis), -1, 1));
             if (Math.Abs(latitude) > .001f)

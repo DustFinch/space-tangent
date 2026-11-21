@@ -163,7 +163,7 @@ internal sealed class SimulatorWorkspace
         _track.Disabled = target is null || star;
         _goTo.Text = star ? WorkspaceText.Choose("Point at", "Навести камеру")
             : flying ? WorkspaceText.Choose("Stop flight", "Остановить перелёт") : WorkspaceText.Choose("Go to", "Перелететь");
-        _goTo.TooltipText = star ? "Point the Earth observer at this star" : "Fly to the selected object · Esc cancels the flight";
+        _goTo.TooltipText = star ? "Point the surface observer at this star" : "Fly to the selected object · Esc cancels the flight";
         _track.Text = tracking ? WorkspaceText.Choose("Stop tracking", "Прекратить слежение") : WorkspaceText.Choose("Track", "Следить");
         if (target is null)
             return;

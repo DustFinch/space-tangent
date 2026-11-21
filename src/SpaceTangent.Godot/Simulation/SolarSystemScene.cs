@@ -273,6 +273,7 @@ public partial class SolarSystemScene : Control
         });
         _observatoryMode = AddButton(toolbar, WorkspaceText.Choose("Observatory", "Обсерватория"), () => SetMode(_active, CameraMode.Surface));
         _spaceMode.Name = "SpaceMode";
+        _observatoryMode.Name = "ObservatoryMode";
         _spaceMode.ToggleMode = _observatoryMode.ToggleMode = true;
         _observatoryMode.Disabled = _surfaceTextures is null;
         _split = AddButton(toolbar, "Split view", ToggleSplit);
@@ -414,6 +415,13 @@ public partial class SolarSystemScene : Control
                 return;
             }
             Session!.SetEarthObserver(_active, camera);
+            if (camera.IsEarth && _surfaceTextures is null)
+            {
+                Session.OpenSpaceView(_active);
+                Refresh();
+                _status.Text = "Observer site updated. Install Earth surface maps for its sky view.";
+                return;
+            }
             _status.Text = "";
             SetMode(_active, CameraMode.Surface);
         }, () => ShowFullMoon(_active), message => _status.Text = message, _earthOrbitTextures?.Day, (name, site) => _ = SaveEarthSite(name, site),
@@ -487,7 +495,7 @@ public partial class SolarSystemScene : Control
         if (Session!.World.EarthPlaces.Find(target) is not null)
             return (WorkspaceText.Choose("Go to observing site", "Перейти к месту наблюдения"), true);
         return UseEarthPointing(target, Session[_active])
-            ? (WorkspaceText.Choose("Point at", "Навести камеру"), _surfaceTextures is not null)
+            ? (WorkspaceText.Choose("Point at", "Навести камеру"), _surfaceTextures is not null || Session[_active].EarthObserver?.IsEarth == false)
             : (WorkspaceText.Choose("Go to", "Перелететь к объекту"), true);
     }
 
@@ -2077,6 +2085,7 @@ public partial class SolarSystemScene : Control
         bool observatory = active.Mode == CameraMode.Surface && active.Navigation is null;
         _spaceMode.SetPressedNoSignal(!observatory);
         _observatoryMode.SetPressedNoSignal(observatory);
+        _observatoryMode.Disabled = _surfaceTextures is null && active.EarthObserver?.IsEarth != false;
         _sync.Visible = _views.Count > 1;
         _sync.SetPressedNoSignal(Session.Synchronized);
         _sync.Text = Session.Synchronized ? WorkspaceText.Choose("Clocks linked", "Часы связаны")
@@ -2113,7 +2122,8 @@ public partial class SolarSystemScene : Control
         bool tracking = active.Navigation is { Tracking: true } pose && pose.Target == target?.Id;
         string details = DescribeObject(target, _views[_active].Snapshot);
         bool pointAt = target is not null && UseEarthPointing(target.Id, active);
-        _workspace.ShowObject(target, details, tracking, Session.IsFlying(_active), pointAt, _surfaceTextures is not null);
+        _workspace.ShowObject(target, details, tracking, Session.IsFlying(_active), pointAt,
+            _surfaceTextures is not null || active.EarthObserver?.IsEarth == false);
     }
 
     private string DescribeObject(CatalogueObject? target, WorldSnapshot? snapshot)
@@ -2241,6 +2251,7 @@ public partial class SolarSystemScene : Control
             controls.Play.Text = PlaybackButton(view.Playing);
             bool preset = view.Navigation is null;
             controls.Mode.Select(preset ? (int)view.Mode : NavigationOption);
+            controls.Mode.SetItemDisabled((int)CameraMode.Surface, _surfaceTextures is null && view.EarthObserver?.IsEarth != false);
             controls.FieldOfView.Visible = !preset || view.Mode == CameraMode.Surface;
             _refreshingViewField = true;
             try

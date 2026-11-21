@@ -96,12 +96,15 @@ internal partial class SimulationViewport
                 Basis basis = camera.GlobalBasis;
                 Vector3d observerFromSun = observer.Navigation is { } pose && CatalogueWorld is { } world
                     ? pose.AnchorKilometers + pose.ResolvePlacement(snapshot, deltaT).OffsetKilometers - world.StellarOrigin : default;
+                Vector3d? localPole = _bodyObserver is { } bodySite && snapshot.TryOrientation(bodySite.Camera.SurfaceBody, out var bodyRotation)
+                    ? bodyRotation.ToWorld.Z : null;
                 _spaceSky.ShowFrame(new(observer.Epoch, observer.Sky, observer.Selection,
                     Icrs(-basis.Z), Icrs(basis.X), Icrs(basis.Y), tangent, ShowCatalogue: catalogue, ObserverFromSun: observerFromSun,
                     SiteAxes: _bodyObserver?.Frame.EastNorthUp,
                     BodyPath: _bodyObserver is { } site && observer.Sky.Markings.HasFlag(SkyMarkings.SelectedBodyPath) &&
                         observer.Selection is { } selected && CatalogueWorld is { } data
-                        ? _bodySkyPath.Sample(data, site.Camera.SurfaceBody, selected, observer.Epoch, deltaT, IncrementalPaths) : null));
+                        ? _bodySkyPath.Sample(data, site.Camera.SurfaceBody, selected, observer.Epoch, deltaT, IncrementalPaths) : null,
+                    LocalPole: localPole));
             }
         }
         DrawEyepiece(observer);

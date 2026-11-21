@@ -62,7 +62,7 @@ internal sealed class EarthObserverPanel
         location.AddChild(_map);
         var saveRow = new HBoxContainer();
         var siteName = new LineEdit { Name = "SavedSiteName", PlaceholderText = "Site name", MaxLength = 80,
-            SizeFlagsHorizontal = Control.SizeFlags.ExpandFill, Editable = surfaceAvailable };
+            SizeFlagsHorizontal = Control.SizeFlags.ExpandFill };
         _map.Picked += (place, site) =>
         {
             if (place is { Kind: 'U' })
@@ -74,25 +74,25 @@ internal sealed class EarthObserverPanel
                 Conditions = place?.Bortle is { } bortle ? new GroundSkyConditions(bortle) : _camera.Conditions
             });
         };
-        var saveButton = new Button { Name = "SaveEarthSite", Text = "Save site", Disabled = !surfaceAvailable };
+        var saveButton = new Button { Name = "SaveEarthSite", Text = "Save site" };
         saveButton.Pressed += () => saveSite(siteName.Text, _camera.Site);
         siteName.TextSubmitted += name => saveSite(name, _camera.Site);
         saveRow.AddChild(siteName);
         saveRow.AddChild(saveButton);
-        var removeButton = new Button { Name = "RemoveEarthSite", Text = "Remove saved site", Disabled = !surfaceAvailable };
+        var removeButton = new Button { Name = "RemoveEarthSite", Text = "Remove saved site" };
         removeButton.TooltipText = "Remove the saved place with this name.";
         removeButton.Pressed += () => removeSite(siteName.Text);
         location.AddChild(saveRow);
         location.AddChild(removeButton);
         _earthOnly = [saveRow, removeButton];
-        _latitude = Field(location, "ObserverLatitude", "Latitude (°)", surfaceAvailable);
-        _longitude = Field(location, "ObserverLongitude", "Longitude east (°)", surfaceAvailable);
-        _height = Field(location, "ObserverHeight", "Height (km)", surfaceAvailable);
+        _latitude = Field(location, "ObserverLatitude", "Latitude (°)", true);
+        _longitude = Field(location, "ObserverLongitude", "Longitude east (°)", true);
+        _height = Field(location, "ObserverHeight", "Height (km)", true);
 
         location.AddChild(SimulatorTheme.Section("Camera direction"));
-        _azimuth = Field(location, "ObserverAzimuth", "Azimuth (°)", surfaceAvailable);
-        _elevation = Field(location, "ObserverElevation", "Elevation (°)", surfaceAvailable);
-        var submit = new Button { Name = "ApplyObserver", Text = "Apply to this view", Disabled = !surfaceAvailable };
+        _azimuth = Field(location, "ObserverAzimuth", "Azimuth (°)", true);
+        _elevation = Field(location, "ObserverElevation", "Elevation (°)", true);
+        var submit = new Button { Name = "ApplyObserver", Text = "Apply to this view" };
         submit.Pressed += ApplyFields;
         location.AddChild(submit);
         var moon = new Button { Name = "ShowFullMoon", Text = "Full Moon · Moscow", Disabled = !surfaceAvailable };
@@ -100,10 +100,10 @@ internal sealed class EarthObserverPanel
         location.AddChild(moon);
 
         location.AddChild(SimulatorTheme.Section("Horizon"));
-        _horizon = new CheckButton { Name = "HorizonGrid", Text = "Horizon grid", Disabled = !surfaceAvailable };
+        _horizon = new CheckButton { Name = "HorizonGrid", Text = "Horizon grid" };
         _horizon.Toggled += shown => _apply(_camera with { HorizonGrid = shown });
         location.AddChild(_horizon);
-        _cardinals = new CheckButton { Name = "CardinalPoints", Text = "Cardinal points", Disabled = !surfaceAvailable };
+        _cardinals = new CheckButton { Name = "CardinalPoints", Text = "Cardinal points" };
         _cardinals.Toggled += shown => _apply(_camera with { CardinalPoints = shown });
         location.AddChild(_cardinals);
         _apparentPlaces = new CheckButton { Name = "ApparentPlaces", Text = "Light time and annual aberration",

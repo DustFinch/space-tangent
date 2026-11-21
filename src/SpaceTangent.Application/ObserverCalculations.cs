@@ -99,21 +99,7 @@ public static class ObserverCalculations
             var moon = solar.Moon.PositionKilometers - eye;
             var sun = solar.Sun.PositionKilometers - eye;
             double? magnitude = spatialStar?.VisualMagnitude ?? brightStar?.VisualMagnitude;
-            if (magnitude is null && offset is { } bodyOffset && bodyOffset.Length > world.TargetRadiusKilometers(target))
-            {
-                const double au = 149_597_870.7;
-                if (target == SolarSystemSample.SunId) magnitude = -26.74 + 5 * Math.Log10(bodyOffset.Length / au);
-                else if (bodyState is { } body)
-                {
-                    var toSun = solar.Sun.PositionKilometers - body.PositionKilometers;
-                    double phase = Math.Acos(Math.Clamp(-Vector3d.Dot(toSun / toSun.Length, bodyOffset / bodyOffset.Length), -1, 1));
-                    double lambert = (Math.Sin(phase) + (Math.PI - phase) * Math.Cos(phase)) / Math.PI;
-                    double radius = world.TargetRadiusKilometers(target);
-                    double albedo = target == SolarSystemSample.MoonId ? .12 : .3;
-                    double flux = albedo * radius * radius / (bodyOffset.Length * bodyOffset.Length) * lambert * au * au / (toSun.Length * toSun.Length);
-                    if (flux > 0) magnitude = -26.74 - 2.5 * Math.Log10(flux);
-                }
-            }
+            if (magnitude is null && bodyState is { } body) magnitude = ObserverPhotometry.Estimate(world, target, body, eye, solar.Sun);
             return new(epoch, horizontal?.AltitudeDegrees, horizontal?.AzimuthDegrees,
                 frame.Direction(sun)?.AltitudeDegrees, camera.SurfaceBody == SolarSystemSample.MoonId ? null : frame.Direction(moon)?.AltitudeDegrees,
                 camera.SurfaceBody == SolarSystemSample.MoonId ? null : Angle(offset, moon), Angle(offset, sun), magnitude);

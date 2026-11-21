@@ -418,6 +418,7 @@ public partial class SolarSystemScene : Control
             SetMode(_active, CameraMode.Surface);
         }, () => ShowFullMoon(_active), message => _status.Text = message, _earthOrbitTextures?.Day, (name, site) => _ = SaveEarthSite(name, site),
             name => _ = RemoveEarthSite(name));
+        BuildTonightControls(ephemerides);
         ephemerides.VisibilityChanged += () =>
         {
             if (_views.Count > 0 && ephemerides.IsVisibleInTree())
@@ -813,6 +814,7 @@ public partial class SolarSystemScene : Control
         _eventSearch?.Cancel();
         _almanacSearch?.Cancel();
         _chartSearch?.Cancel();
+        _tonightSearch?.Cancel();
         _landscapeLifetime.Cancel();
         _satelliteUpdate?.Cancel();
         DisconnectCapture();

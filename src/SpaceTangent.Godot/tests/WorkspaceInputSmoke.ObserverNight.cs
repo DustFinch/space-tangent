@@ -9,6 +9,46 @@ namespace SpaceTangent.Godot.Tests;
 
 public partial class WorkspaceInputSmoke
 {
+    private async Task ExerciseVisibleTonight(string directory)
+    {
+        string restore = Path.Combine(directory, "before-visible-tonight.stscene");
+        ScenarioFile.Save(restore, Session.CaptureScenario(0));
+        try
+        {
+            var left = new ObserverView(TimeConversion.FromUtc(new(new(2024, 1, 15), 16), TimeScale.Tdb),
+                CameraMode.Surface, null, false) { EarthObserver = EarthObserverCamera.Moscow };
+            var right = new ObserverView(JulianInstant.FromJulianDate(2455754.35, TimeScale.Tdb), CameraMode.Satellites, Jason, false);
+            string path = Path.Combine(directory, "visible-tonight.stscene");
+            ScenarioFile.Save(path, new([left, right], false, 0, 0, DeltaTModel.MorrisonStephenson2004));
+            Require(_scene.LoadScenario(path), "The visible-tonight scene must open.");
+            await Click(Find<Button>("EphemeridesTab"));
+            Session.SetPlaying(0, true);
+            await Click(Find<Button>("CalculateTonight"));
+            var rows = Find<VBoxContainer>("TonightRows");
+            await Until(() => rows.GetChildCount() > 0, "Calculating visible objects while the clock runs", 30);
+            var sirius = rows.GetChildren().OfType<Button>().Single(button => button.Text.StartsWith("Sirius ·", StringComparison.Ordinal));
+            await Click(sirius);
+            Require(Session[0].Selection == new ObjectId("hip/32349") && !Session[0].Playing &&
+                Session[0].EarthObserver is { ElevationDegrees: > 17 and < 18 } && Session[1] == right,
+                "A night row must seek and point Sirius without moving the independent Jason-1 observer.");
+            var another = rows.GetChildren().OfType<Button>().First(button => button != sirius);
+            another.EmitSignal(Button.SignalName.Pressed);
+            Require(!Find<Label>("WorkspaceStatus").Text.StartsWith("Recalculate", StringComparison.Ordinal),
+                "Selecting another row must remain valid after the first row repoints the same site.");
+            var held = Session[0];
+            await KeyPress(Key.Tab);
+            sirius.EmitSignal(Button.SignalName.Pressed);
+            Require(Session[0] == held && Session[1] == right, "A night list must belong to the view that requested it.");
+            await KeyPress(Key.Tab);
+            Require(await _scene.ReloadAddOns(null), "Reloading the visible-tonight data.");
+            sirius.EmitSignal(Button.SignalName.Pressed);
+            Require(Session[0] == held && Session[1] == right && Session.DeltaT == DeltaTModel.MorrisonStephenson2004,
+                "A night list must reject a prior source generation.");
+            GD.Print("UI: calculated visible tonight while playing, pointed Sirius and another listed object, retained Jason-1 and rejected other-view/reloaded rows.");
+        }
+        finally { Require(_scene.LoadScenario(restore), "The previous workspace must reopen after the night list."); }
+    }
+
     private async Task ExerciseObserverCharts(string directory)
     {
         string restore = Path.Combine(directory, "before-observer-charts.stscene");

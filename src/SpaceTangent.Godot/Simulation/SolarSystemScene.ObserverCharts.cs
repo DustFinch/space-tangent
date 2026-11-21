@@ -67,8 +67,9 @@ public partial class SolarSystemScene
         {
             var result = await Task.Run(() => ObserverCalculations.Calculate(context.World, observer, context.DeltaT,
                 cancellation.Token), cancellation.Token);
-            if (cancellation.IsCancellationRequested || !IsInsideTree() || !ReferenceEquals(session, Session) ||
-                CurrentEventContext() != context || session[_active].Epoch != observer.Epoch) return;
+            if (cancellation.IsCancellationRequested || !IsInsideTree()) return;
+            if (!ReferenceEquals(session, Session) || CurrentEventContext() != context)
+            { _chartSummary.Text = "Observer conditions changed. Recalculate charts."; return; }
             _charts = (context, result);
             _chartSummary.Text = $"{result.Name} · from {result.FirstDate} · {result.Days.Count} days";
             var samples = result.Days[0].Day.Samples;

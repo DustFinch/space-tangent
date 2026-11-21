@@ -48,8 +48,9 @@ public partial class SolarSystemScene
         {
             var result = await Task.Run(() => NearbyAlmanac.Find(context.World, observer, context.DeltaT, meteors,
                 cancellation.Token), cancellation.Token);
-            if (cancellation.IsCancellationRequested || !IsInsideTree() || !ReferenceEquals(session, Session) ||
-                context != CurrentAlmanacContext() || session[_active].Epoch != observer.Epoch) return;
+            if (cancellation.IsCancellationRequested || !IsInsideTree()) return;
+            if (!ReferenceEquals(session, Session) || context != CurrentAlmanacContext())
+            { _almanacSummary.Text = "Observer conditions changed. Recalculate nearby events."; return; }
             _almanacSummary.Text = $"{result.Count} events · from {CivilTimeLabel(observer.Epoch, context.DeltaT)}";
             foreach (var entry in result)
             {

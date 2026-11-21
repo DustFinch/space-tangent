@@ -56,6 +56,22 @@ public partial class EarthOrbitProbe
                 await ExerciseMissionSwarms(scene, directory);
                 await ExerciseMissionParticles(scene, directory);
                 break;
+            case "stellar":
+                RequireInput("SPACETANGENT_STELLAR_ARCHIVE");
+                await ExerciseStellarSpace(scene, SurfaceProjection.FullMoonEpoch, directory);
+                break;
+            case "ssc-bodies":
+                RequireControl("SPACETANGENT_MINOR_MOONS_GPU");
+                RequireInput("SPACETANGENT_MINOR_MOONS");
+                RequireInput("SPACETANGENT_SMALL_RINGS");
+                RequireInput("SPACETANGENT_PROBE_SCRIPTED_SSC");
+                await ExerciseSmallBodyRings(scene, directory);
+                await ExerciseMinorMoons(scene, directory);
+                await ExerciseSourceFactories(scene, directory);
+                break;
+            case "archive-wire":
+                await ExerciseArchivedWire(scene, directory);
+                break;
             default:
                 throw new InvalidOperationException($"Unknown coverage profile: {profile}.");
         }

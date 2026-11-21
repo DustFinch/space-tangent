@@ -8,6 +8,9 @@
   <ItemGroup Condition="'$(Configuration)' == 'ExportRelease'">
     <Compile Remove="tests/**/*.cs" />
   </ItemGroup>
+  <ItemGroup Condition="'$(Configuration)' != 'ExportRelease'">
+    <Compile Include="../../tests/SpaceTangent.Application.Tests/LegacyWireFixture.cs" Link="tests/LegacyWireFixture.cs" />
+  </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="../SpaceTangent.Application/SpaceTangent.Application.csproj" />
     <ProjectReference Include="../../deps/space-tangent-core/src/SpaceTangent.Core/SpaceTangent.Core.csproj" />

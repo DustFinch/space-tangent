@@ -135,6 +135,6 @@ public partial class RuntimeProfileProbe : Node
             }
         }
         catch (Exception error) { GD.PushError(error.ToString()); }
-        finally { GetTree().Quit(result); }
+        finally { GetTree().Quit(CoverageCapture.Complete(result)); }
     }
 }

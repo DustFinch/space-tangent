@@ -16,12 +16,12 @@ public partial class MissionSwarmComputeProbe : Node
         try
         {
             Compare();
-            GetTree().Quit();
+            GetTree().Quit(CoverageCapture.Complete(0, "SpaceTangent.Godot", "SpaceTangent.Core", "SpaceTangent.Contracts"));
         }
         catch (Exception error)
         {
             GD.PushError(error.ToString());
-            GetTree().Quit(1);
+            GetTree().Quit(CoverageCapture.Complete(1, "SpaceTangent.Godot", "SpaceTangent.Core", "SpaceTangent.Contracts"));
         }
     }
 

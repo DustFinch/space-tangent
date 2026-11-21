@@ -36,7 +36,7 @@ public partial class EarthOrbitProbe
         var timer = System.Diagnostics.Stopwatch.StartNew();
         while (session.IsFlying(0) || scene.Renderer(0).DemoTerrainLevel(target) < 0)
         {
-            if (timer.Elapsed.TotalSeconds > 25)
+            if (timer.Elapsed.TotalSeconds > CoverageCapture.TimeoutSeconds(25))
                 throw new TimeoutException("The elevated procedural terrain did not render.");
             await ToSignal(GetTree(), SceneTree.SignalName.ProcessFrame);
         }
@@ -57,7 +57,7 @@ public partial class EarthOrbitProbe
         timer.Restart();
         while (scene.Renderer(0).DemoTerrainLevel(target) < high + 4)
         {
-            if (timer.Elapsed.TotalSeconds > 30)
+            if (timer.Elapsed.TotalSeconds > CoverageCapture.TimeoutSeconds(30))
                 throw new TimeoutException($"Terrain remained at level {scene.Renderer(0).DemoTerrainLevel(target)} after descending from level {high}.");
             await ToSignal(GetTree(), SceneTree.SignalName.ProcessFrame);
         }

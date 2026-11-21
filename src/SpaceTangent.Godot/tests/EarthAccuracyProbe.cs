@@ -94,9 +94,9 @@ public partial class EarthAccuracyProbe : Node
             }, new JsonSerializerOptions { WriteIndented = true }));
             await CaptureReviewScene(output);
             GD.Print("Earth accuracy GPU passed: equator/Moscow/polar day and full-Moon clouds, historical Earth-fixed UV.");
-            GetTree().Quit();
+            GetTree().Quit(CoverageCapture.Complete(0, "SpaceTangent.Godot", "SpaceTangent.Core", "SpaceTangent.Contracts"));
         }
-        catch (Exception error) { GD.PushError(error.ToString()); GetTree().Quit(1); }
+        catch (Exception error) { GD.PushError(error.ToString()); GetTree().Quit(CoverageCapture.Complete(1, "SpaceTangent.Godot", "SpaceTangent.Core", "SpaceTangent.Contracts")); }
     }
 
     private async Task CaptureReviewScene(string output)

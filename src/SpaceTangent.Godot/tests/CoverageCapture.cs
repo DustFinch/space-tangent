@@ -8,18 +8,26 @@ namespace SpaceTangent.Godot.Tests;
 // This opt-in test hook flushes the tracker supplied by the pinned coverage runner.
 internal static class CoverageCapture
 {
-    internal static int Complete(int exitCode)
+    // Numerical mesh construction is deliberately instrumented too; allow its bounded overhead.
+    internal static int TimeoutSeconds(int ordinary) =>
+        System.Environment.GetEnvironmentVariable("SPACETANGENT_COVERAGE_CAPTURE") == "1" ? checked(ordinary * 10) : ordinary;
+
+    internal static int Complete(int exitCode, params string[] requiredModules)
     {
         if (System.Environment.GetEnvironmentVariable("SPACETANGENT_COVERAGE_CAPTURE") != "1")
             return exitCode;
         try
         {
-            var expected = new HashSet<string>(["SpaceTangent.Godot", "SpaceTangent.Application",
+            var known = new HashSet<string>(["SpaceTangent.Godot", "SpaceTangent.Application",
                 "SpaceTangent.Core", "SpaceTangent.Contracts"], StringComparer.Ordinal);
+            var expected = new HashSet<string>(requiredModules.Length == 0 ? known : requiredModules, StringComparer.Ordinal);
+            if (expected.Count == 0 || !expected.IsSubsetOf(known) ||
+                (requiredModules.Length != 0 && expected.Count != requiredModules.Length))
+                throw new InvalidOperationException("Coverage requires a nonempty, distinct set of known modules.");
             foreach (var assembly in AppDomain.CurrentDomain.GetAssemblies())
             {
                 string name = assembly.GetName().Name ?? "";
-                if (!expected.Contains(name)) continue;
+                if (!known.Contains(name)) continue;
                 var tracker = assembly.GetTypes().SingleOrDefault(type =>
                     type.Namespace?.StartsWith("Coverlet.Core.Instrumentation", StringComparison.Ordinal) == true &&
                     type.GetField("HitsArray", BindingFlags.Public | BindingFlags.Static) is not null &&

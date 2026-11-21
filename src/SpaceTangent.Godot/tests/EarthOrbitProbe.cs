@@ -499,7 +499,7 @@ public partial class EarthOrbitProbe : Node
         }
         finally
         {
-            GetTree().Quit(result);
+            GetTree().Quit(CoverageCapture.Complete(result));
         }
     }
 }

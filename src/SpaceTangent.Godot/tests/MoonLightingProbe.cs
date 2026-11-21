@@ -138,12 +138,12 @@ public partial class MoonLightingProbe : Node
                 await ExerciseHistoricalFlare(scene, renderer, output);
 
             GD.Print("SpaceTangent full Moon cloud rendering probe passed");
-            GetTree().Quit();
+            GetTree().Quit(CoverageCapture.Complete(0));
         }
         catch (Exception error)
         {
             GD.PushError(error.ToString());
-            GetTree().Quit(1);
+            GetTree().Quit(CoverageCapture.Complete(1));
         }
     }
 

@@ -679,6 +679,20 @@ public partial class BootstrapSmoke : Node
             left.SunDirection.DistanceTo(right.SunDirection) > .5f, "Terrain must draw at separate scales and solar epochs.");
         Require(Math.Abs(left.SunDirection.Length() - 1) < 1e-6f && Math.Abs(right.SunDirection.Length() - 1) < 1e-6f,
             "The terrain shader requires unit light directions.");
+        var coordinates = scene.FindChildren("*", "LineEdit", recursive: true, owned: false).OfType<LineEdit>()
+            .First(field => field.PlaceholderText == "Lon°, lat°, width km ↵");
+        ObserverView untouched = session[1];
+        coordinates.EmitSignal(LineEdit.SignalName.TextSubmitted, "-20, 10, 600");
+        Require(session[0].Terrain == new LunarTerrainCamera(-20, 10, 600) && session[1] == untouched,
+            "Submitting terrain coordinates must update only their own camera.");
+        ObserverView validTerrain = session[0];
+        foreach (string invalid in new[] { "1,2", "bad,10,600", "0,91,600", "0,0,49", "NaN,0,600" })
+        {
+            coordinates.EmitSignal(LineEdit.SignalName.TextSubmitted, invalid);
+            Require(session[0] == validTerrain && session[1] == untouched,
+                "Invalid terrain coordinates must preserve both cameras.");
+        }
+        scene.SetLunarTerrainCamera(0, LunarTerrainCamera.Globe);
 
         if (System.Environment.GetEnvironmentVariable("SPACETANGENT_TERRAIN_CAPTURE") is { Length: > 0 } capture)
         {

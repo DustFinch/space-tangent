@@ -17,7 +17,7 @@ public partial class EarthOrbitProbe
             return;
         const string setting = "SPACETANGENT_CAPTURE_OUTPUT";
         string? previous = System.Environment.GetEnvironmentVariable(setting);
-        string output = Path.Combine(directory, "Съёмка двух видов");
+        string output = Path.Combine(directory, "Съёмка двух видов", Guid.NewGuid().ToString("N"));
         System.Environment.SetEnvironmentVariable(setting, output);
         try
         {
@@ -71,6 +71,7 @@ public partial class EarthOrbitProbe
                 throw new InvalidOperationException("The replay must finish at the last recorded cameras and epoch.");
             GD.Print($"Recording GPU: PNG and MJPEG AVI at 30 fps, {recording.Frames} frames, exact observer replay.");
             GD.Print("Recording output: " + recording.Video);
+            await ExerciseRecordingBoundaries(scene, output, scenario, recording.ObserverFrames);
         }
         finally { System.Environment.SetEnvironmentVariable(setting, previous); }
 
@@ -81,6 +82,74 @@ public partial class EarthOrbitProbe
             {
                 if (time.Elapsed.TotalSeconds > 15)
                     throw new TimeoutException($"{step} timed out.");
+                await ToSignal(GetTree(), SceneTree.SignalName.ProcessFrame);
+            }
+        }
+    }
+
+    private async Task ExerciseRecordingBoundaries(SolarSystemScene scene, string output, string scenario, string replay)
+    {
+        var status = (Label)scene.FindChild("WorkspaceStatus", true, false);
+        string script = Path.Combine(output, "capture-contract.lua");
+        foreach (string invalid in new[] { "CON", "LPT9.png", "trailing.", "trailing ", ".", "..", "folder/name" })
+        {
+            File.WriteAllText(script, $"st.capture('{invalid}')");
+            var running = scene.RunScript(script) ?? throw new InvalidOperationException("Could not open the filename boundary script.");
+            running.Step(0);
+            Require(running.Error?.Contains("plain filename", StringComparison.Ordinal) == true,
+                "Reserved device names and ambiguous capture paths must be refused.");
+        }
+        for (int index = 0; index < 33; index++)
+        {
+            File.WriteAllText(script, $"st.capture('queued-{index}')");
+            var queued = scene.RunScript(script) ?? throw new InvalidOperationException("Could not open the queue boundary script.");
+            queued.Step(0);
+            Require(index == 32 ? queued.Error?.Contains("Too many script screenshots", StringComparison.Ordinal) == true : queued.Error is null,
+                "Separate scripts must share the 32-image host queue until a rendered frame. Actual: " + queued.Error);
+        }
+        await Wait(() => Directory.GetFiles(output, "queued-*.png").Length == 32);
+        Require(!File.Exists(Path.Combine(output, "queued-32.png")), "The refused screenshot must not be written later.");
+
+        Require(scene.StartRecording(2), "The bounded movie must start.");
+        Require(!scene.StartRecording() && !scene.StartReplay(replay), "A live movie must reject a second movie and replay.");
+        await Wait(() => status.Text.StartsWith("Saved 2 frames", StringComparison.Ordinal));
+        Require(await scene.StopRecording() is null, "The frame budget must close the active recorder.");
+        int oldMaximum = Engine.MaxFps;
+        using (var press = new InputEventKey { Keycode = Key.F10, ShiftPressed = true, Pressed = true })
+            scene._UnhandledKeyInput(press);
+        await Wait(() => scene.RecordedFrames >= 1);
+        using (var press = new InputEventKey { Keycode = Key.F10, ShiftPressed = true, Pressed = true })
+            scene._UnhandledKeyInput(press);
+        await Wait(() => status.Text.StartsWith("Saved ", StringComparison.Ordinal));
+        Require(Engine.MaxFps == oldMaximum, "The recording shortcut must restore the previous frame limit.");
+
+        string blocked = Path.Combine(output, "blocked-output"); File.WriteAllText(blocked, "keep");
+        string? previous = System.Environment.GetEnvironmentVariable("SPACETANGENT_CAPTURE_OUTPUT");
+        try
+        {
+            System.Environment.SetEnvironmentVariable("SPACETANGENT_CAPTURE_OUTPUT", blocked);
+            Require(!scene.StartRecording() && status.Text.StartsWith("Could not start recording.", StringComparison.Ordinal),
+                "An unwritable movie directory must report failure without starting a worker.");
+            Require(scene.QueueScreenshot(Path.Combine(blocked, "refused.png")), "The screenshot path can be queued before the filesystem failure.");
+            await Wait(() => status.Text.StartsWith("Could not save screenshot.", StringComparison.Ordinal));
+            Require(File.ReadAllText(blocked) == "keep", "A failed capture must preserve the obstructing file.");
+        }
+        finally { System.Environment.SetEnvironmentVariable("SPACETANGENT_CAPTURE_OUTPUT", previous); }
+        Require(scene.LoadScenario(scenario) && scene.StartReplay(replay), "Replay must recover after failed capture output.");
+        Require(!scene.StartRecording(), "Recording must not replace an active replay.");
+        await Wait(() => !scene.Replaying);
+        GD.Print("Recording boundaries GPU: filenames, 32-image queue, exact two-frame limit, shortcuts, output refusal and replay recovery passed.");
+
+        static void Require(bool condition, string message)
+        {
+            if (!condition) throw new InvalidOperationException(message);
+        }
+        async Task Wait(Func<bool> condition)
+        {
+            var clock = System.Diagnostics.Stopwatch.StartNew();
+            while (!condition())
+            {
+                if (clock.Elapsed.TotalSeconds > 20) throw new TimeoutException("Recording boundary timed out: " + status.Text);
                 await ToSignal(GetTree(), SceneTree.SignalName.ProcessFrame);
             }
         }

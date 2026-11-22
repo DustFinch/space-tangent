@@ -46,6 +46,9 @@ public partial class EarthOrbitProbe
                 RequireControl("SPACETANGENT_RECORDING_PROBE");
                 await ExerciseRecording(scene, directory);
                 break;
+            case "recording-shutdown":
+                await ExerciseRecordingShutdown(scene,directory);
+                break;
             case "compact-lens":
                 RequireControl("SPACETANGENT_COMPACT_LENS_PROBE");
                 await ExerciseCompactLens(scene, directory);
@@ -134,6 +137,9 @@ public partial class EarthOrbitProbe
                 break;
             case "archive-models":
                 await ExerciseAuthoredArchivedModels(scene, directory);
+                break;
+            case "archive-culling":
+                await ExerciseArchivedCulling(scene,directory);
                 break;
             case "archive-layers":
                 await ExerciseAuthoredArchiveLayers(scene, directory);

@@ -48,6 +48,13 @@ public partial class WorkspaceInputSmoke : Node
             Require(_scene.Session is not null && Session.World.Satellites.Any(satellite => satellite.Id == Jason),
                 "DE440 and the original Jason-1 add-on must load.");
             Tree.Root.NotifyMouseEntered();
+            if (System.Environment.GetEnvironmentVariable("SPACETANGENT_LIVE_SATELLITE_UPDATE_SMOKE") == "1")
+            {
+                await ExerciseLiveSatelliteUpdate();
+                GD.Print("SpaceTangent live satellite update input smoke passed");
+                exitCode = 0;
+                return;
+            }
             if (System.Environment.GetEnvironmentVariable("SPACETANGENT_VIEW_TOOLS_SMOKE_ONLY") == "1")
             {
                 await ExerciseMeasurements(scratch.FullName);

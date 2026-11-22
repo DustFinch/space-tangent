@@ -42,6 +42,7 @@ public partial class WorkspaceInputSmoke
         Require(await _scene.StopRecording() is null, "Stopping an inactive recording is a no-op.");
         Require(!_scene.QueueScreenshot("bad\0capture.png"), "An invalid screenshot path must be refused before capture.");
         RequireScenario(before, Session.CaptureScenario(0), "Failed input and filesystem operations");
+        await ExerciseFileDialogActions(directory);
         await ExerciseTourAndPluginRecovery(directory);
         await ExerciseTimeAndOfflineControls(directory);
         await ExerciseOptionalResourceRecovery(directory);

@@ -22,6 +22,7 @@ public partial class EarthOrbitProbe
             "ModelWitness" "Sol/Earth" { Class "minormoon" Radius 10 Mesh "witness.cmod" FixedPosition [10000 0 0] }
             "OpaqueWitness" "Sol/Earth" { Radius 10 Mesh "opaque.cmod" FixedPosition [10000 0 0] }
             "BlendWitness" "Sol/Earth" { Radius 10 Mesh "blend.cmod" FixedPosition [10000 0 0] }
+            "StandardWitness" "Sol/Earth" { Radius 10 Mesh "standard.cmod" FixedPosition [10000 0 0] }
             """);
         string modelSource = """
             #celmodel__ascii
@@ -46,6 +47,7 @@ public partial class EarthOrbitProbe
         File.WriteAllText(Path.Combine(models, "witness.cmod"), modelSource);
         File.WriteAllText(Path.Combine(models, "opaque.cmod"), modelSource);
         File.WriteAllText(Path.Combine(models, "blend.cmod"), modelSource.Replace("end_material", "opacity 0.5\nend_material"));
+        File.WriteAllText(Path.Combine(models, "standard.cmod"), modelSource.Replace("emissive 0.1 0.2 0.3", "emissive 0 0 0"));
         using (var color = Image.CreateEmpty(8, 8, false, Image.Format.Rgba8))
         using (var normal = Image.CreateEmpty(8, 8, false, Image.Format.Rgba8))
         {
@@ -63,7 +65,8 @@ public partial class EarthOrbitProbe
             if (scene.Renderer(0).ImportedBodyNode(modelId)?.Mesh is not ArrayMesh)
                 throw new InvalidOperationException("The authored source must publish a decoded model before replay starts.");
             var fixture = new LegacyWireFixture().Names(name, "world/" + name, "Sol/Earth", "world/Sol/Earth",
-                "Sol/Earth/OpaqueWitness", "opaque material", "Sol/Earth/BlendWitness", "blend material");
+                "Sol/Earth/OpaqueWitness", "opaque material", "Sol/Earth/BlendWitness", "blend material",
+                "Sol/Earth/StandardWitness", "standard material");
             byte[] model = fixture.Body(); U(model, 0, 0); U(model, 48, 1); F(model, 16, 15); F(model, 60, 0);
             F(model, 40, 0); F(model, 44, 1);
             byte[] earth = fixture.Body(); U(earth, 0, 2); U(earth, 48, 3); F(earth, 16, 15); F(earth, 60, 0);
@@ -74,6 +77,8 @@ public partial class EarthOrbitProbe
             byte[] blend = (byte[])model.Clone(); U(blend, 0, 6); U(blend, 48, 7);
             fixture.Record(3, fixture.Frame(opaque, sequence: 4));
             fixture.Record(3, fixture.Frame(blend, sequence: 5));
+            byte[] standard = (byte[])model.Clone(); U(standard, 0, 8); U(standard, 48, 9);
+            fixture.Record(3, fixture.Frame(standard, sequence: 6));
             string path = Path.Combine(directory, "authored-models.celframe"); File.WriteAllBytes(path, fixture.File());
             if (!scene.StartReplay(path)) throw new InvalidOperationException("The authored model recording did not open.");
             var renderer = scene.Renderer(0);
@@ -95,6 +100,7 @@ public partial class EarthOrbitProbe
             if (!ReferenceEquals(first, restored)) throw new InvalidOperationException("Model replay must reuse the bounded body pool.");
             scene._Process(1d / 30); CheckUnlit("Sol/Earth/OpaqueWitness", alpha: false); await Drawn();
             scene._Process(1d / 30); CheckUnlit("Sol/Earth/BlendWitness", alpha: true); await Drawn();
+            scene._Process(1d / 30); CheckUnlit("Sol/Earth/StandardWitness", alpha: false, emission: false); await Drawn();
             scene._Process(1d / 30);
             if (renderer.ArchivedGeometry is not null || renderer.ArchivedBody(name) is not null || first.Mesh is not null)
                 throw new InvalidOperationException("Completing model replay must release its mesh overrides and archived geometry.");
@@ -102,14 +108,15 @@ public partial class EarthOrbitProbe
                 throw new IOException("Could not retain the archived model image.");
             GD.Print($"Authored archived model GPU: normal/specular/emission maps, opaque/blended materials, model-to-globe pool reuse, clear and recovery; {affected} changed samples.");
 
-            void CheckUnlit(string body, bool alpha)
+            void CheckUnlit(string body, bool alpha, bool emission = true)
             {
                 if (renderer.ArchivedBody(body) is not { Visible: true } node || !ReferenceEquals(first, node) ||
                     node.GetSurfaceOverrideMaterial(0) is not ShaderMaterial material ||
                     material.Shader.ResourcePath.EndsWith("_blend.gdshader", StringComparison.Ordinal) != alpha ||
                     Math.Abs(material.GetShaderParameter("tint").AsColor().A - (alpha ? .5 : 1)) > 1e-6 ||
                     !material.GetShaderParameter("has_map").AsBool() || material.GetShaderParameter("has_normal").AsBool() ||
-                    material.GetShaderParameter("emission_factor").AsVector3().Length() < .01f)
+                    (emission ? material.GetShaderParameter("emission_factor").AsVector3().Length() < .01f :
+                        material.GetShaderParameter("emission_factor").AsVector3().Length() > 1e-6f))
                     throw new InvalidOperationException($"The archived {body} material lost its emission, opacity or replacement metadata.");
             }
 

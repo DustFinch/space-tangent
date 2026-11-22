@@ -86,6 +86,23 @@ public partial class WorkspaceInputSmoke
                 $"The plugin must have zoom access only to its own observer. {local.Error}");
             Require(local.Convert(".hours", "one hour", "step.hours") == "st.log('local importer')",
                 "The registered plugin importer must run and validate returned Lua.");
+            string importerInput = Path.Combine(root, "step.hours"), importerOutput = Path.Combine(root, "converted.lua");
+            File.WriteAllText(importerInput, "one hour");
+            var conversionSource = Find<FileDialog>("ConvertTourSource");
+            var conversionTarget = Find<FileDialog>("ConvertedTourTarget");
+            conversionSource.EmitSignal(FileDialog.SignalName.FileSelected, importerInput);
+            Require(conversionTarget.Visible, "A plugin importer must reach the normal destination dialog.");
+            conversionTarget.Hide(); conversionTarget.EmitSignal(FileDialog.SignalName.FileSelected, importerOutput);
+            Require(File.ReadAllText(importerOutput) == "st.log('local importer')", "The normal UI must save the plugin importer's validated Lua.");
+            using (var oversized = File.Create(importerInput)) oversized.SetLength(32769);
+            conversionSource.EmitSignal(FileDialog.SignalName.FileSelected, importerInput);
+            Require(Find<Label>("WorkspaceStatus").Text.Contains("size quota", StringComparison.Ordinal) && !conversionTarget.Visible,
+                "An oversized plugin input must be refused before opening its destination.");
+            File.WriteAllText(importerInput, "bad input");
+            conversionSource.EmitSignal(FileDialog.SignalName.FileSelected, importerInput);
+            Require(Find<Label>("WorkspaceStatus").Text.StartsWith("Could not convert tour.", StringComparison.Ordinal) &&
+                Find<Label>("WorkspaceStatus").Text.Contains("assertion failed", StringComparison.OrdinalIgnoreCase) && !conversionTarget.Visible,
+                "A failed plugin conversion must report its assertion without producing output: " + Find<Label>("WorkspaceStatus").Text);
             var epoch = Session[0].Epoch;
             await Invoke("Read outside plugin");
             _ = Complete(local);
@@ -115,6 +132,20 @@ public partial class WorkspaceInputSmoke
             GD.Print("UI: displayed local plugin media, isolated the view, and cleared it on disable.");
             Require(!local.Enabled && local.Commands.Count() == 0 && local.Importers.Count() == 0,
                 "Disabling a plugin must remove its commands and importers.");
+            string preferences = System.Environment.GetEnvironmentVariable("SPACETANGENT_ADDONS_SETTINGS_PATH")!;
+            byte[] retainedPreferences = File.ReadAllBytes(preferences);
+            File.Delete(preferences); Directory.CreateDirectory(preferences);
+            try
+            {
+                Require(_scene.OpenPlugin(Path.Combine(root, "plugin.json"), reenable: true) is null &&
+                    Find<Label>("WorkspaceStatus").Text.StartsWith("Could not open plugin.", StringComparison.Ordinal),
+                    "A failed preference write must discard the newly constructed plugin instead of enabling it.");
+            }
+            finally { Directory.Delete(preferences); File.WriteAllBytes(preferences, retainedPreferences); }
+            var recovered = _scene.OpenPlugin(Path.Combine(root, "plugin.json"), reenable: true)
+                ?? throw new InvalidOperationException("A plugin must reenable after its preference file becomes writable.");
+            recovered.Disable();
+            await ToSignal(Tree, SceneTree.SignalName.ProcessFrame);
             GD.Print("UI: ran the original tour plugin and checked local commands, waits, events, importer, folder isolation and disable.");
 
             async Task Invoke(string label)

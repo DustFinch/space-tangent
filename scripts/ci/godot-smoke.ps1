@@ -50,3 +50,5 @@ foreach ($duration in @('NaN', 'Infinity', '0.05', '601')) {
     }
 }
 Write-Output 'Public-data startup movie duration refusals passed.'
+# Expected native refusals must not become the enclosing GitHub step's exit status.
+exit 0

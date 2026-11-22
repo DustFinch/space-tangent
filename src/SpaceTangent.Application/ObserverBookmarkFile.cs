@@ -135,9 +135,11 @@ public sealed class ObserverBookmarkFile(string path)
         var names = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         foreach (ObserverBookmark item in bookmarks)
         {
+            if (item?.Link?.Length > SceneLink.MaximumLength)
+                throw new InvalidDataException("A bookmark scene link exceeds its size limit.");
             if (item is null || string.IsNullOrWhiteSpace(item.Name) || item.Name.Length > 100 ||
                 item.Name.Any(char.IsControl) || !names.Add(item.Name) || item.Link is null ||
-                item.Link.Length > SceneLink.MaximumLength || !item.Link.StartsWith(SceneLink.Scheme, StringComparison.Ordinal))
+                !item.Link.StartsWith(SceneLink.Scheme, StringComparison.Ordinal))
                 throw new InvalidDataException("A bookmark has an invalid or repeated name or a malformed link.");
         }
     }

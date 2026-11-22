@@ -6,6 +6,8 @@ In free flight, **WASD** moves in the camera plane, **R/F** changes height, and 
 
 **Scenarios** can save a named bookmark or create a portable `spacetangent://scene/` link. Both preserve the view count and layout, camera placement and field, exact TDB epochs, the active view, time synchronization and ΔT. Bookmarks are stored in the user's profile. Set `SPACETANGENT_BOOKMARKS_PATH` to use a different profile file.
 
+Shared links and bookmarks include the active observing cameras but omit remembered places on other bodies and persistent view identities. The live workspace remains unchanged. Saved `.stscene` files, frame recordings and automatic place preferences retain their full place history. Links exceeding 44,000 characters are refused when created; a large workspace can still be saved as a scene file within its format's size limit.
+
 The link box imports `cel://` versions 3 and 4 in the `Freeflight` and `Follow` frames. Position, attitude, selection, TDB epoch, field of view and pause are restored. Unapplied parameters such as rendering flags are reported. A link whose frame or object is unavailable leaves the current scene in place.
 
 Open a JSON array of archived observer bookmarks through **Open scenario**. The simulator adds the valid entries to the existing bookmark list, preserving names, pose, epoch, playback rate and field of view. Repeated names and unavailable frames are counted as skipped. A single archived observer JSON still opens directly. The mean-equator frame follows the body's pole without daily rotation and is stored in scenario version 17.

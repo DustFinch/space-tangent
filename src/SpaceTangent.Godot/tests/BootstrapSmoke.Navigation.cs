@@ -167,7 +167,7 @@ public partial class BootstrapSmoke
         scene._UnhandledKeyInput(wider);
         Require(session[0].ActiveOptics?.Eyepiece.FocalMillimeters == 15, "Period must step to a weaker eyepiece.");
         session.RestoreScenario(beforeOptics);
-        var ground = session[0].EarthObserver ?? EarthObserverCamera.Moscow;
+        var ground = session[0].ObserverCamera;
         using var drag = new InputEventMouseMotion { ButtonMask = MouseButtonMask.Right, Relative = new(40, -20) };
         viewport.EmitSignal(Control.SignalName.GuiInput, drag);
         double groundScale = Math.Tan(session[0].EffectiveFieldOfView * Math.PI / 360) / Math.Tan(25 * Math.PI / 180);

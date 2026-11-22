@@ -145,6 +145,12 @@ public partial class WorkspaceInputSmoke
         var link = Find<LineEdit>("SceneLinkInput");
         string native = link.Text;
         Require(native.StartsWith(SceneLink.Scheme, StringComparison.Ordinal), "The scene must have a portable link.");
+        RequireScenario(expected, Session.CaptureScenario(1), "Creating a shared link without mutating the live workspace");
+        var shared = SceneLink.Read(native, Session.World, Session.DeltaT).Scenario;
+        Require(shared.Views.All(view => !view.Places.HasIdentity && view.Places.Locations.Count == 0),
+            "Shared links and bookmarks must omit private place history and persistent view keys.");
+        // The shared scene keeps every physical observer field; only local persistence state is private.
+        expected = expected with { Views = expected.Views.Select(view => view with { Places = default }).ToArray() };
 
         const string follow = "cel://Follow/Sol:Earth/2024-04-09T00:00:00.00000?x=AAAAAAAAAAAB&y=&z=&ow=1&ox=0&oy=0&oz=0&select=Sol:Earth:Moon&fov=45&ts=1&ltd=0&p=1&ver=3";
         link.Text = follow + "&rf=1";

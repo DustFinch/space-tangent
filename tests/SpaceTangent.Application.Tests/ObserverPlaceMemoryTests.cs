@@ -190,26 +190,48 @@ public sealed class ObserverPlaceMemoryTests
     }
 
     [Fact]
-    public void ABlockedDestinationKeepsTheLastValidPreferencesAndCleansTemporaryFiles()
+    public void ABlockedDestinationIsPreservedAndTemporaryFilesAreCleanedBeforeRecovery()
     {
         var root = Directory.CreateTempSubdirectory("st-place-blocked-");
         try
         {
             var session = SharedClockTests.Create(); session.SetEarthObserver(0, Earth);
-            string path = Path.Combine(root.FullName, "places.json"), backup = path + ".valid";
-            ObserverPlacePreferences.Save(path, session);
-            byte[] before = ObserverPlacePreferences.Load(path);
-            File.Move(path, backup);
+            string path = Path.Combine(root.FullName, "places.json");
             Directory.CreateDirectory(path);
             session.SetEarthObserver(0, EarthObserverCamera.Tromso);
             Assert.True(Record.Exception(() => ObserverPlacePreferences.Save(path, session)) is IOException or UnauthorizedAccessException);
-            Assert.Equal(before, ObserverPlacePreferences.Load(backup));
+            Assert.True(Directory.Exists(path));
             Assert.Empty(Directory.GetFileSystemEntries(path));
             Assert.Empty(Directory.GetFiles(root.FullName, "*.tmp"));
             Directory.Delete(path);
-            File.Move(backup, path);
             ObserverPlacePreferences.Save(path, session);
             Assert.Equal(ObserverPlacePreferences.Capture(session), ObserverPlacePreferences.Load(path));
+        }
+        finally { root.Delete(true); }
+    }
+
+    [Fact]
+    public void PreferenceCleanupOnlyRemovesOldTemporaryFilesForTheExactDestination()
+    {
+        var root = Directory.CreateTempSubdirectory("st-place-stale-");
+        try
+        {
+            string path = Path.Combine(root.FullName, "places.json");
+            string stale = path + "." + Guid.NewGuid().ToString("N") + ".tmp";
+            string recent = path + "." + Guid.NewGuid().ToString("N") + ".tmp";
+            string foreign = Path.Combine(root.FullName, "other.json." + Guid.NewGuid().ToString("N") + ".tmp");
+            string malformed = path + "." + new string('z', 32) + ".tmp";
+            foreach (string file in new[] { stale, recent, foreign, malformed }) File.WriteAllText(file, "sentinel");
+            foreach (string file in new[] { stale, foreign, malformed }) File.SetLastWriteTimeUtc(file, DateTime.UtcNow.AddDays(-2));
+            string nested = Directory.CreateDirectory(Path.Combine(root.FullName, "nested")).FullName;
+            string nestedTemp = Path.Combine(nested, Path.GetFileName(stale));
+            File.WriteAllText(nestedTemp, "sentinel");
+            File.SetLastWriteTimeUtc(nestedTemp, DateTime.UtcNow.AddDays(-2));
+            ObserverPlacePreferences.Save(path, SharedClockTests.Create());
+            Assert.False(File.Exists(stale));
+            foreach (string retained in new[] { recent, foreign, malformed, nestedTemp })
+                Assert.Equal("sentinel", File.ReadAllText(retained));
+            Assert.NotEmpty(ObserverPlacePreferences.Load(path));
         }
         finally { root.Delete(true); }
     }

@@ -2,6 +2,8 @@
 
 SpaceTangent is a 3D astronomy simulator for flying through the Solar System, exploring the sky from Earth, and replaying spacecraft missions from real trajectory data. It runs on Godot .NET and has been verified on Windows.
 
+See the [compatibility matrix](docs/COMPATIBILITY.md) for supported workflows and limits, and the [optional-input inventory](docs/OPTIONAL_TEST_INPUTS.md) for remaining historical evidence gaps. Comparative UI acceptance is still pending.
+
 ![SpaceTangent split view showing Earth at the day–night boundary on the left and Saturn with its rings on the right](docs/images/earth-and-saturn.png)
 
 *Earth at the terminator and Saturn's rings in two independently controlled views. Earth imagery from NASA Earth Observatory. Saturn textures from CelestiaContent. [Planetary data notes](docs/PLANET_DATA.md) · [Saturn asset sources](https://github.com/CelestiaProject/CelestiaContent/tree/60316cf1c7df289b44b3c99711913bdbf1daea2e/textures/hires)*

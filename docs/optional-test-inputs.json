@@ -1,0 +1,671 @@
+{
+  "version": 1,
+  "baselineCases": 39,
+  "executedAfterRecovery": 5,
+  "remainingCases": 34,
+  "counting": "Unique original cases, not summed runs. Regenerated/upstream evidence does not establish lost historical file hashes.",
+  "cases": [
+    {
+      "repository": "core",
+      "test": "SpaceTangent.Core.Tests.OrderedSpiceCatalogueTests.CassiniArchiveCustomModelsTakePrecedenceInsideTimelinePhases",
+      "source": "tests/SpaceTangent.Core.Tests/OrderedSpiceCatalogueTests.cs",
+      "status": "historical-input-unavailable",
+      "requiredVariables": [
+        "SPACETANGENT_CASSINI_V16",
+        "SPACETANGENT_DE440",
+        "SPACETANGENT_VSOP87"
+      ],
+      "variablesNotInProfile": [
+        "SPACETANGENT_CASSINI_V16"
+      ],
+      "historicalInputs": "v16/source/00-ssc/cassini.ssc and local resources; DE440; VSOP87",
+      "recoveryPriority": "P1",
+      "evidenceLimit": "Exact archived installation or independent historical witness is unavailable. Related current-format tests do not establish that historical case.",
+      "nextAction": "Keep this test and recover the exact source/version or run an independently labelled regenerated contract; do not change its expected values."
+    },
+    {
+      "repository": "core",
+      "test": "SpaceTangent.Core.Tests.SscScriptModelCatalogueTests.OriginalPackUsesItsEmbeddedSscAndDeclaredLocalResources",
+      "source": "tests/SpaceTangent.Core.Tests/SscScriptModelCatalogueTests.cs",
+      "status": "historical-input-unavailable",
+      "requiredVariables": [
+        "SPACETANGENT_SCRIPTED_PACK"
+      ],
+      "variablesNotInProfile": [
+        "SPACETANGENT_SCRIPTED_PACK"
+      ],
+      "historicalInputs": "scripted pack: embedded SSC, scripts/factory.lua, cassini.glb",
+      "recoveryPriority": "P1",
+      "evidenceLimit": "Exact archived installation or independent historical witness is unavailable. Related current-format tests do not establish that historical case.",
+      "nextAction": "Keep this test and recover the exact source/version or run an independently labelled regenerated contract; do not change its expected values."
+    },
+    {
+      "repository": "core",
+      "test": "SpaceTangent.Core.Tests.CompositeMissionTests.ArchivedSaturnPackRetainsPolynomialPhasesAndWeightedRelativeStates",
+      "source": "tests/SpaceTangent.Core.Tests/CompositeMissionTests.cs",
+      "status": "historical-input-unavailable",
+      "requiredVariables": [
+        "SPACETANGENT_ARCHIVED_COMPOUND_PACK",
+        "SPACETANGENT_CHEBYSHEV_ROOT"
+      ],
+      "variablesNotInProfile": [
+        "SPACETANGENT_ARCHIVED_COMPOUND_PACK"
+      ],
+      "historicalInputs": "pack.json and companion series; CHEBYSHEV_ROOT/reference.json",
+      "recoveryPriority": "P2",
+      "evidenceLimit": "Exact archived installation or independent historical witness is unavailable. Related current-format tests do not establish that historical case.",
+      "nextAction": "Keep this test and recover the exact source/version or run an independently labelled regenerated contract; do not change its expected values."
+    },
+    {
+      "repository": "core",
+      "test": "SpaceTangent.Core.Tests.PackedSatelliteCatalogTests.ReadsOriginalSciencePacksAcrossTheirArchivedVersions",
+      "source": "tests/SpaceTangent.Core.Tests/PackedSatelliteCatalogTests.cs",
+      "status": "historical-input-unavailable",
+      "requiredVariables": [
+        "SPACETANGENT_PACKED_SCIENCE",
+        "SPACETANGENT_PACKED_SCIENCE_VERSIONS"
+      ],
+      "variablesNotInProfile": [
+        "SPACETANGENT_PACKED_SCIENCE_VERSIONS"
+      ],
+      "historicalInputs": "Seven archived pack.json files with meshes/trajectories and baseline science pack",
+      "recoveryPriority": "P1",
+      "evidenceLimit": "Exact archived installation or independent historical witness is unavailable. Related current-format tests do not establish that historical case.",
+      "nextAction": "Keep this test and recover the exact source/version or run an independently labelled regenerated contract; do not change its expected values."
+    },
+    {
+      "repository": "core",
+      "test": "SpaceTangent.Core.Tests.MissionAnnotationTests.ArchivedRadarCaptionsKeepBothTimeWindowsAcrossFormats",
+      "source": "tests/SpaceTangent.Core.Tests/MissionAnnotationTests.cs",
+      "status": "historical-input-unavailable",
+      "requiredVariables": [
+        "SPACETANGENT_ANNOTATION_CORPUS"
+      ],
+      "variablesNotInProfile": [
+        "SPACETANGENT_ANNOTATION_CORPUS"
+      ],
+      "historicalInputs": "p4-annotation-source/notes.json and p4-annotation-packed/pack.json",
+      "recoveryPriority": "P2",
+      "evidenceLimit": "Exact archived installation or independent historical witness is unavailable. Related current-format tests do not establish that historical case.",
+      "nextAction": "Keep this test and recover the exact source/version or run an independently labelled regenerated contract; do not change its expected values."
+    },
+    {
+      "repository": "core",
+      "test": "SpaceTangent.Core.Tests.CassiniSpiceCatalogTests.ArchivedSscSelectionLoadsItsSelectedCassiniKernelsInOrder",
+      "source": "tests/SpaceTangent.Core.Tests/CassiniSpiceCatalogTests.cs",
+      "status": "historical-input-unavailable",
+      "requiredVariables": [
+        "SPACETANGENT_ARCHIVED_SSC_SELECTION"
+      ],
+      "variablesNotInProfile": [
+        "SPACETANGENT_ARCHIVED_SSC_SELECTION"
+      ],
+      "historicalInputs": "packed/ssc-selection/pack.json, kernels, reference.json",
+      "recoveryPriority": "P1",
+      "evidenceLimit": "Exact archived installation or independent historical witness is unavailable. Related current-format tests do not establish that historical case.",
+      "nextAction": "Keep this test and recover the exact source/version or run an independently labelled regenerated contract; do not change its expected values."
+    },
+    {
+      "repository": "core",
+      "test": "SpaceTangent.Core.Tests.SampledMissionCatalogTests.OriginalMslAndDawnSelectTheCorrectArcAndMatchLegacyCruiseStates",
+      "source": "tests/SpaceTangent.Core.Tests/SampledMissionCatalogTests.cs",
+      "status": "historical-input-unavailable",
+      "requiredVariables": [
+        "SPACETANGENT_DAWN_ROOT",
+        "SPACETANGENT_MSL_ROOT"
+      ],
+      "variablesNotInProfile": [
+        "SPACETANGENT_DAWN_ROOT",
+        "SPACETANGENT_MSL_ROOT"
+      ],
+      "historicalInputs": "MSL/msl.json + msl.xyzv and resources; Dawn/dawn.json + trajectories/dawn-cruise1.xyzv and remaining arcs",
+      "recoveryPriority": "P1",
+      "evidenceLimit": "Exact archived installation or independent historical witness is unavailable. Related current-format tests do not establish that historical case.",
+      "nextAction": "Keep this test and recover the exact source/version or run an independently labelled regenerated contract; do not change its expected values."
+    },
+    {
+      "repository": "core",
+      "test": "SpaceTangent.Core.Tests.PackedSatelliteCatalogTests.ArchivedDisplayRetainsTheOriginalLabelAndAuthoredTrail",
+      "source": "tests/SpaceTangent.Core.Tests/PackedSatelliteCatalogTests.cs",
+      "status": "historical-input-unavailable",
+      "requiredVariables": [
+        "SPACETANGENT_ARCHIVED_DISPLAY"
+      ],
+      "variablesNotInProfile": [
+        "SPACETANGENT_ARCHIVED_DISPLAY"
+      ],
+      "historicalInputs": "ARCHIVED_DISPLAY/pack.json and sibling source/sciencesat.json",
+      "recoveryPriority": "P2",
+      "evidenceLimit": "Exact archived installation or independent historical witness is unavailable. Related current-format tests do not establish that historical case.",
+      "nextAction": "Keep this test and recover the exact source/version or run an independently labelled regenerated contract; do not change its expected values."
+    },
+    {
+      "repository": "core",
+      "test": "SpaceTangent.Core.Tests.MissionTiledGlobeTests.MissionGlobesResolveOriginalDdsPyramidsInBothFormats",
+      "source": "tests/SpaceTangent.Core.Tests/MissionTiledGlobeTests.cs",
+      "status": "historical-input-unavailable",
+      "requiredVariables": [
+        "SPACETANGENT_MISSION_TILE_CORPUS"
+      ],
+      "variablesNotInProfile": [
+        "SPACETANGENT_MISSION_TILE_CORPUS"
+      ],
+      "historicalInputs": "p4-tiled-globe-source/mars.json and p4-tiled-globe-packed/pack.json + DDS levels",
+      "recoveryPriority": "P2",
+      "evidenceLimit": "Exact archived installation or independent historical witness is unavailable. Related current-format tests do not establish that historical case.",
+      "nextAction": "Keep this test and recover the exact source/version or run an independently labelled regenerated contract; do not change its expected values."
+    },
+    {
+      "repository": "core",
+      "test": "SpaceTangent.Core.Tests.MissionSensorTests.ArchivedFollowSpinCarriesOnlyTheLocalRateThroughMovingOffsets",
+      "source": "tests/SpaceTangent.Core.Tests/MissionSensorTests.cs",
+      "status": "historical-input-unavailable",
+      "requiredVariables": [
+        "SPACETANGENT_ARCHIVED_FOLLOW_SPIN"
+      ],
+      "variablesNotInProfile": [
+        "SPACETANGENT_ARCHIVED_FOLLOW_SPIN"
+      ],
+      "historicalInputs": "ARCHIVED_FOLLOW_SPIN/pack.json + Jason track/models",
+      "recoveryPriority": "P2",
+      "evidenceLimit": "Exact archived installation or independent historical witness is unavailable. Related current-format tests do not establish that historical case.",
+      "nextAction": "Keep this test and recover the exact source/version or run an independently labelled regenerated contract; do not change its expected values."
+    },
+    {
+      "repository": "core",
+      "test": "SpaceTangent.Core.Tests.StellarCatalogueTests.PinnedCatalogueContainsNearbyStarsAtPublishedScales",
+      "source": "tests/SpaceTangent.Core.Tests/StellarCatalogueTests.cs",
+      "status": "regenerated-astrometry",
+      "requiredVariables": [
+        "SPACETANGENT_SPATIAL_STARS"
+      ],
+      "variablesNotInProfile": [],
+      "historicalInputs": "SPATIAL_STARS with retained population, IDs and astrometry",
+      "recoveryPriority": "P1",
+      "evidenceLimit": "Pinned HYG 4.1 Cartesian astrometry and unaltered population assertions; historical adapter hash unavailable, display proxies explicitly labelled.",
+      "nextAction": "Rerun the pinned recovery recipe and preserve its provenance limits; retain all scientific assertions."
+    },
+    {
+      "repository": "core",
+      "test": "SpaceTangent.Core.Tests.StcCatalogueTests.SupplementaryAstrometryPositionsMissingOriginalModifications",
+      "source": "tests/SpaceTangent.Core.Tests/StcCatalogueTests.cs",
+      "status": "original-plus-regenerated",
+      "requiredVariables": [
+        "SPACETANGENT_EXOPLANET_CATALOGUE",
+        "SPACETANGENT_SPATIAL_STARS",
+        "SPACETANGENT_STC_ROOT",
+        "SPACETANGENT_STELLAR_ARCHIVE"
+      ],
+      "variablesNotInProfile": [],
+      "historicalInputs": "SPATIAL_STARS; STELLAR_ARCHIVE; STC_ROOT; EXOPLANET_CATALOGUE",
+      "recoveryPriority": "P1",
+      "evidenceLimit": "Original STC sources plus regenerated HYG supplementary astrometry; separate source-only baseline.",
+      "nextAction": "Rerun the pinned recovery recipe and preserve its provenance limits; retain all scientific assertions."
+    },
+    {
+      "repository": "core",
+      "test": "SpaceTangent.Core.Tests.LensingTests.ArchivedDeflectionDiskTracesAndColorTablesMatch",
+      "source": "tests/SpaceTangent.Core.Tests/LensingTests.cs",
+      "status": "historical-input-unavailable",
+      "requiredVariables": [
+        "SPACETANGENT_LENS_ORACLE"
+      ],
+      "variablesNotInProfile": [
+        "SPACETANGENT_LENS_ORACLE"
+      ],
+      "historicalInputs": "LENS_ORACLE JSON: deflection/spectrum/angles/traces/colors",
+      "recoveryPriority": "P2",
+      "evidenceLimit": "Exact archived installation or independent historical witness is unavailable. Related current-format tests do not establish that historical case.",
+      "nextAction": "Keep this test and recover the exact source/version or run an independently labelled regenerated contract; do not change its expected values."
+    },
+    {
+      "repository": "core",
+      "test": "SpaceTangent.Core.Tests.LegacySampledOrbitTests.ReadsTheVersionEighteenCruisePreviewWithoutItsEmbeddedSource",
+      "source": "tests/SpaceTangent.Core.Tests/LegacySampledOrbitTests.cs",
+      "status": "historical-input-unavailable",
+      "requiredVariables": [
+        "SPACETANGENT_ARCHIVED_SAMPLED_ORBIT"
+      ],
+      "variablesNotInProfile": [
+        "SPACETANGENT_ARCHIVED_SAMPLED_ORBIT"
+      ],
+      "historicalInputs": "ARCHIVED_SAMPLED_ORBIT/pack.json(format18), embedded SSC and trajectories/cruise.xyzv",
+      "recoveryPriority": "P1",
+      "evidenceLimit": "Exact archived installation or independent historical witness is unavailable. Related current-format tests do not establish that historical case.",
+      "nextAction": "Keep this test and recover the exact source/version or run an independently labelled regenerated contract; do not change its expected values."
+    },
+    {
+      "repository": "core",
+      "test": "SpaceTangent.Core.Tests.CassiniSpiceCatalogTests.PackedCassiniKeepsTheOriginalTrajectoryAndBothCameraFields",
+      "source": "tests/SpaceTangent.Core.Tests/CassiniSpiceCatalogTests.cs",
+      "status": "historical-input-unavailable",
+      "requiredVariables": [
+        "SPACETANGENT_CASSINI_JSON_ROOT",
+        "SPACETANGENT_CASSINI_PACKED_ROOT",
+        "SPACETANGENT_CASSINI_SPLIT_ORACLE",
+        "SPACETANGENT_CASSINI_SPLIT_ROOT"
+      ],
+      "variablesNotInProfile": [
+        "SPACETANGENT_CASSINI_PACKED_ROOT",
+        "SPACETANGENT_CASSINI_SPLIT_ORACLE",
+        "SPACETANGENT_CASSINI_SPLIT_ROOT"
+      ],
+      "historicalInputs": "CASSINI_JSON_ROOT/cassini.json; PACKED_ROOT; SPLIT_ROOT/00-orbits,99-frames; SPLIT_ORACLE",
+      "recoveryPriority": "P1",
+      "evidenceLimit": "Exact archived installation or independent historical witness is unavailable. Related current-format tests do not establish that historical case.",
+      "nextAction": "Keep this test and recover the exact source/version or run an independently labelled regenerated contract; do not change its expected values."
+    },
+    {
+      "repository": "core",
+      "test": "SpaceTangent.Core.Tests.SampledMissionCatalogTests.ArchivedMslAndDawnPacksMatchTheOriginalSourceArcsAndFrames",
+      "source": "tests/SpaceTangent.Core.Tests/SampledMissionCatalogTests.cs",
+      "status": "historical-input-unavailable",
+      "requiredVariables": [
+        "SPACETANGENT_DAWN_ROOT",
+        "SPACETANGENT_MSL_DAWN_PACKS",
+        "SPACETANGENT_MSL_ROOT"
+      ],
+      "variablesNotInProfile": [
+        "SPACETANGENT_DAWN_ROOT",
+        "SPACETANGENT_MSL_DAWN_PACKS",
+        "SPACETANGENT_MSL_ROOT"
+      ],
+      "historicalInputs": "MSL_ROOT; DAWN_ROOT; MSL_DAWN_PACKS/msl-pack,dawn-pack,msl-source + trajectories/models",
+      "recoveryPriority": "P1",
+      "evidenceLimit": "Exact archived installation or independent historical witness is unavailable. Related current-format tests do not establish that historical case.",
+      "nextAction": "Keep this test and recover the exact source/version or run an independently labelled regenerated contract; do not change its expected values."
+    },
+    {
+      "repository": "core",
+      "test": "SpaceTangent.Core.Tests.StcCatalogueTests.OriginalBinaryDatabasePositionsAllPreviouslyMissingStcRecords",
+      "source": "tests/SpaceTangent.Core.Tests/StcCatalogueTests.cs",
+      "status": "original-plus-regenerated",
+      "requiredVariables": [
+        "SPACETANGENT_SPATIAL_STARS",
+        "SPACETANGENT_STC_ASTROMETRY",
+        "SPACETANGENT_STC_ROOT",
+        "SPACETANGENT_STELLAR_ARCHIVE"
+      ],
+      "variablesNotInProfile": [],
+      "historicalInputs": "SPATIAL_STARS; STELLAR_ARCHIVE; STC_ROOT/*.stc; STC_ASTROMETRY binary stars.dat",
+      "recoveryPriority": "P1",
+      "evidenceLimit": "Original STC sources and native binary table, regenerated HYG supplement; retained native reference coordinates unchanged.",
+      "nextAction": "Rerun the pinned recovery recipe and preserve its provenance limits; retain all scientific assertions."
+    },
+    {
+      "repository": "core",
+      "test": "SpaceTangent.Core.Tests.MissionVectorTests.OriginalPlanesAndArchivedDirectionContractMatchPackedGeometry",
+      "source": "tests/SpaceTangent.Core.Tests/MissionVectorTests.cs",
+      "status": "historical-input-unavailable",
+      "requiredVariables": [
+        "SPACETANGENT_MISSION_VECTORS"
+      ],
+      "variablesNotInProfile": [
+        "SPACETANGENT_MISSION_VECTORS"
+      ],
+      "historicalInputs": "p4-vector-source/plane.json,direction.json; p4-vector-packed/pack.json",
+      "recoveryPriority": "P2",
+      "evidenceLimit": "Exact archived installation or independent historical witness is unavailable. Related current-format tests do not establish that historical case.",
+      "nextAction": "Keep this test and recover the exact source/version or run an independently labelled regenerated contract; do not change its expected values."
+    },
+    {
+      "repository": "core",
+      "test": "SpaceTangent.Core.Tests.SscCassiniTimelineTests.OriginalPackedHuygensMovesFromCarrierToFlightToFixedTitanSite",
+      "source": "tests/SpaceTangent.Core.Tests/SscCassiniTimelineTests.cs",
+      "status": "historical-input-unavailable",
+      "requiredVariables": [
+        "SPACETANGENT_DE440",
+        "SPACETANGENT_GENERIC_CASSINI_SSC",
+        "SPACETANGENT_SAT083",
+        "SPACETANGENT_SATURN_PCK",
+        "SPACETANGENT_SSC_WORLD_ROOT"
+      ],
+      "variablesNotInProfile": [
+        "SPACETANGENT_GENERIC_CASSINI_SSC"
+      ],
+      "historicalInputs": "GENERIC_CASSINI_SSC; SSC_WORLD_ROOT; SATURN_PCK; DE440; SAT083",
+      "recoveryPriority": "P1",
+      "evidenceLimit": "Exact archived installation or independent historical witness is unavailable. Related current-format tests do not establish that historical case.",
+      "nextAction": "Keep this test and recover the exact source/version or run an independently labelled regenerated contract; do not change its expected values."
+    },
+    {
+      "repository": "core",
+      "test": "SpaceTangent.Core.Tests.OrderedSpiceCatalogueTests.RelocatedCassiniV16SkipsSpiceForAvailableCustomModels",
+      "source": "tests/SpaceTangent.Core.Tests/OrderedSpiceCatalogueTests.cs",
+      "status": "historical-input-unavailable",
+      "requiredVariables": [
+        "SPACETANGENT_CASSINI_V16",
+        "SPACETANGENT_DE440",
+        "SPACETANGENT_VSOP87"
+      ],
+      "variablesNotInProfile": [
+        "SPACETANGENT_CASSINI_V16"
+      ],
+      "historicalInputs": "CASSINI_V16/source/00-ssc,packed/00-ssc,99-override; DE440; VSOP87",
+      "recoveryPriority": "P1",
+      "evidenceLimit": "Exact archived installation or independent historical witness is unavailable. Related current-format tests do not establish that historical case.",
+      "nextAction": "Keep this test and recover the exact source/version or run an independently labelled regenerated contract; do not change its expected values."
+    },
+    {
+      "repository": "core",
+      "test": "SpaceTangent.Core.Tests.MissionFootprintTests.ArchivedSchedulesKeepRatesTargetsAndNativeFootprints",
+      "source": "tests/SpaceTangent.Core.Tests/MissionFootprintTests.cs",
+      "status": "historical-input-unavailable",
+      "requiredVariables": [
+        "SPACETANGENT_ARCHIVED_OBSERVATIONS",
+        "SPACETANGENT_PROBE_MISSIONS_ROOT"
+      ],
+      "variablesNotInProfile": [
+        "SPACETANGENT_ARCHIVED_OBSERVATIONS"
+      ],
+      "historicalInputs": "ARCHIVED_OBSERVATIONS pack; PROBE_MISSIONS_ROOT/observation-verification.json",
+      "recoveryPriority": "P2",
+      "evidenceLimit": "Exact archived installation or independent historical witness is unavailable. Related current-format tests do not establish that historical case.",
+      "nextAction": "Keep this test and recover the exact source/version or run an independently labelled regenerated contract; do not change its expected values."
+    },
+    {
+      "repository": "core",
+      "test": "SpaceTangent.Core.Tests.MissionViewpointTests.ArchivedEarthViewpointsAndPackedDefinitionsAgree",
+      "source": "tests/SpaceTangent.Core.Tests/MissionViewpointTests.cs",
+      "status": "historical-input-unavailable",
+      "requiredVariables": [
+        "SPACETANGENT_VIEWPOINT_CORPUS"
+      ],
+      "variablesNotInProfile": [
+        "SPACETANGENT_VIEWPOINT_CORPUS"
+      ],
+      "historicalInputs": "p4-viewpoint-source/views.json; p4-viewpoint-packed/pack.json",
+      "recoveryPriority": "P2",
+      "evidenceLimit": "Exact archived installation or independent historical witness is unavailable. Related current-format tests do not establish that historical case.",
+      "nextAction": "Keep this test and recover the exact source/version or run an independently labelled regenerated contract; do not change its expected values."
+    },
+    {
+      "repository": "core",
+      "test": "SpaceTangent.Core.Tests.SscTimelineTests.OriginalGalileoAndProbeSwitchCentersAndKeepTheirActivePhases",
+      "source": "tests/SpaceTangent.Core.Tests/SscTimelineTests.cs",
+      "status": "historical-input-unavailable",
+      "requiredVariables": [
+        "SPACETANGENT_DE440",
+        "SPACETANGENT_GALILEO_REFERENCE",
+        "SPACETANGENT_STANDARD_SPACECRAFT"
+      ],
+      "variablesNotInProfile": [
+        "SPACETANGENT_GALILEO_REFERENCE"
+      ],
+      "historicalInputs": "STANDARD_SPACECRAFT/galileo.ssc + meshes/textures/trajectories; GALILEO_REFERENCE JSON; DE440",
+      "recoveryPriority": "P1",
+      "evidenceLimit": "Exact archived installation or independent historical witness is unavailable. Related current-format tests do not establish that historical case.",
+      "nextAction": "Keep this test and recover the exact source/version or run an independently labelled regenerated contract; do not change its expected values."
+    },
+    {
+      "repository": "core",
+      "test": "SpaceTangent.Core.Tests.PackedSatelliteCatalogTests.OriginalDeepProbeUsesItsB1950TrajectoryAndFixedAttitude",
+      "source": "tests/SpaceTangent.Core.Tests/PackedSatelliteCatalogTests.cs",
+      "status": "historical-input-unavailable",
+      "requiredVariables": [
+        "SPACETANGENT_ARCHIVED_DEEP_PROBE"
+      ],
+      "variablesNotInProfile": [
+        "SPACETANGENT_ARCHIVED_DEEP_PROBE"
+      ],
+      "historicalInputs": "ARCHIVED_DEEP_PROBE/pack.json+trajectory+jason.glb",
+      "recoveryPriority": "P2",
+      "evidenceLimit": "Exact archived installation or independent historical witness is unavailable. Related current-format tests do not establish that historical case.",
+      "nextAction": "Keep this test and recover the exact source/version or run an independently labelled regenerated contract; do not change its expected values."
+    },
+    {
+      "repository": "core",
+      "test": "SpaceTangent.Core.Tests.PackedMissionBodyTests.OriginalCmodPackRestoresItsFixedTrackAndArchivedModel",
+      "source": "tests/SpaceTangent.Core.Tests/PackedMissionBodyTests.cs",
+      "status": "historical-input-unavailable",
+      "requiredVariables": [
+        "SPACETANGENT_ARCHIVED_MODEL_OWNERS"
+      ],
+      "variablesNotInProfile": [
+        "SPACETANGENT_ARCHIVED_MODEL_OWNERS"
+      ],
+      "historicalInputs": "ARCHIVED_MODEL_OWNERS/cmod-ssc/pack.json,models/ship.glb",
+      "recoveryPriority": "P2",
+      "evidenceLimit": "Exact archived installation or independent historical witness is unavailable. Related current-format tests do not establish that historical case.",
+      "nextAction": "Keep this test and recover the exact source/version or run an independently labelled regenerated contract; do not change its expected values."
+    },
+    {
+      "repository": "core",
+      "test": "SpaceTangent.Core.Tests.MpcCatalogueTests.OriginalAsteroidsAndCometsMatchIndependentEclipticStates",
+      "source": "tests/SpaceTangent.Core.Tests/MpcCatalogueTests.cs",
+      "status": "historical-input-unavailable",
+      "requiredVariables": [
+        "SPACETANGENT_MPC_SELECTION"
+      ],
+      "variablesNotInProfile": [
+        "SPACETANGENT_MPC_SELECTION"
+      ],
+      "historicalInputs": "MPC_SELECTION MPCORB/CometEls rows Eros/Apophis/Halley/1I/2I/3I",
+      "recoveryPriority": "P1",
+      "evidenceLimit": "Exact archived installation or independent historical witness is unavailable. Related current-format tests do not establish that historical case.",
+      "nextAction": "Keep this test and recover the exact source/version or run an independently labelled regenerated contract; do not change its expected values."
+    },
+    {
+      "repository": "app",
+      "test": "SpaceTangent.Application.Tests.LegacyModelFormatsTests.ReadsTheArchivedAsciiMaterialAndOriginalDisplacedSphere",
+      "source": "tests/SpaceTangent.Application.Tests/LegacyModelFormatsTests.cs",
+      "status": "historical-input-unavailable",
+      "requiredVariables": [
+        "SPACETANGENT_ARCHIVED_MODEL_OWNERS",
+        "SPACETANGENT_LEGACY_MODEL_FORMATS"
+      ],
+      "variablesNotInProfile": [
+        "SPACETANGENT_ARCHIVED_MODEL_OWNERS",
+        "SPACETANGENT_LEGACY_MODEL_FORMATS"
+      ],
+      "historicalInputs": "LEGACY_MODEL_FORMATS/models/ship.cmod,panel.png,roughsphere.cms",
+      "recoveryPriority": "P2",
+      "evidenceLimit": "Exact archived installation or independent historical witness is unavailable. Related current-format tests do not establish that historical case.",
+      "nextAction": "Keep this test and recover the exact source/version or run an independently labelled regenerated contract; do not change its expected values."
+    },
+    {
+      "repository": "app",
+      "test": "SpaceTangent.Application.Tests.RecordingTests.ReadsDiscreteStarsFromTheOriginalRecorderAndClearsThemOnTheNextFrame",
+      "source": "tests/SpaceTangent.Application.Tests/RecordingTests.cs",
+      "status": "historical-input-unavailable",
+      "requiredVariables": [
+        "SPACETANGENT_DE440",
+        "SPACETANGENT_LEGACY_STAR_POINTS"
+      ],
+      "variablesNotInProfile": [
+        "SPACETANGENT_LEGACY_STAR_POINTS"
+      ],
+      "historicalInputs": "LEGACY_STAR_POINTS file and DE440",
+      "recoveryPriority": "P1",
+      "evidenceLimit": "Exact archived installation or independent historical witness is unavailable. Related current-format tests do not establish that historical case.",
+      "nextAction": "Keep this test and recover the exact source/version or run an independently labelled regenerated contract; do not change its expected values."
+    },
+    {
+      "repository": "app",
+      "test": "SpaceTangent.Application.Tests.PackedModelDecoderTests.ArchivedShuttleMatchesItsExternalGltfAtEveryCorner",
+      "source": "tests/SpaceTangent.Application.Tests/PackedModelDecoderTests.cs",
+      "status": "historical-input-unavailable",
+      "requiredVariables": [
+        "SPACETANGENT_GLTF_SHUTTLE"
+      ],
+      "variablesNotInProfile": [
+        "SPACETANGENT_GLTF_SHUTTLE"
+      ],
+      "historicalInputs": "GLTF_SHUTTLE/models/shuttle-original.glb,shuttle-external.gltf+external buffers/textures",
+      "recoveryPriority": "P2",
+      "evidenceLimit": "Exact archived installation or independent historical witness is unavailable. Related current-format tests do not establish that historical case.",
+      "nextAction": "Keep this test and recover the exact source/version or run an independently labelled regenerated contract; do not change its expected values."
+    },
+    {
+      "repository": "app",
+      "test": "SpaceTangent.Application.Tests.RecordingTests.ReadsTheArchivedCygnusLensAndItsCatalogueAnchor",
+      "source": "tests/SpaceTangent.Application.Tests/RecordingTests.cs",
+      "status": "historical-input-unavailable",
+      "requiredVariables": [
+        "SPACETANGENT_DE440",
+        "SPACETANGENT_LEGACY_LENS"
+      ],
+      "variablesNotInProfile": [
+        "SPACETANGENT_LEGACY_LENS"
+      ],
+      "historicalInputs": "LEGACY_LENS recording and DE440",
+      "recoveryPriority": "P1",
+      "evidenceLimit": "Exact archived installation or independent historical witness is unavailable. Related current-format tests do not establish that historical case.",
+      "nextAction": "Keep this test and recover the exact source/version or run an independently labelled regenerated contract; do not change its expected values."
+    },
+    {
+      "repository": "app",
+      "test": "SpaceTangent.Application.Tests.MissionReferenceBookmarkTests.RestoresTheSelectedReferenceArcAcrossTheRealMslLanding",
+      "source": "tests/SpaceTangent.Application.Tests/MissionReferenceBookmarkTests.cs",
+      "status": "historical-input-unavailable",
+      "requiredVariables": [
+        "SPACETANGENT_DE440",
+        "SPACETANGENT_MSL_ROOT",
+        "SPACETANGENT_SATURN_PCK"
+      ],
+      "variablesNotInProfile": [
+        "SPACETANGENT_MSL_ROOT"
+      ],
+      "historicalInputs": "MSL_ROOT/msl.json+trajectories+PCK; DE440; optionalSATURN_PCK passed toPlanetEphemerides",
+      "recoveryPriority": "P1",
+      "evidenceLimit": "Exact archived installation or independent historical witness is unavailable. Related current-format tests do not establish that historical case.",
+      "nextAction": "Keep this test and recover the exact source/version or run an independently labelled regenerated contract; do not change its expected values."
+    },
+    {
+      "repository": "app",
+      "test": "SpaceTangent.Application.Tests.LegacyModelFormatsTests.ArchivedModelOwnersKeepDistinctTexturesWhenTheirPackIsRelocated",
+      "source": "tests/SpaceTangent.Application.Tests/LegacyModelFormatsTests.cs",
+      "status": "historical-input-unavailable",
+      "requiredVariables": [
+        "SPACETANGENT_ARCHIVED_MODEL_OWNERS",
+        "SPACETANGENT_LEGACY_MODEL_FORMATS"
+      ],
+      "variablesNotInProfile": [
+        "SPACETANGENT_ARCHIVED_MODEL_OWNERS",
+        "SPACETANGENT_LEGACY_MODEL_FORMATS"
+      ],
+      "historicalInputs": "ARCHIVED_MODEL_OWNERS/source,packed manifests/resources forjason,sorce,synthetic0/1",
+      "recoveryPriority": "P2",
+      "evidenceLimit": "Exact archived installation or independent historical witness is unavailable. Related current-format tests do not establish that historical case.",
+      "nextAction": "Keep this test and recover the exact source/version or run an independently labelled regenerated contract; do not change its expected values."
+    },
+    {
+      "repository": "app",
+      "test": "SpaceTangent.Application.Tests.RecordingTests.RebuildsTheArchivedFullMoonCameraFromTheRecordedProjection",
+      "source": "tests/SpaceTangent.Application.Tests/RecordingTests.cs",
+      "status": "historical-input-unavailable",
+      "requiredVariables": [
+        "SPACETANGENT_DE440",
+        "SPACETANGENT_LEGACY_ORBITS",
+        "SPACETANGENT_LEGACY_RECORDING"
+      ],
+      "variablesNotInProfile": [
+        "SPACETANGENT_LEGACY_ORBITS",
+        "SPACETANGENT_LEGACY_RECORDING"
+      ],
+      "historicalInputs": "LEGACY_RECORDING file; siblingrecord.json scientific.observerState; DE440",
+      "recoveryPriority": "P1",
+      "evidenceLimit": "Exact archived installation or independent historical witness is unavailable. Related current-format tests do not establish that historical case.",
+      "nextAction": "Keep this test and recover the exact source/version or run an independently labelled regenerated contract; do not change its expected values."
+    },
+    {
+      "repository": "app",
+      "test": "SpaceTangent.Application.Tests.RecordingTests.TheArchivedFullMoonRecordingHasNineHundredCheckedFrames",
+      "source": "tests/SpaceTangent.Application.Tests/RecordingTests.cs",
+      "status": "historical-input-unavailable",
+      "requiredVariables": [
+        "SPACETANGENT_LEGACY_ORBITS",
+        "SPACETANGENT_LEGACY_RECORDING"
+      ],
+      "variablesNotInProfile": [
+        "SPACETANGENT_LEGACY_ORBITS",
+        "SPACETANGENT_LEGACY_RECORDING"
+      ],
+      "historicalInputs": "LEGACY_RECORDING900frames",
+      "recoveryPriority": "P1",
+      "evidenceLimit": "Exact archived installation or independent historical witness is unavailable. Related current-format tests do not establish that historical case.",
+      "nextAction": "Keep this test and recover the exact source/version or run an independently labelled regenerated contract; do not change its expected values."
+    },
+    {
+      "repository": "app",
+      "test": "SpaceTangent.Application.Tests.RecordingTests.ReadsSavedOrbitsAndLabelsFromTheOriginalWindowsRecorder",
+      "source": "tests/SpaceTangent.Application.Tests/RecordingTests.cs",
+      "status": "historical-input-unavailable",
+      "requiredVariables": [
+        "SPACETANGENT_DE440",
+        "SPACETANGENT_LEGACY_ORBITS",
+        "SPACETANGENT_LEGACY_RECORDING"
+      ],
+      "variablesNotInProfile": [
+        "SPACETANGENT_LEGACY_ORBITS",
+        "SPACETANGENT_LEGACY_RECORDING"
+      ],
+      "historicalInputs": "LEGACY_ORBITS file; DE440",
+      "recoveryPriority": "P1",
+      "evidenceLimit": "Exact archived installation or independent historical witness is unavailable. Related current-format tests do not establish that historical case.",
+      "nextAction": "Keep this test and recover the exact source/version or run an independently labelled regenerated contract; do not change its expected values."
+    },
+    {
+      "repository": "app",
+      "test": "SpaceTangent.Application.Tests.LocalSkySurveyTests.OriginalDssMetadataAndCachedTilesResolveTheOrionField",
+      "source": "tests/SpaceTangent.Application.Tests/LocalSkySurveyTests.cs",
+      "status": "upstream-capture",
+      "requiredVariables": [
+        "SPACETANGENT_SKY_SURVEYS"
+      ],
+      "variablesNotInProfile": [],
+      "historicalInputs": "SKY_SURVEYS/dss/properties,AllSky,Norder5/Dir0/Npix5359.jpg",
+      "recoveryPriority": "P2",
+      "evidenceLimit": "Pinned unmodified DSS metadata, overview and Orion tile from the official mirror; historical cache hash unavailable.",
+      "nextAction": "Rerun the pinned recovery recipe and preserve its provenance limits; retain all scientific assertions."
+    },
+    {
+      "repository": "app",
+      "test": "SpaceTangent.Application.Tests.LocalSkyPhotographTests.ReadsAllOriginalFilesAndPreservesCoordinatesCreditsAndVisibility",
+      "source": "tests/SpaceTangent.Application.Tests/LocalSkyPhotographTests.cs",
+      "status": "upstream-capture",
+      "requiredVariables": [
+        "SPACETANGENT_SKY_PHOTOGRAPHS"
+      ],
+      "variablesNotInProfile": [],
+      "historicalInputs": "SKY_PHOTOGRAPHS metadata+674imagefiles inclm1dumont.png,abell85.png,m2.png",
+      "recoveryPriority": "P2",
+      "evidenceLimit": "All 674 original upstream PNGs and unmodified metadata, pinned revision and every blob identity; scientific assertions unchanged.",
+      "nextAction": "Rerun the pinned recovery recipe and preserve its provenance limits; retain all scientific assertions."
+    },
+    {
+      "repository": "app",
+      "test": "SpaceTangent.Application.Tests.LuaCatalogueFactoryTests.RelocatedVersion17PackResolvesItsOwnModulesAndMatchesNativeCassiniStates",
+      "source": "tests/SpaceTangent.Application.Tests/LuaCatalogueFactoryTests.cs",
+      "status": "historical-input-unavailable",
+      "requiredVariables": [
+        "SPACETANGENT_SCRIPTED_ARCHIVED_PACK",
+        "SPACETANGENT_SCRIPTED_ARCHIVED_REFERENCE"
+      ],
+      "variablesNotInProfile": [
+        "SPACETANGENT_SCRIPTED_ARCHIVED_PACK",
+        "SPACETANGENT_SCRIPTED_ARCHIVED_REFERENCE"
+      ],
+      "historicalInputs": "SCRIPTED_ARCHIVED_PACK(format17)/scripts/pkg/curve.lua+resources;SCRIPTED_ARCHIVED_REFERENCE",
+      "recoveryPriority": "P1",
+      "evidenceLimit": "Exact archived installation or independent historical witness is unavailable. Related current-format tests do not establish that historical case.",
+      "nextAction": "Keep this test and recover the exact source/version or run an independently labelled regenerated contract; do not change its expected values."
+    },
+    {
+      "repository": "app",
+      "test": "SpaceTangent.Application.Tests.LegacyObserverProfileTests.ImportsTheArchivedMoscowProfileAndKeepsTheExistingView",
+      "source": "tests/SpaceTangent.Application.Tests/LegacyObserverProfileTests.cs",
+      "status": "historical-input-unavailable",
+      "requiredVariables": [
+        "SPACETANGENT_LEGACY_SETTINGS"
+      ],
+      "variablesNotInProfile": [
+        "SPACETANGENT_LEGACY_SETTINGS"
+      ],
+      "historicalInputs": "LEGACY_SETTINGS JSON with exactsiteheight.156,optics,DeltaT,etc",
+      "recoveryPriority": "P2",
+      "evidenceLimit": "Exact archived installation or independent historical witness is unavailable. Related current-format tests do not establish that historical case.",
+      "nextAction": "Keep this test and recover the exact source/version or run an independently labelled regenerated contract; do not change its expected values."
+    }
+  ]
+}

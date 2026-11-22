@@ -93,5 +93,20 @@
     "path": "scripts/sky/restore_culture_art.py",
     "sha256": "dcbd829fa8f4c6e9659f540984c691a73926b48c0bfbdb37027874b88ed6e184",
     "reason": "Official upstream culture artwork URL retained for pinned data provenance only."
+  },
+  {
+    "path": "docs/COMPATIBILITY.md",
+    "sha256": "830f5616650a445bb45c292c40cfa1456b845d40c1a6c89f0f4b9464cdd77573",
+    "reason": "Public comparison scope and accepted exclusions; upstream product names are documentation references, not identifiers."
+  },
+  {
+    "path": "docs/COMPATIBILITY.md",
+    "sha256": "98efaceb6d47f9a04584640e2cbaa5dd9fa88622d286710d01fd40b5e982f9e4",
+    "reason": "Public comparison scope and accepted exclusions; upstream product names are documentation references, not identifiers."
+  },
+  {
+    "path": "docs/COMPARATIVE_ACCEPTANCE.md",
+    "sha256": "1db5c9ad36fbbf338a05943b4749a229cf18644bf6d3b8a55726e66015ff939d",
+    "reason": "Public comparison scope and accepted exclusions; upstream product names are documentation references, not identifiers."
   }
 ]

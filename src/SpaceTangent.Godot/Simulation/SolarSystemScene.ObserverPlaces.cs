@@ -10,17 +10,18 @@ public partial class SolarSystemScene
     private int _observerPlacesRevision;
     private double _observerPlacesDelay;
     private bool _observerPlacesDirty;
+    private bool _observerPlacesEnabled;
     private bool _restoredStartupWorkspace;
 
     private void RestoreObserverPlaces()
     {
+        _observerPlacesEnabled = !_startupArguments.Any(argument => argument is
+            "--smoke-startup" or "--startup-scenario" or "--startup-default-settings" or "--startup-replay");
+        if (!_observerPlacesEnabled) return;
         string? configured = System.Environment.GetEnvironmentVariable("SPACETANGENT_OBSERVER_PLACES_PATH");
         // Freeze the path before probes or UI actions temporarily change the Delta-T file.
         _observerPlacesPath = Path.GetFullPath(string.IsNullOrWhiteSpace(configured)
             ? SettingsPath() + ".observer-places.json" : configured);
-        if (!_startupArguments.Contains("--smoke-startup", StringComparer.Ordinal) &&
-            !_startupArguments.Contains("--startup-scenario", StringComparer.Ordinal) &&
-            !_startupArguments.Contains("--startup-default-settings", StringComparer.Ordinal))
         {
             try
             {
@@ -43,7 +44,7 @@ public partial class SolarSystemScene
 
     private void AdvanceObserverPlaces(double delta)
     {
-        if (Session is null || _observerPlacesPath is null) return;
+        if (!_observerPlacesEnabled || Session is null || _observerPlacesPath is null) return;
         if (_observerPlacesRevision != Session.ObserverPlacesVersion)
         {
             _observerPlacesRevision = Session.ObserverPlacesVersion;
@@ -56,7 +57,7 @@ public partial class SolarSystemScene
 
     private void FlushObserverPlaces()
     {
-        if (Session is null || _observerPlacesPath is null ||
+        if (!_observerPlacesEnabled || Session is null || _observerPlacesPath is null ||
             (!_observerPlacesDirty && _observerPlacesRevision == Session.ObserverPlacesVersion)) return;
         try
         {

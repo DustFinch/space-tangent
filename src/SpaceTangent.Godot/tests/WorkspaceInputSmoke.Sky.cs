@@ -32,7 +32,7 @@ public partial class WorkspaceInputSmoke
             "Capella must be selectable and offer pointing for an Earth observer.");
         await ChooseMenuItem(actions, 0);
         Require(Session[1].EarthObserver is { ElevationDegrees: > 0 } && Session[1].Mode == CameraMode.Surface,
-            "Pointing at Capella must leave it above the Moscow horizon.");
+            "Pointing at Capella must leave it above the active observer's horizon.");
 
         await FillField("ObjectQuery", "Moon");
         await Click(Result(new("sol/moon")));

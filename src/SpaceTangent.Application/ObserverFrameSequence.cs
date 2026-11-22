@@ -111,7 +111,7 @@ public static class ObserverFrameSequence
             Span<byte> header = stackalloc byte[4 + DigestLength];
             _stream.ReadExactly(header);
             int size = BinaryPrimitives.ReadInt32LittleEndian(header);
-            if (size is <= 0 or > ScenarioFile.MaximumBytes)
+            if (size is <= 0 or > ScenarioFile.MaximumHistoryBytes)
                 throw new InvalidDataException("Frame recording payload exceeds its size limit.");
             byte[] data = new byte[size];
             _stream.ReadExactly(data);

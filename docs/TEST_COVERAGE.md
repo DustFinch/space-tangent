@@ -106,20 +106,29 @@ Coverage evidence belongs to its source revision. Preserve source hashes alongsi
 
 `summary.json` lists exactly which modules were measured and the missing source lines. Its combiner rejects empty reports, absent required modules and required modules without recorded hits. Combine additional headless/GPU runs with the core's `coverage_report.py`, requiring Core, Contracts, Application and Godot. Report Native, CLI and engine bindings separately until their own runs are included. Do not label a four-module percentage as coverage of all repository code.
 
-The initial goal is a stable baseline with no regression. A 95% gate should be enabled only after it is actually reached for the agreed modules; missing test data must not silently improve the percentage.
+The local matrix enforces 95% for each of the four agreed production modules. Missing test data must not silently improve the percentage; the original optional cases remain in the test suites and their outcomes are reported separately.
 
-The accepted local unit/GPU union on 2026-11-22 reached the following executable-line coverage. These results require the pinned optional corpus; they are not the data-free public CI percentages.
+The fresh local matrix on 2026-11-22 accepted 93 unit, ExternalData, headless and isolated rendered runs, including explicitly checked refusal contracts. Source snapshots matched before and after the complete run. Only these fresh accepted reports contribute to the following Debug executable-line coverage; earlier pre-fix hits are excluded. These results require the pinned optional corpus and are not the data-free public CI percentages.
 
 | Module | Covered / executable lines | Coverage |
 |---|---:|---:|
-| Core | 15,661 / 16,472 | 95.076% |
+| Core | 15,668 / 16,472 | 95.119% |
 | Contracts | 101 / 101 | 100% |
-| Application | 9,383 / 9,859 | 95.172% |
-| Godot | 13,977 / 14,712 | 95.004% |
+| Application | 9,580 / 10,065 | 95.181% |
+| Godot | 14,033 / 14,768 | 95.023% |
 
-The full available unit suites pass 1,033 Core and 697 Application cases per configuration. Of the previous 75 missing-data cases, 34 were restored and 41 still need unavailable historical inputs. New authored wire examples, recent public orbital-element captures and newly generated independent numerical references are identified separately; they do not recreate a missing original archive. Debug/Release and repeated profiles do not multiply these counts.
+The available unit suites pass 1,039 Core and 732 Application cases per configuration, with 23 and 11 historical-input skips respectively. Five of the 39 original cases at the start of this recovery package now execute; the remaining 34 are listed in the [optional-input inventory](OPTIONAL_TEST_INPUTS.md). New authored wire examples, recent public orbital-element captures and newly generated independent numerical references are identified separately; they do not recreate a missing original archive. Debug/Release and repeated profiles do not multiply these counts.
 
 Native managed IL, the Unity binding and CLI consumers have separate measured denominators. NativeAOT ABI and engine batch acceptance do not measure optimized native machine-code lines. Public CI keeps its own data-free/public-data artifacts and thresholds; the local four-module result does not create a private-data dependency in those jobs.
+
+| Separately measured Debug consumer | Covered / executable lines | Coverage |
+|---|---:|---:|
+| Pack CLI | 176 / 185 | 95.135% |
+| Model CLI | 51 / 53 | 96.226% |
+| Native managed wrapper | 55 / 59 | 93.220% |
+| Unity managed binding | 14 / 14 | 100% |
+
+These fresh consumer runs use unchanged consumer source. NativeAOT smoke reuses an explicitly identified unchanged DLL; it is not a new native publish or editor acceptance. The wrapper remains below 95%, with generated-record and exception-safety paths uncovered. Other editor scripts, packaged engine consumers and performance tooling are not included in the four-module threshold. Rendering profiles keep their image/geometry assertions; C# line coverage does not measure shader execution or visual equivalence.
 
 For an individual existing probe, use `scripts/testing/godot-probe-coverage.ps1` with a pinned `-DataProfile`, fresh `-OutputDirectory`, explicit `-Scene`, `-SuccessMarker`, and Godot console path. `-ProbeOptions` accepts a JSON object of string controls/output paths; it cannot override a pinned input. Capture uses isolated settings and an exclusive lock on the Godot instrumentation directory. Build/import happens before instrumentation unless `-SkipBuild` is explicitly chosen for the same unchanged build.
 
@@ -127,7 +136,7 @@ On a shared Windows workstation, pass `-Render -IsolatedDesktop`. The launcher c
 
 EarthOrbitProbe, EarthAccuracyProbe, MoonLightingProbe, MissionSwarmComputeProbe and RuntimeProfileProbe now flush opt-in coverage too. Each declares the modules it must load; all loaded known production trackers are flushed, and the final combined report still requires all four production modules. A diagnostic probe that does not initialize the application need not load it merely to produce a formal hit. Use `-RequiredModules` to match that probe's explicit contract. Numerical mesh-building waits have a bounded instrumentation-only allowance; ordinary acceptance keeps its original time limits and result assertions.
 
-Accept a profile only after a zero exit code, its requested success marker, required tracker-flush markers and nonempty required-module hits. Keep failed logs/XML for diagnosis and exclude them from accepted merged reports. Capture metadata in `run.json` records the profile checksum and controls; profile capture does not establish asset provenance. Record which optional branches actually ran, including blocked branches, rather than counting source methods as tests.
+Accept a profile only after its declared expected exit code (zero by default), its requested success marker, required tracker-flush markers and nonempty required-module hits. A negative contract may explicitly require exit code 1 together with its specific refusal message; an unexpected error is never accepted this way. Keep failed logs/XML for diagnosis and exclude them from accepted merged reports. Capture metadata in `run.json` records the profile checksum and controls; profile capture does not establish asset provenance. Record which optional branches actually ran, including blocked branches, rather than counting source methods as tests.
 
 EarthOrbitProbe supports three focused groups through `SPACETANGENT_COVERAGE_PROFILE`: `planets`, `demo-worlds`, and `recording`. The latter two require their existing explicit controls (`SPACETANGENT_DEMO_WORLDS_PROBE=1` plus `SPACETANGENT_PROCEDURAL_TERRAIN_PROBE=1`, or `SPACETANGENT_RECORDING_PROBE=1`). Each group keeps the original assertions and emits `SpaceTangent Earth coverage profile passed: NAME` only after completing them. Unknown groups and missing controls fail. Planet acceptance needs the documented planetary maps, ring profiles, PCK, center kernels and Mars relief dataset; an incomplete installation is not a successful empty probe. A new movie capture is separate evidence from compatibility with an original archived recording.
 
@@ -155,3 +164,11 @@ The archive-wire probe shares the unit suite's independent wire builder only in 
 Application CI uploads a separate data-free Cobertura/TRX report on Windows and Linux and runs launch-refusal and model CLI contracts. Set `ST_MODEL_TOOL_DLL` to a built model tool to run its Python acceptance locally. Optional `ST_CLI_COVERLET` and a fresh `ST_CLI_COVERAGE_DIRECTORY` collect each CLI invocation separately using the core's pinned tool; actual child statuses and stderr are preserved in `result.json`. CLI/Native reports have their own denominators. Private GPU data is not supplied to public CI, and no 95% application or Godot gate is claimed from that limited profile.
 
 `StartupCommandProbe.tscn` launches the ordinary main scene and flushes trackers as the scene tree exits. Pass application arguments to the probe runner as `-UserArguments @('--startup-exit', ...)`; they follow Godot's `--` separator and are recorded in `run.json`. The runner validates their count, length and characters before creating evidence. The application keeps its own normal exit code. Use `-ExpectedExitCode 1` only for a deliberate rejection test with an exact command-specific diagnostic marker; both the exit code and marker must match, and all required tracker and source-hit checks still apply. Merely observing the generic probe exit message does not verify a saved file: validate generated scenarios, PNG dimensions, movie frames and recording contents separately.
+
+## Startup preference isolation regression
+
+`res://tests/ObserverPlaceStartupProbe.tscn` creates a valid preference sentinel under `SPACETANGENT_EARTH_PROBE_OUTPUT`, starts the real application scene and checks the bytes after debounce and scene exit. Run it through the isolated rendered probe runner with a fresh output directory for each of five cases: no user arguments (normal read/write control), `--startup-default-settings`, `--startup-scenario OUTPUT/startup.stscene`, `--startup-replay OUTPUT/startup.stframes`, and `--smoke-startup`. Here `OUTPUT` is the directory supplied by the probe option, not a user's existing scene directory. The probe creates both fixtures there before starting the application.
+
+Acceptance requires `SpaceTangent observing place startup policy passed: normal` for the control and `SpaceTangent observing place startup policy passed: batch` for the other four runs, plus the runner's exit and tracker checks. Scenario, replay and smoke startup must not replace the automatic place file. The normal control must restore its saved place and save a subsequent edit. All settings and generated fixtures remain in the fresh runner output directory.
+
+Application regressions separately verify that large current-format recordings replay, shared links retain active cameras without private place histories or persistent view keys, scene files preserve that history, oversized bookmarks fail before replacement, and only old temporary files belonging to the exact preferences destination are cleaned.

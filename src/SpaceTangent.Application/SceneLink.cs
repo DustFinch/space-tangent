@@ -14,8 +14,24 @@ public static partial class SceneLink
     public const int MaximumLength = 44_000;
     private const string LegacyScheme = "cel://";
 
-    public static string Write(SimulationScenario scenario) => Scheme +
-        Convert.ToBase64String(ScenarioFile.Encode(scenario)).TrimEnd('=').Replace('+', '-').Replace('/', '_');
+    public static string Write(SimulationScenario scenario)
+    {
+        // A shared scene carries its active cameras, never private place history or persistent view identities.
+        var visible = scenario with
+        {
+            Views = Array.AsReadOnly(scenario.Views.Select(view => view with
+            {
+                EarthObserver = view.EarthObserver ??
+                    (view.Mode == CameraMode.Surface && view.Navigation is null ? view.ObserverCamera : null),
+                Places = default
+            }).ToArray())
+        };
+        string link = Scheme + Convert.ToBase64String(ScenarioFile.Encode(visible)).TrimEnd('=')
+            .Replace('+', '-').Replace('/', '_');
+        if (link.Length > MaximumLength)
+            throw new InvalidDataException("The scene link exceeds its size limit.");
+        return link;
+    }
 
     public static (SimulationScenario Scenario, string? Warning) Read(string text, SimulationWorld world, DeltaTModel deltaT)
     {

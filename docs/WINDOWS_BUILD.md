@@ -9,10 +9,12 @@ The lock files pin the public nuget.org packages. Godot restores into its ignore
 ```powershell
 dotnet restore src/SpaceTangent.Godot/SpaceTangent.Godot.csproj -p:Configuration=ExportRelease -r win-x64 --locked-mode
 godot --headless --path src/SpaceTangent.Godot --editor --import --quit
-godot --headless --path src/SpaceTangent.Godot --export-release "Windows Desktop" "C:/build/SpaceTangent/SpaceTangent.exe"
+godot --headless --path src/SpaceTangent.Godot --export-release "Windows Desktop" "C:/build/SpaceTangent/SpaceTangent.exe" --quit
 ```
 
 Keep the exported executable, resource pack and managed assembly directory together. Place local datasets next to the executable in `data` using the layout below. Environment-variable overrides from the simulation and add-on notes also work.
+
+For unattended Windows exports, invoke the main Godot executable, wait for its exit code and retain both output streams. A completed resource-pack log alone does not establish a successful exporter exit.
 
 - `data/de440.440` contains the verified DE440 input.
 - `data/science` uses the layout in [the science add-on notes](SCIENCE_ADDONS.md).

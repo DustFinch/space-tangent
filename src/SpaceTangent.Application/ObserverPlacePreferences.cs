@@ -35,10 +35,37 @@ public static class ObserverPlacePreferences
         try
         {
             Directory.CreateDirectory(Path.GetDirectoryName(full)!);
-            File.WriteAllBytes(temporary, bytes);
+            RemoveStaleTemporaryFiles(full);
+            using (var output = new FileStream(temporary, FileMode.CreateNew, FileAccess.Write, FileShare.None))
+            {
+                output.Write(bytes);
+                output.Flush(flushToDisk: true);
+            }
             File.Move(temporary, full, overwrite: true);
         }
         finally { File.Delete(temporary); }
+    }
+
+    private static void RemoveStaleTemporaryFiles(string target)
+    {
+        string prefix = Path.GetFileName(target) + ".";
+        DateTime cutoff = DateTime.UtcNow.AddDays(-1);
+        try
+        {
+            foreach (string candidate in Directory.EnumerateFiles(Path.GetDirectoryName(target)!))
+            {
+                string name = Path.GetFileName(candidate);
+                if (name.Length != prefix.Length + 32 + 4 || !name.StartsWith(prefix, StringComparison.Ordinal) ||
+                    !name.EndsWith(".tmp", StringComparison.Ordinal) ||
+                    !Guid.TryParseExact(name.AsSpan(prefix.Length, 32), "N", out _)) continue;
+                try
+                {
+                    if (File.GetLastWriteTimeUtc(candidate) < cutoff) File.Delete(candidate);
+                }
+                catch (Exception error) when (error is IOException or UnauthorizedAccessException) { }
+            }
+        }
+        catch (Exception error) when (error is IOException or UnauthorizedAccessException) { }
     }
 
     public static byte[] Load(string path)

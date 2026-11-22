@@ -7,6 +7,41 @@ namespace SpaceTangent.Application.Tests;
 
 public sealed class ScenarioVersionBoundaryTests
 {
+    [Theory]
+    [InlineData("night", "Night mode")]
+    [InlineData("layout", "invalid layout")]
+    [InlineData("missing-views", "missing views")]
+    [InlineData("script-aim", "script aim target")]
+    [InlineData("navigation-version", "Camera poses")]
+    [InlineData("navigation-range", "invalid camera pose")]
+    [InlineData("field", "field or observer frame")]
+    [InlineData("rate", "playback rate")]
+    [InlineData("marks", "reference marks")]
+    [InlineData("lighttime", "Light-time correction")]
+    public void InvalidDocumentVersionsAndCameraStateAreRejectedBeforeRestore(string fault,string diagnostic)
+    {
+        var document=JsonNode.Parse("""
+            {"version":51,"views":[{"dayTdb":2451545,"nanosecondsOfDay":0,"camera":"solar","selection":null,"playing":false}],
+             "synchronized":false,"clockOwner":0,"activeView":0,"deltaT":"morrisonStephenson2004"}
+            """)!.AsObject();
+        var view=document["views"]![0]!;
+        switch(fault)
+        {
+            case "night": document["version"]=34; document["nightMode"]=true; break;
+            case "layout": document["version"]=5; document["splitLayout"]="stacked"; break;
+            case "missing-views": document["views"]=null; break;
+            case "script-aim": document["version"]=48; view["scriptAimTarget"]="sol/moon"; break;
+            case "navigation-version": document["version"]=1; view["navigation"]=JsonNode.Parse("{\"rangeKilometers\":1}"); break;
+            case "navigation-range": view["navigation"]=JsonNode.Parse("{\"rangeKilometers\":0}"); break;
+            case "field": view["fieldOfViewDegrees"]=0; break;
+            case "rate": document["version"]=6; view["playbackRate"]=1; break;
+            case "marks": document["version"]=8; view["referenceMarks"]="bodyAxes"; break;
+            case "lighttime": document["version"]=9; view["lightTimeDelayed"]=true; break;
+        }
+        var error=Assert.Throws<InvalidDataException>(()=>ScenarioFile.Decode(Encoding.UTF8.GetBytes(document.ToJsonString())));
+        Assert.Contains(diagnostic,error.Message,StringComparison.OrdinalIgnoreCase);
+    }
+
     // Hand-authored wire documents: these do not depend on the current writer choosing a version.
     [Theory]
     [InlineData(4, "{\"stars\":true}", "Sky layers")]

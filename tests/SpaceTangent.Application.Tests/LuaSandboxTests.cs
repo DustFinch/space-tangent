@@ -194,6 +194,45 @@ public sealed class LuaSandboxTests
         Assert.Contains("sandbox matching work limit", Assert.Throws<ScriptRuntimeException>(() => Run(script, code)).Message);
     }
 
+    [Fact]
+    public void ExtraTupleRootsCountRetainedStringsButSharedClosuresAreNotCountedTwice()
+    {
+        var script=LuaSandbox.Create();
+        var tuple=DynValue.NewTuple(DynValue.NewString(new string('x',600_000)),DynValue.NewString("small"));
+        Assert.False(LuaSandbox.WithinRetainedLimit(script,[tuple],1024*1024));
+        Assert.True(LuaSandbox.WithinRetainedLimit(script,[tuple],4*1024*1024));
+        var closure=Run(script,"local value='captured'; return function() return value end");
+        Assert.True(LuaSandbox.WithinRetainedLimit(script,[closure,closure],1024*1024));
+    }
+
+    [Theory]
+    [InlineData("return string.gsub('x','x',true)")]
+    [InlineData("return string.rep({},2)")]
+    [InlineData("return string.format('%s',setmetatable({},{__tostring=function() return 'hidden' end}))")]
+    [InlineData("return string.format('%q',setmetatable({},{__tostring=function() return 'hidden' end}))")]
+    [InlineData("return string.format('%')")]
+    public void InvalidNativeArgumentsAndUnsafeFormattingCallbacksAreRefused(string source)
+    {
+        Assert.Throws<ScriptRuntimeException>(()=>Run(LuaSandbox.Create(),source));
+    }
+
+    [Theory]
+    [InlineData("%b()")]
+    [InlineData("(.)%1")]
+    public void NativeBalancedAndBackreferenceFallbacksKeepTheirWorkLimit(string pattern)
+    {
+        var script=LuaSandbox.Create(); script.Globals["subject"]=new string('x',10000); script.Globals["pattern"]=pattern;
+        Assert.Contains("native matching work limit",Assert.Throws<ScriptRuntimeException>(()=>Run(script,"return string.find(subject,pattern)")).Message);
+    }
+
+    [Fact]
+    public void NonAsciiRepeatedPatternsCannotScanAnOversizedSubject()
+    {
+        var script=LuaSandbox.Create(); script.Globals["subject"]=new string('é',LuaSandbox.MaximumPatternSubject+1);
+        Assert.Contains("repetition",Assert.Throws<ScriptRuntimeException>(()=>Run(script,"return string.find(subject,'é+')")).Message);
+        Assert.Equal("123",Run(script,"return string.rep(123,1)").String);
+    }
+
     private static string Values(DynValue result)
     {
         DynValue[] values = result.Type == DataType.Tuple ? result.Tuple : [result];

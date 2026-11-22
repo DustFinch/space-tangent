@@ -9,6 +9,29 @@ namespace SpaceTangent.Application.Tests;
 public sealed class ObserverEventContractTests
 {
     [Fact]
+    public void LocalTleSelectionReturnsAPassInsideTheTwoDaySearchWindow()
+    {
+        var directory=Directory.CreateTempSubdirectory("st-local-pass-");
+        try
+        {
+            // Original Jason-1 public TLE, also retained by the science catalogue regression.
+            File.WriteAllText(Path.Combine(directory.FullName,"jason.tle"),"""
+                JASON-1
+                1 26997U 01055A   11192.81984987 -.00000038  00000-0  10000-3 0  3699
+                2 26997  66.0463 303.1838 0007562 261.9351  98.0768 12.80928955448691
+                """);
+            var satellite=Assert.Single(SpaceTangent.Core.Addons.LocalTleCatalogue.Load(directory.FullName));
+            var world=new SimulationWorld(new SharedClockTests.StaticEphemeris(),[],localSatellites:[satellite]);
+            var observer=new ObserverView(satellite.Epoch,CameraMode.Surface,satellite.Id,false);
+            var found=Assert.IsType<ObserverEvent>(ObserverEventFinder.Next(world,observer,DeltaTModel.MorrisonStephenson2004));
+            Assert.Equal(satellite.Id,found.Target); Assert.Contains("JASON-1 pass",found.Description);
+            Assert.True(found.Epoch.CompareTo(satellite.Epoch)>=0&&found.Epoch.CompareTo(satellite.Epoch.AddSeconds(2*86400))<=0);
+            Assert.Null(found.FlareDirection);
+        }
+        finally {directory.Delete(recursive:true);}
+    }
+
+    [Fact]
     public void AnAnalyticalPlanetConjunctionIncludesTheRetardedEmissionTime()
     {
         var ephemeris = new ConjunctionEphemeris(); var world = new SimulationWorld(ephemeris, []);

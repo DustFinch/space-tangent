@@ -104,5 +104,26 @@ public sealed class TourRuntimeContractTests : IDisposable
         Assert.Equal(CameraMode.Lunar,session[0].Mode);
     }
 
+    [Theory]
+    [InlineData("while true do end","instruction quota")]
+    [InlineData("local t={} for i=1,1000000 do t[i]=string.rep('x',1000) end","allocation quota")]
+    [InlineData("for i=1,129 do st.log('bounded') end","log quota")]
+    public void ForegroundWorkStopsAtItsOwnQuotaWithoutChangingTheObserver(string source,string diagnostic)
+    {
+        var session=SharedClockTests.Create(); byte[] before=ScenarioFile.Encode(session.CaptureScenario(0));
+        string path=Path.Combine(_root.FullName,"quota.lua"); File.WriteAllText(path,source);
+        int messages=0; var script=LuaSessionScript.Load(path,session,0,false,_=>messages++);
+        for(int i=0;i<512&&!script.Finished;i++) script.Step(0);
+        Assert.True(script.Finished); Assert.Contains(diagnostic,script.Error,StringComparison.OrdinalIgnoreCase);
+        Assert.InRange(messages,0,128); Assert.Equal(before,ScenarioFile.Encode(session.CaptureScenario(0)));
+    }
+
+    [Fact]
+    public void OversizedForegroundSourcesAreRejectedBeforeParsing()
+    {
+        string path=Path.Combine(_root.FullName,"too-large.lua"); File.WriteAllText(path,new string(' ',32769));
+        Assert.Throws<InvalidDataException>(()=>LuaSessionScript.Load(path,SharedClockTests.Create(),0,false,_=>{}));
+    }
+
     public void Dispose() => _root.Delete(recursive: true);
 }

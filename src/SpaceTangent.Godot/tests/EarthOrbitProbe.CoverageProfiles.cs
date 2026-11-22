@@ -30,6 +30,9 @@ public partial class EarthOrbitProbe
             case "resource-contracts":
                 await ExerciseResourceContracts(scene,directory);
                 break;
+            case "resource-guards":
+                await ExerciseResourceGuards(scene,directory);
+                break;
             case "demo-worlds":
                 RequireControl("SPACETANGENT_DEMO_WORLDS_PROBE");
                 RequireControl("SPACETANGENT_PROCEDURAL_TERRAIN_PROBE");

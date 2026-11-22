@@ -38,6 +38,8 @@ public partial class WorkspaceInputSmoke
         Require(overlay.AngleDegrees is { } measured && Math.Abs(measured - expected) < .25,
             $"The angle must come from projection rays (expected {expected:F3}°, observed {overlay.AngleDegrees:F3}°).");
         double angle = overlay.AngleDegrees!.Value;
+        if (DisplayServer.GetName() != "headless")
+            await ToSignal(RenderingServer.Singleton, RenderingServer.SignalName.FramePostDraw);
         Session.AdjustCamera(0, .25, -.07, 1);
         _scene.Advance(0, 0);
         Require(overlay.AngleDegrees == angle && Session[0].Selection == SolarSystemSample.EarthId,
@@ -51,6 +53,16 @@ public partial class WorkspaceInputSmoke
         double distance = (solar.Moon - solar.Earth).PositionKilometers.Length;
         Require(overlay.DistanceKilometers is { } length && Math.Abs(length - distance) < 1e-7 &&
             overlay.DistanceText.Contains("light", StringComparison.Ordinal), "The distance and light time must use the real geometric state.");
+        var midpoint = (solar.Earth.PositionKilometers + solar.Moon.PositionKilometers) * .5;
+        ScenarioFile.Save(file, new([Session[0] with { Navigation = new(midpoint, 1_000_000, .2, .2, null, false) }],
+            true, 0, 0, Session.DeltaT));
+        Require(_scene.LoadScenario(file), "The distance endpoints need a camera that can show both bodies.");
+        overlay = _scene.Measurements(0);
+        overlay.SelectDistancePoint(SolarSystemSample.EarthId);
+        overlay.SelectDistancePoint(SolarSystemSample.MoonId);
+        _scene.Advance(0, 0);
+        if (DisplayServer.GetName() != "headless")
+            await ToSignal(RenderingServer.Singleton, RenderingServer.SignalName.FramePostDraw);
         _scene.Advance(0, 3600);
         var later = Session.World.Ephemeris.Sample(Session[0].Epoch);
         Require(overlay.DistanceKilometers is { } next && Math.Abs(next - (later.Moon - later.Earth).PositionKilometers.Length) < 1e-7 &&
@@ -58,5 +70,29 @@ public partial class WorkspaceInputSmoke
         await KeyPress(Key.M, ctrl: true, shift: true);
         Require(overlay.DistanceKilometers is null, "Clearing the measurement must remove the distance.");
         GD.Print("UI: measured a projected angle and the real changing Earth–Moon distance without system input");
+    }
+
+    private async Task ExerciseViewLimit(string directory)
+    {
+        string path = Path.Combine(directory, "view-limit.stscene");
+        var view = new ObserverView(Session[0].Epoch, CameraMode.Solar, null, false);
+        ScenarioFile.Save(path, new([view], true, 0, 0, Session.DeltaT));
+        Require(_scene.LoadScenario(path), "Start the view limit test with one paused diagram.");
+        Tree.Root.GuiGetFocusOwner()?.ReleaseFocus();
+        for (int count = 2; count <= 16; count++)
+        {
+            using var split = new InputEventKey { Keycode = Key.U, CtrlPressed = true, ShiftPressed = true, Pressed = true };
+            _scene._UnhandledKeyInput(split);
+            Require(Session.ViewCount == count, "The split shortcut must append exactly one view.");
+        }
+        using (var split = new InputEventKey { Keycode = Key.U, CtrlPressed = true, ShiftPressed = true, Pressed = true })
+            _scene._UnhandledKeyInput(split);
+        Require(Session.ViewCount == 16 && Find<Label>("WorkspaceStatus").Text.Contains("view limit", StringComparison.Ordinal),
+            "The seventeenth view must be refused without altering the layout.");
+        Require(_scene.ViewSnapshot(0) is not null, "Every published diagram must have a valid scene snapshot.");
+        await KeyPress(Key.M, ctrl: true);
+        Require(Find<Label>("WorkspaceStatus").Text.StartsWith("Select an object", StringComparison.Ordinal),
+            "Measuring an empty selection must explain the missing endpoint.");
+        Require(_scene.LoadScenario(path) && Session.ViewCount == 1, "A one-view scenario must close all additional panels after the limit.");
     }
 }

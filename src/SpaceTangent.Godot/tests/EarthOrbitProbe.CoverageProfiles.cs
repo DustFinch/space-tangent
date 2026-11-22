@@ -27,6 +27,9 @@ public partial class EarthOrbitProbe
             case "startup-recovery":
                 await ExerciseStartupRecovery(directory);
                 break;
+            case "resource-contracts":
+                await ExerciseResourceContracts(scene,directory);
+                break;
             case "demo-worlds":
                 RequireControl("SPACETANGENT_DEMO_WORLDS_PROBE");
                 RequireControl("SPACETANGENT_PROCEDURAL_TERRAIN_PROBE");
@@ -140,10 +143,21 @@ public partial class EarthOrbitProbe
             case "sky-assets":
                 await ExerciseAuthoredSkyAssets(scene, directory);
                 break;
+            case "ground-survey":
+                RequireInput("SPACETANGENT_SKY_SURVEYS");
+                await ExerciseAuthoredGroundSurvey(scene,directory);
+                break;
+            case "nebula-sprites":
+                await ExerciseAuthoredNebulaSprites(scene,directory);
+                break;
             case "surface-tiles":
                 RequireInput("SPACETANGENT_SURFACE_TILES");
                 RequireInput("SPACETANGENT_TILE_FIXTURE");
                 await ExerciseTileSampling(scene, directory);
+                break;
+            case "surface-sites":
+                RequireInput("SPACETANGENT_SURFACE_LOCATIONS");
+                await CaptureSurfaceSite(scene,SurfaceProjection.FullMoonEpoch,directory);
                 break;
             default:
                 throw new InvalidOperationException($"Unknown coverage profile: {profile}.");

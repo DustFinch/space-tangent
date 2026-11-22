@@ -76,6 +76,18 @@ The sample requires approximately 130 MB of image downloads, kept outside Git. `
 
 For rendered acceptance, run the `EarthOrbitProbe` group `sky-photographs` with `SPACETANGENT_SKY_PHOTOGRAPHS_PROBE=1` and photograph, DSS and historical planetary-series inputs in its pinned profile. The Crab's recorded birth precedes the local DE440 subset; `SPACETANGENT_VSOP87` is required so loading and reloading those epochs is valid. This group requires all 674 images, then uses the original checks for the Crab before/after its recorded birth, independent-view reload, Orion above the dark ground horizon and survey precedence in the other view. Use an inactive desktop as with the other rendered groups; a unit-only metadata check does not establish this rendered behavior.
 
+## Recover available culture artwork
+
+`scripts/sky/restore_culture_art.py` makes a separate copy of the 33 matching culture directories and restores their pinned upstream artwork. `culture-artwork-source.json` records semantic hashes for every definition, all 299 available image blobs and the six constellation-art references absent from that upstream tree. Whitespace-only metadata differences are accepted; semantic differences fail before copying. Existing image bytes must match the pin and are preserved. The original input directory is never updated.
+
+```powershell
+python scripts/sky/restore_culture_art.py C:/TestData/skycultures-source C:/TestData/skycultures-recovered
+```
+
+The known partial upstream corpus returns **exit code 2**, with explicit `unavailableUpstream` entries in `provenance.json`; download/integrity failures return 1. A successful recovery of all available source files does not turn six unresolved references into available art. The retained partial source has 128 images; this recipe restores 171 more, yielding 299 available images out of 305 references. Keep the upstream notice and each culture's description/credits with the files.
+
+The original archive regression deliberately retains its 128-image fixture expectation. Use that original snapshot for its `SPACETANGENT_SKY_CULTURES` unit-test binding. The expanded snapshot is a separate input, with its own source hashes and acceptance; changing a fixture's expected population to fit a different installation would erase that distinction. Rendered profiles may bind the recovered `cultures` directory to inspect the additional art.
+
 Use the core repository's `scripts/testing/data_profile.py` to pin optional local inputs before running. See its `docs/TEST_DATA_AND_COVERAGE.md` for integrity checks and independent reference provenance. Keep local paths, profiles and optional assets outside the source repositories. Capturing a profile is not proof of its scientific provenance or permission to redistribute it.
 
 ```powershell

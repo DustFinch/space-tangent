@@ -88,5 +88,10 @@
     "path": "scripts/sky/fetch_photographs.py",
     "sha256": "683822c8159b715ef9b7357d1e20137844c6c8a205442c1c44e7385eebf090d7",
     "reason": "Pinned official upstream photograph source URL; provenance only, not a product namespace."
+  },
+  {
+    "path": "scripts/sky/restore_culture_art.py",
+    "sha256": "dcbd829fa8f4c6e9659f540984c691a73926b48c0bfbdb37027874b88ed6e184",
+    "reason": "Official upstream culture artwork URL retained for pinned data provenance only."
   }
 ]

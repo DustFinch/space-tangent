@@ -135,6 +135,9 @@ public partial class EarthOrbitProbe
             case "archive-layers":
                 await ExerciseAuthoredArchiveLayers(scene, directory);
                 break;
+            case "archive-lens":
+                await ExerciseAuthoredArchiveLens(scene,directory);
+                break;
             case "landscapes":
                 RequireInput("SPACETANGENT_LANDSCAPES");
                 await ExercisePanoramas(scene, directory);

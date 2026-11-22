@@ -10,12 +10,17 @@ public partial class EarthOrbitProbe
     {
         string malformed = Path.Combine(directory, "malformed-input.json"); File.WriteAllText(malformed, "{broken");
         string missing = Path.Combine(directory, "missing-input.bin");
+        string surface = Path.Combine(directory, "broken-surface"); Directory.CreateDirectory(surface);
+        File.WriteAllBytes(Path.Combine(surface, "earth-clouds.png"), [1, 2, 3]);
+        File.WriteAllBytes(Path.Combine(surface, "moon.jpg"), [1, 2, 3]);
         foreach (var (variable, value, diagnostic, hasSession) in new[]
         {
             ("SPACETANGENT_DE440", missing, "Set SPACETANGENT_DE440", false),
             ("SPACETANGENT_VSOP87", missing, "historical planetary series file is missing", false),
             ("SPACETANGENT_ADDONS_SETTINGS_PATH", malformed, "Could not read local add-on settings.", true),
-            ("SPACETANGENT_BOOKMARKS_PATH", malformed, "Could not read bookmarks.", true)
+            ("SPACETANGENT_BOOKMARKS_PATH", malformed, "Could not read bookmarks.", true),
+            ("SPACETANGENT_MISSION_CATALOG", malformed, "Could not load add-ons.", true),
+            ("SPACETANGENT_SURFACE_TEXTURES", surface, "Could not decode the planetary texture", true)
         })
         {
             string? original = System.Environment.GetEnvironmentVariable(variable);

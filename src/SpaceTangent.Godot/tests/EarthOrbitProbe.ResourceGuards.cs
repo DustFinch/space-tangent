@@ -14,6 +14,8 @@ public partial class EarthOrbitProbe
 {
     private async Task ExerciseResourceGuards(SolarSystemScene scene, string directory)
     {
+        directory = Path.Combine(directory, Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(directory);
         if (System.Environment.GetEnvironmentVariable("SPACETANGENT_PROFILE") != "1")
             throw new InvalidOperationException("Resource guard acceptance requires profiling enabled before startup.");
         for (int i = 0; i < 4100; i++) RuntimeProfile.Record("bounded-reference", i);
@@ -75,6 +77,33 @@ public partial class EarthOrbitProbe
             Require(!media.Active, "WebP overlays must expire through the same resource lifecycle.");
         }
         finally { media.Clear(); }
+        using (var cache = new GalacticTextureCache())
+        {
+            int published = 0;
+            cache.Published += () => published++;
+            var centre = SpaceTangent.Core.Observing.GalacticLight.SunKiloparsecs;
+            if (cache.HasDust || cache.Request(centre, 0).Texture is not null)
+                throw new InvalidOperationException("A new analytic galactic map must bake asynchronously without a dust grid.");
+            var clock = System.Diagnostics.Stopwatch.StartNew();
+            while (published == 0)
+            {
+                if (clock.Elapsed.TotalSeconds > 90) throw new TimeoutException("The analytic galactic map did not publish.");
+                await ToSignal(GetTree(), SceneTree.SignalName.ProcessFrame);
+            }
+            var ready = cache.Request(centre, 0);
+            if (ready.Texture is null || ready.Texture.GetWidth() != 512 || ready.Texture.GetHeight() != 256 ||
+                !ReferenceEquals(ready.Texture, cache.Request(centre + new Vector3d(.001, 0, 0), 0).Texture))
+                throw new InvalidOperationException("The quantized galactic cache must reuse its actual completed GPU texture.");
+            using var pixels = ready.Texture.GetImage();
+            Color sample = pixels.GetPixel(256, 128);
+            if (!float.IsFinite(sample.R) || sample.R < 0 || !float.IsFinite(sample.G) || !float.IsFinite(sample.B))
+                throw new InvalidOperationException("A completed analytic light map must contain finite nonnegative radiance.");
+            cache.Request(centre + new Vector3d(1, 0, 0), 0);
+            cache.Dispose();
+            await ToSignal(GetTree().CreateTimer(.15), SceneTreeTimer.SignalName.Timeout);
+            if (published != 1 || cache.Request(centre, 0).Texture is not null)
+                throw new InvalidOperationException("Disposing the cache must cancel pending work and prevent subsequent publication.");
+        }
         GD.Print("Resource guards GPU: bounded timings, malformed panoramas, tile decoding, empty meshes and overlay expiry passed.");
 
         static void Require(bool condition, string message)

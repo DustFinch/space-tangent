@@ -72,6 +72,9 @@ public partial class EarthOrbitProbe
             case "archive-wire":
                 await ExerciseArchivedWire(scene, directory);
                 break;
+            case "archive-models":
+                await ExerciseAuthoredArchivedModels(scene, directory);
+                break;
             case "landscapes":
                 RequireInput("SPACETANGENT_LANDSCAPES");
                 await ExercisePanoramas(scene, directory);

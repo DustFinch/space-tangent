@@ -78,5 +78,10 @@
     "path": "tests/SpaceTangent.Application.Tests/BinaryModelContractTests.cs",
     "sha256": "8991d043b743942b4d446522134f2e7dd3e68c73aab70dec3d0077916ed30c92",
     "reason": "Required binary model format magic in an independently authored compatibility fixture."
+  },
+  {
+    "path": "src/SpaceTangent.Godot/tests/EarthOrbitProbe.ArchivedModels.cs",
+    "sha256": "0144963c1eb1bf0116761583457b4b165285e8862f20d43916df94a3a1f02c44",
+    "reason": "Exact ASCII mesh signature required by the independently authored GPU material fixture."
   }
 ]

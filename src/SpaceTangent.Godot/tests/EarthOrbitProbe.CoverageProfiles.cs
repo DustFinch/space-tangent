@@ -49,6 +49,16 @@ public partial class EarthOrbitProbe
                 await ExerciseMissionGeometry(scene, directory);
                 await ExerciseMissionSensors(scene, directory);
                 break;
+            case "mission-observations":
+                RequireControl("SPACETANGENT_MISSION_OBSERVATION_PROBE");
+                RequireInput("SPACETANGENT_SAMPLED_MISSIONS_ROOT");
+                await ExerciseMissionObservations(scene, directory);
+                break;
+            case "mission-axes":
+                RequireControl("SPACETANGENT_MISSION_AXES_GPU");
+                RequireInput("SPACETANGENT_SAMPLED_MISSIONS_ROOT");
+                await ExerciseMissionAxes(scene, directory);
+                break;
             case "swarm-particles":
                 RequireControl("SPACETANGENT_MISSION_SWARM_GPU");
                 RequireInput("SPACETANGENT_SWARM_INSTALL");

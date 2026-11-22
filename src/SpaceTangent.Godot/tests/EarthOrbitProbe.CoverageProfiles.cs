@@ -68,6 +68,11 @@ public partial class EarthOrbitProbe
                 RequireInput("SPACETANGENT_ANNOTATION_CORPUS");
                 await ExerciseMissionAnnotations(scene, directory);
                 break;
+            case "mission-viewpoints":
+                RequireControl("SPACETANGENT_VIEWPOINT_GPU");
+                RequireInput("SPACETANGENT_VIEWPOINT_CORPUS");
+                await ExerciseMissionViewpoints(scene, directory);
+                break;
             case "mission-axes":
                 RequireControl("SPACETANGENT_MISSION_AXES_GPU");
                 RequireInput("SPACETANGENT_SAMPLED_MISSIONS_ROOT");
@@ -116,6 +121,9 @@ public partial class EarthOrbitProbe
                 break;
             case "archive-models":
                 await ExerciseAuthoredArchivedModels(scene, directory);
+                break;
+            case "archive-layers":
+                await ExerciseAuthoredArchiveLayers(scene, directory);
                 break;
             case "landscapes":
                 RequireInput("SPACETANGENT_LANDSCAPES");

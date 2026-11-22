@@ -21,6 +21,9 @@ public partial class EarthOrbitProbe
             case "meteors":
                 await ExerciseMeteorRadiants(scene, directory);
                 break;
+            case "comet-rendering":
+                await ExerciseAuthoredCometRendering(scene, directory);
+                break;
             case "demo-worlds":
                 RequireControl("SPACETANGENT_DEMO_WORLDS_PROBE");
                 RequireControl("SPACETANGENT_PROCEDURAL_TERRAIN_PROBE");

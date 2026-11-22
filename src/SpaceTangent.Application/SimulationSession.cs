@@ -712,7 +712,7 @@ public sealed partial class SimulationSession
             if (site is { IsEarth: false } surface &&
                 !SurfaceObserver.TryFrame(next, surface, next.Graph.Evaluate(previous.Epoch, DeltaT), DeltaT, out _))
             {
-                site = EarthObserverCamera.Moscow;
+                site = EarthObserverCamera.Default;
                 if (mode == CameraMode.Surface && navigation is null) mode = CameraMode.Solar;
                 fallbacks.Add(index);
             }

@@ -25,7 +25,7 @@ public static class ObserverEventFinder
     {
         var from = observer.Epoch;
         var ephemeris = world.Ephemeris;
-        var site = (observer.EarthObserver ?? EarthObserverCamera.Moscow).Site;
+        var site = (observer.EarthObserver ?? EarthObserverCamera.Default).Site;
         if (observer.EarthObserver is { IsEarth: false })
             throw new ArgumentException("Local eclipse, satellite-pass and flare searches require an Earth site. Use the geocentric nearby-event list or observing charts.", nameof(observer));
         var events = new List<ObserverEvent>();

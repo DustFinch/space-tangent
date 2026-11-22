@@ -10,6 +10,13 @@ namespace SpaceTangent.Application;
 public readonly record struct EarthObserverCamera(EarthSite Site, double AzimuthDegrees, double ElevationDegrees,
     bool HorizonGrid = false, bool CardinalPoints = false)
 {
+    /// <summary>Approximate Greenwich meridian reference, zero ellipsoid height and a fixed UTC clock.</summary>
+    public static EarthObserverCamera Greenwich { get; } = new(new(51.4772, 0, 0), 180, 30)
+        { CivilClock = new("Greenwich", "Etc/UTC", 0) };
+    public static EarthObserverCamera Default => Greenwich;
+    /// <summary>Geometric DE440/ERFA Moon direction at JD 2460600.5008 TDB, with no atmospheric refraction.</summary>
+    public static EarthObserverCamera GreenwichFullMoon => Greenwich with
+        { AzimuthDegrees = 194.7474431290764, ElevationDegrees = 44.67997698077449 };
     public static EarthObserverCamera Moscow { get; } = new(new(55.7558, 37.6173, .15), 237, 28);
     public static EarthObserverCamera Tromso { get; } = new(new(69.6492, 18.9553, .01), 180, 10);
 

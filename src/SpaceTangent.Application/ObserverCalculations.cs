@@ -21,7 +21,7 @@ public static class ObserverCalculations
     {
         if (observer.Selection is not { } target || world.Catalogue.Find(target) is not { } item)
             throw new ArgumentException("Select a catalogue object before calculating ephemerides.", nameof(observer));
-        var camera = observer.EarthObserver ?? EarthObserverCamera.Moscow;
+        var camera = observer.EarthObserver ?? EarthObserverCamera.Default;
         SurfaceObserver.RequireCalculationFrame(world, camera, observer.Epoch, model);
         if (target == camera.SurfaceBody) throw new ArgumentException("Select an object other than the observer body.", nameof(observer));
         var brightStar = world.BrightStars.Find(target);

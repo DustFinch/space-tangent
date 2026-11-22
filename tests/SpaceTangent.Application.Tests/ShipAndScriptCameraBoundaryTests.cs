@@ -68,7 +68,7 @@ public sealed class ShipAndScriptCameraBoundaryTests
     {
         var session = SharedClockTests.Create(); session.SetMode(0, CameraMode.Surface); session.Split(); var other = session[1];
         var snapshot = session.World.Graph.Evaluate(session[0].Epoch);
-        var site = EarthObserverCamera.Moscow;
+        var site = EarthObserverCamera.Greenwich;
         var lighting = SpaceTangent.Core.Observing.EarthSurfaceLighting.Sample(snapshot.SolarSystem!.Value, site.Site, session.DeltaT);
         var expectedEye = snapshot.SolarSystem.Value.Earth.PositionKilometers + lighting.PositionKilometers;
         Assert.InRange((session.ScriptObserverEye(0, snapshot) - expectedEye).Length, 0, 1e-9);

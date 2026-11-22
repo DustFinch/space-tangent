@@ -14,13 +14,13 @@ internal static class EarthSkyReference
     private const double Mie = .01, Anisotropy = .76, Exposure = 7;
 
     internal static Vector3d Pixel(SurfaceLighting lighting, double siteHeightKilometers, int width, int height, int x, int y,
-        double pitchDegrees)
+        double pitchDegrees, double headingDegrees)
     {
         const double Degree = Math.PI / 180;
-        const double Heading = 237 * Degree;
+        double heading = headingDegrees * Degree;
         double pitch = pitchDegrees * Degree;
         Basis3d enu = lighting.EastNorthUp;
-        Vector3d horizontal = enu.Y * Math.Cos(Heading) + enu.X * Math.Sin(Heading);
+        Vector3d horizontal = enu.Y * Math.Cos(heading) + enu.X * Math.Sin(heading);
         Vector3d forward = horizontal * Math.Cos(pitch) + enu.Z * Math.Sin(pitch);
         Vector3d right = Unit(Vector3d.Cross(forward, enu.Z));
         Vector3d up = Vector3d.Cross(right, forward);

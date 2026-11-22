@@ -295,8 +295,8 @@ public partial class WorkspaceInputSmoke : Node
 
         await Click(Find<SubViewportContainer>("ViewCanvas1"));
         await Click(Find<Button>("ShowFullMoon"));
-        Require(Session[1].EarthObserver == EarthObserverCamera.Moscow && Session[0].EarthObserver == left,
-            "The full-Moon preset must restore Moscow and its original direction in the right view only.");
+        Require(Session[1].EarthObserver == EarthObserverCamera.GreenwichFullMoon && Session[0].EarthObserver == left,
+            "The full-Moon preset must restore Greenwich/UTC and its independent Moon direction in the right view only.");
         var search = Find<Button>("SearchTab");
         if (!search.ButtonPressed)
             await Click(search);
@@ -309,7 +309,7 @@ public partial class WorkspaceInputSmoke : Node
         await Until(() => Find<Label>("HorizontalCoordinates").Text.Contains("Azimuth"),
             "Showing the selected Moon's horizontal coordinates");
         Require(Find<Label>("CivilTwilight").Text.Contains("Morning") && Find<Label>("CivilTwilight").Text.Contains("Evening"),
-            "The Moscow ephemerides panel must show both civil twilight intervals.");
+            "The Greenwich ephemerides panel must show both civil twilight intervals.");
 
         var expected = Session.CaptureScenario(1);
         var oldWorld = Session.World;
@@ -328,7 +328,7 @@ public partial class WorkspaceInputSmoke : Node
         RequireScenario(expected, Session.CaptureScenario(1), "Reopening both Earth observers");
         if (System.Environment.GetEnvironmentVariable("SPACETANGENT_OBSERVER_SCENE") is { Length: > 0 } capture)
             File.Copy(path, capture, overwrite: true);
-        GD.Print("UI: verified Moscow and Tromsø, horizontal coordinates, twilight, and both observers after reload and reopen");
+        GD.Print("UI: verified Greenwich and Tromsø, horizontal coordinates, twilight, and both observers after reload and reopen");
     }
 
     private async Task FillField(string name, string value)

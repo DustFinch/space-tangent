@@ -10,7 +10,7 @@ public static class ObserverNightFinder
     public static ObserverNight ForSelection(SimulationWorld world, ObserverView observer, DeltaTModel model,
         CancellationToken cancellation = default)
     {
-        var camera = observer.EarthObserver ?? EarthObserverCamera.Moscow;
+        var camera = observer.EarthObserver ?? EarthObserverCamera.Default;
         if (!camera.IsEarth)
             throw new ArgumentException("Use observing charts for a non-Earth surface site; the Earth night planner requires an Earth civil clock.", nameof(observer));
         var site = camera.Site;

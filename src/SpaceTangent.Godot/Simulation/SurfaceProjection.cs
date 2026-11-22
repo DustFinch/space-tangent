@@ -114,7 +114,7 @@ internal sealed partial class SurfaceProjection
             return true;
         }
 
-        EarthObserverCamera observer = camera ?? EarthObserverCamera.Moscow;
+        EarthObserverCamera observer = camera ?? EarthObserverCamera.Default;
         SurfaceLighting lighting;
         try
         {

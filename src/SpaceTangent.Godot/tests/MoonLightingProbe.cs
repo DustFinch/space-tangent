@@ -46,6 +46,17 @@ public partial class MoonLightingProbe : Node
             var session = scene.Session!;
             var fullMoon = session.CaptureScenario(0);
             var observer = fullMoon.Views[0];
+            Require(observer.EarthObserver == EarthObserverCamera.GreenwichFullMoon,
+                "The full-Moon preset must explicitly select Greenwich and the UTC clock.");
+            var referenceLight = Sample(scene, SurfaceProjection.FullMoonEpoch);
+            var moonRay = referenceLight.EarthToMoon - referenceLight.PositionKilometers;
+            double referenceAzimuth = Math.Atan2(Vector3d.Dot(moonRay, referenceLight.EastNorthUp.X),
+                Vector3d.Dot(moonRay, referenceLight.EastNorthUp.Y)) * 180 / Math.PI;
+            if (referenceAzimuth < 0) referenceAzimuth += 360;
+            Require(Math.Abs(referenceAzimuth - 194.7474431290764) < .001 &&
+                Math.Abs(referenceLight.LunarAltitudeRadians * 180 / Math.PI - 44.67997698077449) < .001 &&
+                referenceLight.SolarAltitudeRadians * 180 / Math.PI < -40,
+                "The Greenwich night must match the independent CSPICE/ERFA geometric Moon reference.");
             string archivedSettings = Path.Combine(output, "archived-cloud-settings.json");
             File.WriteAllText(archivedSettings, """{"Site":{},"Clouds":false}""");
             var imported = LegacyObserverProfiles.Read(archivedSettings, observer, session.DeltaT).Observer;
@@ -62,7 +73,7 @@ public partial class MoonLightingProbe : Node
             string scaleProfile = Path.Combine(output, "archived-moon-scale.json");
             File.WriteAllText(scaleProfile, """{"DeltaT":"MorrisonStephenson2004","MoonScale":1}""");
             var physical = LegacyObserverProfiles.Read(scaleProfile, observer, session.DeltaT).Observer;
-            var groundCamera = observer.EarthObserver ?? EarthObserverCamera.Moscow;
+            var groundCamera = observer.EarthObserver ?? EarthObserverCamera.Default;
             string scaleScenario = Path.Combine(output, "full-moon-physical-size.stscene");
             ScenarioFile.Save(scaleScenario, fullMoon with { Views = [observer with
                 { EarthObserver = groundCamera with { MoonScale = physical.EarthObserver?.MoonScale } }] });
@@ -119,8 +130,8 @@ public partial class MoonLightingProbe : Node
                 status = "passed",
                 epochTdb = 2460600.5008,
                 dayTdb = 2460601.0008,
-                heading = 237,
-                pitch = 28,
+                heading = groundCamera.AzimuthDegrees,
+                pitch = groundCamera.ElevationDegrees,
                 verticalFieldOfView = 10,
                 nightDifference,
                 cloudContrast,
@@ -182,10 +193,10 @@ public partial class MoonLightingProbe : Node
         }
     }
 
-    private const double SiteHeightKilometers = .15;
+    private static double SiteHeightKilometers => EarthObserverCamera.Greenwich.Site.HeightKilometers;
 
     private static SurfaceLighting Sample(SolarSystemScene scene, JulianInstant epoch) =>
-        EarthSurfaceLighting.Sample(scene.Session!.World.Ephemeris.Sample(epoch), new EarthSite(55.7558, 37.6173, SiteHeightKilometers),
+        EarthSurfaceLighting.Sample(scene.Session!.World.Ephemeris.Sample(epoch), EarthObserverCamera.Greenwich.Site,
             scene.Session.DeltaT);
 
     private static double SolarElevation(SurfaceLighting lighting)
@@ -206,13 +217,14 @@ public partial class MoonLightingProbe : Node
         throw new InvalidOperationException("The Earth-surface test could not find evening twilight.");
     }
 
-    private static double CompareAtmosphere(Image image, SurfaceLighting lighting, double pitch = 28)
+    private static double CompareAtmosphere(Image image, SurfaceLighting lighting, double? pitch = null)
     {
         double error = 0;
         foreach (int y in new[] { image.GetHeight() / 4, image.GetHeight() / 2, 3 * image.GetHeight() / 4 })
         {
             int x = image.GetWidth() / 2;
-            Vector3d expected = EarthSkyReference.Pixel(lighting, SiteHeightKilometers, image.GetWidth(), image.GetHeight(), x, y, pitch);
+            Vector3d expected = EarthSkyReference.Pixel(lighting, SiteHeightKilometers, image.GetWidth(), image.GetHeight(), x, y,
+                pitch ?? EarthObserverCamera.GreenwichFullMoon.ElevationDegrees, EarthObserverCamera.GreenwichFullMoon.AzimuthDegrees);
             Color actual = image.GetPixel(x, y);
             error = Math.Max(error, Math.Max(Math.Abs(expected.X - actual.R),
                 Math.Max(Math.Abs(expected.Y - actual.G), Math.Abs(expected.Z - actual.B))));

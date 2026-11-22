@@ -11,7 +11,9 @@ public sealed class OpticalFindersTests
     [Fact]
     public void PreservesIndependentFinderGeometryAndReadsArchivedSensorIndices()
     {
-        var observer = new ObserverView(new(2451545, 0, TimeScale.Tdb), CameraMode.Surface, null, false);
+        // Isolate the finder version gate from the later civil-clock field.
+        var observer = new ObserverView(new(2451545, 0, TimeScale.Tdb), CameraMode.Surface, null, false)
+            { EarthObserver = EarthObserverCamera.Greenwich with { CivilClock = null } };
         string path = Path.GetTempFileName();
         try
         {

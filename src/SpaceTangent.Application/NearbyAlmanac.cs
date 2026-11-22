@@ -22,7 +22,7 @@ public static class NearbyAlmanac
         var end = from.AddSeconds(Math.Min(45 * JulianInstant.SecondsPerDay, available));
         var found = SolarSystemEventSearch.Find(ephemeris, from, end, cancellation)
             .Select(item => new AlmanacEntry(item.Epoch, item.Target, Description(item))).ToList();
-        var site = (observer.EarthObserver ?? EarthObserverCamera.Moscow).Site;
+        var site = (observer.EarthObserver ?? EarthObserverCamera.Default).Site;
         bool earthSite = observer.EarthObserver?.IsEarth != false;
         foreach (var solar in ObservationEventSearch.FindSolarEclipses(ephemeris, site, model, from, end, cancellation))
             if (earthSite) found.Add(new(solar.Partial.Peak, SolarSystemSample.SunId, $"{solar.Class} solar eclipse · local site"));

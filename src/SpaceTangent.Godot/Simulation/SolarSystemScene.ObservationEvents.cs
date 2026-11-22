@@ -12,7 +12,7 @@ public partial class SolarSystemScene
     private sealed record CalculationSite(ObjectId Body, EarthSite Site, ObserverSiteClock? Clock, GroundSkyConditions? Conditions);
     private static CalculationSite CalculationSiteOf(ObserverView observer)
     {
-        var camera = observer.EarthObserver ?? EarthObserverCamera.Moscow;
+        var camera = observer.EarthObserver ?? EarthObserverCamera.Default;
         return new(camera.SurfaceBody, camera.Site, camera.CivilClock, camera.Conditions);
     }
     private sealed record ObserverEventContext(SimulationWorld World, int View, ObjectId? Selection,
@@ -77,7 +77,7 @@ public partial class SolarSystemScene
         if (session[_active] is { Mode: CameraMode.Surface, Navigation: null } &&
             next.Event.FlareDirection is { } direction)
         {
-            var site = session[_active].EarthObserver ?? EarthObserverCamera.Moscow;
+            var site = session[_active].EarthObserver ?? EarthObserverCamera.Default;
             session.SetEarthObserver(_active, site with
             {
                 AzimuthDegrees = direction.AzimuthDegrees ?? site.AzimuthDegrees,

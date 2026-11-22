@@ -168,7 +168,7 @@ public sealed partial class LuaSessionScript
             return Change(() => _session.SetScriptMarkersVisible(View, enabled));
         if (layer == "horizongrid")
         {
-            var camera = _session[View].EarthObserver ?? EarthObserverCamera.Moscow;
+            var camera = _session[View].EarthObserver ?? EarthObserverCamera.Default;
             return Change(() => _session.SetEarthObserver(View, camera with { HorizonGrid = enabled }));
         }
         if (layer == "lighttime")

@@ -512,7 +512,7 @@ public partial class SolarSystemScene : Control
         ObserverView observer = Session![_active];
         if (observer.Selection is { } location && Session.World.EarthPlaces.Find(location) is { } place)
         {
-            var camera = observer.EarthObserver ?? EarthObserverCamera.Moscow;
+            var camera = observer.EarthObserver ?? EarthObserverCamera.Default;
             Session.SetEarthObserver(_active, camera with
             {
                 Site = place.ObserverSite,
@@ -563,7 +563,7 @@ public partial class SolarSystemScene : Control
     private void PointAtStar(BrightStar star)
     {
         var observer = Session![_active];
-        var camera = observer.EarthObserver ?? EarthObserverCamera.Moscow;
+        var camera = observer.EarthObserver ?? EarthObserverCamera.Default;
         if (_views[_active].Snapshot is not { SolarSystem: { } solar } snapshot || (camera.IsEarth && _surfaceTextures is null))
             return;
         try
@@ -702,7 +702,7 @@ public partial class SolarSystemScene : Control
                 break;
             case Key.M when key.AltPressed && !key.CtrlPressed && !key.ShiftPressed && !key.MetaPressed &&
                 Session[_active] is { Mode: CameraMode.Surface, Navigation: null } surface:
-                var mount = surface.EarthObserver ?? EarthObserverCamera.Moscow;
+                var mount = surface.EarthObserver ?? EarthObserverCamera.Default;
                 Session.SetEarthObserver(_active, mount with { EquatorialMount = !mount.EquatorialMount });
                 _status.Text = mount.EquatorialMount ? "Altazimuth mount." : "Equatorial mount.";
                 Refresh();
@@ -948,7 +948,7 @@ public partial class SolarSystemScene : Control
 
     internal void ShowFullMoon(int view)
     {
-        Session!.SetEarthObserver(view, EarthObserverCamera.Moscow);
+        Session!.SetEarthObserver(view, EarthObserverCamera.GreenwichFullMoon);
         SetMode(view, CameraMode.Surface);
         Seek(view, SurfaceProjection.FullMoonEpoch);
     }
@@ -1926,7 +1926,7 @@ public partial class SolarSystemScene : Control
         if (!ground)
             return session.AdjustCamera(view, yaw, pitch, 1, orbitTarget: !lookAround);
 
-        var camera = observer.EarthObserver ?? EarthObserverCamera.Moscow;
+        var camera = observer.EarthObserver ?? EarthObserverCamera.Default;
         double direction = observer.ActiveOptics?.Inverted == true ? -1 : 1;
         session.SetEarthObserver(view, camera.Turn(direction * yaw, direction * pitch));
         return true;

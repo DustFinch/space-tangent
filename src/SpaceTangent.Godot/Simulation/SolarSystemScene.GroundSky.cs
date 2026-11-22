@@ -14,7 +14,7 @@ public partial class SolarSystemScene
             _status.Text = "Ground sky conditions apply in the Earth surface view.";
             return;
         }
-        var camera = observer.EarthObserver ?? EarthObserverCamera.Moscow;
+        var camera = observer.EarthObserver ?? EarthObserverCamera.Default;
         GroundSkyConditions? conditions = camera.Conditions is { } current
             ? toggle ? null : current with { Bortle = current.Bortle % 9 + 1 }
             : new GroundSkyConditions(4);

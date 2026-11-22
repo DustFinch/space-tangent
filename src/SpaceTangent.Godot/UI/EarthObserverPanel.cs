@@ -49,13 +49,13 @@ internal sealed class EarthObserverPanel
         location.AddChild(SimulatorTheme.Section("Observing site"));
         _sites = new OptionButton { Name = "ObserverSite", Disabled = !surfaceAvailable };
         _sites.AddItem("Custom");
-        _sites.AddItem("Moscow");
+        _sites.AddItem("Greenwich · UTC");
         _sites.AddItem("Tromsø");
         _sites.SetItemDisabled(0, true);
         _sites.ItemSelected += index => _apply(_camera with
         {
-            Site = index == 1 ? EarthObserverCamera.Moscow.Site : EarthObserverCamera.Tromso.Site,
-            CivilClock = index == 1 ? new("Moscow", "Europe/Moscow", 3) : new("Tromsø", "Europe/Oslo", 1)
+            Site = index == 1 ? EarthObserverCamera.Greenwich.Site : EarthObserverCamera.Tromso.Site,
+            CivilClock = index == 1 ? EarthObserverCamera.Greenwich.CivilClock : new("Tromsø", "Europe/Oslo", 1)
         });
         location.AddChild(_sites);
         _map = new EarthSiteMap(mapTexture) { Visible = surfaceAvailable };
@@ -95,7 +95,7 @@ internal sealed class EarthObserverPanel
         var submit = new Button { Name = "ApplyObserver", Text = "Apply to this view" };
         submit.Pressed += ApplyFields;
         location.AddChild(submit);
-        var moon = new Button { Name = "ShowFullMoon", Text = "Full Moon · Moscow", Disabled = !surfaceAvailable };
+        var moon = new Button { Name = "ShowFullMoon", Text = "Full Moon · Greenwich", Disabled = !surfaceAvailable };
         moon.Pressed += fullMoon;
         location.AddChild(moon);
 
@@ -125,7 +125,7 @@ internal sealed class EarthObserverPanel
     internal void Update(int view, ObserverView observer, WorldSnapshot? snapshot, ISolarSystemEphemeris ephemeris,
         DeltaTModel model, BrightStarCatalogue brightStars, ObserverNight? night, EarthPlaceCatalogue places, SimulationWorld world)
     {
-        EarthObserverCamera camera = observer.EarthObserver ?? EarthObserverCamera.Moscow;
+        EarthObserverCamera camera = observer.EarthObserver ?? EarthObserverCamera.Default;
         _twilightTitle.Text = camera.IsEarth ? "Civil twilight" : "Surface geometry";
         if (!ReferenceEquals(_bodyWorld, world))
         {
@@ -144,7 +144,7 @@ internal sealed class EarthObserverPanel
             camera.ElevationDegrees != _camera.ElevationDegrees || camera.SurfaceBody != _camera.SurfaceBody)
         {
             _view = view;
-            _sites.Select(camera.Site == EarthObserverCamera.Moscow.Site ? 1 :
+            _sites.Select(camera.Site == EarthObserverCamera.Greenwich.Site ? 1 :
                 camera.Site == EarthObserverCamera.Tromso.Site ? 2 : 0);
             _latitude.Text = Format(camera.Site.LatitudeDegrees);
             _longitude.Text = Format(camera.Site.LongitudeDegrees);

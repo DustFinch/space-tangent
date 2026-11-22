@@ -63,7 +63,7 @@ public sealed partial class SimulationSession
         Vector3d forward = sight / sight.Length;
         if (observer.Mode == CameraMode.Surface && observer.Navigation is null && snapshot.SolarSystem is { } solar)
         {
-            var site = observer.EarthObserver ?? EarthObserverCamera.Moscow;
+            var site = observer.EarthObserver ?? EarthObserverCamera.Default;
             var local = EarthSurfaceLighting.Sample(solar, site.Site, DeltaT).EastNorthUp.Transpose().Transform(forward);
             const double degrees = 180 / Math.PI;
             double azimuth = Math.Atan2(local.X, local.Y) * degrees;
@@ -111,7 +111,7 @@ public sealed partial class SimulationSession
         ObserverView observer = _views[view];
         if (observer.Mode == CameraMode.Surface && observer.Navigation is null && snapshot.SolarSystem is { } solar)
         {
-            var camera = observer.EarthObserver ?? EarthObserverCamera.Moscow;
+            var camera = observer.EarthObserver ?? EarthObserverCamera.Default;
             var surface = EarthSurfaceLighting.Sample(solar, camera.Site, DeltaT);
             return solar.Earth.PositionKilometers + surface.PositionKilometers;
         }

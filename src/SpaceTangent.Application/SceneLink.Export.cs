@@ -17,7 +17,7 @@ public static partial class SceneLink
     {
         var snapshot = world.Graph.Evaluate(observer.Epoch, deltaT);
         if (observer.Navigation is not { } pose && (observer.Mode != CameraMode.Surface ||
-            !SurfaceObserver.TryNavigation(world, observer.EarthObserver ?? EarthObserverCamera.Moscow, snapshot, deltaT, out pose)))
+            !SurfaceObserver.TryNavigation(world, observer.EarthObserver ?? EarthObserverCamera.Default, snapshot, deltaT, out pose)))
             throw new InvalidDataException("Open an available perspective or surface camera before exporting a legacy scene link.");
         NavigationPlacement placement = pose.ResolvePlacement(snapshot, deltaT);
         string mode = "Freeflight";

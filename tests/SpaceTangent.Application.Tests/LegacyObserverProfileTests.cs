@@ -108,7 +108,8 @@ public sealed class LegacyObserverProfileTests
         try
         {
             File.WriteAllText(path, """{"DeltaT":"MorrisonStephenson2004","AutoRotateSeconds":45,"AutoRotateClockwise":true}""");
-            var view = new ObserverView(new(2451545, 0, TimeScale.Tdb), CameraMode.Solar, null, false);
+            var view = new ObserverView(new(2451545, 0, TimeScale.Tdb), CameraMode.Solar, null, false)
+                { EarthObserver = EarthObserverCamera.Greenwich with { CivilClock = null } };
             var profile = LegacyObserverProfiles.Read(path, view, DeltaTModel.EspenakMeeus2006);
             Assert.Equal(new CameraAutoOrbit(45, true), profile.Observer.AutoOrbit);
 
@@ -132,7 +133,8 @@ public sealed class LegacyObserverProfileTests
         try
         {
             File.WriteAllText(path, """{"DeltaT":"MorrisonStephenson2004","MouseSensitivity":2.5}""");
-            var view = new ObserverView(new(2451545, 0, TimeScale.Tdb), CameraMode.Solar, null, false);
+            var view = new ObserverView(new(2451545, 0, TimeScale.Tdb), CameraMode.Solar, null, false)
+                { EarthObserver = EarthObserverCamera.Greenwich with { CivilClock = null } };
             var profile = LegacyObserverProfiles.Read(path, view, DeltaTModel.EspenakMeeus2006);
             Assert.Equal(2.5, profile.Observer.MouseSensitivity);
 
@@ -160,7 +162,8 @@ public sealed class LegacyObserverProfileTests
         try
         {
             File.WriteAllText(path, """{"DeltaT":"MorrisonStephenson2004","Inertia":true}""");
-            var view = new ObserverView(new(2451545, 0, TimeScale.Tdb), CameraMode.Solar, null, false);
+            var view = new ObserverView(new(2451545, 0, TimeScale.Tdb), CameraMode.Solar, null, false)
+                { EarthObserver = EarthObserverCamera.Greenwich with { CivilClock = null } };
             var profile = LegacyObserverProfiles.Read(path, view, DeltaTModel.EspenakMeeus2006);
             Assert.True(profile.Observer.CameraInertia);
             var scene = new SimulationScenario([profile.Observer, view], false, 0, 0, profile.DeltaT);
@@ -211,7 +214,8 @@ public sealed class LegacyObserverProfileTests
         string path = Path.GetTempFileName();
         try
         {
-            var view = new ObserverView(new(2451545, 0, TimeScale.Tdb), CameraMode.Solar, null, false);
+            var view = new ObserverView(new(2451545, 0, TimeScale.Tdb), CameraMode.Solar, null, false)
+                { EarthObserver = EarthObserverCamera.Greenwich with { CivilClock = null } };
             File.WriteAllText(path, """{"DeltaT":"MorrisonStephenson2004","Satellites":false}""");
             var archived = LegacyObserverProfiles.Read(path, view, DeltaTModel.MorrisonStephenson2004);
             Assert.True(archived.Observer.Sky.HideSatellites);
@@ -237,7 +241,8 @@ public sealed class LegacyObserverProfileTests
         string path = Path.GetTempFileName();
         try
         {
-            var view = new ObserverView(new(2451545, 0, TimeScale.Tdb), CameraMode.Solar, null, false);
+            var view = new ObserverView(new(2451545, 0, TimeScale.Tdb), CameraMode.Solar, null, false)
+                { EarthObserver = EarthObserverCamera.Greenwich with { CivilClock = null } };
             File.WriteAllText(path, """{"Site":{},"Orbits":false,"CometTails":false,"Places":true}""");
             var profile = LegacyObserverProfiles.Read(path, view, DeltaTModel.MorrisonStephenson2004);
             Assert.True(profile.Observer.Sky.HideOrbits);
@@ -262,7 +267,8 @@ public sealed class LegacyObserverProfileTests
         string path = Path.GetTempFileName();
         try
         {
-            var view = new ObserverView(new(2451545, 0, TimeScale.Tdb), CameraMode.Solar, null, false);
+            var view = new ObserverView(new(2451545, 0, TimeScale.Tdb), CameraMode.Solar, null, false)
+                { EarthObserver = EarthObserverCamera.Greenwich with { CivilClock = null } };
             File.WriteAllText(path, """{"Site":{},"DeepSkyKinds":9,"DeepSkyCatalogs":"NGC, M, NGC, other","OpenClusterLabels":false,"NebulaLabels":true}""");
             var profile = LegacyObserverProfiles.Read(path, view, DeltaTModel.MorrisonStephenson2004);
             Assert.Equal(new DeepSkyVisibility(9, "M,NGC"), profile.Observer.Sky.DeepSkyFilter);

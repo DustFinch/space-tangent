@@ -35,6 +35,32 @@ This one-entry example describes the schema; it is not enough for the four-modul
 
 An incomplete prefix is retained for diagnosis, with failed status and source-stability information. It is not a successful matrix. Collect in a fresh directory after correcting a failure; never relabel a stale or failed report as fresh acceptance.
 
+## Restore the upstream survey sample
+
+The original DSS metadata/tile test can run with a small pinned capture of the same upstream survey. `fetch_survey_sample.py` downloads the properties file, order-3 overview and order-5 Orion tile from the NASA IRSA mirror listed in the [CDS registry](https://alasky.cds.unistra.fr/MocServer/query?ID=CDS%2FP%2FDSS2%2Fcolor&get=record). It checks exact sizes and SHA-256 values before writing each resource, keeps the survey's original metadata and records provenance separately. A changed upstream resource fails; it is not silently accepted by recapturing a data profile.
+
+```powershell
+python scripts/testing/fetch_survey_sample.py C:/TestData/dss-sample
+python deps/space-tangent-core/scripts/testing/data_profile.py capture --output C:/TestData/dss-profile.json --bind SPACETANGENT_SKY_SURVEYS=C:/TestData/dss-sample/surveys
+python deps/space-tangent-core/scripts/testing/data_profile.py run --profile C:/TestData/dss-profile.json -- dotnet test tests/SpaceTangent.Application.Tests --filter FullyQualifiedName~OriginalDssMetadataAndCachedTilesResolveTheOrionField
+```
+
+This executes the unchanged test against published upstream data. Historical local-cache hashes are unavailable, so the capture does not establish byte identity with that lost cache. It does not restore the full survey, the separate photographic catalogue or network map compatibility. The original survey credits and distribution terms apply; no images are added to this repository.
+
+## Restore the astrometry fixture
+
+`scripts/sky/prepare_spatial.py` adapts the pinned HYG 4.1 CSV already identified in [the spatial catalogue notes](SPATIAL_SKY.md). Obtain `hyg/CURRENT/hygdata_v41.csv` from revision `c7f7f883fe678cc7680169a50ccd7dcc49b060ce` of the upstream repository; the preparer checks SHA-256 `d9f69fd86bbf90a4e4d52b4c5c53eacfa6dfc0bfdef85bfd94f095e0bebe4ebd` before creating output. It uses the upstream convention for usable parallaxes, retains the original Cartesian position/velocity columns and produces 109,400 rows without truncating to a desired population.
+
+```powershell
+python scripts/sky/prepare_spatial.py C:/TestData/hyg-v41.csv C:/TestData/hyg-adapted
+python deps/space-tangent-core/scripts/testing/data_profile.py capture --output C:/TestData/hyg-profile.json --bind SPACETANGENT_SPATIAL_STARS=C:/TestData/hyg-adapted/hyg-astrometry.tsv
+python deps/space-tangent-core/scripts/testing/data_profile.py run --profile C:/TestData/hyg-profile.json -- dotnet test deps/space-tangent-core/tests/SpaceTangent.Core.Tests --filter FullyQualifiedName~PinnedCatalogueContainsNearbyStarsAtPublishedScales
+```
+
+This is a regenerated astrometry fixture, not a byte-identical historical adapter output. Its redundant scalar distance is derived from the supplied Cartesian coordinates. Missing colours use an explicitly recorded display default. The required radius column uses a visual-luminosity display proxy; it is not a measured physical radius and must not be used as a physical-size or rendered-disk reference. Provenance and CC BY-SA 4.0 attribution accompany the output.
+
+For the supplementary STC regressions, use a separate source-only STC/DSC directory **without** `stars.dat`; bind the unchanged binary table separately through `SPACETANGENT_STC_ASTROMETRY`. Those tests first assert that records are missing, then add the binary table and verify recovery against retained native reference coordinates. Placing `stars.dat` in the baseline source directory defeats the missing-input setup. Preserve the original installation and construct a separate pinned snapshot instead of removing files from it. Supply the original stellar archive and exoplanet catalogue too; the full dependency list is declared by the test attributes.
+
 Use the core repository's `scripts/testing/data_profile.py` to pin optional local inputs before running. See its `docs/TEST_DATA_AND_COVERAGE.md` for integrity checks and independent reference provenance. Keep local paths, profiles and optional assets outside the source repositories. Capturing a profile is not proof of its scientific provenance or permission to redistribute it.
 
 ```powershell

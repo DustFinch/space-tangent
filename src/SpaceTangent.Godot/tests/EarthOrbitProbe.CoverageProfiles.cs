@@ -76,6 +76,10 @@ public partial class EarthOrbitProbe
                 RequireInput("SPACETANGENT_VIEWPOINT_CORPUS");
                 await ExerciseMissionViewpoints(scene, directory);
                 break;
+            case "mission-local-tiles":
+                RequireInput("SPACETANGENT_SURFACE_TILES");
+                await ExerciseAuthoredMissionTiles(scene,directory);
+                break;
             case "mission-axes":
                 RequireControl("SPACETANGENT_MISSION_AXES_GPU");
                 RequireInput("SPACETANGENT_SAMPLED_MISSIONS_ROOT");

@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
 using Godot;
 using SpaceTangent.Application;
+using SpaceTangent.Contracts;
 using SpaceTangent.Core.Observing;
 using SpaceTangent.Godot.Simulation;
 
@@ -74,7 +75,55 @@ public partial class EarthOrbitProbe
             if(media.Active) throw new InvalidOperationException("An explicit stop must clear the looping channel.");
         }
         finally {media.Clear();}
+        var bounded=new ScriptMediaPlayer(scene.Renderer(0));
+        try
+        {
+            for(int i=0;i<4;i++) bounded.Present(directory,new ScriptMediaRequest.Overlay("art.png",60,.5,.5,4,4,1));
+            Reject(()=>bounded.Present(directory,new ScriptMediaRequest.Overlay("art.png",60,.5,.5,4,4,1)),typeof(InvalidDataException));
+            bounded.Clear();
+            File.WriteAllBytes(Path.Combine(directory,"unsupported.bin"),[1]);
+            Reject(()=>bounded.Present(directory,new ScriptMediaRequest.Sound("unsupported.bin",0,1,false)),typeof(InvalidDataException));
+            Reject(()=>bounded.Present(directory,new ScriptMediaRequest.Overlay("unsupported.bin",1,.5,.5,0,0,1)),typeof(InvalidDataException));
+            File.WriteAllBytes(Path.Combine(directory,"empty.png"),[]);
+            Reject(()=>bounded.Present(directory,new ScriptMediaRequest.Overlay("empty.png",1,.5,.5,0,0,1)),typeof(InvalidDataException));
+            using(var wide=Image.CreateEmpty(4097,1,false,Image.Format.Rgba8))
+                if(wide.SavePng(Path.Combine(directory,"wide.png"))!=Error.Ok) throw new IOException("Could not write the image dimension witness.");
+            Reject(()=>bounded.Present(directory,new ScriptMediaRequest.Overlay("wide.png",1,.5,.5,0,0,1)),typeof(InvalidDataException));
+            bool refused=false;
+            for(int i=0;i<100&&!refused;i++)
+                try {bounded.Present(directory,new ScriptMediaRequest.Sound("",0,9,false));}
+                catch(InvalidOperationException) {refused=true;}
+            if(!refused||bounded.Active) throw new InvalidOperationException("The media request budget must bound repeated empty stops without retaining resources.");
+        }
+        finally {bounded.Clear();}
+
+        const string magnitudeVariable="SPACETANGENT_SATELLITE_MAGNITUDES";
+        string? prior=System.Environment.GetEnvironmentVariable(magnitudeVariable);
+        string magnitudes=Path.Combine(directory,"magnitudes.txt");
+        try
+        {
+            File.WriteAllText(magnitudes,"26997 4.5\n-1 3\n42 NaN\nbad\n26997 5\n12345 6.5\n");
+            System.Environment.SetEnvironmentVariable(magnitudeVariable,magnitudes);
+            var data=BrightSkyData.Load();
+            try
+            {
+                if(data.SatelliteMagnitudes.Count!=2||data.SatelliteMagnitudes[new ObjectId("norad/26997")]!=5)
+                    throw new InvalidOperationException("Magnitude imports must reject invalid rows and retain the last valid update.");
+            }
+            finally {data.Surveys.Dispose();}
+            using(var oversized=File.Create(magnitudes)) oversized.SetLength(1024*1024+1);
+            data=BrightSkyData.Load();
+            try {if(data.SatelliteMagnitudes.Count!=0) throw new InvalidOperationException("An oversized magnitude table must not publish partial rows.");}
+            finally {data.Surveys.Dispose();}
+        }
+        finally {System.Environment.SetEnvironmentVariable(magnitudeVariable,prior);}
         await ToSignal(GetTree(),SceneTree.SignalName.ProcessFrame);
         GD.Print("Resource contracts GPU: stable legacy pack keys, malformed/oversized manifests, PNG/JPEG/WebP artwork cache and silent WAV lifecycle.");
+        static void Reject(Action action,Type expected)
+        {
+            try {action();}
+            catch(Exception error) when(expected.IsInstanceOfType(error)) {return;}
+            throw new InvalidOperationException("The resource request was accepted beyond its documented bound.");
+        }
     }
 }

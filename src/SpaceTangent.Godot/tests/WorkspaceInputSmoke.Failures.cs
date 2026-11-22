@@ -2,6 +2,9 @@
 using Godot;
 using SpaceTangent.Application;
 using SpaceTangent.Core.Time;
+using SpaceTangent.Core.Observing;
+using SpaceTangent.Contracts;
+using SpaceTangent.Godot.Simulation;
 
 namespace SpaceTangent.Godot.Tests;
 
@@ -40,6 +43,7 @@ public partial class WorkspaceInputSmoke
         Require(!_scene.QueueScreenshot("bad\0capture.png"), "An invalid screenshot path must be refused before capture.");
         RequireScenario(before, Session.CaptureScenario(0), "Failed input and filesystem operations");
         await ExerciseTourAndPluginRecovery(directory);
+        await ExerciseTimeAndOfflineControls(directory);
 
         if (File.Exists(settings)) File.Delete(settings);
         Directory.CreateDirectory(settings);
@@ -105,5 +109,53 @@ public partial class WorkspaceInputSmoke
             popup.EmitSignal(PopupMenu.SignalName.IdPressed,(long)popup.GetItemId(item));
         }
         GD.Print("UI: tour conversion save/failure/cancel and eight-plugin capacity with persistent disable and reenable.");
+    }
+
+    private async Task ExerciseTimeAndOfflineControls(string directory)
+    {
+        string saved=Path.Combine(directory,"before-time-errors.stscene"); ScenarioFile.Save(saved,Session.CaptureScenario(0));
+        var status=Find<Label>("WorkspaceStatus");
+        try
+        {
+            await Click(Find<Button>("TimeTab"));
+            var date=Find<LineEdit>("UtcDate"); var clock=Find<LineEdit>("UtcTime");
+            var before=Session[0];
+            foreach(var pair in new[]{("bad","12:00:00"),("2024-01-01","25:00:00")})
+            {
+                await FillField("UtcDate",pair.Item1); await FillField("UtcTime",pair.Item2); await KeyPress(Key.Enter);
+                Require(Session[0]==before&&status.Text.StartsWith("Enter a date",StringComparison.Ordinal),"Malformed calendar input changed the clock.");
+            }
+            await FillField("UtcDate","1950-01-01"); await FillField("UtcTime","12:00:00"); await KeyPress(Key.Enter);
+            Require(HistoricalDate.TryParse("1950-01-01",out var historical,out _),"The historical date fixture is invalid.");
+            var expected=EarthCivilTime.FromModeledUt1(historical,12*3600*JulianInstant.NanosecondsPerSecond,Session.DeltaT);
+            Require(Session[0].Epoch==expected,"Pre-UTC input must use the selected modeled UT1 conversion.");
+            before=Session[0];
+            await FillField("UtcTime","12:00:60"); await KeyPress(Key.Enter);
+            Require(Session[0]==before&&status.Text.Contains("outside",StringComparison.Ordinal),"A leap second cannot be interpreted in modeled UT1.");
+            var epoch=Find<LineEdit>("TimePanelEpoch"); epoch.Text="not-a-date"; epoch.EmitSignal(LineEdit.SignalName.TextSubmitted,epoch.Text);
+            Require(Session[0]==before&&status.Text.StartsWith("Could not set the epoch.",StringComparison.Ordinal),"Invalid TDB input must preserve the existing epoch.");
+            var now=date.GetParent().GetParent().FindChildren("*","Button",recursive:true,owned:false).OfType<Button>().Single(button=>button.Text=="Now");
+            var low=DateTime.UtcNow.AddSeconds(-3); await Click(now); var high=DateTime.UtcNow.AddSeconds(3);
+            var utc=TimeConversion.ToUtc(Session[0].Epoch);
+            Require(utc.Date.ToDateTime(new TimeOnly(utc.Hour,utc.Minute,(int)utc.Second))>=low&&
+                utc.Date.ToDateTime(new TimeOnly(utc.Hour,utc.Minute,(int)utc.Second))<=high,"Now must set the active observer to the current UTC.");
+            await Click(Find<SubViewportContainer>("ViewCanvas0"));
+            bool places=Session[0].Sky.SurfacePlaces;
+            await KeyPress(Key.L,ctrl:true); Require(Session[0].Sky.SurfacePlaces!=places,"Ctrl+L must toggle surface labels.");
+            await KeyPress(Key.L,ctrl:true); Require(Session[0].Sky.SurfacePlaces==places,"A second Ctrl+L must restore the layer.");
+
+            var offline=Find<CheckButton>("HipsOffline");
+            // The automation forces network access off. Verify the preference handler cannot defeat that process policy.
+            offline.EmitSignal(BaseButton.SignalName.Toggled,false);
+            Require(_scene.SurveysOffline&&!new LocalAddonSettingsFile().Load().HipsOffline,"The offline preference and forced process policy must remain distinct.");
+            string settings=System.Environment.GetEnvironmentVariable("SPACETANGENT_ADDONS_SETTINGS_PATH")!;
+            File.Delete(settings); Directory.CreateDirectory(settings);
+            offline.EmitSignal(BaseButton.SignalName.Toggled,true);
+            Require(_scene.SurveysOffline&&Directory.Exists(settings),"A failed preference write must preserve forced offline mode.");
+            Directory.Delete(settings); offline.EmitSignal(BaseButton.SignalName.Toggled,true);
+            Require(new LocalAddonSettingsFile().Load().HipsOffline,"Offline persistence must recover after the destination is unblocked.");
+        }
+        finally {Require(_scene.LoadScenario(saved),"Could not restore the observers after clock controls.");}
+        GD.Print("UI: rejected malformed dates, modeled 1950 UT1, Now, TDB refusal, surface-label shortcut and forced-offline preference recovery.");
     }
 }

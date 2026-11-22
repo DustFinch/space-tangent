@@ -44,12 +44,13 @@ public sealed class ExtrasolarSscTests
         }
     }
 
-    [ExternalSscFact]
-    [Trait("Category", "ExternalData")]
+    [Fact]
     public void LegacySiriusSystemKeepsStarAndMoonOrbitUnits()
     {
-        var ephemeris = De440Ephemeris.Load(Environment.GetEnvironmentVariable("SPACETANGENT_DE440")!);
-        var stars = StellarCatalogue.Load(Environment.GetEnvironmentVariable("SPACETANGENT_SPATIAL_STARS")!);
+        // These assertions concern relative orbit units, not catalogue astrometry.
+        // A deliberately authored host position keeps this contract independent of the missing full catalogue.
+        var ephemeris = new SharedClockTests.StaticEphemeris();
+        var stars = AuthoredExtrasolarInstallationTests.Stars();
         var root = Directory.CreateTempSubdirectory("st-extrasolar-");
         try
         {
@@ -89,13 +90,4 @@ public sealed class ExtrasolarSscTests
         return (state - parent).PositionKilometers.Length;
     }
 
-    private sealed class ExternalSscFactAttribute : FactAttribute
-    {
-        public ExternalSscFactAttribute()
-        {
-            if (string.IsNullOrWhiteSpace(Environment.GetEnvironmentVariable("SPACETANGENT_DE440")) ||
-                string.IsNullOrWhiteSpace(Environment.GetEnvironmentVariable("SPACETANGENT_SPATIAL_STARS")))
-                Skip = "Set the verified DE440 and spatial star catalogue.";
-        }
-    }
 }

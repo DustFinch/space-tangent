@@ -17,7 +17,7 @@ public partial class EarthOrbitProbe
 
         var session = scene.Session!;
         var left = session[0] with { Playing = false };
-        var right = left with { Epoch = left.Epoch.AddSeconds(3600) };
+        var right = left with { Epoch = left.Epoch.AddSeconds(3600), Places = left.Places.ForkIdentity() };
         string scenario = Path.Combine(directory, "tour-caption.stscene");
         ScenarioFile.Save(scenario, new([left, right], false, 0, 0, session.DeltaT));
         if (!scene.LoadScenario(scenario))

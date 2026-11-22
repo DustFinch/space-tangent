@@ -66,7 +66,7 @@ public partial class SolarSystemScene
     internal void SetLandscapeChoice(int view, string? id)
     {
         var session = Session!;
-        var camera = session[view].EarthObserver ?? EarthObserverCamera.Default;
+        var camera = session[view].ObserverCamera;
         if (id is not null && _landscapeTextures.TryGetValue(id, out var attempted) && attempted is null)
             _landscapeTextures.Remove(id);
         session.SetEarthObserver(view, camera with { LandscapeId = id });

@@ -127,7 +127,7 @@ public sealed class NativeTourGeometryTests
                 File.WriteAllText(lua, conversion.Lua);
                 var session = new SimulationSession(world, epoch, DeltaTModel.MorrisonStephenson2004);
                 session.OpenSpaceView(0);
-                var other = session[0] with { Epoch = epoch.AddSeconds(1), Playing = false };
+                var other = session[0] with { Epoch = epoch.AddSeconds(1), Playing = false, Places = session[0].Places.ForkIdentity() };
                 session.RestoreScenario(new([session[0], other], false, 0, 0, session.DeltaT));
                 var script = LuaSessionScript.Load(lua, session, 0, false, _ => { });
                 script.Step(0);

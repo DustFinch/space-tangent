@@ -20,9 +20,10 @@ public sealed record SimulationScenario(IReadOnlyList<ObserverView> Views, bool 
 public static class ScenarioFile
 {
     private static readonly UTF8Encoding StrictUtf8 = new(false, true);
-    private const int Version = 51;
+    private const int Version = 52;
     internal const int MaximumBytes = 32 * 1024;
-    private static readonly JsonSerializerOptions Json = new()
+    internal const int MaximumHistoryBytes = 256 * 1024;
+    internal static readonly JsonSerializerOptions Json = new()
     {
         PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
         UnmappedMemberHandling = JsonUnmappedMemberHandling.Disallow,
@@ -61,6 +62,10 @@ public static class ScenarioFile
             throw new InvalidDataException("The scenario has an invalid camera pose.");
         if (scenario.Views.Any(view => view.EarthObserver is { } earth && !earth.IsValid()))
             throw new InvalidDataException("The scenario has an invalid Earth observer camera.");
+        if (scenario.Views.Any(view => !view.Places.IsValid()) ||
+            scenario.Views.Where(view => view.Places.HasIdentity).Select(view => view.Places.ViewKey).Distinct().Count() !=
+            scenario.Views.Count(view => view.Places.HasIdentity))
+            throw new InvalidDataException("The scenario has invalid or duplicate observing place identities.");
         if (!Enum.IsDefined(scenario.SplitLayout) ||
             scenario.Views.Any(view => (view.FieldOfViewDegrees is { } field && !ObserverView.ValidFieldOfView(field)) ||
                 (view.PlaybackRate is { } rate && !ObserverView.ValidPlaybackRate(rate))))
@@ -79,7 +84,8 @@ public static class ScenarioFile
             throw new InvalidDataException("The scenario has an invalid light-time offset.");
         var document = new Document
         {
-            Version = scenario.Views.Any(view => view.EarthObserver?.Body is not null) ? 51 :
+            Version = scenario.Views.Any(view => view.Places.HasIdentity) ? 52 :
+                scenario.Views.Any(view => view.EarthObserver?.Body is not null) ? 51 :
                 scenario.Views.Any(view => view.LightTimeOffsetNanoseconds is not null) ? 50 :
                 scenario.Views.Any(view => view.ScriptAimTarget is not null) ? 49 :
                 scenario.Views.Any(view => view.EarthObserver?.CivilClock is not null) ? 48 :
@@ -146,6 +152,7 @@ public static class ScenarioFile
                 PlaybackRate = view.PlaybackRate,
                 Navigation = view.Navigation is { } pose ? Camera.From(pose) : null,
                 EarthObserver = view.EarthObserver,
+                PlaceMemory = view.Places.HasIdentity ? new PlaceMemoryData(view.Places.ViewKey.ToString("N"), view.Places.Locations.ToArray()) : null,
                 Sky = view.Sky.Visible || view.Sky.HasCultureSettings || view.Sky.HasSurveySettings || view.Sky.HasMeteorSettings || view.Sky.MinorBodyLabels || view.Sky.HideSatellites || view.Sky.HasBodyLayerSettings || view.Sky.CinematicBlackHoles || view.Sky.HasDeepSkyPreferences || view.Sky.HideClouds || view.Sky.HideAtmospheres || view.Sky.HideTerrain || view.Sky.PointerCoordinates || view.Sky.ZodiacalLight || view.Sky.Starlink.HasValue || view.Sky.SmallBodies.HasValue ? view.Sky : null,
                 ReferenceMarks = view.ReferenceMarks,
                 Optics = view.Optics,
@@ -154,7 +161,7 @@ public static class ScenarioFile
             }).ToArray()
         };
         byte[] bytes = JsonSerializer.SerializeToUtf8Bytes(document, Json);
-        if (bytes.Length > MaximumBytes)
+        if (bytes.Length > (document.Version >= 52 ? MaximumHistoryBytes : MaximumBytes))
             throw new InvalidDataException("The scenario is too large.");
         return bytes;
     }
@@ -186,7 +193,7 @@ public static class ScenarioFile
     public static SimulationScenario Load(string path)
     {
         using FileStream stream = File.OpenRead(path);
-        if (stream.Length is <= 0 or > MaximumBytes)
+        if (stream.Length is <= 0 or > MaximumHistoryBytes)
             throw new InvalidDataException("The scenario file has an invalid size.");
         var bytes = new byte[(int)stream.Length];
         stream.ReadExactly(bytes);
@@ -197,7 +204,7 @@ public static class ScenarioFile
 
     internal static SimulationScenario Decode(ReadOnlySpan<byte> bytes)
     {
-        if (bytes.Length is <= 0 or > MaximumBytes)
+        if (bytes.Length is <= 0 or > MaximumHistoryBytes)
             throw new InvalidDataException("The scenario has an invalid size.");
         // JsonDocument may defer invalid UTF-8 property names until access and throw InvalidOperationException.
         // Treat malformed encoding as input data, before traversing or applying any part of the document.
@@ -209,6 +216,8 @@ public static class ScenarioFile
             ?? throw new InvalidDataException("The scenario is empty.");
         if (document.Version is < 1 or > Version)
             throw new InvalidDataException($"Unsupported scenario version {document.Version}.");
+        if (document.Version < 52 && bytes.Length > MaximumBytes)
+            throw new InvalidDataException("The scenario has an invalid size.");
         if (document.NightMode && document.Version < 35)
             throw new InvalidDataException("Night mode requires scenario version 35.");
         if (!Enum.IsDefined(document.SplitLayout) || (document.Version < 6 && document.SplitLayout != ViewSplit.SideBySide))
@@ -223,6 +232,9 @@ public static class ScenarioFile
         for (int i = 0; i < views.Length; i++)
         {
             View data = document.Views[i];
+            if (data.PlaceMemory is not null && document.Version < 52)
+                throw new InvalidDataException("Observing place memory requires scenario version 52.");
+            ObserverPlaceMemory memory = data.PlaceMemory?.ToMemory() ?? default;
             if (data.DayTdb is < 0 or > JulianInstant.MaximumDay || data.NanosecondsOfDay is < 0 or >= JulianInstant.NanosecondsPerDay)
                 throw new InvalidDataException("The scenario has an invalid epoch.");
             var epoch = new JulianInstant(data.DayTdb, data.NanosecondsOfDay, TimeScale.Tdb);
@@ -329,6 +341,7 @@ public static class ScenarioFile
                 Navigation = navigation,
                 ScriptAimTarget = data.ScriptAimTarget is { } aim ? new ObjectId(aim) : null,
                 EarthObserver = data.EarthObserver,
+                Places = memory,
                 Sky = data.Sky ?? default,
                 ReferenceMarks = data.ReferenceMarks,
                 Optics = data.Optics,
@@ -336,11 +349,14 @@ public static class ScenarioFile
                 LightTimeOffsetNanoseconds = data.LightTimeOffsetNanoseconds
             };
         }
+        if (views.Where(view => view.Places.HasIdentity).Select(view => view.Places.ViewKey).Distinct().Count() !=
+            views.Count(view => view.Places.HasIdentity))
+            throw new InvalidDataException("The scenario has duplicate observing place identities.");
         return new(Array.AsReadOnly(views), document.Synchronized, document.ClockOwner, document.ActiveView, document.DeltaT)
             { SplitLayout = document.SplitLayout, Layout = layout.IsDefault ? null : layout, NightMode = document.NightMode };
     }
 
-    private static void UniqueFields(JsonElement value)
+    internal static void UniqueFields(JsonElement value)
     {
         if (value.ValueKind == JsonValueKind.Object)
         {
@@ -399,6 +415,8 @@ public static class ScenarioFile
         [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
         public EarthObserverCamera? EarthObserver { get; init; }
         [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+        public PlaceMemoryData? PlaceMemory { get; init; }
+        [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
         public SkyLayerSettings? Sky { get; init; }
         [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingDefault)]
         public BodyReferenceMarks ReferenceMarks { get; init; }
@@ -408,6 +426,16 @@ public static class ScenarioFile
         public bool LightTimeDelayed { get; init; }
         [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
         public long? LightTimeOffsetNanoseconds { get; init; }
+    }
+
+    private sealed record PlaceMemoryData(string Key, EarthObserverCamera[] Locations)
+    {
+        public ObserverPlaceMemory ToMemory()
+        {
+            if (!Guid.TryParseExact(Key, "N", out Guid key) || Locations is null)
+                throw new InvalidDataException("The observing place memory is invalid.");
+            return ObserverPlaceMemory.FromSaved(key, Locations);
+        }
     }
 
     private sealed record Camera(double AnchorX, double AnchorY, double AnchorZ, double RangeKilometers,

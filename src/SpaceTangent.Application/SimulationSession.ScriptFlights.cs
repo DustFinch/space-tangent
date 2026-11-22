@@ -125,7 +125,7 @@ public sealed partial class SimulationSession
         {
             if (observer.Mode == CameraMode.Surface && observer.Navigation is null)
             {
-                var camera = observer.EarthObserver ?? EarthObserverCamera.Default;
+                var camera = observer.ObserverCamera;
                 SetEarthObserver(view, camera.Turn(cameraAxis.Y / cameraAxis.Length * radians,
                     cameraAxis.X / cameraAxis.Length * radians));
             }

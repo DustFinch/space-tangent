@@ -38,7 +38,9 @@ public sealed class ClockPersistenceTests
             Assert.Null(view.LightTimeOffsetNanoseconds);
         });
         // Older scenes keep their legacy measured-forward fallback; a newer offset cannot be smuggled into v10.
-        string json = Encoding.UTF8.GetString(saved);
+        var legacy = session.CaptureScenario(0) with
+            { Views = ScenarioFile.Decode(saved).Views.Select(view => view with { Places = default }).ToArray() };
+        string json = Encoding.UTF8.GetString(ScenarioFile.Encode(legacy));
         Assert.Throws<InvalidDataException>(() => ScenarioFile.Decode(Encoding.UTF8.GetBytes(json.Replace("\"version\": 50", "\"version\": 10"))));
     }
 

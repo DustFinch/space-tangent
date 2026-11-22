@@ -22,7 +22,7 @@ public static class VisibleTonight
     public static TonightResult Calculate(SimulationWorld world, ObserverView observer, DeltaTModel model,
         CancellationToken cancellation = default)
     {
-        var camera = observer.EarthObserver ?? EarthObserverCamera.Default;
+        var camera = observer.ObserverCamera;
         SurfaceObserver.RequireCalculationFrame(world, camera, observer.Epoch, model);
         var clock = camera.IsEarth ? camera.CivilClock.GetValueOrDefault() : new ObserverSiteClock("UTC", "Etc/UTC", 0);
         var date = clock.DateAt(observer.Epoch, camera.Site, model);

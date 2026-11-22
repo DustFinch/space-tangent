@@ -25,6 +25,7 @@ internal sealed class EarthObserverPanel
     private readonly Action<EarthObserverCamera> _apply;
     private readonly Action<string> _setStatus;
     private EarthObserverCamera _camera;
+    private ObserverView _observer;
     private int _view = -1;
     private (DateOnly Date, EarthSite Site, DeltaTModel Model, ObserverSiteClock Clock)? _twilightKey;
 
@@ -42,8 +43,7 @@ internal sealed class EarthObserverPanel
         {
             if (index < 0 || index >= _bodyChoices.Count) return;
             var body = _bodyChoices[(int)index].Id;
-            _apply(_camera with { Body = body == SolarSystemSample.EarthId ? null : body,
-                Site = new(0, 0, 0), CivilClock = null, LandscapeId = null, Conditions = null, ApparentPlaces = false });
+            _apply(_observer.CameraForBody(body));
         };
         location.AddChild(_bodies);
         location.AddChild(SimulatorTheme.Section("Observing site"));
@@ -125,7 +125,8 @@ internal sealed class EarthObserverPanel
     internal void Update(int view, ObserverView observer, WorldSnapshot? snapshot, ISolarSystemEphemeris ephemeris,
         DeltaTModel model, BrightStarCatalogue brightStars, ObserverNight? night, EarthPlaceCatalogue places, SimulationWorld world)
     {
-        EarthObserverCamera camera = observer.EarthObserver ?? EarthObserverCamera.Default;
+        _observer = observer;
+        EarthObserverCamera camera = observer.ObserverCamera;
         _twilightTitle.Text = camera.IsEarth ? "Civil twilight" : "Surface geometry";
         if (!ReferenceEquals(_bodyWorld, world))
         {

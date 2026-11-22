@@ -28,6 +28,13 @@ public readonly record struct ObserverView(JulianInstant Epoch, CameraMode Mode,
     public NavigationCamera? Navigation { get; init; }
     public ObjectId? ScriptAimTarget { get; init; }
     public EarthObserverCamera? EarthObserver { get; init; }
+    public ObserverPlaceMemory Places { get; init; }
+    public EarthObserverCamera ObserverCamera => EarthObserver ?? Places.Find(SolarSystemSample.EarthId) ?? EarthObserverCamera.Default;
+    public EarthObserverCamera CameraForBody(ObjectId body) => ObserverCamera.SurfaceBody == body ? ObserverCamera :
+        Places.Find(body) ?? (body == SolarSystemSample.EarthId ? EarthObserverCamera.Default :
+            new EarthObserverCamera(new(0, 0, 0), 180, 10) { Body = body });
+    public ObserverView WithObserverCamera(EarthObserverCamera camera) => this with
+        { EarthObserver = camera, Places = Places.Remember(ObserverCamera).Remember(camera) };
     public SkyLayerSettings Sky { get; init; }
     public BodyReferenceMarks ReferenceMarks { get; init; }
     public double? FieldOfViewDegrees { get; init; }
@@ -277,13 +284,14 @@ public sealed partial class SimulationSession
     private readonly List<int> _viewIds = [0];
     private int _nextViewId = 1;
     private readonly Dictionary<int, bool> _scriptedZoomChanges = [];
+    public int ObserverPlacesVersion { get; private set; }
 
     public SimulationSession(SimulationWorld world, JulianInstant initialEpoch, DeltaTModel deltaT)
     {
         if (!Covers(world, initialEpoch))
             throw new ArgumentOutOfRangeException(nameof(initialEpoch));
         World = world;
-        _views = [new(initialEpoch, CameraMode.Solar, null, false)];
+        _views = [new(initialEpoch, CameraMode.Solar, null, false) { Places = default(ObserverPlaceMemory).EnsureIdentity() }];
         SetDeltaT(deltaT);
     }
 
@@ -308,6 +316,9 @@ public sealed partial class SimulationSession
     public void RestoreScenario(SimulationScenario scenario)
     {
         ObserverView[] views = scenario.Views.ToArray();
+        if (views.Where(view => view.Places.HasIdentity).Select(view => view.Places.ViewKey).Distinct().Count() !=
+            views.Count(view => view.Places.HasIdentity))
+            throw new InvalidDataException("The scenario has duplicate observing place identities.");
         if (views.Length is < 1 or > ObserverLayout.MaximumViews || scenario.ClockOwner < 0 || scenario.ClockOwner >= views.Length ||
             scenario.ActiveView < 0 || scenario.ActiveView >= views.Length)
             throw new InvalidDataException("The scenario refers to an unavailable view.");
@@ -332,6 +343,8 @@ public sealed partial class SimulationSession
                 throw new InvalidDataException("The scenario needs the Martian elevation map and orientation kernel.");
             if (view.EarthObserver is { } earth && !earth.IsValid())
                 throw new InvalidDataException("The scenario has an invalid Earth observer camera.");
+            if (!view.Places.IsValid())
+                throw new InvalidDataException("The scenario has an invalid observing place memory.");
             if (view.EarthObserver is { IsEarth: false } surface &&
                 !SurfaceObserver.TryFrame(World, surface, World.Graph.Evaluate(view.Epoch, scenario.DeltaT), scenario.DeltaT, out _))
                 throw new InvalidDataException("The scenario needs the observing body's position and orientation at its saved epoch.");
@@ -369,7 +382,7 @@ public sealed partial class SimulationSession
 
         _ships.Clear();
         _views.Clear();
-        _views.AddRange(views);
+        _views.AddRange(views.Select(view => view with { Places = view.Places.EnsureIdentity() }));
         _flights.Clear();
         _trackingEpochs.Clear();
         _scriptNotices.Clear();
@@ -390,13 +403,38 @@ public sealed partial class SimulationSession
             SharePlaybackRate(owner.PlaybackRate ?? DefaultPlaybackRate(owner.Mode));
         SplitLayout = scenario.SplitLayout;
         DeltaT = scenario.DeltaT;
+        ObserverPlacesVersion++;
     }
 
     public void SetEarthObserver(int view, EarthObserverCamera camera)
     {
         if (!camera.IsValid())
             throw new ArgumentOutOfRangeException(nameof(camera));
-        _views[view] = _views[view] with { EarthObserver = camera };
+        _views[view] = _views[view].WithObserverCamera(camera);
+        ObserverPlacesVersion++;
+    }
+
+    public bool SetObserverBody(int view, ObjectId body)
+    {
+        var observer = _views[view];
+        var camera = observer.CameraForBody(body);
+        if (!SurfaceObserver.TryFrame(World, camera, World.Graph.Evaluate(observer.Epoch, DeltaT), DeltaT, out _)) return false;
+        SetEarthObserver(view, camera);
+        return true;
+    }
+
+    internal void RestoreObserverPlaces(int view, EarthObserverCamera camera, ObserverPlaceMemory memory)
+    {
+        if (!camera.IsValid() || !memory.HasIdentity || !memory.IsValid())
+            throw new InvalidDataException("Invalid saved observing places.");
+        var snapshot = World.Graph.Evaluate(_views[view].Epoch, DeltaT);
+        if (!SurfaceObserver.TryFrame(World, camera, snapshot, DeltaT, out _))
+        {
+            memory = memory.Remember(camera);
+            camera = memory.Find(SolarSystemSample.EarthId) ?? EarthObserverCamera.Default;
+        }
+        _views[view] = _views[view] with { EarthObserver = camera, Places = memory };
+        ObserverPlacesVersion++;
     }
 
     public void SetOptics(int view, ObserverOptics optics)
@@ -463,10 +501,11 @@ public sealed partial class SimulationSession
         ObserverView source = _views[copyFrom];
         Layout = Layout.Insert(view, _views.Count, direction, share, newFirst);
         SplitLayout = Layout.Direction;
-        _views.Add(source);
+        _views.Add(source with { Places = source.Places.ForkIdentity() });
         _flights.Add(null);
         _trackingEpochs.Add(_trackingEpochs[copyFrom]);
         _viewIds.Add(_nextViewId++);
+        ObserverPlacesVersion++;
         return true;
     }
 
@@ -495,6 +534,7 @@ public sealed partial class SimulationSession
         _scriptMarkers.Remove(_viewIds[view]);
         _scriptedZoomChanges.Remove(ViewIdentity(view));
         _viewIds.RemoveAt(view);
+        ObserverPlacesVersion++;
         Layout = Layout.Remove(view)!;
         if (Layout.View is null)
             SplitLayout = Layout.Direction;
@@ -712,14 +752,17 @@ public sealed partial class SimulationSession
             if (site is { IsEarth: false } surface &&
                 !SurfaceObserver.TryFrame(next, surface, next.Graph.Evaluate(previous.Epoch, DeltaT), DeltaT, out _))
             {
-                site = EarthObserverCamera.Default;
+                site = previous.Places.Find(SolarSystemSample.EarthId) ?? EarthObserverCamera.Default;
                 if (mode == CameraMode.Surface && navigation is null) mode = CameraMode.Solar;
                 fallbacks.Add(index);
             }
-            _views[index] = previous with { Selection = selected, Mode = mode, Navigation = navigation, ScriptAimTarget = aim, EarthObserver = site };
+            var updated = previous with { Selection = selected, Mode = mode, Navigation = navigation, ScriptAimTarget = aim };
+            _views[index] = site is { } location && site != previous.EarthObserver ? updated.WithObserverCamera(location) :
+                updated with { EarthObserver = site };
         }
         World = next;
         SurfaceObserverFallbacks = fallbacks.AsReadOnly();
+        if (fallbacks.Count > 0) ObserverPlacesVersion++;
         return true;
     }
 

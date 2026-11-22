@@ -19,7 +19,7 @@ public sealed class SharedClockTests
     {
         var session = Create();
         var view = session[0];
-        session.RestoreScenario(new([view with { PlaybackRate = first }, view with { PlaybackRate = second }],
+        session.RestoreScenario(new([view with { PlaybackRate = first }, view with { PlaybackRate = second, Places = view.Places.ForkIdentity() }],
             false, 0, 0, session.DeltaT));
         double expected = session.CurrentPlaybackRate(source);
         session.Synchronize(true, source);
@@ -44,7 +44,7 @@ public sealed class SharedClockTests
     {
         var session = Create();
         var view = session[0];
-        session.RestoreScenario(new([view with { PlaybackRate = 600 }, view with { PlaybackRate = 1 }],
+        session.RestoreScenario(new([view with { PlaybackRate = 600 }, view with { PlaybackRate = 1, Places = view.Places.ForkIdentity() }],
             true, 0, 0, session.DeltaT));
         session.Step(1, 3600);
         Assert.Equal(600, session.CurrentPlaybackRate(0));

@@ -30,6 +30,10 @@ Open **Location** to choose Greenwich/UTC or Tromsø, or enter latitude, east lo
 
 Version 3 scenarios store each view's Earth observer camera and horizon overlays. Older scenarios without a saved site use the neutral Greenwich/UTC default. Explicit coordinates in saved scenarios are preserved.
 
+Each view remembers its last observing place on each body. Choosing Moon and then Earth returns to that view's previous Earth coordinates and direction. Splitting a view copies its places into an independent history; closing another view does not move that history to a different observer. Up to 16 bodies are remembered per view, retaining Earth when older entries are evicted.
+
+Places are saved automatically after a short pause and on exit, separately from **Save current views for startup**. A saved startup workspace restores its layout, epochs and cameras; automatic preferences update only the places belonging to its matching view identities. A fresh workspace resumes the last remaining primary place. Opening a scenario explicitly uses that scenario's places. Version 52 scenarios preserve view identities and inactive body history; older scenarios remain readable. An unavailable saved body falls back to the remembered Earth place while keeping its inactive entry. Corrupt preferences or a failed save leave the running views intact and show a status message.
+
 The surface camera and twilight also use the long-range ephemeris. Enter a historical Julian date in the TDB field to use the surface model with the active ΔT preference. The display labels that time as UT1 and scenarios retain the exact TDB epoch. Modern UTC and published leap seconds use the original conversion.
 
 ## Headless workspace input test

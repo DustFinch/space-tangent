@@ -22,7 +22,10 @@ public partial class SolarSystemScene
         {
             string path = StartupWorkspacePath();
             if (File.Exists(path) && LoadScenario(path))
+            {
+                _restoredStartupWorkspace = true;
                 GD.Print("SpaceTangent restored the saved startup views.");
+            }
         }
         catch (Exception error) when (IsLoadError(error))
         {

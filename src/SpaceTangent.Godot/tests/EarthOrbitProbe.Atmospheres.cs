@@ -53,7 +53,8 @@ public partial class EarthOrbitProbe
                 var clear = session[0];
                 string profilePath = Path.Combine(directory, "archived-cloud-settings.json");
                 File.WriteAllText(profilePath, """{"Site":{},"Clouds":false}""");
-                var imported = LegacyObserverProfiles.Read(profilePath, clear, session.DeltaT).Observer;
+                var imported = LegacyObserverProfiles.Read(profilePath, clear, session.DeltaT).Observer with
+                    { Places = clear.Places.ForkIdentity() };
                 string viewsPath = Path.Combine(directory, "venus-independent-clouds.stscene");
                 ScenarioFile.Save(viewsPath, new([imported, clear], false, 0, 0, session.DeltaT));
                 if (!scene.LoadScenario(viewsPath) || !await scene.ReloadAddOns() ||
@@ -64,7 +65,8 @@ public partial class EarthOrbitProbe
                     throw new InvalidOperationException("The archived Clouds preference must hide only the cloud deck in its observer.");
                 GD.Print("Cloud settings GPU: original Venus cloud deck independent of atmosphere and second view after reload.");
                 File.WriteAllText(profilePath, """{"Site":{},"Atmospheres":false}""");
-                var noAir = LegacyObserverProfiles.Read(profilePath, clear, session.DeltaT).Observer;
+                var noAir = LegacyObserverProfiles.Read(profilePath, clear, session.DeltaT).Observer with
+                    { Places = clear.Places.ForkIdentity() };
                 string airPath = Path.Combine(directory, "venus-independent-atmospheres.stscene");
                 ScenarioFile.Save(airPath, new([noAir, clear], false, 0, 0, session.DeltaT));
                 if (!scene.LoadScenario(airPath) || !await scene.ReloadAddOns() ||

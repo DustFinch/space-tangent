@@ -255,6 +255,7 @@ public partial class SolarSystemScene : Control
         AddView();
         Refresh();
         RestoreStartupWorkspace();
+        RestoreObserverPlaces();
         InitializationFinished = true;
         ReportLoadedWorld(world);
         if (_startupArguments.Any(argument => argument.StartsWith("--startup-", StringComparison.Ordinal)))
@@ -512,7 +513,7 @@ public partial class SolarSystemScene : Control
         ObserverView observer = Session![_active];
         if (observer.Selection is { } location && Session.World.EarthPlaces.Find(location) is { } place)
         {
-            var camera = observer.EarthObserver ?? EarthObserverCamera.Default;
+            var camera = observer.ObserverCamera;
             Session.SetEarthObserver(_active, camera with
             {
                 Site = place.ObserverSite,
@@ -563,7 +564,7 @@ public partial class SolarSystemScene : Control
     private void PointAtStar(BrightStar star)
     {
         var observer = Session![_active];
-        var camera = observer.EarthObserver ?? EarthObserverCamera.Default;
+        var camera = observer.ObserverCamera;
         if (_views[_active].Snapshot is not { SolarSystem: { } solar } snapshot || (camera.IsEarth && _surfaceTextures is null))
             return;
         try
@@ -702,7 +703,7 @@ public partial class SolarSystemScene : Control
                 break;
             case Key.M when key.AltPressed && !key.CtrlPressed && !key.ShiftPressed && !key.MetaPressed &&
                 Session[_active] is { Mode: CameraMode.Surface, Navigation: null } surface:
-                var mount = surface.EarthObserver ?? EarthObserverCamera.Default;
+                var mount = surface.ObserverCamera;
                 Session.SetEarthObserver(_active, mount with { EquatorialMount = !mount.EquatorialMount });
                 _status.Text = mount.EquatorialMount ? "Altazimuth mount." : "Equatorial mount.";
                 Refresh();
@@ -816,6 +817,7 @@ public partial class SolarSystemScene : Control
 
     public override void _ExitTree()
     {
+        FlushObserverPlaces();
         _galacticSky.Dispose();
         _brightSky?.Surveys.Dispose();
         _addOns?.Decoded.DistantStars.Value?.Dispose();
@@ -849,6 +851,7 @@ public partial class SolarSystemScene : Control
 
     public override void _Process(double delta)
     {
+        AdvanceObserverPlaces(delta);
         if (AdvanceReplay(delta))
             return;
         if (MovieActive)
@@ -1926,7 +1929,7 @@ public partial class SolarSystemScene : Control
         if (!ground)
             return session.AdjustCamera(view, yaw, pitch, 1, orbitTarget: !lookAround);
 
-        var camera = observer.EarthObserver ?? EarthObserverCamera.Default;
+        var camera = observer.ObserverCamera;
         double direction = observer.ActiveOptics?.Inverted == true ? -1 : 1;
         session.SetEarthObserver(view, camera.Turn(direction * yaw, direction * pitch));
         return true;

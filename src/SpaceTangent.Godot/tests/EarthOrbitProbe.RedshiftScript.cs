@@ -15,7 +15,7 @@ public partial class EarthOrbitProbe
         string source = Path.Combine(System.Environment.GetEnvironmentVariable("SPACETANGENT_TOUR_SOURCES")!, "z-dist.celx");
         var session = scene.Session!;
         var left = session[0] with { Playing = false };
-        var right = left with { Epoch = left.Epoch.AddSeconds(7200) };
+        var right = left with { Epoch = left.Epoch.AddSeconds(7200), Places = left.Places.ForkIdentity() };
         string original = Path.Combine(directory, "before-redshift.stscene");
         string prepared = Path.Combine(directory, "redshift-observers.stscene");
         if (!scene.SaveScenario(original))

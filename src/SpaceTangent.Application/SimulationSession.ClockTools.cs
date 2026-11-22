@@ -43,7 +43,7 @@ public sealed partial class SimulationSession
             eye = pose.AnchorKilometers + pose.ResolvePlacement(snapshot, DeltaT).OffsetKilometers;
         else if (observer.Mode == CameraMode.Surface)
         {
-            var site = (observer.EarthObserver ?? EarthObserverCamera.Default).Site;
+            var site = (observer.ObserverCamera).Site;
             try { eye = solar.Earth.PositionKilometers + EarthSurfaceLighting.Sample(solar, site, DeltaT).PositionKilometers; }
             catch (ArgumentOutOfRangeException) { return null; }
         }

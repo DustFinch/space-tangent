@@ -14,7 +14,8 @@ public partial class WorkspaceInputSmoke
         string restore = Path.Combine(directory, "before-classic-views.stscene");
         Require(_scene.SaveScenario(restore), "Save the original workspace.");
         var left = Session[0] with { Playing = false, FieldOfViewDegrees = 41 };
-        var right = left with { Selection = Jason, Epoch = left.Epoch.AddSeconds(7200), FieldOfViewDegrees = 62 };
+        var right = left with { Selection = Jason, Epoch = left.Epoch.AddSeconds(7200), FieldOfViewDegrees = 62,
+            Places = left.Places.ForkIdentity() };
         string initial = Path.Combine(directory, "classic-views-start.stscene");
         ScenarioFile.Save(initial, new([left, right], false, 0, 1, Session.DeltaT));
         Require(_scene.LoadScenario(initial), "Open independent views with original Jason-1 active.");

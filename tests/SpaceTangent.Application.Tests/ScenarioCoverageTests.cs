@@ -19,6 +19,7 @@ public sealed class ScenarioCoverageTests
     {
         var values = new Dictionary<string, object?>
         {
+            ["Places"] = default(ObserverPlaceMemory).Remember(EarthObserverCamera.Default),
             ["Epoch"] = Base.Epoch.AddSeconds(1), ["Mode"] = CameraMode.Surface,
             ["Selection"] = new ObjectId("sol/moon"), ["Playing"] = true,
             ["Terrain"] = LunarTerrainCamera.Copernicus,
@@ -96,8 +97,8 @@ public sealed class ScenarioCoverageTests
         Assert.Equal(before.Views.ToArray(), session.CaptureScenario(1).Views.ToArray());
         byte[] valid = ScenarioFile.Encode(before);
         foreach (string invalid in new[] {
-            Encoding.UTF8.GetString(valid).Replace("\"version\": 7", "\"version\": 999"),
-            Encoding.UTF8.GetString(valid).Replace("\"version\": 7", "\"version\": 7, \"version\": 7"),
+            Encoding.UTF8.GetString(valid).Replace("\"version\": 52", "\"version\": 999"),
+            Encoding.UTF8.GetString(valid).Replace("\"version\": 52", "\"version\": 52, \"version\": 52"),
             Encoding.UTF8.GetString(valid).Replace("\"camera\": \"solar\"", "\"camera\": \"unknown\""),
             "{}" })
         {

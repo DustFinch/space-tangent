@@ -48,6 +48,13 @@ public partial class WorkspaceInputSmoke : Node
             Require(_scene.Session is not null && Session.World.Satellites.Any(satellite => satellite.Id == Jason),
                 "DE440 and the original Jason-1 add-on must load.");
             Tree.Root.NotifyMouseEntered();
+            if (System.Environment.GetEnvironmentVariable("SPACETANGENT_PLACE_MEMORY_SMOKE_ONLY") == "1")
+            {
+                await ExercisePlaceMemory(scratch.FullName);
+                GD.Print("SpaceTangent observing place memory input smoke passed");
+                exitCode = 0;
+                return;
+            }
             if (System.Environment.GetEnvironmentVariable("SPACETANGENT_LIVE_SATELLITE_UPDATE_SMOKE") == "1")
             {
                 await ExerciseLiveSatelliteUpdate();
@@ -126,7 +133,7 @@ public partial class WorkspaceInputSmoke : Node
             {
                 var view = Session[0] with { Playing = false };
                 string path = Path.Combine(scratch.FullName, "media-smoke.stscene");
-                ScenarioFile.Save(path, new([view, view], false, 0, 0, Session.DeltaT));
+                ScenarioFile.Save(path, new([view, view with { Places = view.Places.ForkIdentity() }], false, 0, 0, Session.DeltaT));
                 Require(_scene.LoadScenario(path), "The media test must open two independent views.");
                 await ExerciseScriptMedia(scratch.FullName);
                 exitCode = 0;
@@ -190,6 +197,7 @@ public partial class WorkspaceInputSmoke : Node
             foreach (var view in oldScene["views"]!.AsArray())
             {
                 view!.AsObject().Remove("earthObserver");
+                view.AsObject().Remove("placeMemory"); // Version 2 did not persist observing place histories.
                 view.AsObject().Remove("sky");
                 view.AsObject().Remove("playbackRate"); // Shared rates are explicit now; v2 did not have this field.
                 view.AsObject().Remove("fieldOfViewDegrees"); // Physical layout changes can store a v6 field.

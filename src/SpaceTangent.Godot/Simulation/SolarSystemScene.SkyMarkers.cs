@@ -31,7 +31,7 @@ public partial class SolarSystemScene
         if (view.Mode == CameraMode.Surface && view.Navigation is null &&
             _views[_active].Snapshot is { } groundSnapshot)
         {
-            var camera = view.EarthObserver ?? EarthObserverCamera.Default;
+            var camera = view.ObserverCamera;
             if (!SurfaceObserver.TryFrame(session.World, camera, groundSnapshot, session.DeltaT, out var frame)) return false;
             var place = frame.Direction(direction)!.Value;
             view = view with { EarthObserver = camera with

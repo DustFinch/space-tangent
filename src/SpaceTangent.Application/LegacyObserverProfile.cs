@@ -31,7 +31,7 @@ public static partial class LegacyObserverProfiles
 
         if (Enum.TryParse(Word(root, "DeltaT"), out DeltaTModel model) && Enum.IsDefined(model))
             deltaT = model;
-        EarthObserverCamera camera = current.EarthObserver ?? EarthObserverCamera.Default;
+        EarthObserverCamera camera = current.ObserverCamera;
         string? siteBody = Word(root, "SiteBody");
         if (root.TryGetProperty("Site", out var position) &&
             position.ValueKind == JsonValueKind.Object)

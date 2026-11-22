@@ -19,7 +19,7 @@ public partial class SolarSystemScene
     private TonightContext CurrentTonightContext()
     {
         var session = Session!;
-        var camera = session[_active].EarthObserver ?? EarthObserverCamera.Default;
+        var camera = session[_active].ObserverCamera;
         return new(session.World, session.ViewIdentity(_active), camera.SurfaceBody, camera.Site, camera.CivilClock,
             camera.Conditions, session.DeltaT, _loadGeneration);
     }
@@ -72,7 +72,7 @@ public partial class SolarSystemScene
                     session.SelectObject(_active, target.Id);
                     if (session[_active] is { Mode: CameraMode.Surface, Navigation: null })
                     {
-                        var camera = session[_active].EarthObserver ?? EarthObserverCamera.Default;
+                        var camera = session[_active].ObserverCamera;
                         session.SetEarthObserver(_active, camera with
                         {
                             AzimuthDegrees = target.BestDirection.AzimuthDegrees ?? camera.AzimuthDegrees,

@@ -42,7 +42,8 @@ public sealed class GuideAndFavoriteContractTests : IDisposable
             """));
         Assert.Equal(3, conversion.Commands);
         var session = SharedClockTests.Create(); session.OpenSpaceView(0);
-        var other = session[0] with { Epoch = session[0].Epoch.AddSeconds(120), Playing = false, PlaybackRate = -10 };
+        var other = session[0] with { Epoch = session[0].Epoch.AddSeconds(120), Playing = false, PlaybackRate = -10,
+            Places = session[0].Places.ForkIdentity() };
         session.RestoreScenario(new([session[0], other], false, 0, 0, session.DeltaT));
         var log = new List<string>();
         var script = LuaSessionScript.Load(FileOf("converted.lua", conversion.Lua), session, 0, false, log.Add);

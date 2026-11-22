@@ -22,7 +22,7 @@ public sealed class NavigationNoticeTests
         var camera = new NavigationCamera(target.PositionKilometers, 1, 0, 0, null, false)
             { Placement = new(default, new(1, 0, 0), new(0, 0, 1)) };
         var view = session[0] with { Selection = satellite.Id, Navigation = camera };
-        session.RestoreScenario(new([view, view], true, 0, 0, session.DeltaT));
+        session.RestoreScenario(new([view, view with { Places = view.Places.ForkIdentity() }], true, 0, 0, session.DeltaT));
         var before = session.CaptureScenario(0);
         Assert.False(session.FocusSelection(0));
         Assert.Equal(before.Views.ToArray(), session.CaptureScenario(0).Views.ToArray());

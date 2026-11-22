@@ -73,5 +73,36 @@ public sealed class TourRuntimeContractTests : IDisposable
         Assert.Null(script.Error); Assert.Equal(unchanged, ScenarioFile.Encode(session.CaptureScenario(0)));
     }
 
+    [Theory]
+    [InlineData("unknown","Unknown observer mode")]
+    [InlineData("surface","surface textures")]
+    public void UnsupportedModesCannotReplaceTheCurrentObserver(string mode,string diagnostic)
+    {
+        var session=SharedClockTests.Create(); byte[] before=ScenarioFile.Encode(session.CaptureScenario(0));
+        Assert.Contains(diagnostic,Run("st.mode('"+mode+"')",session).Error,StringComparison.OrdinalIgnoreCase);
+        Assert.Equal(before,ScenarioFile.Encode(session.CaptureScenario(0)));
+    }
+
+    [Fact]
+    public void AForegroundScriptCannotContinueAfterItsOwningViewCloses()
+    {
+        var session=SharedClockTests.Create(); session.Split();
+        string path=Path.Combine(_root.FullName,"closed.lua"); File.WriteAllText(path,"st.pause(); st.wait(1)");
+        var script=LuaSessionScript.Load(path,session,1,false,_=>{});
+        session.RemoveView(1); Assert.False(script.Step(0)); Assert.True(script.Finished);
+        Assert.Contains("view has been closed",script.Error,StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void Utf8BomAndOptionalPauseToggleRemainExecutable()
+    {
+        var session=SharedClockTests.Create(); bool playing=session[0].Playing;
+        string path=Path.Combine(_root.FullName,"bom.lua"); File.WriteAllText(path,"st.pause(); st.mode('lunar')",new System.Text.UTF8Encoding(true));
+        var script=LuaSessionScript.Load(path,session,0,false,_=>{});
+        for(int i=0;i<8&&!script.Finished;i++) script.Step(0);
+        Assert.True(script.Finished); Assert.Null(script.Error); Assert.NotEqual(playing,session[0].Playing);
+        Assert.Equal(CameraMode.Lunar,session[0].Mode);
+    }
+
     public void Dispose() => _root.Delete(recursive: true);
 }

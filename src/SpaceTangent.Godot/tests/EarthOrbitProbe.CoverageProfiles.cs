@@ -63,6 +63,11 @@ public partial class EarthOrbitProbe
                 RequireInput("SPACETANGENT_SAMPLED_MISSIONS_ROOT");
                 await ExerciseMissionObservations(scene, directory);
                 break;
+            case "mission-annotations":
+                RequireControl("SPACETANGENT_ANNOTATION_GPU");
+                RequireInput("SPACETANGENT_ANNOTATION_CORPUS");
+                await ExerciseMissionAnnotations(scene, directory);
+                break;
             case "mission-axes":
                 RequireControl("SPACETANGENT_MISSION_AXES_GPU");
                 RequireInput("SPACETANGENT_SAMPLED_MISSIONS_ROOT");

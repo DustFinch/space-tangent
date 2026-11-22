@@ -1,0 +1,72 @@
+// SPDX-License-Identifier: GPL-2.0-or-later
+using SpaceTangent.Contracts;
+using SpaceTangent.Core.Ephemerides;
+using Xunit;
+
+namespace SpaceTangent.Application.Tests;
+
+public sealed class TourRuntimeContractTests : IDisposable
+{
+    private readonly DirectoryInfo _root = Directory.CreateTempSubdirectory("st-tour-runtime-");
+    private LuaSessionScript Run(string source, SimulationSession session)
+    {
+        string path = Path.Combine(_root.FullName, "witness.lua"); File.WriteAllText(path, source);
+        var script = LuaSessionScript.Load(path, session, 0, false, _ => { });
+        for (int i = 0; i < 16 && !script.Finished; i++) script.Step(0);
+        Assert.True(script.Finished); return script;
+    }
+
+    [Fact]
+    public void ALocalTourCanEnumerateSelectAndPersistItsSkySettingsWithoutChangingTheOtherView()
+    {
+        var session = SharedClockTests.Create(); session.Split(); session.Synchronize(false, 0); session.Step(1, 3600);
+        session.SetSkyLayers(0, session[0].Sky with { HideAtmospheres = true, HideCometTails = true });
+        var other = session[1];
+        var script = Run("""
+            local first, again = st.cataloguetour(), st.cataloguetour()
+            assert(#first == 32 and #again == 32)
+            local seen = {}
+            for i, id in ipairs(first) do assert(not seen[id]); seen[id]=true; assert(again[i]==id) end
+            assert(st.tryselect('sol/moon'))
+            assert(not st.tryselect('sol/ceres'))
+            for _, layer in ipairs({'atmospheres','comettails','boundaries','grid','eclipticgrid','galacticgrid',
+                'ecliptic','places','clusterlabels','nebulalabels'}) do st.sky(layer, true) end
+            """, session);
+        Assert.Null(script.Error);
+        var sky = session[0].Sky;
+        Assert.False(sky.HideAtmospheres); Assert.False(sky.HideCometTails);
+        Assert.True(sky.ConstellationBoundaries && sky.EquatorialGrid && sky.EclipticGrid && sky.GalacticGrid && sky.EclipticLine && sky.SurfacePlaces);
+        Assert.True(sky.OpenClusterLabels); Assert.True(sky.NebulaLabels);
+        Assert.Equal(SolarSystemSample.MoonId, session[0].Selection);
+        var restored = ScenarioFile.Decode(ScenarioFile.Encode(session.CaptureScenario(0)));
+        Assert.Equal(sky, restored.Views[0].Sky); Assert.Equal(other, restored.Views[1]);
+        Assert.Equal(session.DeltaT, restored.DeltaT);
+    }
+
+    [Theory]
+    [InlineData("st.gotoobject(-1, 2)", "parameters")]
+    [InlineData("st.gotoobject(1, 0)", "parameters")]
+    [InlineData("st.sky('unknown-layer', true)", "sky layer")]
+    [InlineData("st.legacyframe('unknown-frame', assert(st.find('Sol/Earth/Moon')))", "observer frame")]
+    [InlineData("st.sky('lighttime', true)", "unavailable")]
+    public void InvalidTourRequestsReportTheirContractAndPreserveTheObserver(string source, string message)
+    {
+        var session = SharedClockTests.Create(); var before = session.CaptureScenario(0);
+        session.RestoreScenario(before with { Views = [before.Views[0] with { Selection = null }] });
+        byte[] unchanged = ScenarioFile.Encode(session.CaptureScenario(0));
+        Assert.Contains(message, Run(source, session).Error, StringComparison.OrdinalIgnoreCase);
+        Assert.Equal(unchanged, ScenarioFile.Encode(session.CaptureScenario(0)));
+    }
+
+    [Fact]
+    public void OptionalFrameAndFlightCommandsWithoutASelectionAreNoOps()
+    {
+        var session = SharedClockTests.Create(); var before = session.CaptureScenario(0);
+        session.RestoreScenario(before with { Views = [before.Views[0] with { Selection = null }] });
+        byte[] unchanged = ScenarioFile.Encode(session.CaptureScenario(0));
+        var script = Run("st.legacyframe('equatorial', nil); st.gotoobject(0, 2)", session);
+        Assert.Null(script.Error); Assert.Equal(unchanged, ScenarioFile.Encode(session.CaptureScenario(0)));
+    }
+
+    public void Dispose() => _root.Delete(recursive: true);
+}

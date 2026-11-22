@@ -78,6 +78,19 @@ public partial class EarthOrbitProbe
                 RequireInput("SPACETANGENT_STELLAR_ARCHIVE");
                 await ExerciseStellarSpace(scene, SurfaceProjection.FullMoonEpoch, directory);
                 break;
+            case "extrasolar-rendering":
+                RequireInput("SPACETANGENT_STELLAR_ARCHIVE");
+                RequireInput("SPACETANGENT_EXTRASOLAR_SSC");
+                await ExerciseExtrasolarSsc(scene, directory);
+                break;
+            case "tour-markers":
+                RequireControl("SPACETANGENT_TOUR_NOTICE_PROBE");
+                RequireControl("SPACETANGENT_REDSHIFT_PROBE");
+                RequireInput("SPACETANGENT_TOUR_SOURCES");
+                RequireInput("SPACETANGENT_DSC_ROOT");
+                await ExerciseTourNotices(scene, directory);
+                await ExerciseRedshiftScript(scene, directory);
+                break;
             case "ssc-bodies":
                 RequireControl("SPACETANGENT_MINOR_MOONS_GPU");
                 RequireInput("SPACETANGENT_MINOR_MOONS");

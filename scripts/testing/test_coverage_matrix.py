@@ -104,6 +104,23 @@ class CoverageMatrixExecutionTests(unittest.TestCase):
             source = app / 'src/SpaceTangent.Application/Example.cs'
             source.parent.mkdir(parents=True)
             source.write_text('// Original source used by the orchestration test.\n')
+            core_source = core / 'src/SpaceTangent.Core/Example.cs'
+            dependency_source = app / 'deps/space-tangent-core/src/SpaceTangent.Core/Example.cs'
+            for path in (core_source, dependency_source):
+                path.parent.mkdir(parents=True)
+                path.write_text('// Identical core production sources.\n')
+            for path in (core/'Directory.Build.props', app/'deps/space-tangent-core/Directory.Build.props'):
+                path.write_text('<Project />\n')
+            if mode == 'different-core':
+                dependency_source.write_text('// Different core source built by the application.\n')
+            if mode == 'core-line-endings':
+                content = core_source.read_bytes().replace(b'\r\n', b'\n')
+                core_source.write_bytes(content)
+                dependency_source.write_bytes(content.replace(b'\n', b'\r\n'))
+            if mode == 'different-native':
+                native_source = core/'src/SpaceTangent.Native/Example.cs'
+                native_source.parent.mkdir(parents=True)
+                native_source.write_text('// An independently tested consumer outside the shared assemblies.\n')
             test = core / 'tests/SpaceTangent.Core.Tests'
             binary = test / 'bin/Debug/net8.0'
             binary.mkdir(parents=True)
@@ -146,13 +163,26 @@ function global:python {
             MUTATE_SOURCE
         }
         $global:LASTEXITCODE=0
-    } else { & REAL_PYTHON @args }
+    } else {
+        & REAL_PYTHON @args
+        MUTATE_SUMMARY_SOURCE
+    }
 }
 & $Runner -Manifest $Manifest -Profiles $Profiles -OutputDirectory $Output -Godot 'unused' -CoreCheckout $Core
 """.replace('TRX_LITERAL', literal(trx)).replace('XML_LITERAL', literal(xml))
                 .replace('REAL_PYTHON', literal(sys.executable))
+                .replace('MUTATE_SUMMARY_SOURCE', 'Add-Content -LiteralPath ' + literal(source) + " -Value '// Changed during aggregation.'"
+                         if mode == 'changed-during-summary' else '')
                 .replace('MUTATE_SOURCE', 'Add-Content -LiteralPath ' + literal(source) + " -Value '// Changed during collection.'"
-                         if mode == 'changed-source' else ''))
+                         if mode == 'changed-source' else
+                         'Add-Content -LiteralPath ' + literal(dependency_source) + " -Value '// Changed dependency.'"
+                         if mode == 'changed-dependency' else
+                         'Add-Content -LiteralPath ' + literal(app/'Directory.Build.props') + " -Value '<Project />'"
+                         if mode == 'changed-build-settings' else
+                         'Set-Content -LiteralPath ' + literal(core_source.parent/'packages.lock.json') + " -Value '{}'"
+                         if mode == 'changed-lock' else
+                         'Add-Content -LiteralPath ' + literal(core_scripts/'coverage_report.py') + " -Value '# Changed collector.'"
+                         if mode == 'changed-collector' else ''))
             output = root / 'evidence'
             result = subprocess.run(['pwsh', '-NoProfile', '-File', str(wrapper),
                 '-Runner', str(runner), '-Manifest', str(root / 'matrix.json'),
@@ -168,6 +198,8 @@ function global:python {
         self.assertEqual(0, result.returncode, result.stdout)
         self.assertEqual('passed', state['status'])
         self.assertTrue(state['sourcesUnchanged'])
+        self.assertEqual(64, len(state['sharedCoreFingerprint']))
+        self.assertEqual(2, state['sharedCoreInputFiles'])
         self.assertEqual(64, len(state['runs'][0]['reportSha256']))
         self.assertEqual(100, summary['modules']['SpaceTangent.Godot']['percent'])
 
@@ -193,6 +225,51 @@ function global:python {
         self.assertIn('Fresh coverage is below 95%', result.stdout)
         self.assertEqual('failed', state['status'])
         self.assertEqual(50, summary['modules']['SpaceTangent.Godot']['percent'])
+
+    def test_different_application_and_standalone_core_sources_are_rejected(self):
+        result, state, _ = self.exercise('different-core')
+        self.assertNotEqual(0, result.returncode, result.stdout)
+        self.assertIn('Core checkout and application dependency differ', result.stdout)
+        self.assertEqual('failed', state['status'])
+        self.assertEqual([], state['reports'])
+
+    def test_independent_native_consumer_does_not_change_the_shared_core_input_contract(self):
+        result, state, _ = self.exercise('different-native')
+        self.assertEqual(0, result.returncode, result.stdout)
+        self.assertEqual('passed', state['status'])
+
+    def test_git_line_ending_conversion_does_not_create_a_different_core_revision(self):
+        result, state, _ = self.exercise('core-line-endings')
+        self.assertEqual(0, result.returncode, result.stdout)
+        self.assertTrue(state['sourcesUnchanged'])
+
+    def test_dependency_changes_invalidate_the_matrix(self):
+        result, state, _ = self.exercise('changed-dependency')
+        self.assertNotEqual(0, result.returncode, result.stdout)
+        self.assertFalse(state['sourcesUnchanged'])
+        self.assertEqual('failed', state['status'])
+
+    def test_root_build_settings_are_part_of_the_source_snapshot(self):
+        result, state, _ = self.exercise('changed-build-settings')
+        self.assertNotEqual(0, result.returncode, result.stdout)
+        self.assertFalse(state['sourcesUnchanged'])
+
+    def test_source_changes_during_aggregation_cannot_leave_a_passed_status(self):
+        result, state, summary = self.exercise('changed-during-summary')
+        self.assertIsNotNone(summary)
+        self.assertNotEqual(0, result.returncode, result.stdout)
+        self.assertFalse(state['sourcesUnchanged'])
+        self.assertEqual('failed', state['status'])
+
+    def test_dependency_lock_changes_invalidate_the_evidence(self):
+        result, state, _ = self.exercise('changed-lock')
+        self.assertNotEqual(0, result.returncode, result.stdout)
+        self.assertFalse(state['sourcesUnchanged'])
+
+    def test_collector_source_changes_invalidate_the_evidence(self):
+        result, state, _ = self.exercise('changed-collector')
+        self.assertNotEqual(0, result.returncode, result.stdout)
+        self.assertFalse(state['sourcesUnchanged'])
 
 
 if __name__ == '__main__':

@@ -104,6 +104,8 @@ For the observing-place regression, put `{"SPACETANGENT_PLACE_MEMORY_SMOKE_ONLY"
 
 Coverage evidence belongs to its source revision. Preserve source hashes alongside raw reports. Reuse earlier file hits only when the exact source hash and executable-line set match the current build; collect changed files again. Never merge old line numbers into an edited file merely because its path is unchanged. Distinguish a fresh-run percentage from a cumulative result that includes verified unchanged files, and keep both denominators available.
 
+When `-CoreCheckout` selects a standalone core, the matrix verifies the shared Core/Contracts production inputs and root build settings against the application's dependency before collecting evidence. Cross-checkout comparison normalizes Git's LF/CRLF conversion and records the shared-input fingerprint; before/after snapshots retain each tree's exact bytes, dependency locks, collector version and script sources. Independently measured Native/CLI consumers do not participate in that shared-assembly comparison. A source change during report aggregation also rejects the final matrix status.
+
 `summary.json` lists exactly which modules were measured and the missing source lines. Its combiner rejects empty reports, absent required modules and required modules without recorded hits. Combine additional headless/GPU runs with the core's `coverage_report.py`, requiring Core, Contracts, Application and Godot. Report Native, CLI and engine bindings separately until their own runs are included. Do not label a four-module percentage as coverage of all repository code.
 
 The local matrix enforces 95% for each of the four agreed production modules. Missing test data must not silently improve the percentage; the original optional cases remain in the test suites and their outcomes are reported separately.
@@ -125,10 +127,18 @@ Native managed IL, the Unity binding and CLI consumers have separate measured de
 |---|---:|---:|
 | Pack CLI | 176 / 185 | 95.135% |
 | Model CLI | 51 / 53 | 96.226% |
-| Native managed wrapper | 55 / 59 | 93.220% |
+| Native managed wrapper | 56 / 58 | 96.552% |
 | Unity managed binding | 14 / 14 | 100% |
 
-These fresh consumer runs use unchanged consumer source. NativeAOT smoke reuses an explicitly identified unchanged DLL; it is not a new native publish or editor acceptance. The wrapper remains below 95%, with generated-record and exception-safety paths uncovered. Other editor scripts, packaged engine consumers and performance tooling are not included in the four-module threshold. Rendering profiles keep their image/geometry assertions; C# line coverage does not measure shader execution or visual equivalence.
+The Native follow-up uses a freshly published AOT DLL and 14 passing ABI/PInvoke contracts in each configuration, plus the standalone C client. Its sequential state is now a plain wire struct matching the C header and Unity binding; removing unused record-generated behavior removes one executable source line. A new directory-open failure contract covers the access-denied status path. Debug reaches 56/58 lines; Release independently reaches 48/50 (96%) with the Unity binding at 13/13. These configuration denominators are not merged. The two remaining Native lines are unexpected-exception safety catches. Other editor scripts, packaged engine consumers and performance tooling are not included in the four-module threshold. Rendering profiles keep their image/geometry assertions; C# line coverage does not measure shader execution or visual equivalence.
+
+## Coverage in GitHub Actions
+
+Existing jobs execute the tests on Windows and Linux and publish Cobertura XML, JSON and TRX artifacts. The report tool also appends per-module tables to the GitHub job summary. Core public-data jobs measure Core/Contracts; the Native job measures its managed wrapper and Unity binding and requires 95% for each. Application jobs measure the data-free managed suite. Godot jobs additionally run [the headless public-data collector](../scripts/ci/godot-coverage.ps1) with the pinned DE440 input and publish all four loaded modules.
+
+These CI tables report their actual measured subsets. A public-data headless startup is not the full optional-data/GPU matrix above and does not claim its 95% result. Reproducing the full result in Actions requires an explicitly configured runner with the same permitted datasets and suitable rendering hardware; a separate GPU runner is not provisioned by these workflows.
+
+## Running individual probes
 
 For an individual existing probe, use `scripts/testing/godot-probe-coverage.ps1` with a pinned `-DataProfile`, fresh `-OutputDirectory`, explicit `-Scene`, `-SuccessMarker`, and Godot console path. `-ProbeOptions` accepts a JSON object of string controls/output paths; it cannot override a pinned input. Capture uses isolated settings and an exclusive lock on the Godot instrumentation directory. Build/import happens before instrumentation unless `-SkipBuild` is explicitly chosen for the same unchanged build.
 

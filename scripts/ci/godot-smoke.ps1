@@ -50,5 +50,7 @@ foreach ($duration in @('NaN', 'Infinity', '0.05', '601')) {
     }
 }
 Write-Output 'Public-data startup movie duration refusals passed.'
+& (Join-Path $PSScriptRoot 'godot-coverage.ps1') -Godot $engine -De440 $de440 `
+    -OutputDirectory (Join-Path $checkout '.ci/godot-coverage') -SkipBuild
 # Expected native refusals must not become the enclosing GitHub step's exit status.
 exit 0

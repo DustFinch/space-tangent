@@ -33,18 +33,48 @@ if (Test-Path -LiteralPath $out) { throw 'Use a fresh matrix output directory; p
 [IO.Directory]::CreateDirectory($out) | Out-Null
 [IO.Directory]::CreateDirectory((Join-Path $out 'controls')) | Out-Null
 function Check([string]$step) { if ($LASTEXITCODE -ne 0) { throw "$step failed: $LASTEXITCODE" } }
+function Build-Inputs([string]$root) {
+    $files=@()
+    foreach ($folder in @('src','tests','tools','bindings','scripts')) {
+        $base=Join-Path $root $folder
+        if (Test-Path -LiteralPath $base -PathType Container) {
+            $files+=Get-ChildItem -LiteralPath $base -Recurse -File | Where-Object {
+                ($_.Extension -in @('.cs','.csproj','.props','.targets','.tscn','.gdshader','.ps1','.py') -or
+                    $_.Name -in @('packages.lock.json','packages.export.lock.json')) -and
+                    $_.FullName -notmatch '[\\/](bin|obj|\.godot)[\\/]'
+            }
+        }
+    }
+    $files+=Get-ChildItem -LiteralPath $root -File | Where-Object {
+        $_.Extension -in @('.props','.targets') -or $_.Name -in @('global.json','NuGet.Config','nuget.config')
+    }
+    $collector=Join-Path $root '.config/dotnet-tools.json'
+    if (Test-Path -LiteralPath $collector -PathType Leaf) { $files+=Get-Item -LiteralPath $collector }
+    return $files | Sort-Object FullName
+}
+function Core-Production-Snapshot([string]$root) {
+    $snapshot=[ordered]@{}
+    foreach ($file in (Build-Inputs $root)) {
+        $relative=[IO.Path]::GetRelativePath($root,$file.FullName).Replace('\','/')
+        # These are the shared assemblies emitted by both test graphs. Native,
+        # CLI and editor consumers have separate coverage and need not match.
+        if ($relative.Contains('/') -and
+            -not $relative.StartsWith('src/SpaceTangent.Core/',[StringComparison]::Ordinal) -and
+            -not $relative.StartsWith('src/SpaceTangent.Contracts/',[StringComparison]::Ordinal)) { continue }
+        # Git's text conversion can give equivalent checkouts different LF/CRLF
+        # bytes. Normalize only that conversion for this cross-checkout comparison;
+        # Source-Snapshot below still records each tree's exact bytes.
+        $text=[IO.File]::ReadAllText($file.FullName,[Text.UTF8Encoding]::new($false,$true)).Replace("`r`n","`n")
+        $snapshot[$relative]=[Convert]::ToHexString([Security.Cryptography.SHA256]::HashData([Text.Encoding]::UTF8.GetBytes($text)))
+    }
+    return $snapshot
+}
 function Source-Snapshot {
     $snapshot=[ordered]@{}
-    foreach ($item in @(@('application',$checkout),@('core',$CoreCheckout))) {
-        foreach ($folder in @('src','tests','tools','bindings')) {
-            $base=Join-Path $item[1] $folder
-            if (-not (Test-Path -LiteralPath $base -PathType Container)) { continue }
-            foreach ($file in (Get-ChildItem -LiteralPath $base -Recurse -File | Where-Object {
-                $_.Extension -in @('.cs','.csproj','.props','.targets','.tscn','.gdshader') -and $_.FullName -notmatch '[\\/](bin|obj|\.godot)[\\/]'
-            } | Sort-Object FullName)) {
-                $key=$item[0]+'/'+[IO.Path]::GetRelativePath($item[1],$file.FullName).Replace('\','/')
-                $snapshot[$key]=(Get-FileHash -LiteralPath $file.FullName -Algorithm SHA256).Hash
-            }
+    foreach ($item in @(@('application',$checkout),@('core',$CoreCheckout),@('dependency',(Join-Path $checkout 'deps/space-tangent-core')))) {
+        foreach ($file in (Build-Inputs $item[1])) {
+            $key=$item[0]+'/'+[IO.Path]::GetRelativePath($item[1],$file.FullName).Replace('\','/')
+            $snapshot[$key]=(Get-FileHash -LiteralPath $file.FullName -Algorithm SHA256).Hash
         }
     }
     return $snapshot
@@ -64,6 +94,14 @@ Get-ChildItem Env:SPACETANGENT_* | ForEach-Object { $saved[$_.Name]=$_.Value }
 $probeBuilt=$false
 Push-Location $CoreCheckout
 try {
+    $sharedCore=Core-Production-Snapshot $CoreCheckout
+    $sharedDependency=Core-Production-Snapshot (Join-Path $checkout 'deps/space-tangent-core')
+    $sharedText=$sharedCore | ConvertTo-Json -Compress
+    if ($sharedText -cne ($sharedDependency | ConvertTo-Json -Compress)) {
+        throw 'Core checkout and application dependency differ; their coverage cannot be combined.'
+    }
+    $state.sharedCoreInputFiles=$sharedCore.Count
+    $state.sharedCoreFingerprint=[Convert]::ToHexString([Security.Cryptography.SHA256]::HashData([Text.Encoding]::UTF8.GetBytes($sharedText)))
     & dotnet tool restore
     Check 'Pinned collector restore'
     foreach ($run in $matrix.runs) {
@@ -154,9 +192,14 @@ try {
     $after=Source-Snapshot
     $after | ConvertTo-Json -Depth 3 | Set-Content -LiteralPath (Join-Path $out 'sources-after.json') -Encoding utf8
     $state.sourcesUnchanged=($before | ConvertTo-Json -Compress) -ceq ($after | ConvertTo-Json -Compress)
+    $rejectFinishedMatrix=$state.status -eq 'passed' -and -not $state.sourcesUnchanged
+    if ($rejectFinishedMatrix) {
+        $state.status='failed'; $state.error='Sources changed during the matrix; reports cannot be accepted together.'
+    }
     $state.finishedUtc=[DateTime]::UtcNow.ToString('o')
     $state | ConvertTo-Json -Depth 12 | Set-Content -LiteralPath (Join-Path $out 'status.json') -Encoding utf8
     Get-ChildItem Env:SPACETANGENT_* | Remove-Item
     foreach ($entry in $saved.GetEnumerator()) { [Environment]::SetEnvironmentVariable($entry.Key,$entry.Value,'Process') }
     Pop-Location
+    if ($rejectFinishedMatrix) { throw $state.error }
 }

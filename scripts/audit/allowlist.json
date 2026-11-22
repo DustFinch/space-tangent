@@ -73,5 +73,10 @@
     "path": "scripts/testing/test_model_cli.py",
     "sha256": "89702e07df71deb615a0d3e9da3dd7a4bd4f12194f66b8a361d89b5af0de41d7",
     "reason": "Exact CMOD file signature required by independent CLI format acceptance; not a product name."
+  },
+  {
+    "path": "tests/SpaceTangent.Application.Tests/BinaryModelContractTests.cs",
+    "sha256": "8991d043b743942b4d446522134f2e7dd3e68c73aab70dec3d0077916ed30c92",
+    "reason": "Required binary model format magic in an independently authored compatibility fixture."
   }
 ]

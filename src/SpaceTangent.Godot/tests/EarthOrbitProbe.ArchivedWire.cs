@@ -94,7 +94,7 @@ public partial class EarthOrbitProbe
             renderer.ArchivedRings(PlanetCatalogue.SaturnId)?.Visible == true || renderer.ArchivedEarthLimb?.Visible == true)
             throw new InvalidOperationException("Completing replay must release its visible archive geometry.");
         if (!scene.LoadScenario(previous)) throw new InvalidOperationException("Could not restore the original observers.");
-        var restored = scene.Session.CaptureScenario(0);
+        var restored = (scene.Session ?? throw new InvalidOperationException("The restored session is missing.")).CaptureScenario(0);
         if (!restored.Views.SequenceEqual(original.Views) || restored.DeltaT != original.DeltaT)
             throw new InvalidOperationException("Archive acceptance must leave the original cameras, clock rate and DeltaT restored.");
         byte[] invalid = fixture.File(); invalid[^1] ^= 1;

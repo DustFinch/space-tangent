@@ -72,6 +72,26 @@ public partial class EarthOrbitProbe
             case "archive-wire":
                 await ExerciseArchivedWire(scene, directory);
                 break;
+            case "landscapes":
+                RequireInput("SPACETANGENT_LANDSCAPES");
+                await ExercisePanoramas(scene, directory);
+                break;
+            case "sky-cultures":
+                RequireControl("SPACETANGENT_SKY_CULTURE_GPU");
+                RequireInput("SPACETANGENT_SKY_CULTURES");
+                await ExerciseSkyCultures(scene, SurfaceProjection.FullMoonEpoch, directory);
+                break;
+            case "sky-grids":
+                await ExerciseArchivedSkyGrids(scene, SurfaceProjection.FullMoonEpoch, directory);
+                break;
+            case "sky-assets":
+                await ExerciseAuthoredSkyAssets(scene, directory);
+                break;
+            case "surface-tiles":
+                RequireInput("SPACETANGENT_SURFACE_TILES");
+                RequireInput("SPACETANGENT_TILE_FIXTURE");
+                await ExerciseTileSampling(scene, directory);
+                break;
             default:
                 throw new InvalidOperationException($"Unknown coverage profile: {profile}.");
         }

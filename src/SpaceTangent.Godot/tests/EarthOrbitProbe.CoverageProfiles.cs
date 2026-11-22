@@ -52,6 +52,9 @@ public partial class EarthOrbitProbe
             case "recording-shutdown":
                 await ExerciseRecordingShutdown(scene,directory);
                 break;
+            case "capture-rejections":
+                await ExerciseCaptureRejections(scene,directory);
+                break;
             case "compact-lens":
                 RequireControl("SPACETANGENT_COMPACT_LENS_PROBE");
                 await ExerciseCompactLens(scene, directory);

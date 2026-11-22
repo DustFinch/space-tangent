@@ -83,5 +83,10 @@
     "path": "src/SpaceTangent.Godot/tests/EarthOrbitProbe.ArchivedModels.cs",
     "sha256": "0144963c1eb1bf0116761583457b4b165285e8862f20d43916df94a3a1f02c44",
     "reason": "Exact ASCII mesh signature required by the independently authored GPU material fixture."
+  },
+  {
+    "path": "scripts/sky/fetch_photographs.py",
+    "sha256": "683822c8159b715ef9b7357d1e20137844c6c8a205442c1c44e7385eebf090d7",
+    "reason": "Pinned official upstream photograph source URL; provenance only, not a product namespace."
   }
 ]

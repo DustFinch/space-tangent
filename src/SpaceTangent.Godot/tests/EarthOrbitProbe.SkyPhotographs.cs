@@ -16,6 +16,8 @@ public partial class EarthOrbitProbe
             return;
         string root = System.Environment.GetEnvironmentVariable("SPACETANGENT_SKY_PHOTOGRAPHS")!;
         var images = LocalSkyPhotographs.Read(root);
+        if (images.Count != 674 || images.Any(image => !File.Exists(image.Path)))
+            throw new InvalidOperationException("The original photograph acceptance requires all 674 unchanged source images.");
         Vector3d crab = images.Single(image => Path.GetFileName(image.Path) == "m1dumont.png").Center;
         Vector3d orion = images.Single(image => Path.GetFileName(image.Path) == "m42.png").Center;
         var session = scene.Session!;

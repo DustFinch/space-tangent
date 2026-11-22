@@ -61,6 +61,21 @@ This is a regenerated astrometry fixture, not a byte-identical historical adapte
 
 For the supplementary STC regressions, use a separate source-only STC/DSC directory **without** `stars.dat`; bind the unchanged binary table separately through `SPACETANGENT_STC_ASTROMETRY`. Those tests first assert that records are missing, then add the binary table and verify recovery against retained native reference coordinates. Placing `stars.dat` in the baseline source directory defeats the missing-input setup. Preserve the original installation and construct a separate pinned snapshot instead of removing files from it. Supply the original stellar archive and exoplanet catalogue too; the full dependency list is declared by the test attributes.
 
+## Restore all original sky photographs
+
+`scripts/sky/fetch_photographs.py` downloads the complete 674-image set and unmodified `textures.json` from the official upstream revision pinned in `photographs-source.json`. The manifest records every filename, byte size and Git blob identity. Captures also record SHA-256 values. Credits, image URLs, coordinates and event dates remain in the original metadata. A partial or changed capture fails and retains incomplete provenance; it never becomes a completed source set.
+
+```powershell
+python scripts/sky/fetch_photographs.py C:/TestData/sky-photographs
+python scripts/sky/fetch_photographs.py C:/TestData/sky-photographs/photographs --verify
+python deps/space-tangent-core/scripts/testing/data_profile.py capture --output C:/TestData/photographs-profile.json --bind SPACETANGENT_SKY_PHOTOGRAPHS=C:/TestData/sky-photographs/photographs
+python deps/space-tangent-core/scripts/testing/data_profile.py run --profile C:/TestData/photographs-profile.json -- dotnet test tests/SpaceTangent.Application.Tests --filter FullyQualifiedName~ReadsAllOriginalFilesAndPreservesCoordinatesCreditsAndVisibility
+```
+
+The sample requires approximately 130 MB of image downloads, kept outside Git. `--verify` checks an existing source set without downloading or changing it. This restores original upstream files with known identity and executes the retained full-population assertions; it does not prove the hash of an unavailable historical local installation. Keep all original per-image credits and applicable distribution terms with any copy.
+
+For rendered acceptance, run the `EarthOrbitProbe` group `sky-photographs` with `SPACETANGENT_SKY_PHOTOGRAPHS_PROBE=1` and photograph, DSS and historical planetary-series inputs in its pinned profile. The Crab's recorded birth precedes the local DE440 subset; `SPACETANGENT_VSOP87` is required so loading and reloading those epochs is valid. This group requires all 674 images, then uses the original checks for the Crab before/after its recorded birth, independent-view reload, Orion above the dark ground horizon and survey precedence in the other view. Use an inactive desktop as with the other rendered groups; a unit-only metadata check does not establish this rendered behavior.
+
 Use the core repository's `scripts/testing/data_profile.py` to pin optional local inputs before running. See its `docs/TEST_DATA_AND_COVERAGE.md` for integrity checks and independent reference provenance. Keep local paths, profiles and optional assets outside the source repositories. Capturing a profile is not proof of its scientific provenance or permission to redistribute it.
 
 ```powershell

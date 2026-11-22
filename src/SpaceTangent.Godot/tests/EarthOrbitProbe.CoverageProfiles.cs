@@ -39,6 +39,13 @@ public partial class EarthOrbitProbe
             case "sky-controls":
                 await ExerciseSkyControls();
                 break;
+            case "sky-photographs":
+                RequireControl("SPACETANGENT_SKY_PHOTOGRAPHS_PROBE");
+                RequireInput("SPACETANGENT_SKY_PHOTOGRAPHS");
+                RequireInput("SPACETANGENT_SKY_SURVEYS");
+                RequireInput("SPACETANGENT_VSOP87");
+                await ExerciseSkyPhotographs(scene, directory);
+                break;
             case "demo-worlds":
                 RequireControl("SPACETANGENT_DEMO_WORLDS_PROBE");
                 RequireControl("SPACETANGENT_PROCEDURAL_TERRAIN_PROBE");

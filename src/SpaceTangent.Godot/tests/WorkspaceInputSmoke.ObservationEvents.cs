@@ -103,8 +103,11 @@ public partial class WorkspaceInputSmoke
                     await KeyPress(Key.E, ctrl: true);
                     Require(status.Text.StartsWith("Searching observation events", StringComparison.Ordinal),
                         $"Historical search did not start: {status.Text}");
+                    var elapsed = System.Diagnostics.Stopwatch.StartNew();
+                    int timeout = System.Environment.GetEnvironmentVariable("SPACETANGENT_COVERAGE_CAPTURE") == "1" ? 180 : 60;
                     await Until(() => !status.Text.StartsWith("Searching observation events", StringComparison.Ordinal),
-                        "Finding an antenna reflection in the original TLE catalogue", 60);
+                        "Finding an antenna reflection in the original TLE catalogue", timeout);
+                    GD.Print($"UI: historical Iridium search completed in {elapsed.Elapsed.TotalSeconds:F1} seconds.");
                     Require(status.Text.Contains(" flare · magnitude ", StringComparison.Ordinal),
                         $"Expected a historical flare: {status.Text}");
                     await KeyPress(Key.E, ctrl: true, shift: true);

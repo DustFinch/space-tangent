@@ -42,3 +42,11 @@ $output = Get-Content -LiteralPath $log -Raw
 if ($output -notmatch 'SpaceTangent world ready: DE440' -or $output -notmatch 'SpaceTangent bootstrap smoke passed' -or
     $output -match '(?m)^ERROR:|SCRIPT ERROR|SHADER ERROR') { throw 'The smoke did not prove a clean simulation startup.' }
 Write-Output 'Public-data Godot startup passed.'
+foreach ($duration in @('NaN', 'Infinity', '0.05', '601')) {
+    $movieLog = Join-Path $scratch ('invalid-movie-' + $duration + '.log')
+    & $engine --headless --path $project res://tests/StartupCommandProbe.tscn --log-file $movieLog -- --startup-movie $duration --startup-exit
+    if ($LASTEXITCODE -ne 1 -or (Get-Content -LiteralPath $movieLog -Raw) -notmatch 'Movie duration must be') {
+        throw "The startup command did not reject invalid movie duration: $duration"
+    }
+}
+Write-Output 'Public-data startup movie duration refusals passed.'

@@ -67,7 +67,7 @@ public partial class SolarSystemScene
             if (_startupArguments.Contains("--startup-movie", StringComparer.Ordinal))
             {
                 if (!double.TryParse(RequiredArgument("--startup-movie"), NumberStyles.Float,
-                        CultureInfo.InvariantCulture, out double duration) || duration is < .1 or > 600)
+                        CultureInfo.InvariantCulture, out double duration) || !double.IsFinite(duration) || duration is < .1 or > 600)
                     throw new InvalidDataException("Movie duration must be .1–600 seconds.");
                 if (!StartRecording((int)Math.Round(WindowRecording.FramesPerSecond * duration)))
                     throw new InvalidDataException(_status.Text);

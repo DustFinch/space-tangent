@@ -18,6 +18,9 @@ public partial class EarthOrbitProbe
                 await ExercisePlanets(scene, SurfaceProjection.FullMoonEpoch, directory);
                 await ExerciseSaturnRingAtmosphere(scene, SurfaceProjection.FullMoonEpoch, directory);
                 break;
+            case "meteors":
+                await ExerciseMeteorRadiants(scene, directory);
+                break;
             case "demo-worlds":
                 RequireControl("SPACETANGENT_DEMO_WORLDS_PROBE");
                 RequireControl("SPACETANGENT_PROCEDURAL_TERRAIN_PROBE");

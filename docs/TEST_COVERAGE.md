@@ -12,11 +12,24 @@ The runner restores pinned dependencies and Coverlet 6.0.4, builds each unit sui
 
 Godot coverage needs two explicit steps: include the main application assembly with `--include-test-assembly`, and flush the injected trackers while the managed assemblies are still loaded. `tests/CoverageCapture.cs` does that only when `SPACETANGENT_COVERAGE_CAPTURE=1`. It verifies all four required trackers and turns a missing tracker or failed flush into a failing test exit. The hook is excluded from ExportRelease with the other test sources and does nothing in ordinary runs.
 
-Rendered input-smoke coverage uses `-Scene res://tests/WorkspaceInputSmoke.tscn -Render` on a dedicated CI desktop with real science inputs. The tests push events into their own Godot viewport and do not synthesize system mouse input. The runner itself does not isolate the Windows desktop: when using a shared workstation, launch the rendered process on an inactive test desktop or use the headless default. The headless result alone is a limited baseline, not full rendering acceptance.
+For rendered input-smoke coverage, use `scripts/testing/godot-probe-coverage.ps1` with `-Scene res://tests/WorkspaceInputSmoke.tscn -Render` and real science inputs. On a shared Windows workstation, also pass `-IsolatedDesktop`; an unattended dedicated display requires `-DedicatedDisplay`. The tests push events into their own Godot viewport and do not synthesize system mouse input. The headless result alone is a limited baseline, not full rendering acceptance.
 
 `summary.json` lists exactly which modules were measured and the missing source lines. Its combiner rejects empty reports, absent required modules and required modules without recorded hits. Combine additional headless/GPU runs with the core's `coverage_report.py`, requiring Core, Contracts, Application and Godot. Report Native, CLI and engine bindings separately until their own runs are included. Do not label a four-module percentage as coverage of all repository code.
 
 The initial goal is a stable baseline with no regression. A 95% gate should be enabled only after it is actually reached for the agreed modules; missing test data must not silently improve the percentage.
+
+The accepted local unit/GPU union on 2026-11-22 reached the following executable-line coverage. These results require the pinned optional corpus; they are not the data-free public CI percentages.
+
+| Module | Covered / executable lines | Coverage |
+|---|---:|---:|
+| Core | 15,661 / 16,472 | 95.076% |
+| Contracts | 101 / 101 | 100% |
+| Application | 9,383 / 9,859 | 95.172% |
+| Godot | 13,977 / 14,712 | 95.004% |
+
+The full available unit suites pass 1,033 Core and 697 Application cases per configuration. Of the previous 75 missing-data cases, 34 were restored and 41 still need unavailable historical inputs. New authored wire examples, recent public orbital-element captures and newly generated independent numerical references are identified separately; they do not recreate a missing original archive. Debug/Release and repeated profiles do not multiply these counts.
+
+Native managed IL, the Unity binding and CLI consumers have separate measured denominators. NativeAOT ABI and engine batch acceptance do not measure optimized native machine-code lines. Public CI keeps its own data-free/public-data artifacts and thresholds; the local four-module result does not create a private-data dependency in those jobs.
 
 For an individual existing probe, use `scripts/testing/godot-probe-coverage.ps1` with a pinned `-DataProfile`, fresh `-OutputDirectory`, explicit `-Scene`, `-SuccessMarker`, and Godot console path. `-ProbeOptions` accepts a JSON object of string controls/output paths; it cannot override a pinned input. Capture uses isolated settings and an exclusive lock on the Godot instrumentation directory. Build/import happens before instrumentation unless `-SkipBuild` is explicitly chosen for the same unchanged build.
 

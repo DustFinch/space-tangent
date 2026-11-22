@@ -2,6 +2,7 @@
 using Godot;
 using SpaceTangent.Application;
 using SpaceTangent.Contracts;
+using SpaceTangent.Core.Observing;
 using SpaceTangent.Core.Time;
 using SpaceTangent.Godot.Simulation;
 
@@ -143,6 +144,17 @@ public partial class EarthOrbitProbe
         if (!(center.R > center.B + .2f))
             throw new InvalidOperationException($"Expected a quasar at the centre of the view: {center}.");
         await ExerciseNavigationalStar(scene, directory, first);
+        var ground = new ObserverView(epoch, CameraMode.Surface, null, false) { EarthObserver = EarthObserverCamera.Moscow };
+        ScenarioFile.Save(path, new([ground, first], false, 0, 0, session.DeltaT));
+        if (!scene.LoadScenario(path)) throw new InvalidOperationException("The ground catalogue search must open.");
+        field.Text = "CTA 1"; field.EmitSignal(LineEdit.SignalName.TextSubmitted, field.Text);
+        var light = EarthSurfaceLighting.Sample(solar, ground.EarthObserver!.Value.Site, session.DeltaT);
+        var expectedGround = EarthObserving.HorizontalDirection(light, new(marker.Direction.X, marker.Direction.Y, marker.Direction.Z));
+        if (expectedGround is not { AzimuthDegrees: { } expectedAzimuth } position ||
+            session[0] is not { Mode: CameraMode.Surface, Navigation: null, EarthObserver: { } observer } ||
+            Math.Abs(observer.AzimuthDegrees - expectedAzimuth) > 1e-5 || Math.Abs(observer.ElevationDegrees - position.AltitudeDegrees) > 1e-5 ||
+            session[1] != first || !session[0].Sky.Markings.HasFlag(SkyMarkings.Pulsars))
+            throw new InvalidOperationException("An original pulsar alias must point only the active ground camera to its independently calculated horizon coordinates.");
         GD.Print($"Catalogue marks GPU: {pulsars.Length} pulsars, {quasars.Length} quasars, 58 navigational HIP IDs, CTA 1 and {quasar.Name} search, {green} ring pixels after reload.");
     }
 

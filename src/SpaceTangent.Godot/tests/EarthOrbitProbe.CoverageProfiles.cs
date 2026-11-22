@@ -36,6 +36,9 @@ public partial class EarthOrbitProbe
             case "survey-guards":
                 await ExerciseSurveyGuards(directory);
                 break;
+            case "sky-controls":
+                await ExerciseSkyControls();
+                break;
             case "demo-worlds":
                 RequireControl("SPACETANGENT_DEMO_WORLDS_PROBE");
                 RequireControl("SPACETANGENT_PROCEDURAL_TERRAIN_PROBE");

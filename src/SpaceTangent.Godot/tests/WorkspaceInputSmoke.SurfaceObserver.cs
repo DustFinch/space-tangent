@@ -3,6 +3,7 @@ using Godot;
 using SpaceTangent.Application;
 using SpaceTangent.Contracts;
 using SpaceTangent.Core.Ephemerides;
+using SpaceTangent.Core.Observing;
 using SpaceTangent.Core.Time;
 
 namespace SpaceTangent.Godot.Tests;
@@ -106,6 +107,36 @@ public partial class WorkspaceInputSmoke
                     ScenarioFile.Save(Path.Combine(output, name.ToLowerInvariant() + "-surface.stscene"), saved);
                 }
                 GD.Print($"UI: selected {name} surface, edited the site and direction, rendered its horizon and preserved both observers and ΔT through save/reload.");
+            }
+            await Click(Find<Button>("LocationTab"));
+            var earthBodies = Find<OptionButton>("ObserverBody");
+            int earthIndex = Enumerable.Range(0, earthBodies.ItemCount).Single(index => earthBodies.GetItemText(index) == "Earth");
+            await Click(earthBodies); await ChooseMenuItem(earthBodies.GetPopup(), earthIndex);
+            if (System.Environment.GetEnvironmentVariable("SPACETANGENT_NO_EARTH_MAPS_SMOKE") == "1")
+            {
+                Require(Session[0].Mode == CameraMode.Solar && Session[0].Navigation is not null &&
+                    Find<Label>("WorkspaceStatus").Text.Contains("Install Earth surface maps", StringComparison.Ordinal),
+                    "Returning to Earth without its surface maps must preserve a usable space camera and explain the missing resource.");
+            }
+            else
+            {
+                var camera = Session[0].EarthObserver!.Value with
+                {
+                    ApparentPlaces = true,
+                    Conditions = new SpaceTangent.Core.Observing.GroundSkyConditions(3) { Refraction = true },
+                    CivilClock = new("Named observer witness", null, 3)
+                };
+                Session.SetEarthObserver(0, camera); Session.SelectObject(0, new ObjectId("hip/32349"));
+                await Click(Find<Button>("EphemeridesTab"));
+                _scene.Seek(0, Session[0].Epoch);
+                var coordinates = Find<Label>("HorizontalCoordinates");
+                Require(coordinates.Text.Contains("Apparent altitude", StringComparison.Ordinal) &&
+                    coordinates.Text.Contains("Bortle 3", StringComparison.Ordinal) && coordinates.Text.Contains("Named observer witness", StringComparison.Ordinal),
+                    "The Earth inspector must present aberration/refraction, conditions and the named civil clock for a selected star: " + coordinates.Text);
+                Require(HistoricalDate.TryParse("1950-01-01", out var date, out _), "The historical civil date must parse.");
+                _scene.Seek(0, EarthCivilTime.FromModeledUt1(date, 0, Session.DeltaT));
+                Require(Find<Label>("CivilTwilight").Text.Contains("UT1", StringComparison.Ordinal),
+                    "A covered pre-UTC date must display twilight using modeled UT1 rather than an invalid UTC conversion.");
             }
         }
         finally { Require(_scene.LoadScenario(restore), "The previous workspace must reopen after body observers."); }

@@ -28,6 +28,16 @@ public partial class WorkspaceInputSmoke
             (Session[0].Navigation!.Value.AnchorKilometers - initialEye).Length < 1e-6,
             "Boarding must keep the camera eye and show a hull in only the active view.");
         var aboard = Session.Ship(0)!;
+        using (var thrust = new InputEventKey { Keycode = Key.W, Pressed = true, ShiftPressed = true })
+        using (var release = new InputEventKey { Keycode = Key.W })
+        {
+            Tree.Root.PushInput(thrust, inLocalCoords: true);
+            _scene._Process(.05);
+            Tree.Root.PushInput(release, inLocalCoords: true);
+        }
+        Require(Session.Ship(0)!.SpeedKilometersPerSecond > aboard.SpeedKilometersPerSecond &&
+            Session.Ship(0)!.Position != aboard.Position, "A held boosted throttle key must integrate the active ship's motion.");
+        aboard = Session.Ship(0)!;
         Session.SetShipThrottle(0, 100);
         Session.UpdateShip(0, world, .25);
         var moving = Session.Ship(0)!;

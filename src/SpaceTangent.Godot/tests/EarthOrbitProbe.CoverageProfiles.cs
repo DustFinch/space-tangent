@@ -138,6 +138,9 @@ public partial class EarthOrbitProbe
             case "archive-lens":
                 await ExerciseAuthoredArchiveLens(scene,directory);
                 break;
+            case "distant-picking":
+                await ExerciseAuthoredDistantPicking(scene,directory);
+                break;
             case "landscapes":
                 RequireInput("SPACETANGENT_LANDSCAPES");
                 await ExercisePanoramas(scene, directory);

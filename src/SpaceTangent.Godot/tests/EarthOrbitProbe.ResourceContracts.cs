@@ -118,6 +118,33 @@ public partial class EarthOrbitProbe
             if(!refused||bounded.Active) throw new InvalidOperationException("The media request budget must bound repeated empty stops without retaining resources.");
         }
         finally {bounded.Clear();}
+        string copied = Path.Combine(directory, "copied-media", Guid.NewGuid().ToString("N")); Directory.CreateDirectory(copied);
+        string sourceTour = Path.Combine(directory, "source.lua"), targetTour = Path.Combine(copied, "target.lua");
+        ScriptMediaPlayer.CopyAssets(sourceTour, sourceTour, ["art.png"]);
+        ScriptMediaPlayer.CopyAssets(sourceTour, targetTour, ["art.png"]);
+        ScriptMediaPlayer.CopyAssets(sourceTour, targetTour, ["art.png"]);
+        if (!File.ReadAllBytes(Path.Combine(directory, "art.png")).SequenceEqual(File.ReadAllBytes(Path.Combine(copied, "art.png"))))
+            throw new InvalidOperationException("Copied media must retain identical bytes, including a repeated identical copy.");
+        File.WriteAllBytes(Path.Combine(copied, "art.png"), [9]);
+        Reject(() => ScriptMediaPlayer.CopyAssets(sourceTour, targetTour, ["art.png"]), typeof(IOException));
+        if (!File.ReadAllBytes(Path.Combine(copied, "art.png")).SequenceEqual(new byte[] {9}))
+            throw new InvalidOperationException("A conflicting media destination must retain its previous contents.");
+        Reject(() => ScriptMediaPlayer.CopyAssets(sourceTour, targetTour, Enumerable.Repeat("art.png", 33).ToArray()), typeof(InvalidDataException));
+        Reject(() => ScriptMediaPlayer.CopyAssets(sourceTour, targetTour, ["empty.png"]), typeof(InvalidDataException));
+        using (var large = File.Create(Path.Combine(directory, "large-media.png"))) large.SetLength(16L * 1024 * 1024 + 1);
+        Reject(() => ScriptMediaPlayer.CopyAssets(sourceTour, targetTour, ["large-media.png"]), typeof(InvalidDataException));
+        Directory.CreateDirectory(Path.Combine(directory, "nested-media"));
+        File.Copy(Path.Combine(directory, "art.png"), Path.Combine(directory, "nested-media", "art.png"), true);
+        ScriptMediaPlayer.CopyAssets(sourceTour, targetTour, ["nested-media/art.png"]);
+        if (!File.Exists(Path.Combine(copied, "nested-media", "art.png")))
+            throw new InvalidOperationException("Safe nested assets must create their own destination directories.");
+        var detached = new SimulationViewport();
+        try
+        {
+            var closed = new ScriptMediaPlayer(detached);
+            Reject(() => closed.Present(directory, new ScriptMediaRequest.Overlay("art.png", 1, .5, .5, 4, 4, 1)), typeof(InvalidOperationException));
+        }
+        finally {detached.Free();}
 
         const string magnitudeVariable="SPACETANGENT_SATELLITE_MAGNITUDES";
         string? prior=System.Environment.GetEnvironmentVariable(magnitudeVariable);

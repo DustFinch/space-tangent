@@ -68,6 +68,15 @@ public partial class WorkspaceInputSmoke
         Session.SelectObject(0, PlanetCatalogue.MarsId);
         Require(Session.ToggleTracking(0), "The Mars orbit pose must be available.");
         await Click(Find<SubViewportContainer>("ViewCanvas0"));
+        GetViewport().GuiGetFocusOwner()?.ReleaseFocus();
+        await KeyPress(Key.Apostrophe, '"', shift: true);
+        Require(Session[0].Navigation?.Placement?.Frame == NavigationFrame.Chase,
+            "The quote shortcut must select the orbit-relative chase frame.");
+        await KeyPress(Key.Semicolon, ':', shift: true);
+        Require(Session[0].Navigation?.Placement?.Frame == NavigationFrame.PhaseLock,
+            "The colon shortcut must lock the selected body and its parent.");
+        await KeyPress(Key.Y);
+        Require(Session[0].Navigation is { Placement.BodyFixed: true }, "Y must select the rotating body frame.");
         var settings = Find<Button>("SettingsTab");
         if (!settings.ButtonPressed)
             await Click(settings);

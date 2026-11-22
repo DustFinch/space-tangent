@@ -2,6 +2,39 @@
 
 Coverage measures executable lines in the authored C# modules. Unit tests, generated sources and third-party libraries are excluded. Shader execution and image correctness require separate GPU acceptance. A high combined percentage must not hide an omitted Godot module or an untested Native/CLI consumer.
 
+## Run a fresh acceptance matrix
+
+`scripts/testing/coverage-matrix.ps1` runs a local manifest sequentially and enforces 95% separately for Core, Contracts, Application and Godot. It accepts no previous coverage reports. It snapshots authored sources and test scenes before and after execution, preserves raw evidence and input/report hashes, and fails if those sources change. A failed threshold leaves `summary.json` available for diagnosis; only a `passed` matrix status means the whole matrix met its gates. Native, CLI and engine bindings still need their separate measurements.
+
+Keep the manifest, profile mapping and optional data outside Git. The profile mapping is a JSON object whose keys are manifest profile identifiers and whose values are absolute paths to verified data-profile JSON files. Each run has a unique lowercase `name`, a `kind` (`core`, `application` or `probe`) and a `profile` identifier. Unit runs optionally accept a VSTest `filter`. Probe runs require an explicit test `scene` and `successMarker`; optional fields are `options`, `render`, `userArguments`, `expectedExitCode` and `requiredModules`, with the same contracts as the individual probe runner. Controls and application arguments can use `{output}` for that run's new evidence directory. Do not point captures or saved scenarios at earlier evidence.
+
+For example, a probe entry is:
+
+```json
+{
+  "version": 1,
+  "runs": [
+    {
+      "name": "observing-places",
+      "kind": "probe",
+      "profile": "workspace",
+      "scene": "res://tests/WorkspaceInputSmoke.tscn",
+      "successMarker": "SpaceTangent observing place memory input smoke passed",
+      "render": true,
+      "options": {"SPACETANGENT_PLACE_MEMORY_SMOKE_ONLY": "1"}
+    }
+  ]
+}
+```
+
+This one-entry example describes the schema; it is not enough for the four-module coverage target. Include both full unit suites and the scientific/rendered profiles needed by the measured sources. Every rendered entry uses an inactive Windows desktop automatically, without switching the user's desktop or injecting system input. Headless entries do not need a display. The first rendered or headless probe builds/imports the Godot project; later probes reuse that unchanged build under the individual runner's instrumentation lock.
+
+```powershell
+./scripts/testing/coverage-matrix.ps1 -Manifest C:/TestData/matrix.json -Profiles C:/TestData/profiles.json -OutputDirectory C:/TestResults/fresh-matrix -Godot C:/Tools/Godot/Godot_console.exe
+```
+
+An incomplete prefix is retained for diagnosis, with failed status and source-stability information. It is not a successful matrix. Collect in a fresh directory after correcting a failure; never relabel a stale or failed report as fresh acceptance.
+
 Use the core repository's `scripts/testing/data_profile.py` to pin optional local inputs before running. See its `docs/TEST_DATA_AND_COVERAGE.md` for integrity checks and independent reference provenance. Keep local paths, profiles and optional assets outside the source repositories. Capturing a profile is not proof of its scientific provenance or permission to redistribute it.
 
 ```powershell

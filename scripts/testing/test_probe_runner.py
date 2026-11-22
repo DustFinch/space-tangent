@@ -15,7 +15,19 @@ class ProbeRunnerTests(unittest.TestCase):
         self.addCleanup(self.temp.cleanup)
         self.root = Path(self.temp.name)
         self.output = self.root / 'evidence'
-        self.runner = Path(__file__).with_name('godot-probe-coverage.ps1')
+        # Refusal tests must not contend with a real coverage job's editor lock.
+        # Their miniature checkout contains only the runner and data verifier;
+        # every case still fails before a build or engine can be launched.
+        checkout = self.root / 'checkout'
+        scripts = checkout / 'scripts/testing'
+        scripts.mkdir(parents=True)
+        original = Path(__file__).with_name('godot-probe-coverage.ps1')
+        self.runner = scripts / original.name
+        shutil.copyfile(original, self.runner)
+        verifier = checkout / 'deps/space-tangent-core/scripts/testing'
+        verifier.mkdir(parents=True)
+        shutil.copyfile(Path(__file__).resolve().parents[2] /
+            'deps/space-tangent-core/scripts/testing/data_profile.py', verifier / 'data_profile.py')
         self.profile = self.root / 'inputs.json'
         self.input = self.root / 'control.bin'
         self.input.write_bytes(b'This is an integrity-check input, not a scientific ephemeris.')

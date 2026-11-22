@@ -101,6 +101,26 @@ public partial class WorkspaceInputSmoke
             Require(Session[0].Playing && Math.Abs((double)Session[0].Epoch.DifferenceNanoseconds(edge.Epoch) /
                 JulianInstant.NanosecondsPerSecond) < 10 && Session[1] == right,
                 "An unavailable chart sample must neither seek nor pause the clock or affect the other view.");
+            Session.SetPlaying(0, false);
+            var calculate = Find<Button>("CalculateCharts");
+            ScenarioFile.Save(path, new([left, right], false, 0, 0, Session.DeltaT));
+            Require(_scene.LoadScenario(path), "Reopen the ordinary chart epoch before testing export failure.");
+            calculate.EmitSignal(Button.SignalName.Pressed);
+            await Until(() => table.GetChildCount() == 30 && Find<Label>("ChartSummary").Text.StartsWith("Sirius", StringComparison.Ordinal),
+                "Recalculating exportable charts", 60);
+            System.Environment.SetEnvironmentVariable("SPACETANGENT_OBSERVATIONS_OUTPUT", csv);
+            export.EmitSignal(Button.SignalName.Pressed);
+            Require(Find<Label>("WorkspaceStatus").Text.StartsWith("Could not write ephemerides:", StringComparison.Ordinal) &&
+                File.ReadAllLines(csv).Length == 31, "An obstructed chart export must report its failure and preserve the existing CSV.");
+            System.Environment.SetEnvironmentVariable("SPACETANGENT_OBSERVATIONS_OUTPUT", output);
+            ObserverView beforeStale = Session[1];
+            calculate.EmitSignal(Button.SignalName.Pressed);
+            calculate.EmitSignal(Button.SignalName.Pressed);
+            _scene.SetDeltaT(DeltaTModel.EspenakMeeus2006);
+            await Until(() => Find<Label>("ChartSummary").Text.StartsWith("Observer conditions changed.", StringComparison.Ordinal),
+                "Rejecting a cancelled or stale chart calculation", 60);
+            Require((Session[1] with { FieldOfViewDegrees = beforeStale.FieldOfViewDegrees }) == beforeStale,
+                "A stale chart result must not change the independent camera or epoch.");
             GD.Print("UI: turned the camera after calculating, clicked the year chart, exported 30 days, rejected stale results and ignored a sample beyond coverage without pausing.");
         }
         finally
@@ -178,6 +198,11 @@ public partial class WorkspaceInputSmoke
             await KeyPress(Key.N, ctrl: true);
             await Until(() => status.Text.StartsWith("No covered nautical darkness", StringComparison.Ordinal),
                 "Calculating polar summer visibility");
+            System.Environment.SetEnvironmentVariable(outputVariable, csv);
+            await KeyPress(Key.N, ctrl: true, alt: true);
+            Require(status.Text.StartsWith("Could not write night ephemerides.", StringComparison.Ordinal) &&
+                File.ReadAllLines(csv).SequenceEqual(rows), "A blocked night export must preserve the existing CSV.");
+            System.Environment.SetEnvironmentVariable(outputVariable, output);
             GD.Print("UI: calculated winter Sirius and polar summer ephemerides, wrote 29 CSV samples, and kept Jason-1 independent");
         }
         finally

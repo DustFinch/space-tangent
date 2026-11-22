@@ -56,6 +56,14 @@ class ProbeRunnerTests(unittest.TestCase):
         options.write_text(json.dumps({'SPACETANGENT_DE440': 'different-input.bin'}))
         self.assertIn('cannot override pinned inputs', self.launch('-ProbeOptions', str(options)))
 
+    def test_user_arguments_cannot_contain_quotes(self):
+        self.assertIn('User arguments must be bounded', self.launch('-UserArguments', 'unsafe"value'))
+        self.assertFalse(self.output.exists())
+
+    def test_user_arguments_cannot_contain_control_characters(self):
+        self.assertIn('User arguments must be bounded', self.launch('-UserArguments', 'line\nbreak'))
+        self.assertFalse(self.output.exists())
+
 
 if __name__ == '__main__':
     unittest.main()

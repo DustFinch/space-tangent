@@ -6,6 +6,8 @@ param(
     [Parameter(Mandatory=$true)][string]$SuccessMarker,
     [Parameter(Mandatory=$true)][string]$Godot,
     [string]$ProbeOptions,
+    [string[]]$UserArguments=@(),
+    [ValidateSet(0,1)][int]$ExpectedExitCode=0,
     [switch]$Render,
     [switch]$IsolatedDesktop,
     [switch]$DedicatedDisplay,
@@ -21,6 +23,10 @@ $out=[IO.Path]::GetFullPath($OutputDirectory)
 $DataProfile=[IO.Path]::GetFullPath($DataProfile)
 if ($ProbeOptions) { $ProbeOptions=[IO.Path]::GetFullPath($ProbeOptions) }
 if ($Scene -notmatch '^res://tests/[A-Za-z0-9_-]+\.tscn$') { throw 'Choose an explicit test scene.' }
+if ($UserArguments.Count -gt 64 -or @($UserArguments | Where-Object {
+    [string]::IsNullOrWhiteSpace($_) -or $_.Length -gt 32768 -or $_.Contains('"') -or
+        @($_.ToCharArray() | Where-Object { [char]::IsControl($_) }).Count -ne 0
+}).Count -ne 0) { throw 'User arguments must be bounded nonempty strings without quotes or control characters.' }
 if ($Render -and -not $IsolatedDesktop -and -not $DedicatedDisplay) { throw 'Rendering requires an isolated desktop or an explicit dedicated display.' }
 if ($IsolatedDesktop -and -not $IsWindows) { throw 'Inactive desktop isolation requires Windows.' }
 if (Test-Path -LiteralPath $out) { throw 'Use a fresh output directory to avoid accepting stale evidence.' }
@@ -64,6 +70,7 @@ try {
     }.GetEnumerator()) { [Environment]::SetEnvironmentVariable($pair.Key,$pair.Value,'Process') }
     @{ scene=$Scene; profile=$DataProfile; profileSha256=(Get-FileHash -LiteralPath $DataProfile -Algorithm SHA256).Hash;
        options=$options; render=[bool]$Render; isolatedDesktop=[bool]$IsolatedDesktop; requiredModules=$RequiredModules;
+       userArguments=$UserArguments; expectedExitCode=$ExpectedExitCode;
        successMarker=$SuccessMarker } | ConvertTo-Json -Depth 8 | Set-Content -LiteralPath (Join-Path $out 'run.json') -Encoding utf8
     & dotnet tool restore
     Check 'Pinned collector restore'
@@ -79,6 +86,7 @@ try {
     $arguments='--path '+(Quote $project)+' '+$Scene+' --audio-driver Dummy --log-file '+(Quote $log)
     if ($Render) { $arguments+=' --rendering-method gl_compatibility --rendering-driver opengl3 --resolution 1600x900' }
     else { $arguments='--headless '+$arguments }
+    if ($UserArguments.Count -ne 0) { $arguments+=' -- '+(($UserArguments | ForEach-Object { Quote $_ }) -join ' ') }
     $target=$Godot
     if ($IsolatedDesktop) {
         $payload=[Convert]::ToBase64String([Text.Encoding]::UTF8.GetBytes($arguments))
@@ -90,7 +98,7 @@ try {
         --include-test-assembly --target $target --targetargs $arguments --single-hit `
         --include '[SpaceTangent.Godot]*' '[SpaceTangent.Application]*' '[SpaceTangent.Core]*' '[SpaceTangent.Contracts]*' `
         --exclude-by-file '**/tests/**' '**/obj/**' --format cobertura --output (Join-Path $out 'coverage.xml')
-    Check 'Instrumented Godot execution'
+    if ($LASTEXITCODE -ne $ExpectedExitCode) { throw "Instrumented Godot execution returned $LASTEXITCODE; expected $ExpectedExitCode." }
     $content=Get-Content -LiteralPath $log -Raw
     if (-not $content.Contains($SuccessMarker)) { throw 'The requested probe success marker is absent.' }
     $reportArguments=@((Join-Path $out 'coverage.xml'),'--output',(Join-Path $out 'summary.json'))

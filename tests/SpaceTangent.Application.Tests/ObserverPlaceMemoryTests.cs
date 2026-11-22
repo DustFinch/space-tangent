@@ -155,7 +155,7 @@ public sealed class ObserverPlaceMemoryTests
     }
 
     [Fact]
-    public void PreferencesSaveAtomicallyAndKeepTheLastValidFileWhenTheDestinationIsBlocked()
+    public void AtomicPreferenceReplacementRespectsExistingReadersOnEachPlatform()
     {
         var root = Directory.CreateTempSubdirectory("st-place-pref-");
         try
@@ -164,12 +164,52 @@ public sealed class ObserverPlaceMemoryTests
             string path = Path.Combine(root.FullName, "profile", "places.json");
             ObserverPlacePreferences.Save(path, session);
             byte[] before = ObserverPlacePreferences.Load(path);
-            using (File.Open(path, FileMode.Open, FileAccess.Read, FileShare.Read))
-                Assert.True(Record.Exception(() => ObserverPlacePreferences.Save(path, session)) is IOException or UnauthorizedAccessException);
-            Assert.Equal(before, File.ReadAllBytes(path));
+            session.SetEarthObserver(0, EarthObserverCamera.Tromso);
+            using (var reader = File.Open(path, FileMode.Open, FileAccess.Read, FileShare.Read))
+            {
+                if (OperatingSystem.IsWindows())
+                {
+                    Assert.True(Record.Exception(() => ObserverPlacePreferences.Save(path, session)) is IOException or UnauthorizedAccessException);
+                    Assert.Equal(before, ObserverPlacePreferences.Load(path));
+                }
+                else
+                {
+                    // Unix rename replaces the directory entry; the existing reader retains the old inode.
+                    ObserverPlacePreferences.Save(path, session);
+                    Assert.Equal(ObserverPlacePreferences.Capture(session), ObserverPlacePreferences.Load(path));
+                }
+                using var retained = new MemoryStream();
+                reader.CopyTo(retained);
+                Assert.Equal(before, retained.ToArray());
+            }
             Assert.Empty(Directory.GetFiles(Path.GetDirectoryName(path)!, "*.tmp"));
             File.WriteAllBytes(path, new byte[ObserverPlacePreferences.MaximumBytes + 1]);
             Assert.Throws<InvalidDataException>(() => ObserverPlacePreferences.Load(path));
+        }
+        finally { root.Delete(true); }
+    }
+
+    [Fact]
+    public void ABlockedDestinationKeepsTheLastValidPreferencesAndCleansTemporaryFiles()
+    {
+        var root = Directory.CreateTempSubdirectory("st-place-blocked-");
+        try
+        {
+            var session = SharedClockTests.Create(); session.SetEarthObserver(0, Earth);
+            string path = Path.Combine(root.FullName, "places.json"), backup = path + ".valid";
+            ObserverPlacePreferences.Save(path, session);
+            byte[] before = ObserverPlacePreferences.Load(path);
+            File.Move(path, backup);
+            Directory.CreateDirectory(path);
+            session.SetEarthObserver(0, EarthObserverCamera.Tromso);
+            Assert.True(Record.Exception(() => ObserverPlacePreferences.Save(path, session)) is IOException or UnauthorizedAccessException);
+            Assert.Equal(before, ObserverPlacePreferences.Load(backup));
+            Assert.Empty(Directory.GetFileSystemEntries(path));
+            Assert.Empty(Directory.GetFiles(root.FullName, "*.tmp"));
+            Directory.Delete(path);
+            File.Move(backup, path);
+            ObserverPlacePreferences.Save(path, session);
+            Assert.Equal(ObserverPlacePreferences.Capture(session), ObserverPlacePreferences.Load(path));
         }
         finally { root.Delete(true); }
     }

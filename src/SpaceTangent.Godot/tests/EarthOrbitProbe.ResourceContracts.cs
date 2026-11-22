@@ -11,6 +11,7 @@ public partial class EarthOrbitProbe
 {
     private async Task ExerciseResourceContracts(SolarSystemScene scene,string directory)
     {
+        ExerciseAddonSettingsContracts(directory);
         string root=Path.Combine(directory,"named-pack"); Directory.CreateDirectory(root);
         var location=new LocalDataPath(root,"","","",true);
         var bare=LegacyPackKeys.For(location);
@@ -48,6 +49,27 @@ public partial class EarthOrbitProbe
             if(sky.ArtTexture(absent)is not null||sky.ArtTexture(absent)is not null) throw new InvalidOperationException("Missing artwork must be cached as unavailable.");
             string tiny=Path.Combine(directory,"tiny.png"); File.WriteAllBytes(tiny,[1,2,3]);
             if(sky.ArtTexture(absent with {ImagePath=tiny})is not null) throw new InvalidOperationException("A truncated artwork cannot publish a texture.");
+            for(int i=0;i<130;i++)
+                if(sky.ArtTexture(absent with {ImagePath=Path.Combine(directory,$"absent-art-{i}.png")})is not null)
+                    throw new InvalidOperationException("Cache rollover must not turn absent artwork into textures.");
+            using(var wide=Image.CreateEmpty(4097,1,false,Image.Format.Rgba8))
+            {
+                string path=Path.Combine(directory,"oversized-art.png");
+                if(wide.SavePng(path)!=Error.Ok) throw new IOException("Could not save the artwork dimension witness.");
+                if(sky.ArtTexture(absent with {ImagePath=path})is not null)
+                    throw new InvalidOperationException("Artwork dimensions must be bounded before publishing a texture.");
+            }
+            using(var large=Image.CreateEmpty(4096,4096,false,Image.Format.Rgb8))
+            {
+                large.Fill(new(.1f,.8f,.2f));
+                string first=Path.Combine(directory,"large-art-a.png"),second=Path.Combine(directory,"large-art-b.png");
+                if(large.SavePng(first)!=Error.Ok) throw new IOException("Could not save the artwork cache witness.");
+                File.Copy(first,second,true);
+                var firstArt=absent with {ImagePath=first};
+                var original=sky.ArtTexture(firstArt)??throw new InvalidOperationException("The first bounded artwork must decode.");
+                if(sky.ArtTexture(absent with {ImagePath=second})is null||ReferenceEquals(original,sky.ArtTexture(firstArt)))
+                    throw new InvalidOperationException("The pixel budget must evict the previous artwork and allow it to be decoded again.");
+            }
         }
         finally {sky.Surveys.Dispose();}
 
@@ -117,6 +139,24 @@ public partial class EarthOrbitProbe
             finally {data.Surveys.Dispose();}
         }
         finally {System.Environment.SetEnvironmentVariable(magnitudeVariable,prior);}
+        foreach(var input in new[]{("SPACETANGENT_MINOR_BODY_CSV",33L*1024*1024),("SPACETANGENT_CONSTELLATION_BOUNDARIES",1024L*1024+1)})
+        {
+            string? saved=System.Environment.GetEnvironmentVariable(input.Item1);
+            string path=Path.Combine(directory,input.Item1+".txt");
+            try
+            {
+                using(var file=File.Create(path)) file.SetLength(input.Item2);
+                System.Environment.SetEnvironmentVariable(input.Item1,path);
+                var data=BrightSkyData.Load();
+                try
+                {
+                    if(input.Item1.Contains("MINOR_BODY",StringComparison.Ordinal)?data.MinorBodies.Length!=0:data.Boundaries.Count!=0)
+                        throw new InvalidOperationException("An oversized sky catalogue must not publish partial contents.");
+                }
+                finally {data.Surveys.Dispose();}
+            }
+            finally {System.Environment.SetEnvironmentVariable(input.Item1,saved);}
+        }
         await ToSignal(GetTree(),SceneTree.SignalName.ProcessFrame);
         GD.Print("Resource contracts GPU: stable legacy pack keys, malformed/oversized manifests, PNG/JPEG/WebP artwork cache and silent WAV lifecycle.");
         static void Reject(Action action,Type expected)

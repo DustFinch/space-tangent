@@ -44,6 +44,7 @@ public partial class WorkspaceInputSmoke
         RequireScenario(before, Session.CaptureScenario(0), "Failed input and filesystem operations");
         await ExerciseTourAndPluginRecovery(directory);
         await ExerciseTimeAndOfflineControls(directory);
+        await ExerciseOptionalResourceRecovery(directory);
 
         if (File.Exists(settings)) File.Delete(settings);
         Directory.CreateDirectory(settings);
@@ -108,6 +109,31 @@ public partial class WorkspaceInputSmoke
             int item=Enumerable.Range(0,popup.ItemCount).Single(row=>popup.GetItemText(row)=="Disable Witness "+index);
             popup.EmitSignal(PopupMenu.SignalName.IdPressed,(long)popup.GetItemId(item));
         }
+        Require(_scene.OpenPlugin(paths[0],reenable:true)is not null,"Start one fresh plugin before importing its disabled preference.");
+        string imported=Path.Combine(directory,"imported-observer-settings.json");
+        string? savedSites=System.Environment.GetEnvironmentVariable("SPACETANGENT_SAVED_EARTH_PLACES");
+        if(Session.ViewCount==1) _scene.ToggleSplit();
+        var other=Session[1];
+        try
+        {
+            System.Environment.SetEnvironmentVariable("SPACETANGENT_SAVED_EARTH_PLACES",Path.Combine(directory,"imported-sites.tsv"));
+            File.WriteAllText(imported,"""{"DisabledPlugins":"witness-0","DeltaT":"MorrisonStephenson2004"}""");
+            await _scene.ImportStartupSettings(imported);
+            Require(new LocalAddonSettingsFile().Load().DisabledPlugins.Contains("witness-0")&&_scene.OpenPlugin(paths[0])is null,
+                "Imported plugin preferences must disable an already running plugin and remain persistent.");
+            Require(Session.DeltaT==DeltaTModel.MorrisonStephenson2004&&Session[1]==other,
+                "Importing observer settings must preserve the other camera.");
+        }
+        finally {System.Environment.SetEnvironmentVariable("SPACETANGENT_SAVED_EARTH_PLACES",savedSites);}
+        try
+        {
+            System.Environment.SetEnvironmentVariable("SPACETANGENT_SAVED_EARTH_PLACES",Path.Combine(directory,"imported-sites.tsv"));
+            File.WriteAllText(imported,"""{"DeltaT":"MorrisonStephenson2004","SavedSites":"Imported Observatory\t51.5\t-0.125\t30\t0\tEurope/London\n"}""");
+            await _scene.ImportStartupSettings(imported);
+            Require(Session[1]==other&&Session.World.EarthPlaces.Places.Any(place=>place.Name=="Imported Observatory"),
+                "Merging saved sites must republish their catalogue and preserve the independent camera.");
+        }
+        finally {System.Environment.SetEnvironmentVariable("SPACETANGENT_SAVED_EARTH_PLACES",savedSites);}
         GD.Print("UI: tour conversion save/failure/cancel and eight-plugin capacity with persistent disable and reenable.");
     }
 

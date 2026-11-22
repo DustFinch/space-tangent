@@ -138,6 +138,29 @@ public partial class EarthOrbitProbe
         Require(scene.LoadScenario(scenario) && scene.StartReplay(replay), "Replay must recover after failed capture output.");
         Require(!scene.StartRecording(), "Recording must not replace an active replay.");
         await Wait(() => !scene.Replaying);
+        string corrupt = Path.Combine(output, "corrupt-second-frame.stframes");
+        using (var recordingFile = File.Create(corrupt))
+        using (var writer = new ObserverFrameSequence.Writer(recordingFile, 30))
+        {
+            writer.Append(scene.Session!.CaptureScenario(0));
+            writer.Append(scene.Session.CaptureScenario(0));
+            writer.Complete();
+        }
+        byte[] damaged = File.ReadAllBytes(corrupt); damaged[^1] ^= 1; File.WriteAllBytes(corrupt, damaged);
+        scene.SetProcess(false);
+        try
+        {
+            Require(scene.StartReplay(corrupt), "A replay must open its first valid frame before reaching later corruption.");
+            scene._Process(1d / 30);
+            Require(!scene.Replaying && status.Text.StartsWith("Could not advance observer replay.", StringComparison.Ordinal),
+                "A later frame digest failure must stop playback and report a controlled error.");
+        }
+        finally {scene.SetProcess(true);}
+        using (var unlocked = new FileStream(corrupt, FileMode.Open, System.IO.FileAccess.ReadWrite, FileShare.None))
+            Require(unlocked.Length == damaged.Length, "A failed replay must close its source handle.");
+        Require(scene.StartRecording(), "The empty movie must start before its first draw.");
+        Require(await scene.StopRecording() is null && status.Text.StartsWith("Could not finish recording.", StringComparison.Ordinal),
+            "Finishing a movie before any draw must fail cleanly and restore the recorder state.");
         GD.Print("Recording boundaries GPU: filenames, 32-image queue, exact two-frame limit, shortcuts, output refusal and replay recovery passed.");
 
         static void Require(bool condition, string message)

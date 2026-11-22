@@ -48,6 +48,13 @@ public partial class WorkspaceInputSmoke : Node
             Require(_scene.Session is not null && Session.World.Satellites.Any(satellite => satellite.Id == Jason),
                 "DE440 and the original Jason-1 add-on must load.");
             Tree.Root.NotifyMouseEntered();
+            if (System.Environment.GetEnvironmentVariable("SPACETANGENT_SURVEY_FAILURES_SMOKE_ONLY") == "1")
+            {
+                await ExerciseSurveyRemoteFailures(scratch.FullName);
+                GD.Print("SpaceTangent survey failure input smoke passed");
+                exitCode = 0;
+                return;
+            }
             if (System.Environment.GetEnvironmentVariable("SPACETANGENT_VISIBLE_TONIGHT_SMOKE_ONLY") == "1")
             {
                 await ExerciseVisibleTonight(scratch.FullName);

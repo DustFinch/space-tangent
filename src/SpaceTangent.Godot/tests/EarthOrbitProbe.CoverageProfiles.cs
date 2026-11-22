@@ -59,6 +59,11 @@ public partial class EarthOrbitProbe
                 RequireInput("SPACETANGENT_SAMPLED_MISSIONS_ROOT");
                 await ExerciseMissionAxes(scene, directory);
                 break;
+            case "mission-vectors":
+                RequireControl("SPACETANGENT_MISSION_VECTORS_GPU");
+                RequireInput("SPACETANGENT_MISSION_VECTORS");
+                await ExerciseMissionVectors(scene, directory);
+                break;
             case "swarm-particles":
                 RequireControl("SPACETANGENT_MISSION_SWARM_GPU");
                 RequireInput("SPACETANGENT_SWARM_INSTALL");

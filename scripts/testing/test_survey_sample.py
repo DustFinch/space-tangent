@@ -31,7 +31,7 @@ class SurveyCaptureTests(unittest.TestCase):
     def test_pins_original_bytes_and_records_provenance_only_after_success(self):
         with mock.patch.object(survey, 'SAMPLES', self.samples), self.fetch() as fetch:
             root = survey.capture(self.output)
-        self.assertEqual(self.output / 'surveys', root)
+        self.assertEqual((self.output / 'surveys').resolve(), root)
         self.assertEqual(self.content, (root / 'dss/properties').read_bytes())
         metadata = json.loads((self.output / 'provenance.json').read_text())
         self.assertIn('no claim of byte identity', metadata['provenance'])

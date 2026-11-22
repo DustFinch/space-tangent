@@ -33,6 +33,9 @@ public partial class EarthOrbitProbe
             case "resource-guards":
                 await ExerciseResourceGuards(scene,directory);
                 break;
+            case "survey-guards":
+                await ExerciseSurveyGuards(directory);
+                break;
             case "demo-worlds":
                 RequireControl("SPACETANGENT_DEMO_WORLDS_PROBE");
                 RequireControl("SPACETANGENT_PROCEDURAL_TERRAIN_PROBE");
@@ -140,6 +143,9 @@ public partial class EarthOrbitProbe
                 break;
             case "distant-picking":
                 await ExerciseAuthoredDistantPicking(scene,directory);
+                break;
+            case "tle-close-up":
+                await ExerciseTleCloseUp(scene,directory);
                 break;
             case "landscapes":
                 RequireInput("SPACETANGENT_LANDSCAPES");

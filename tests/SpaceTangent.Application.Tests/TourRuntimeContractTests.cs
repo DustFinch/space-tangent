@@ -49,6 +49,11 @@ public sealed class TourRuntimeContractTests : IDisposable
     [InlineData("st.sky('unknown-layer', true)", "sky layer")]
     [InlineData("st.legacyframe('unknown-frame', assert(st.find('Sol/Earth/Moon')))", "observer frame")]
     [InlineData("st.sky('lighttime', true)", "unavailable")]
+    [InlineData("st.legacyturn(0,1,0,1e300,1e-300,false)", "rotation")]
+    [InlineData("st.legacymove(1,0,0,-1,1)", "movement")]
+    [InlineData("st.legacymove(1e100,0,0,1,1)", "movement")]
+    [InlineData("st.legacydolly(1,-1)", "distance change")]
+    [InlineData("st.legacydolly(1e300,1e-300)", "distance change")]
     public void InvalidTourRequestsReportTheirContractAndPreserveTheObserver(string source, string message)
     {
         var session = SharedClockTests.Create(); var before = session.CaptureScenario(0);

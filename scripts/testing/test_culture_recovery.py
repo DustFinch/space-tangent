@@ -1,5 +1,6 @@
 """Keep pinned artwork recovery separate from unavailable upstream references."""
 import hashlib
+import http.client
 import contextlib
 import importlib.util
 import io
@@ -93,6 +94,29 @@ class CultureRecoveryTests(unittest.TestCase):
         evidence={'restoredImages':1,'availableImages':1,'unavailableUpstream':['missing']}
         with mock.patch.object(cultures,'restore',return_value=(self.output,evidence)), contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(io.StringIO()):
             self.assertEqual(2,cultures.main([str(self.source),str(self.output)]))
+
+
+    def test_interrupted_http_body_keeps_partial_provenance_and_rejects_capture(self):
+        self.manifest_path.write_text(json.dumps(self.manifest))
+        contents = self.payloads
+        def reply(request, timeout):
+            url = request
+            name = url.split("/" + "b"*40 + "/", 1)[1]
+            if name.endswith(('.png', '.webp')):
+                response = mock.MagicMock()
+                response.__enter__.return_value = response
+                response.read.side_effect = http.client.IncompleteRead(b'partial', 100)
+                return response
+            return io.BytesIO(contents[name])
+        with mock.patch.object(cultures.urllib.request, 'urlopen', side_effect=reply):
+            with self.assertRaisesRegex(ValueError, 'Incomplete'):
+                cultures.restore(self.source, self.output, self.manifest_path)
+        evidence = json.loads((self.output/'provenance.json').read_text())
+        self.assertFalse(evidence['sourceSubsetComplete'])
+        self.assertEqual(1, len(evidence['files']))
+        self.assertEqual(1, len(evidence['failed']))
+        self.assertIn('IncompleteRead', evidence['failed'][0]['error'])
+        self.assertFalse((self.output/'cultures/fixture/illustrations/one.webp').exists())
 
 
 if __name__=='__main__':

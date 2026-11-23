@@ -4,6 +4,7 @@ import argparse
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime, timezone
 import hashlib
+import http.client
 import json
 from pathlib import Path, PurePosixPath
 import re
@@ -100,7 +101,7 @@ def restore(source, destination, manifest_path=None):
         for future in as_completed(jobs):
             try:
                 restored.append(future.result())
-            except (OSError, ValueError, urllib.error.URLError) as error:
+            except (OSError, ValueError, http.client.HTTPException, urllib.error.URLError) as error:
                 failed.append({'name':jobs[future], 'error':str(error)})
     evidence = {'version':1, 'capturedUtc':datetime.now(timezone.utc).isoformat(), 'revision':manifest['revision'],
         'selectedCultures':len(ids), 'availableImages':len(manifest['files']),
@@ -125,7 +126,7 @@ def main(argv=None):
             print(f"Partial upstream corpus: {len(evidence['unavailableUpstream'])} referenced images are absent from the pinned source tree.",file=sys.stderr)
             return 2
         return 0
-    except (OSError, ValueError, KeyError, urllib.error.URLError) as error:
+    except (OSError, ValueError, KeyError, http.client.HTTPException, urllib.error.URLError) as error:
         print(f'Culture recovery rejected: {error}',file=sys.stderr)
         return 1
 

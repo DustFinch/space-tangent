@@ -4,6 +4,7 @@ import argparse
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime, timezone
 import hashlib
+import http.client
 import json
 from pathlib import Path
 import re
@@ -75,7 +76,7 @@ def capture(destination, manifest_path=None, workers=4):
         for future in as_completed(futures):
             try:
                 records.append(future.result())
-            except (OSError, ValueError, urllib.error.URLError) as error:
+            except (OSError, ValueError, http.client.HTTPException, urllib.error.URLError) as error:
                 failed.append({'name': futures[future], 'error': str(error)})
     evidence = {'version': 1, 'capturedUtc': datetime.now(timezone.utc).isoformat(),
         'revision': manifest['revision'], 'complete': not failed, 'images': manifest['images'],
@@ -101,7 +102,7 @@ def main(argv=None):
         root = capture(args.destination, workers=args.workers)
         print(f'Complete pinned capture. Bind SPACETANGENT_SKY_PHOTOGRAPHS={root}')
         return 0
-    except (OSError, ValueError, KeyError, urllib.error.URLError) as error:
+    except (OSError, ValueError, KeyError, http.client.HTTPException, urllib.error.URLError) as error:
         print(f'Photograph capture rejected: {error}', file=sys.stderr)
         return 1
 

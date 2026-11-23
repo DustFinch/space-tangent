@@ -8,12 +8,17 @@ param(
 )
 $ErrorActionPreference='Stop'
 $checkout=[IO.Path]::GetFullPath((Join-Path $PSScriptRoot '../..'))
-$CoreCheckout=[IO.Path]::GetFullPath($CoreCheckout)
-$out=[IO.Path]::GetFullPath($OutputDirectory)
-$manifestPath=[IO.Path]::GetFullPath($Manifest)
-$profilesPath=[IO.Path]::GetFullPath($Profiles)
+# Resolve once against the caller's PowerShell location, before Push-Location.
+# .NET's process current directory may be different in an interactive session.
+function Resolve-Input([string]$path) { $ExecutionContext.SessionState.Path.GetUnresolvedProviderPathFromPSPath($path) }
+$CoreCheckout=Resolve-Input $CoreCheckout
+$out=Resolve-Input $OutputDirectory
+$manifestPath=Resolve-Input $Manifest
+$profilesPath=Resolve-Input $Profiles
+$Godot=Resolve-Input $Godot
 $matrix=Get-Content -LiteralPath $manifestPath -Raw | ConvertFrom-Json -AsHashtable
 $profilesMap=Get-Content -LiteralPath $profilesPath -Raw | ConvertFrom-Json -AsHashtable
+foreach ($key in @($profilesMap.Keys)) { $profilesMap[$key]=Resolve-Input $profilesMap[$key] }
 $required=@('SpaceTangent.Core','SpaceTangent.Contracts','SpaceTangent.Application','SpaceTangent.Godot')
 if ($matrix.version -ne 1 -or -not $matrix.runs -or $matrix.runs.Count -gt 256) { throw 'Choose a version 1 matrix with 1 to 256 runs.' }
 $names=[Collections.Generic.HashSet[string]]::new([StringComparer]::OrdinalIgnoreCase)
@@ -34,23 +39,22 @@ if (Test-Path -LiteralPath $out) { throw 'Use a fresh matrix output directory; p
 [IO.Directory]::CreateDirectory((Join-Path $out 'controls')) | Out-Null
 function Check([string]$step) { if ($LASTEXITCODE -ne 0) { throw "$step failed: $LASTEXITCODE" } }
 function Build-Inputs([string]$root) {
-    $files=@()
-    foreach ($folder in @('src','tests','tools','bindings','scripts')) {
-        $base=Join-Path $root $folder
-        if (Test-Path -LiteralPath $base -PathType Container) {
-            $files+=Get-ChildItem -LiteralPath $base -Recurse -File | Where-Object {
-                ($_.Extension -in @('.cs','.csproj','.props','.targets','.tscn','.gdshader','.ps1','.py') -or
-                    $_.Name -in @('packages.lock.json','packages.export.lock.json')) -and
-                    $_.FullName -notmatch '[\\/](bin|obj|\.godot)[\\/]'
-            }
+    # Include authored resources of every extension, including new unstaged files.
+    # Git excludes ignored caches; the non-Git fallback supports isolated fixtures.
+    if (Test-Path -LiteralPath (Join-Path $root '.git')) {
+        $paths=@(& git -C $root -c core.quotepath=false ls-files --cached --others --exclude-standard)
+        Check 'Build input inventory'
+        $files=@($paths | Sort-Object -Unique | Where-Object {
+            $_ -match '^(src|tests|tools|bindings|scripts|\.config)/' -or -not $_.Contains('/')
+        } | ForEach-Object { $path=Join-Path $root $_; if (Test-Path -LiteralPath $path -PathType Leaf) { Get-Item -LiteralPath $path } })
+    } else {
+        $files=@(Get-ChildItem -LiteralPath $root -File)
+        foreach ($folder in @('src','tests','tools','bindings','scripts','.config')) {
+            $base=Join-Path $root $folder
+            if (Test-Path -LiteralPath $base -PathType Container) { $files+=Get-ChildItem -LiteralPath $base -Recurse -File }
         }
     }
-    $files+=Get-ChildItem -LiteralPath $root -File | Where-Object {
-        $_.Extension -in @('.props','.targets') -or $_.Name -in @('global.json','NuGet.Config','nuget.config')
-    }
-    $collector=Join-Path $root '.config/dotnet-tools.json'
-    if (Test-Path -LiteralPath $collector -PathType Leaf) { $files+=Get-Item -LiteralPath $collector }
-    return $files | Sort-Object FullName
+    return $files | Where-Object { $_.FullName -notmatch '[\\/](bin|obj|\.godot|__pycache__)[\\/]' } | Sort-Object FullName
 }
 function Core-Production-Snapshot([string]$root) {
     $snapshot=[ordered]@{}
@@ -64,8 +68,15 @@ function Core-Production-Snapshot([string]$root) {
         # Git's text conversion can give equivalent checkouts different LF/CRLF
         # bytes. Normalize only that conversion for this cross-checkout comparison;
         # Source-Snapshot below still records each tree's exact bytes.
-        $text=[IO.File]::ReadAllText($file.FullName,[Text.UTF8Encoding]::new($false,$true)).Replace("`r`n","`n")
-        $snapshot[$relative]=[Convert]::ToHexString([Security.Cryptography.SHA256]::HashData([Text.Encoding]::UTF8.GetBytes($text)))
+        $bytes=[IO.File]::ReadAllBytes($file.FullName)
+        $textExtensions=@('.cs','.csproj','.props','.targets','.json','.txt','.tsv','.csv','.xml','.ps1','.py','.md','.yml','.yaml','.cfg','.godot','.tscn','.gdshader','.gdshaderinc')
+        if ($file.Extension -in $textExtensions -or $file.Name -in @('.gitattributes','.gitignore','.editorconfig','COPYING','LICENSE')) {
+            try {
+                $text=[Text.UTF8Encoding]::new($false,$true).GetString($bytes)
+                if (-not $text.Contains([char]0)) { $bytes=[Text.Encoding]::UTF8.GetBytes($text.Replace("`r`n","`n")) }
+            } catch [Text.DecoderFallbackException] { } # Non-text resources retain their exact bytes.
+        }
+        $snapshot[$relative]=[Convert]::ToHexString([Security.Cryptography.SHA256]::HashData($bytes))
     }
     return $snapshot
 }
@@ -107,7 +118,7 @@ try {
     foreach ($run in $matrix.runs) {
         $dir=Join-Path $out $run.name
         $log=Join-Path $out ($run.name+'.log')
-        $profile=[IO.Path]::GetFullPath($profilesMap[$run.profile])
+        $profile=$profilesMap[$run.profile]
         $item=@{name=$run.name;kind=$run.kind;profile=$run.profile;startedUtc=[DateTime]::UtcNow.ToString('o');status='running';
             profileSha256=(Get-FileHash -LiteralPath $profile -Algorithm SHA256).Hash}
         $state.runs+=,$item

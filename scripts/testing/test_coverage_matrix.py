@@ -111,6 +111,27 @@ class CoverageMatrixExecutionTests(unittest.TestCase):
                 path.write_text('// Identical core production sources.\n')
             for path in (core/'Directory.Build.props', app/'deps/space-tangent-core/Directory.Build.props'):
                 path.write_text('<Project />\n')
+            resources = {
+                'shader': app/'src/SpaceTangent.Godot/Shaders/surface.gdshaderinc',
+                'project': app/'src/SpaceTangent.Godot/project.godot',
+                'export': app/'src/SpaceTangent.Godot/export_presets.cfg',
+                'sky': app/'src/SpaceTangent.Godot/SkyData/bright-stars.tsv',
+                'embedded': core_source.parent/'Data/blackholes.txt',
+                'binary': core_source.parent/'Data/fixture.bin',
+            }
+            for path in resources.values():
+                path.parent.mkdir(parents=True, exist_ok=True)
+                path.write_bytes(b'original resource\n')
+            for name in ('embedded', 'binary'):
+                relative=resources[name].relative_to(core)
+                target=app/'deps/space-tangent-core'/relative
+                target.parent.mkdir(parents=True, exist_ok=True)
+                target.write_bytes(resources[name].read_bytes())
+                if mode == 'different-'+name:
+                    target.write_bytes(b'different resource\n')
+            if mode == 'binary-line-endings':
+                resources['binary'].write_bytes(b'\xff\r\n')
+                (app/'deps/space-tangent-core'/resources['binary'].relative_to(core)).write_bytes(b'\xff\n')
             if mode == 'different-core':
                 dependency_source.write_text('// Different core source built by the application.\n')
             if mode == 'core-line-endings':
@@ -128,7 +149,7 @@ class CoverageMatrixExecutionTests(unittest.TestCase):
             (test / 'SpaceTangent.Core.Tests.csproj').write_text('<Project />')
             profile = root / 'profile.json'
             profile.write_text('{}')
-            (root / 'profiles.json').write_text(json.dumps({'fake': str(profile)}))
+            (root / 'profiles.json').write_text(json.dumps({'fake': profile.name if mode == 'relative-paths' else str(profile)}))
             (root / 'matrix.json').write_text(json.dumps({'version': 1, 'runs': [
                 {'name': 'fake-unit', 'kind': 'core', 'profile': 'fake'}]}))
             counts = ('passed="0" failed="1" total="1" notExecuted="0"' if mode == 'failed-trx'
@@ -152,6 +173,7 @@ class CoverageMatrixExecutionTests(unittest.TestCase):
             wrapper.write_text("""
 param([string]$Runner,[string]$Manifest,[string]$Profiles,[string]$Output,[string]$Core)
 $ErrorActionPreference='Stop'
+SET_CALLER_LOCATION
 function global:dotnet { $global:LASTEXITCODE=0 }
 function global:python {
     if ($args[0] -eq 'scripts/testing/data_profile.py') {
@@ -169,7 +191,9 @@ function global:python {
     }
 }
 & $Runner -Manifest $Manifest -Profiles $Profiles -OutputDirectory $Output -Godot 'unused' -CoreCheckout $Core
-""".replace('TRX_LITERAL', literal(trx)).replace('XML_LITERAL', literal(xml))
+""".replace('SET_CALLER_LOCATION',
+                'Set-Location -LiteralPath '+literal(root)+"\n$Manifest='matrix.json'; $Profiles='profiles.json'; $Output='evidence'; $Core='core'"
+                if mode == 'relative-paths' else '').replace('TRX_LITERAL', literal(trx)).replace('XML_LITERAL', literal(xml))
                 .replace('REAL_PYTHON', literal(sys.executable))
                 .replace('MUTATE_SUMMARY_SOURCE', 'Add-Content -LiteralPath ' + literal(source) + " -Value '// Changed during aggregation.'"
                          if mode == 'changed-during-summary' else '')
@@ -182,7 +206,23 @@ function global:python {
                          'Set-Content -LiteralPath ' + literal(core_source.parent/'packages.lock.json') + " -Value '{}'"
                          if mode == 'changed-lock' else
                          'Add-Content -LiteralPath ' + literal(core_scripts/'coverage_report.py') + " -Value '# Changed collector.'"
-                         if mode == 'changed-collector' else ''))
+                         if mode == 'changed-collector' else
+                         'Add-Content -LiteralPath '+literal(resources[mode.removeprefix('changed-')])+" -Value 'changed resource'"
+                         if mode.removeprefix('changed-') in resources else
+                         'Remove-Item -LiteralPath '+literal(resources['shader']) if mode == 'deleted-resource' else
+                         'Set-Content -LiteralPath '+literal(source.parent/'new.unknown-resource')+" -Value 'new resource'"
+                         if mode == 'added-resource' else ''))
+            if mode.startswith('git-'):
+                for repository in (app, core, app/'deps/space-tangent-core'):
+                    subprocess.run(['git', 'init', '-q', str(repository)], check=True, capture_output=True)
+                # All source fixtures are deliberately unstaged. Ignored data must
+                # not be inventoried; unstaged authored resources must be.
+                (app/'.gitignore').write_text('src/ignored-cache.bin\n')
+                (app/'src/ignored-cache.bin').write_bytes(b'cache')
+                mutation = ("Add-Content -LiteralPath "+literal(resources['shader'])+" -Value 'changed unstaged shader'"
+                            if mode == 'git-untracked-resource' else
+                            "Add-Content -LiteralPath "+literal(app/'src/ignored-cache.bin')+" -Value 'changed ignored cache'")
+                wrapper.write_text(wrapper.read_text().replace("            \n        }", "            "+mutation+"\n        }", 1))
             output = root / 'evidence'
             result = subprocess.run(['pwsh', '-NoProfile', '-File', str(wrapper),
                 '-Runner', str(runner), '-Manifest', str(root / 'matrix.json'),
@@ -199,7 +239,7 @@ function global:python {
         self.assertEqual('passed', state['status'])
         self.assertTrue(state['sourcesUnchanged'])
         self.assertEqual(64, len(state['sharedCoreFingerprint']))
-        self.assertEqual(2, state['sharedCoreInputFiles'])
+        self.assertEqual(4, state['sharedCoreInputFiles'])
         self.assertEqual(64, len(state['runs'][0]['reportSha256']))
         self.assertEqual(100, summary['modules']['SpaceTangent.Godot']['percent'])
 
@@ -270,6 +310,38 @@ function global:python {
         result, state, _ = self.exercise('changed-collector')
         self.assertNotEqual(0, result.returncode, result.stdout)
         self.assertFalse(state['sourcesUnchanged'])
+
+
+    def test_relative_parameters_and_profiles_use_the_callers_powershell_location(self):
+        result, state, _ = self.exercise('relative-paths')
+        self.assertEqual(0, result.returncode, result.stdout)
+        self.assertEqual('passed', state['status'])
+
+    def test_resource_changes_additions_and_deletions_invalidate_the_matrix(self):
+        for mode in ('changed-shader', 'changed-project', 'changed-export', 'changed-sky',
+                     'changed-embedded', 'changed-binary', 'added-resource', 'deleted-resource'):
+            with self.subTest(mode=mode):
+                result, state, _ = self.exercise(mode)
+                self.assertNotEqual(0, result.returncode, result.stdout)
+                self.assertFalse(state['sourcesUnchanged'])
+                self.assertEqual('failed', state['status'])
+
+    def test_shared_embedded_and_binary_resources_must_match(self):
+        for mode in ('different-embedded', 'different-binary', 'binary-line-endings'):
+            with self.subTest(mode=mode):
+                result, state, _ = self.exercise(mode)
+                self.assertNotEqual(0, result.returncode, result.stdout)
+                self.assertIn('Core checkout and application dependency differ', result.stdout)
+                self.assertEqual([], state['reports'])
+
+
+    @unittest.skipUnless(shutil.which('git'), 'Git is required for the input inventory contract.')
+    def test_real_git_inventory_includes_untracked_resources_and_excludes_ignored_caches(self):
+        for mode, passes in (('git-untracked-resource', False), ('git-ignored-cache', True)):
+            with self.subTest(mode=mode):
+                result, state, _ = self.exercise(mode)
+                self.assertEqual(passes, result.returncode == 0, result.stdout)
+                self.assertEqual(passes, state['sourcesUnchanged'])
 
 
 if __name__ == '__main__':

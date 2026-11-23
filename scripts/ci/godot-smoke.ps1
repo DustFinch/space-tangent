@@ -50,6 +50,9 @@ foreach ($duration in @('NaN', 'Infinity', '0.05', '601')) {
     }
 }
 Write-Output 'Public-data startup movie duration refusals passed.'
+& python (Join-Path $checkout 'scripts/testing/startup_place_suite.py') --godot $engine --project $project --de440 $de440 `
+    --output (Join-Path $checkout '.ci/startup-places')
+if ($LASTEXITCODE -ne 0) { throw 'Startup preference isolation suite failed.' }
 & (Join-Path $PSScriptRoot 'godot-coverage.ps1') -Godot $engine -De440 $de440 `
     -OutputDirectory (Join-Path $checkout '.ci/godot-coverage') -SkipBuild
 # Expected native refusals must not become the enclosing GitHub step's exit status.

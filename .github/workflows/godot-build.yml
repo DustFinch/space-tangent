@@ -24,6 +24,9 @@ jobs:
         with:
           global-json-file: global.json
           dotnet-version: 8.0.x
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
       - run: dotnet restore src/SpaceTangent.Godot/SpaceTangent.Godot.csproj --locked-mode
       - run: dotnet build src/SpaceTangent.Godot/SpaceTangent.Godot.csproj --no-restore
       - uses: actions/cache@v4
@@ -36,7 +39,9 @@ jobs:
         if: always()
         with:
           name: public-godot-coverage-${{ matrix.os }}
-          path: .ci/godot-coverage
+          path: |
+            .ci/godot-coverage
+            .ci/startup-places
           if-no-files-found: warn
       - if: runner.os == 'Windows'
         run: dotnet restore src/SpaceTangent.Godot/SpaceTangent.Godot.csproj -p:Configuration=ExportRelease -r win-x64 --locked-mode

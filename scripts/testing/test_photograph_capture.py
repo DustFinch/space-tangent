@@ -1,5 +1,6 @@
 """Check a complete pinned capture using labelled synthetic network replies."""
 import hashlib
+import http.client
 import importlib.util
 import io
 import json
@@ -88,6 +89,29 @@ class PhotographCaptureTests(unittest.TestCase):
         (root/'fixture.png').write_bytes(b'changed image')
         with self.assertRaisesRegex(ValueError, 'Pinned upstream file changed'):
             photos.verify(root, self.path)
+
+
+    def test_interrupted_http_body_keeps_partial_provenance_and_rejects_capture(self):
+        self.path.write_text(json.dumps(self.manifest))
+        contents = self.contents
+        def reply(request, timeout):
+            url = request.full_url
+            name = url.rsplit("/", 1)[1]
+            if name.endswith(('.png', '.webp')):
+                response = mock.MagicMock()
+                response.__enter__.return_value = response
+                response.read.side_effect = http.client.IncompleteRead(b'partial', 100)
+                return response
+            return io.BytesIO(contents[name])
+        with mock.patch.object(photos.urllib.request, 'urlopen', side_effect=reply):
+            with self.assertRaisesRegex(ValueError, 'Incomplete'):
+                photos.capture(self.output, self.path, workers=1)
+        evidence = json.loads((self.output/'provenance.json').read_text())
+        self.assertFalse(evidence['complete'])
+        self.assertEqual(1, len(evidence['files']))
+        self.assertEqual(1, len(evidence['failed']))
+        self.assertIn('IncompleteRead', evidence['failed'][0]['error'])
+        self.assertFalse((self.output/'photographs/fixture.png').exists())
 
 
 if __name__ == '__main__':

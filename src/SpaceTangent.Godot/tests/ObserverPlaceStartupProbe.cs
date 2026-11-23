@@ -33,6 +33,7 @@ public partial class ObserverPlaceStartupProbe : Node
             session.SetEarthObserver(0, Home);
             ObserverPlacePreferences.Save(_path, session);
             _before = File.ReadAllBytes(_path);
+            File.WriteAllBytes(_path + ".before", _before);
             // Avoid playback-rate normalization of synchronized, rate-less imported views in the exact-state smoke.
             session.Synchronize(false, 0);
             session.SetEarthObserver(0, EarthObserverCamera.GreenwichFullMoon);
@@ -92,9 +93,28 @@ public partial class ObserverPlaceStartupProbe : Node
             bool unchanged = _before.SequenceEqual(File.ReadAllBytes(_path));
             if (unchanged == _normal)
                 throw new InvalidDataException("Startup did not honor its preference write policy.");
+            if (_normal && !_edited)
+                throw new InvalidDataException("The normal control did not exercise a preference edit.");
+            string[] arguments = OS.GetCmdlineUserArgs();
+            int saveIndex = Array.IndexOf(arguments, "--startup-save-scenario");
+            if (saveIndex >= 0)
+            {
+                if (saveIndex + 1 >= arguments.Length) throw new InvalidDataException("Missing scenario output path.");
+                _ = ScenarioFile.Load(arguments[saveIndex + 1]);
+            }
+            if (CoverageCapture.Complete(0) != 0)
+                throw new InvalidOperationException("Startup coverage could not be flushed.");
+            File.WriteAllText(Path.Combine(Path.GetDirectoryName(_path)!, "policy-result.json"),
+                System.Text.Json.JsonSerializer.Serialize(new { passed = true, normal = _normal, edited = _edited }));
             GD.Print("SpaceTangent observing place startup policy passed: " + (_normal ? "normal" : "batch"));
         }
-        catch (Exception error) { GD.PushError(error.ToString()); }
-        finally { CoverageCapture.Complete(0); }
+        catch (Exception error)
+        {
+            GD.PushError(error.ToString());
+            // The external suite also requires a success result and unchanged sentinel
+            // after native exit: a host ignoring a late Quit(1) cannot hide a failure.
+            System.Environment.ExitCode = 1;
+            GetTree().Quit(1);
+        }
     }
 }

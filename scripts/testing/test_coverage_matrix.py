@@ -1,5 +1,6 @@
 """Reject invalid matrix evidence before any build, GPU launch or source change."""
 import json
+import os
 from pathlib import Path
 import shutil
 import subprocess
@@ -218,6 +219,12 @@ function global:python {
                 # All source fixtures are deliberately unstaged. Ignored data must
                 # not be inventoried; unstaged authored resources must be.
                 (app/'.gitignore').write_text('src/ignored-cache.bin\n')
+                if os.name == 'nt':
+                    # Unix dotfiles are hidden to PowerShell. Reproduce that
+                    # attribute on Windows so both platforms test the same input.
+                    import ctypes
+                    if not ctypes.windll.kernel32.SetFileAttributesW(str(app/'.gitignore'), 2):
+                        raise ctypes.WinError()
                 (app/'src/ignored-cache.bin').write_bytes(b'cache')
                 mutation = ("Add-Content -LiteralPath "+literal(resources['shader'])+" -Value 'changed unstaged shader'"
                             if mode == 'git-untracked-resource' else
@@ -229,6 +236,7 @@ function global:python {
                 '-Profiles', str(root / 'profiles.json'), '-Output', str(output), '-Core', str(core)],
                 stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, encoding='utf-8',
                 errors='replace', timeout=60)
+            self.assertTrue((output / 'status.json').is_file(), result.stdout)
             state = json.loads((output / 'status.json').read_text(encoding='utf-8-sig'))
             summary = json.loads((output / 'summary.json').read_text()) if (output / 'summary.json').exists() else None
             return result, state, summary

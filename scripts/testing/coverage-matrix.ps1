@@ -46,12 +46,12 @@ function Build-Inputs([string]$root) {
         Check 'Build input inventory'
         $files=@($paths | Sort-Object -Unique | Where-Object {
             $_ -match '^(src|tests|tools|bindings|scripts|\.config)/' -or -not $_.Contains('/')
-        } | ForEach-Object { $path=Join-Path $root $_; if (Test-Path -LiteralPath $path -PathType Leaf) { Get-Item -LiteralPath $path } })
+        } | ForEach-Object { $path=Join-Path $root $_; if (Test-Path -LiteralPath $path -PathType Leaf) { Get-Item -LiteralPath $path -Force } })
     } else {
-        $files=@(Get-ChildItem -LiteralPath $root -File)
+        $files=@(Get-ChildItem -LiteralPath $root -File -Force)
         foreach ($folder in @('src','tests','tools','bindings','scripts','.config')) {
             $base=Join-Path $root $folder
-            if (Test-Path -LiteralPath $base -PathType Container) { $files+=Get-ChildItem -LiteralPath $base -Recurse -File }
+            if (Test-Path -LiteralPath $base -PathType Container) { $files+=Get-ChildItem -LiteralPath $base -Recurse -File -Force }
         }
     }
     return $files | Where-Object { $_.FullName -notmatch '[\\/](bin|obj|\.godot|__pycache__)[\\/]' } | Sort-Object FullName

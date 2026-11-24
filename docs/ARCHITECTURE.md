@@ -40,7 +40,7 @@ Scenario restoration validates the complete input before changing live state. Sa
 
 `AddonLoadCoordinator` owns the loading generation and cancellation source. It cancels superseded work and invalidates pending results when its owner closes. The scene additionally checks its native lifetime and tree membership before publication. A completed request may publish only while it remains current and its scene owner is alive. Cancelled work must release candidate-owned data without disposing an index or asset still shared by the active generation. All views must finish switching before a superseded shared resource is released.
 
-Reload preserves the last successful world on rejected input and keeps the observers' epochs, cameras, selection and delta-T whenever the replacement supports them. Requested source preferences are saved for the successfully applied world. Content hashes and recorded failed lookups determine cache validity. See [add-on cache contracts](ADDON_CACHE.md).
+Reload preserves the last successful world on rejected input and keeps the observers' epochs, cameras, selection and delta-T whenever the replacement supports them. Requested source preferences are saved for the successfully applied world. A failed synchronous preference commit restores the previous world, observer records and unfinished flights before the adapter switches its live generation. The previous distant-star index is retired after all live views have switched. Content hashes and recorded failed lookups determine cache validity. See [add-on cache contracts](ADDON_CACHE.md).
 
 ## Frame evaluation
 

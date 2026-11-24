@@ -317,20 +317,7 @@ public sealed partial class SimulationSession
         return changed;
     }
 
-    public bool TryReplaceWorld(SimulationWorld next)
-    {
-        var plan = WorldReplacementPlan.Prepare(World, next, _views, DeltaT);
-        if (plan is null) return false;
-        for (int index = 0; index < _views.Count; index++)
-        {
-            if (plan.CancelFlights[index]) CancelFlight(index);
-            _views[index] = plan.Views[index];
-        }
-        World = next;
-        SurfaceObserverFallbacks = plan.SurfaceFallbacks;
-        if (plan.SurfaceFallbacks.Count > 0) ObserverPlacesVersion++;
-        return true;
-    }
+    public bool TryReplaceWorld(SimulationWorld next) => TryReplaceWorld(next, null);
 
     private void SetClock(int view, JulianInstant epoch, bool playing) => _clocks.SetClock(view, epoch, playing);
 

@@ -1458,20 +1458,21 @@ public partial class SolarSystemScene : Control
             int[] surfaceFallbacks = [];
             if (!ReferenceEquals(previous, next))
             {
-                if (!Session.TryReplaceWorld(decoded.World))
+                Action? persist = requested is null ? null : () => _localAddonFile.Save(requested);
+                if (!Session.TryReplaceWorld(decoded.World, persist))
                     throw new InvalidOperationException("The new world does not cover the current epochs.");
                 surfaceFallbacks = Session.SurfaceObserverFallbacks.ToArray();
                 _addOns = next;
-                DisposeSupersededStars(previous?.Decoded);
                 _galacticSky.SetDust(decoded.GalacticDust.Value);
                 _objectSearch.Replace(Session.World.Catalogue);
                 UpdateLoadedInputs();
                 foreach (ViewControls view in _views)
                     ReplaceAssets(view);
                 Refresh();
+                // Retire the previous index after every live view has switched successfully.
+                DisposeSupersededStars(previous?.Decoded);
             }
-            // Persist the request only once the world that uses it is live, so a failed reload keeps the old settings.
-            if (requested is not null)
+            else if (requested is not null)
                 _localAddonFile.Save(requested);
             _localAddons = settings;
             _brightSky?.Surveys.SetOffline(settings.HipsOffline);

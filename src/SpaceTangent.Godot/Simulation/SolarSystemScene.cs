@@ -1363,20 +1363,10 @@ public partial class SolarSystemScene : Control
             return StartReplay(path);
         try
         {
-            if (extension.Equals(".json", StringComparison.OrdinalIgnoreCase))
-            {
-                using var input = File.OpenRead(path);
-                if (ObserverBookmarkFile.IsArchivedCollection(input))
-                    return ImportFavorites(path);
-                input.Position = 0;
-                CloseReplay();
-                ApplyScenario(SceneLink.ReadArchivedObserver(input, Session!.World, Session.DeltaT));
-            }
-            else
-            {
-                CloseReplay();
-                ApplyScenario(ScenarioFile.Load(path));
-            }
+            using var input = new ObserverWorkspaceReader(path);
+            if (input.IsFavorites) return ImportFavorites(path);
+            CloseReplay();
+            ApplyScenario(input.ReadScenario(Session!.World, Session.DeltaT));
         }
         catch (Exception error) when (IsLoadError(error))
         {
@@ -2107,34 +2097,9 @@ public partial class SolarSystemScene : Control
         return string.IsNullOrWhiteSpace(configured) ? ProjectSettings.GlobalizePath("user://delta-t.txt") : configured;
     }
 
-    private static DeltaTModel ReadDeltaT()
-    {
-        try
-        {
-            if (Enum.TryParse(File.ReadAllText(SettingsPath()), out DeltaTModel selected) && Enum.IsDefined(selected))
-                return selected;
-        }
-        catch (Exception error) when (error is IOException or UnauthorizedAccessException)
-        {
-            // A fresh profile has no preference yet.
-        }
-        return DeltaTModel.EspenakMeeus2006;
-    }
+    private static DeltaTModel ReadDeltaT() => DeltaTPreferenceFile.Load(SettingsPath());
 
-    private static void SaveDeltaT(DeltaTModel model)
-    {
-        string path = SettingsPath();
-        string temporary = path + "." + Guid.NewGuid().ToString("N") + ".tmp";
-        try
-        {
-            File.WriteAllText(temporary, model.ToString());
-            File.Move(temporary, path, overwrite: true);
-        }
-        finally
-        {
-            File.Delete(temporary);
-        }
-    }
+    private static void SaveDeltaT(DeltaTModel model) => DeltaTPreferenceFile.Save(SettingsPath(), model);
 
     private static string PlaybackButton(bool playing) => ViewControls.PlaybackButton(playing);
 

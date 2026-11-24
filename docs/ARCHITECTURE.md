@@ -30,6 +30,8 @@ Observers retain exact TDB epochs. Linked views share their clock owner's epoch,
 
 `ObserverPlaceAutosave` owns one session's frozen preferences path, revision tracking, debounced writes and retry delay. The adapter decides whether startup policy enables it and displays failures; scenarios, replay and batch startup keep their existing privacy rules.
 
+`ObserverWorkspaceReader` owns archived-input classification streams; the adapter retains the order of replay shutdown and scenario parsing. `DeltaTPreferenceFile` keeps the existing named-model preference format and atomic replacement independently of engine path discovery.
+
 Scenario restoration validates the complete input before changing live state. Saved scenarios and recordings preserve place history, while shared links and bookmarks retain the active cameras without publishing unrelated private locations. See [observer views](OBSERVER_VIEWS.md).
 
 ## Data preparation and publication

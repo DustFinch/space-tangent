@@ -13,6 +13,7 @@ public sealed class AddonLoadCoordinator : IDisposable
 
     public int Generation { get; private set; }
 
+    /// <exception cref="ObjectDisposedException">This owner has permanently closed; callers must not start new work.</exception>
     public CancellationToken Begin()
     {
         ObjectDisposedException.ThrowIf(_closed, this);

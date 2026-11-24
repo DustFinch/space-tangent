@@ -23,6 +23,7 @@ public partial class SolarSystemScene
 
     private async Task FindNextObserverEvent()
     {
+        if (!CanStartSceneWork) return;
         var session = Session!;
         var observer = session[_active];
         var context = CurrentEventContext();

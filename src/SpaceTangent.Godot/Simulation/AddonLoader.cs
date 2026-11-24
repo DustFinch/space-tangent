@@ -16,7 +16,13 @@ internal sealed record AddonGeneration(AddonPreparation.DecodedAddOns Decoded, I
     PreparedMission? Mission, PreparedMission? Timeline, PreparedProbe? Probe, BodyTerrainAsset? Terrain, BodyTerrainAsset? MarsTerrain, IReadOnlyList<PreparedImportedBody> ImportedBodies) : IDisposable
 {
     internal PublishedRenderAssets Resources { get; set; } = new([]);
-    public void Dispose() => Resources.Dispose();
+    internal bool IsDisposed { get; private set; }
+    public void Dispose()
+    {
+        if (IsDisposed) return;
+        Resources.Dispose();
+        IsDisposed = true;
+    }
 
     internal IEnumerable<global::Godot.Resource?> ResourceRoots()
     {

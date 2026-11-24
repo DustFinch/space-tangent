@@ -688,12 +688,14 @@ public partial class SolarSystemScene : Control
 
     public override void _ExitTree()
     {
+        _sceneClosed = true;
         FlushObserverPlaces();
         _galacticSky.Dispose();
         _brightSky?.Surveys.Dispose();
         _addonResources.Retire(_addOns?.Decoded.DistantStars.Value);
         foreach (var view in _views) view.Renderer.CloseOwnedResources();
         _addOns?.Dispose();
+        RetirePreviousAddons();
         _eventSearch.Dispose();
         _almanacSearch.Dispose();
         _chartSearch.Dispose();
@@ -1216,6 +1218,7 @@ public partial class SolarSystemScene : Control
 
     internal async Task<bool> ReloadAddOns(LocalAddonSettings? requested)
     {
+        if (!CanStartSceneWork) return false;
         using var reloadProfile = RuntimeProfile.Measure("addons.reload");
         var originalDeltaT = Session!.DeltaT;
         CancellationToken token = BeginLoad();
@@ -1224,6 +1227,9 @@ public partial class SolarSystemScene : Control
         AddonGeneration? publishedCandidate = null;
         try
         {
+            // Repair before accepting another generation: at most one previous
+            // generation can remain borrowed by partially switched views.
+            if (_addonBindingPending) BindPublishedAddons();
             _status.Text = "Reloading add-ons…";
             _localAddonPanel.SetBusy(true);
             LocalAddonSettings settings = requested ?? _localAddons;
@@ -1239,17 +1245,12 @@ public partial class SolarSystemScene : Control
                 Action? persist = requested is null ? null : () => _localAddonFile.Save(requested);
                 if (!Session.TryReplaceWorld(decoded.World, persist))
                     throw new InvalidOperationException("The new world does not cover the current epochs.");
+                _localAddons = settings;
                 surfaceFallbacks = Session.SurfaceObserverFallbacks.ToArray();
                 _addOns = next;
-                _galacticSky.SetDust(decoded.GalacticDust.Value);
-                _objectSearch.Replace(Session.World.Catalogue);
-                UpdateLoadedInputs();
-                foreach (ViewControls view in _views)
-                    ReplaceAssets(view);
-                Refresh();
-                // Retire the previous index after every live view has switched successfully.
-                DisposeSupersededStars(previous?.Decoded);
-                previous?.Dispose();
+                _retiringAddons = previous;
+                _addonBindingPending = true;
+                BindPublishedAddons();
             }
             else if (requested is not null)
                 _localAddonFile.Save(requested);
@@ -1287,6 +1288,38 @@ public partial class SolarSystemScene : Control
                 _localAddonPanel.ShowSources(_localAddons, _localAddonFile, _addOns?.Decoded);
             }
         }
+    }
+
+    private bool _sceneClosed, _addonBindingPending;
+    private AddonGeneration? _retiringAddons;
+    private bool CanStartSceneWork => !_sceneClosed && GodotObject.IsInstanceValid(this) && IsInsideTree() && Session is not null;
+
+    private void BindPublishedAddons()
+    {
+        OnAddonBinding(-1);
+        _galacticSky.SetDust(_addOns!.Decoded.GalacticDust.Value);
+        _objectSearch.Replace(Session!.World.Catalogue);
+        UpdateLoadedInputs();
+        for (int index = 0; index < _views.Count; index++)
+        {
+            OnAddonBinding(index);
+            ReplaceAssets(_views[index]);
+        }
+        OnAddonBinding(_views.Count);
+        Refresh();
+        _addonBindingPending = false;
+        RetirePreviousAddons();
+    }
+
+    // Test configurations implement this checkpoint; release exports erase it.
+    partial void OnAddonBinding(int view);
+
+    private void RetirePreviousAddons()
+    {
+        var previous = _retiringAddons;
+        _retiringAddons = null;
+        DisposeSupersededStars(previous?.Decoded);
+        previous?.Dispose();
     }
 
     private void DisposeSupersededStars(AddonPreparation.DecodedAddOns? decoded)

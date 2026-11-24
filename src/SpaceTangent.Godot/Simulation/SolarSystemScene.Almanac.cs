@@ -35,6 +35,7 @@ public partial class SolarSystemScene
 
     private async Task FindNearbyEvents()
     {
+        if (!CanStartSceneWork) return;
         var session = Session!;
         var observer = session[_active];
         var context = CurrentAlmanacContext();

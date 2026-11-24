@@ -7,6 +7,7 @@ public sealed class ObserverCalculationSlot : IDisposable
 {
     private Calculation? _current;
     private bool _closed;
+    /// <exception cref="ObjectDisposedException">This owner has permanently closed; late UI callbacks must return before starting work.</exception>
     public Calculation Begin()
     {
         ObjectDisposedException.ThrowIf(_closed, this);

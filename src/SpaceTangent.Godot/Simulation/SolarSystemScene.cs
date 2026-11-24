@@ -36,21 +36,15 @@ public partial class SolarSystemScene : Control
     private IReadOnlyDictionary<ObjectId, OrbitAtmosphereTextures> _orbitAtmospheres =
         new Dictionary<ObjectId, OrbitAtmosphereTextures>();
     private IReadOnlyDictionary<ObjectId, BodyTileTextures> _surfaceTiles = new Dictionary<ObjectId, BodyTileTextures>();
-    private CheckButton _showPlanetOrbits = null!;
     private bool _viewSizeChanged;
     private BrightSkyData? _brightSky;
-    private CheckButton _deepSky = null!;
-    private CheckButton _stars = null!, _starLabels = null!, _equatorialGrid = null!, _constellations = null!;
-    private CheckButton _zodiacalLight = null!, _starlink = null!;
-    private OptionButton _smallBodyMode = null!;
-    private PopupMenu _skyMarkingsMenu = null!;
     private SimulatorWorkspace _workspace = null!;
     private ObjectSearchPanel _objectSearch = null!;
     private Label _dataSummary = null!;
     private EarthObserverPanel _earthObserver = null!;
-    private Button _satelliteLayersMode = null!;
     private Button _spaceMode = null!, _observatoryMode = null!;
     private Button _split = null!;
+    private ObserverLayersPanel _layersPanel = null!;
     private ObserverTimePanel _timePanel = null!;
     private OptionButton _deltaT => _timePanel.Model;
     private Label _status = null!;
@@ -273,71 +267,9 @@ public partial class SolarSystemScene : Control
         BuildAlmanacControls();
         BuildObserverCharts();
 
-        var layers = _workspace.AddPage("Layers", WorkspaceText.Choose("Layers and view", "Слои и вид"), "Search", WorkspaceText.Choose("Layers", "Слои"));
-        layers.AddChild(SimulatorTheme.Section("Objects"));
-        AddButton(layers, "Inner planets", () => SetMode(_active, CameraMode.Solar));
-        AddButton(layers, "Outer planets", () => SetMode(_active, CameraMode.SolarOuter));
-        _showPlanetOrbits = new CheckButton { Text = "Planet orbits", ButtonPressed = true };
-        _showPlanetOrbits.Toggled += visible =>
-        {
-            var session = Session!;
-            session.SetSkyLayers(_active, session[_active].Sky with { HideOrbits = !visible });
-            Refresh();
-        };
-        layers.AddChild(_showPlanetOrbits);
-        AddButton(layers, "Earth–Moon view", () => SetMode(_active, CameraMode.Lunar));
-        layers.AddChild(SimulatorTheme.Section("Sky in this view"));
-        _stars = SkyToggle(layers, "StarsLayer", "Bright stars");
-        _starLabels = SkyToggle(layers, "StarLabelsLayer", "Star labels");
-        _equatorialGrid = SkyToggle(layers, "EquatorialGridLayer", "Equatorial grid");
-        _constellations = SkyToggle(layers, "ConstellationLayer", "Constellation figures");
-        _deepSky = SkyToggle(layers, "DeepSkyLayer", "Deep-sky objects");
-        _zodiacalLight = SkyToggle(layers, "ZodiacalLightLayer", "Zodiacal light");
-        _zodiacalLight.Disabled = _brightSky?.ZodiacalMap is null;
-        _smallBodyMode = new OptionButton { Name = "SmallBodySwarmMode", Disabled = _brightSky?.MinorBodies.Length is not > 0 };
-        _smallBodyMode.AddItem("Small-body swarm off");
-        _smallBodyMode.AddItem("Small-body brightness");
-        _smallBodyMode.AddItem("Small-body diagram");
-        _smallBodyMode.ItemSelected += index =>
-        {
-            var session = Session!;
-            session.SetSkyLayers(_active, session[_active].Sky with { SmallBodies = (MinorBodyDisplay)index });
-            Refresh();
-        };
-        layers.AddChild(_smallBodyMode);
-        var markings = new MenuButton { Name = "SkyMarkings", Text = "Sky markings" };
-        _skyMarkingsMenu = markings.GetPopup();
-        _skyMarkingsMenu.HideOnCheckableItemSelection = false;
-        foreach (var (mark, title) in new (SkyMarkings Mark, string Title)[]
-        {
-            (SkyMarkings.EquatorOfDate, "Equator of date"), (SkyMarkings.GalacticEquator, "Galactic equator"),
-            (SkyMarkings.Colures, "Colures"), (SkyMarkings.Poles, "Celestial, ecliptic and galactic poles"),
-            (SkyMarkings.EquinoxesAndSolstices, "Equinoxes and solstices"), (SkyMarkings.ArchaeoLines, "Archaeoastronomy lines"),
-            (SkyMarkings.NavigationalStars, "Navigational stars"), (SkyMarkings.Pulsars, "Pulsars"),
-            (SkyMarkings.Quasars, "Quasars"), (SkyMarkings.SelectedBodyPath, "Selected body path"),
-            (SkyMarkings.Meridian, "Local meridian"),
-            (SkyMarkings.PrimeVertical, "Prime vertical"), (SkyMarkings.PrecessionCircles, "Precession circles"),
-            (SkyMarkings.CircumpolarCircles, "Circumpolar circles"), (SkyMarkings.ZenithAndNadir, "Zenith and nadir")
-        })
-            _skyMarkingsMenu.AddCheckItem(title, (int)mark);
-        _skyMarkingsMenu.IdPressed += id =>
-        {
-            var session = Session!;
-            var sky = session[_active].Sky;
-            session.SetSkyLayers(_active, sky with { Markings = sky.Markings ^ (SkyMarkings)id });
-            Refresh();
-        };
-        layers.AddChild(markings);
-        layers.AddChild(SimulatorTheme.Section("Earth satellites"));
-        _satelliteLayersMode = AddButton(layers, "Earth satellites view", () => SetMode(_active, CameraMode.Satellites));
-        _starlink = new CheckButton { Name = "StarlinkLayer", Text = "Starlink" };
-        _starlink.Toggled += enabled =>
-        {
-            var session = Session!;
-            session.SetSkyLayers(_active, session[_active].Sky with { Starlink = enabled });
-            Refresh();
-        };
-        layers.AddChild(_starlink);
+        _layersPanel = new(_workspace,
+            new(_brightSky is not null, _brightSky?.ZodiacalMap is not null, _brightSky?.MinorBodies.Length is > 0),
+            new(mode => SetMode(_active, mode), SetPlanetOrbits, SetSmallBodies, ToggleSkyMark, SetStarlink, SetSkyVisibility));
         var ephemerides = _workspace.AddPage("Ephemerides", WorkspaceText.Choose("Ephemerides", "Эфемериды"), "Location");
         _earthObserver = new(location, ephemerides, _surfaceTextures is not null, camera =>
         {
@@ -415,7 +347,7 @@ public partial class SolarSystemScene : Control
         if (Session.World.HasLunarTerrain)
             inputs.Add("Lunar elevation");
         _dataSummary.Text = string.Join("\n", inputs);
-        _satelliteLayersMode.Disabled = Assets.Count == 0;
+        _layersPanel.SetSatelliteAvailability(Assets.Count > 0);
     }
 
     private void SelectObject(ObjectId target)
@@ -473,25 +405,44 @@ public partial class SolarSystemScene : Control
         Session!.World.BrightStars.Find(id) is not null &&
         ((view.Mode == CameraMode.Surface && view.Navigation is null) || Session.World.Stellar.Find(id) is null);
 
-    private CheckButton SkyToggle(Container panel, string name, string title)
+    private void SetPlanetOrbits(bool visible)
     {
-        var button = new CheckButton { Name = name, Text = title, Disabled = _brightSky is null };
-        button.Toggled += _ =>
+        var session = Session!;
+        session.SetSkyLayers(_active, session[_active].Sky with { HideOrbits = !visible });
+        Refresh();
+    }
+
+    private void SetSmallBodies(MinorBodyDisplay mode)
+    {
+        var session = Session!;
+        session.SetSkyLayers(_active, session[_active].Sky with { SmallBodies = mode });
+        Refresh();
+    }
+
+    private void ToggleSkyMark(SkyMarkings mark)
+    {
+        var session = Session!;
+        var sky = session[_active].Sky;
+        session.SetSkyLayers(_active, sky with { Markings = sky.Markings ^ mark });
+        Refresh();
+    }
+
+    private void SetStarlink(bool enabled)
+    {
+        var session = Session!;
+        session.SetSkyLayers(_active, session[_active].Sky with { Starlink = enabled });
+        Refresh();
+    }
+
+    private void SetSkyVisibility(ObserverSkyVisibility visible)
+    {
+        var session = Session!;
+        session.SetSkyLayers(_active, session[_active].Sky with
         {
-            Session!.SetSkyLayers(_active,
-                Session[_active].Sky with
-                {
-                    Stars = _stars.ButtonPressed,
-                    Labels = _starLabels.ButtonPressed,
-                    EquatorialGrid = _equatorialGrid.ButtonPressed,
-                    Constellations = _constellations.ButtonPressed,
-                    DeepSky = _deepSky.ButtonPressed,
-                    ZodiacalLight = _zodiacalLight.ButtonPressed
-                });
-            Refresh();
-        };
-        panel.AddChild(button);
-        return button;
+            Stars = visible.Stars, Labels = visible.Labels, EquatorialGrid = visible.EquatorialGrid,
+            Constellations = visible.Constellations, DeepSky = visible.DeepSky, ZodiacalLight = visible.ZodiacalLight
+        });
+        Refresh();
     }
 
     private void PointAtStar(BrightStar star)
@@ -1606,17 +1557,7 @@ public partial class SolarSystemScene : Control
         _timePanel.Update(_active, active, Session.Synchronized, _views.Count, Session.DeltaT);
         _earthObserver.Update(_active, active, _views[_active].Snapshot, Session.World.Ephemeris, Session.DeltaT,
             Session.World.BrightStars, CurrentObserverNight(), Session.World.EarthPlaces, Session.World);
-        _showPlanetOrbits.SetPressedNoSignal(!active.Sky.HideOrbits);
-        _stars.SetPressedNoSignal(active.Sky.Stars);
-        _starLabels.SetPressedNoSignal(active.Sky.Labels);
-        _equatorialGrid.SetPressedNoSignal(active.Sky.EquatorialGrid);
-        _constellations.SetPressedNoSignal(active.Sky.Constellations);
-        _deepSky.SetPressedNoSignal(active.Sky.DeepSky);
-        _zodiacalLight.SetPressedNoSignal(active.Sky.ZodiacalLight);
-        _starlink.SetPressedNoSignal(active.Sky.Starlink ?? !active.Sky.HideSatellites);
-        _smallBodyMode.Select((int)(active.Sky.SmallBodies ?? MinorBodyDisplay.Photometric));
-        for (int index = 0; index < _skyMarkingsMenu.ItemCount; index++)
-            _skyMarkingsMenu.SetItemChecked(index, active.Sky.Markings.HasFlag((SkyMarkings)_skyMarkingsMenu.GetItemId(index)));
+        _layersPanel.Update(active.Sky);
         _objectSearch.UpdateSelection(active.Selection);
         var target = active.Selection is { } selection ? Session.World.Catalogue.Find(selection) : null;
         bool tracking = active.Navigation is { Tracking: true } pose && pose.Target == target?.Id;

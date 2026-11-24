@@ -16,26 +16,9 @@ namespace SpaceTangent.Godot.Simulation;
 
 public partial class SolarSystemScene : Control
 {
-    private static readonly int NavigationOption = Enum.GetValues<CameraMode>().Length;
-    private sealed record ViewControls(PanelContainer Panel, SimulationViewport Renderer, Label Epoch,
-        Button Play, OptionButton Mode, OptionButton Selection, LineEdit TimelineEpoch, HBoxContainer TerrainTools,
-        LineEdit TerrainCoordinates, SpinBox FieldOfView, Button AdvanceHour, SubViewportContainer Canvas, MeasurementOverlay Measurements)
-    {
-        internal Label? PointerReadout { get; set; }
-        internal Vector2? PointerPosition { get; set; }
-        internal WorldSnapshot? Snapshot { get; set; }
-        internal SimulationWorld? SnapshotWorld { get; set; }
-        internal ProjectionScale? Perspective { get; set; }
-        internal bool DraggingCamera { get; set; }
-        internal Vector2? LookPress { get; set; }
-        internal int LookGesture { get; set; }
-        internal bool Looking { get; set; }
-        internal bool CameraCoastLooksAround { get; set; }
-        internal Vector2 CameraDragVelocity { get; set; }
-        internal double CameraDollyRate { get; set; }
-    }
-
-    private readonly List<ViewControls> _views = [];
+    private static readonly int NavigationOption = ObserverViewHost.NavigationOption;
+    private readonly ObserverViewHost _viewHost = new();
+    private List<ViewControls> _views => _viewHost.Views;
     private readonly HashSet<Key> _freeFlightKeys = [];
     private bool _freeFlightBoost;
     private AddonGeneration? _addOns;
@@ -54,7 +37,6 @@ public partial class SolarSystemScene : Control
         new Dictionary<ObjectId, OrbitAtmosphereTextures>();
     private IReadOnlyDictionary<ObjectId, BodyTileTextures> _surfaceTiles = new Dictionary<ObjectId, BodyTileTextures>();
     private CheckButton _showPlanetOrbits = null!;
-    private bool _refreshingViewField;
     private bool _viewSizeChanged;
     private BrightSkyData? _brightSky;
     private CheckButton _deepSky = null!;
@@ -71,14 +53,12 @@ public partial class SolarSystemScene : Control
     private Label _calendarTime = null!;
     private Label _otherCalendars = null!;
     private long? _otherCalendarDay;
-    private BoxContainer _panels = null!;
-    private StyleBoxFlat _activeFrame = null!, _inactiveFrame = null!;
     private Button _spaceMode = null!, _observatoryMode = null!;
     private Button _split = null!;
     private CheckButton _sync = null!;
     private OptionButton _deltaT = null!;
     private Label _status = null!;
-    private int _active;
+    private int _active { get => _viewHost.Active; set => _viewHost.Active = value; }
     private readonly AddonLoadCoordinator _addonLoads = new();
     private int _loadGeneration => _addonLoads.Generation;
     private LuaSessionScript? _script;
@@ -113,14 +93,13 @@ public partial class SolarSystemScene : Control
             NumberStyles.Float, CultureInfo.InvariantCulture, out float lensScale) && lensScale is >= .5f and <= 1f)
             LensRenderScale = lensScale;
         _workspace = new(this, GoToActiveObject, TrackActiveObject);
-        _panels = _workspace.Views;
         _status = _workspace.Status;
         _galacticSky.Published += () => Refresh();
         if (InspectStartupArchive())
             return;
         ConnectCapture();
-        _activeFrame = SimulatorTheme.Box(SimulatorTheme.Ground, SimulatorTheme.Highlight, 5, 5);
-        _inactiveFrame = SimulatorTheme.Box(SimulatorTheme.Ground, SimulatorTheme.Border, 5, 5);
+        var activeFrame = SimulatorTheme.Box(SimulatorTheme.Ground, SimulatorTheme.Highlight, 5, 5);
+        var inactiveFrame = SimulatorTheme.Box(SimulatorTheme.Ground, SimulatorTheme.Border, 5, 5);
         _status.Text = "Loading ephemeris…";
 
         ISolarSystemEphemeris ephemeris;
@@ -251,6 +230,11 @@ public partial class SolarSystemScene : Control
             new(JulianInstant.J2000Day, 0, TimeScale.Tdb), ReadDeltaT());
         Session.OpenSpaceView(0);
         Session.SetSkyLayers(0, Session[0].Sky with { Stars = true });
+        _viewHost.Initialize(Session, _workspace.Views,
+            new(Advance, TogglePlaying, SetMode, SetViewField, SelectSatelliteItem, SeekTimeline,
+                SetLunarTerrainCamera, SeekTerrain, HandleViewInput, () => _viewSizeChanged = true),
+            CreateViewRenderer, BindViewRenderer, ReplaceAssets, RemoveViewMedia,
+            activeFrame, inactiveFrame, _surfaceTextures is not null);
         BuildWorkspaceControls();
         if (settingsError is not null)
             ShowAddonFailure("Could not read local add-on settings.", settingsError);
@@ -1003,24 +987,13 @@ public partial class SolarSystemScene : Control
 
     private void CloseView(int index)
     {
-        Session!.RemoveView(index);
-        RemoveViewPanel(index);
-        if (_active > index)
-            _active--;
-        _active = Math.Min(_active, Session.ViewCount - 1);
+        _viewHost.Close(index);
         FinishViewRemoval();
     }
 
     private void KeepActiveView()
     {
-        for (int index = _views.Count - 1; index >= 0; index--)
-        {
-            if (index == _active)
-                continue;
-            Session!.RemoveView(index);
-            RemoveViewPanel(index);
-        }
-        _active = 0;
+        _viewHost.KeepActive();
         FinishViewRemoval();
     }
 
@@ -1032,19 +1005,16 @@ public partial class SolarSystemScene : Control
         Refresh();
     }
 
-    private void RemoveViewPanel(int index)
+    private void RemoveViewPanel(int index) => _viewHost.RemovePanel(index);
+
+    private void RemoveViewMedia(SimulationViewport renderer)
     {
-        var controls = _views[index];
-        PanelContainer panel = controls.Panel;
-        int media = _scriptMedia.FindIndex(entry => entry.Renderer == controls.Renderer);
+        int media = _scriptMedia.FindIndex(entry => entry.Renderer == renderer);
         if (media >= 0)
         {
             _scriptMedia[media].Player.Clear();
             _scriptMedia.RemoveAt(media);
         }
-        _views.RemoveAt(index);
-        panel.GetParent().RemoveChild(panel);
-        panel.QueueFree();
     }
 
     private void SetSplitLayout(ViewSplit layout)
@@ -1166,88 +1136,13 @@ public partial class SolarSystemScene : Control
     private void UpdateViewLayout()
     {
         ResetPerspectiveScale();
-        _panels.Vertical = Session!.SplitLayout == ViewSplit.Stacked;
-        while (_views.Count < Session.ViewCount)
-            AddView();
-        while (_views.Count > Session.ViewCount)
-            RemoveViewPanel(_views.Count - 1);
-
-        for (int index = 0; index < _views.Count; index++)
-        {
-            ViewControls view = _views[index];
-            view.Panel.GetParent().RemoveChild(view.Panel);
-            view.AdvanceHour.Name = $"AdvanceHour{index}";
-            view.FieldOfView.Name = $"ViewField{index}";
-            view.Canvas.Name = $"ViewCanvas{index}";
-        }
-        foreach (Node child in _panels.GetChildren())
-        {
-            _panels.RemoveChild(child);
-            child.QueueFree();
-        }
-        AttachView(Session.Layout, _panels, "");
-        _split.Text = Session.ViewCount switch
+        _viewHost.Relayout();
+        _split.Text = Session!.ViewCount switch
         {
             1 => WorkspaceText.Choose("Split view", "Разделить вид"),
             2 => WorkspaceText.Choose("Close second view", "Закрыть второй вид"),
             _ => WorkspaceText.Choose("Close active view", "Закрыть активный вид")
         };
-    }
-
-    private Control AttachView(ObserverLayout layout, Container parent, string path)
-    {
-        if (layout.View is { } index)
-        {
-            PanelContainer panel = _views[index].Panel;
-            panel.SizeFlagsStretchRatio = 1;
-            parent.AddChild(panel);
-            return panel;
-        }
-        bool vertical = layout.Direction == ViewSplit.Stacked;
-        var split = new SplitContainer
-        {
-            Name = "ViewDivider" + path,
-            Vertical = vertical,
-            DraggerVisibility = SplitContainer.DraggerVisibilityEnum.Hidden,
-            SizeFlagsHorizontal = SizeFlags.ExpandFill,
-            SizeFlagsVertical = SizeFlags.ExpandFill
-        };
-        parent.AddChild(split);
-        Control first = AttachView(layout.First!, split, path + "0");
-        Control second = AttachView(layout.Second!, split, path + "1");
-        double share = layout.FirstShare;
-        split.Resized += () => Callable.From(ApplyShare).CallDeferred();
-        split.DragEnded += () => Callable.From(StoreShare).CallDeferred();
-        Callable.From(ApplyShare).CallDeferred();
-        return split;
-
-        float Extent(Control control) => vertical ? control.Size.Y : control.Size.X;
-
-        void ApplyShare()
-        {
-            if (!IsInstanceValid(split) || !split.IsInsideTree())
-                return;
-            float total = Extent(first) + Extent(second);
-            if (total <= 0)
-                return;
-            int offset = Mathf.RoundToInt((float)(total * share) - Extent(first));
-            if (offset != 0)
-            {
-                split.SplitOffsets = [split.SplitOffsets.FirstOrDefault() + offset];
-                split.ClampSplitOffset();
-            }
-        }
-
-        void StoreShare()
-        {
-            if (!IsInstanceValid(split) || !split.IsInsideTree())
-                return;
-            float total = Extent(first) + Extent(second);
-            if (total <= 0)
-                return;
-            share = Extent(first) / total;
-            Session!.ResizeViewDivider(path, share);
-        }
     }
 
     private void AddScenarioMenu(Container toolbar)
@@ -1648,89 +1543,16 @@ public partial class SolarSystemScene : Control
         _addonLoads.IsCurrent(generation, token) &&
         GodotObject.IsInstanceValid(this) && IsInsideTree();
 
-    private void AddView()
+    private void AddView() => _viewHost.AddView();
+
+    private SimulationViewport CreateViewRenderer() => new()
     {
-        int index = _views.Count;
-        var frame = new PanelContainer { SizeFlagsHorizontal = SizeFlags.ExpandFill, SizeFlagsVertical = SizeFlags.ExpandFill };
-        int CurrentIndex() => _views.FindIndex(view => ReferenceEquals(view.Panel, frame));
-        _panels.AddChild(frame);
-        var panel = new VBoxContainer();
-        frame.AddChild(panel);
-        var tools = new HFlowContainer();
-        panel.AddChild(tools);
-        var epoch = new Label { TextOverrunBehavior = TextServer.OverrunBehavior.TrimEllipsis };
-        panel.AddChild(epoch);
-        AddButton(tools, "−1 h", () => Advance(CurrentIndex(), -3600));
-        Button play = AddButton(tools, PlaybackButton(false), () => TogglePlaying(CurrentIndex()));
-        Button advanceHour = AddButton(tools, "+1 h", () => Advance(CurrentIndex(), 3600));
-        advanceHour.Name = $"AdvanceHour{index}";
-        var mode = new OptionButton();
-        mode.AddItem(WorkspaceText.Choose("Inner planets", "Внутренние планеты"), (int)CameraMode.Solar);
-        mode.AddItem(WorkspaceText.Choose("Earth–Moon view", "Земля и Луна"), (int)CameraMode.Lunar);
-        mode.AddItem(WorkspaceText.Choose("Earth satellites", "Спутники Земли"), (int)CameraMode.Satellites);
-        mode.AddItem(WorkspaceText.Choose("Surface", "Поверхность"), (int)CameraMode.Surface);
-        mode.AddItem(WorkspaceText.Choose("Cassini at Saturn", "Cassini у Сатурна"), (int)CameraMode.Mission);
-        mode.AddItem(WorkspaceText.Choose("Cassini timeline", "Полёт Cassini"), (int)CameraMode.Timeline);
-        mode.AddItem("Huygens", (int)CameraMode.Probe);
-        mode.AddItem(WorkspaceText.Choose("Lunar terrain", "Рельеф Луны"), (int)CameraMode.LunarTerrain);
-        mode.AddItem(WorkspaceText.Choose("Outer planets", "Внешние планеты"), (int)CameraMode.SolarOuter);
-        mode.AddItem(WorkspaceText.Choose("Olympus Mons", "Олимп"), (int)CameraMode.MarsTerrain);
-        mode.AddItem(WorkspaceText.Choose("Object camera", "Камера объекта"), NavigationOption);
-        mode.SetItemDisabled(NavigationOption, true);
-        mode.SetItemDisabled((int)CameraMode.Surface, _surfaceTextures is null);
-        mode.ItemSelected += item => SetMode(CurrentIndex(), (CameraMode)mode.GetItemId((int)item));
-        tools.AddChild(mode);
-        var field = new SpinBox { Name = $"ViewField{index}", MinValue = 2, MaxValue = 120, Step = .01,
-            Value = Session![index].EffectiveFieldOfView, LocalizeNumeralSystem = false,
-            CustomMinimumSize = new Vector2(112, 0),
-            Suffix = "° FOV", TooltipText = "Vertical field of view" };
-        field.ValueChanged += value =>
-        {
-            if (_refreshingViewField)
-                return;
-            Session!.SetFieldOfView(CurrentIndex(), value);
-            Refresh();
-        };
-        tools.AddChild(field);
-        var selection = new OptionButton();
-        selection.ItemSelected += item => SelectSatellite(CurrentIndex(), Assets[(int)item].Track.Id);
-        tools.AddChild(selection);
-        var timelineEpoch = new LineEdit { Name = "TimelineEpoch", PlaceholderText = "JD TDB ↵", Visible = false,
-            TooltipText = "Enter a TDB Julian date, such as 2453167.5, and press Enter." };
-        timelineEpoch.TextSubmitted += text => SeekTimeline(CurrentIndex(), text);
-        panel.AddChild(timelineEpoch);
+        GalacticCache = _galacticSky, DemoSurfaces = _demoSurfaces, CompactTables = _compactLensTables,
+        CinematicCompactLens = _startupArguments.Contains("--startup-cinematic-lens", StringComparer.Ordinal)
+    };
 
-        var terrainTools = new HBoxContainer { Visible = false };
-        AddButton(terrainTools, "Globe", () => SetLunarTerrainCamera(CurrentIndex(), LunarTerrainCamera.Globe));
-        AddButton(terrainTools, "Copernicus", () => SetLunarTerrainCamera(CurrentIndex(), LunarTerrainCamera.Copernicus));
-        var terrainCoordinates = new LineEdit
-        {
-            SizeFlagsHorizontal = SizeFlags.ExpandFill,
-            PlaceholderText = "Lon°, lat°, width km ↵",
-            TooltipText = "East longitude, north latitude and view width in km. Separate values with commas."
-        };
-        terrainCoordinates.TextSubmitted += text => SeekTerrain(CurrentIndex(), terrainCoordinates, text);
-        terrainTools.AddChild(terrainCoordinates);
-        panel.AddChild(terrainTools);
-
-        var container = new SubViewportContainer
-        {
-            Name = $"ViewCanvas{index}",
-            Stretch = true,
-            SizeFlagsVertical = SizeFlags.ExpandFill
-        };
-        container.GuiInput += input => HandleViewInput(CurrentIndex(), input);
-
-        panel.AddChild(container);
-        var viewport = new SubViewport { OwnWorld3D = true, RenderTargetUpdateMode = SubViewport.UpdateMode.Always };
-        container.AddChild(viewport);
-        viewport.SizeChanged += () => _viewSizeChanged = true;
-        var renderer = new SimulationViewport
-        {
-            GalacticCache = _galacticSky, DemoSurfaces = _demoSurfaces, CompactTables = _compactLensTables,
-            CinematicCompactLens = _startupArguments.Contains("--startup-cinematic-lens", StringComparer.Ordinal)
-        };
-        viewport.AddChild(renderer);
+    private void BindViewRenderer(SimulationViewport renderer)
+    {
         if (_surfaceTextures is { } textures)
             renderer.SetSurfaceTextures(textures, _groundRingAtlas);
         if (_earthOrbitTextures is { } earthOrbit)
@@ -1744,18 +1566,15 @@ public partial class SolarSystemScene : Control
         renderer.PlanetEphemeris = Session!.World.Ephemeris;
         if (_brightSky is { } sky)
             renderer.SetSkyData(sky);
-        var measurements = new MeasurementOverlay { Name = "Measurements" };
-        viewport.AddChild(measurements);
-        var controls = new ViewControls(frame, renderer, epoch, play, mode, selection, timelineEpoch,
-            terrainTools, terrainCoordinates, field, advanceHour, container, measurements);
-        container.MouseExited += () =>
-        {
-            controls.PointerPosition = null;
-            controls.PointerReadout?.Hide();
-        };
-        _views.Add(controls);
-        ReplaceAssets(controls);
     }
+
+    private void SetViewField(int view, double value)
+    {
+        Session!.SetFieldOfView(view, value);
+        Refresh();
+    }
+
+    private void SelectSatelliteItem(int view, int item) => SelectSatellite(view, Assets[item].Track.Id);
 
     private void HandleViewInput(int view, InputEvent input)
     {
@@ -2073,13 +1892,7 @@ public partial class SolarSystemScene : Control
 
     private void UpdateActiveFrame()
     {
-        for (int index = 0; index < _views.Count; index++)
-        {
-            var frame = _views[index].Panel;
-            var style = index == _active ? _activeFrame : _inactiveFrame;
-            if (frame.GetThemeStylebox("panel") != style)
-                frame.AddThemeStyleboxOverride("panel", style);
-        }
+        _viewHost.UpdateActiveStyle();
         var active = Session![_active];
         bool observatory = active.Mode == CameraMode.Surface && active.Navigation is null;
         _spaceMode.SetPressedNoSignal(!observatory);
@@ -2252,15 +2065,7 @@ public partial class SolarSystemScene : Control
             controls.Mode.Select(preset ? (int)view.Mode : NavigationOption);
             controls.Mode.SetItemDisabled((int)CameraMode.Surface, _surfaceTextures is null && view.EarthObserver?.IsEarth != false);
             controls.FieldOfView.Visible = !preset || view.Mode == CameraMode.Surface;
-            _refreshingViewField = true;
-            try
-            {
-                controls.FieldOfView.Value = view.EffectiveFieldOfView;
-            }
-            finally
-            {
-                _refreshingViewField = false;
-            }
+            _viewHost.SetFieldValue(controls, view.EffectiveFieldOfView);
             controls.Selection.Visible = preset && view.Mode == CameraMode.Satellites;
             controls.TimelineEpoch.Visible = preset && view.Mode is CameraMode.Timeline or CameraMode.Probe;
             controls.TerrainTools.Visible = preset && view.Mode == CameraMode.LunarTerrain;
@@ -2331,9 +2136,7 @@ public partial class SolarSystemScene : Control
         }
     }
 
-    private static string PlaybackButton(bool playing) => playing
-        ? WorkspaceText.Choose("Pause", "Пауза")
-        : WorkspaceText.Choose("Play", "Пуск");
+    private static string PlaybackButton(bool playing) => ViewControls.PlaybackButton(playing);
 
     private static Button AddButton(Container parent, string text, Action onPressed)
     {

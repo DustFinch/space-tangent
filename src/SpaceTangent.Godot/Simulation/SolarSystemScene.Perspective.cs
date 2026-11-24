@@ -6,7 +6,6 @@ namespace SpaceTangent.Godot.Simulation;
 
 public partial class SolarSystemScene
 {
-    private readonly record struct ProjectionScale(double ScreenAngle, double Field, double Zoom, CameraMode Mode);
     private ulong _projectionBaselineUntil;
     private int _projectionScreen = -2, _projectionDpi = PerspectiveViewScale.DefaultDpi;
 

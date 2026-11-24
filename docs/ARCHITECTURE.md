@@ -42,7 +42,7 @@ Reload preserves the last successful world on rejected input and keeps the obser
 
 ## Frame evaluation
 
-`SolarSystemScene` connects application workflows, controls and views. `SimulationViewport` owns a view's drawing and picking. Their partial files group related implementation; component ownership must remain explicit across those files.
+`SolarSystemScene` connects application workflows, controls and views. `ObserverViewHost` owns control creation, active-index remapping, layout dividers and their callbacks, and suppression of programmatic field updates. It receives typed observer actions and explicit renderer creation/resource-binding callbacks, preserving the original node-ready order. `SimulationViewport` owns a view's drawing and picking. Their partial files group related implementation; component ownership must remain explicit across those files.
 
 Rendering consumes a world snapshot evaluated at the observer's epoch and delta-T model. Reuse is valid only for the same relevant world and time dependencies. Stateful imported Lua models retain their evaluation order; background observation calculations use the world's graph that excludes scripted models and their unsafe dependencies.
 

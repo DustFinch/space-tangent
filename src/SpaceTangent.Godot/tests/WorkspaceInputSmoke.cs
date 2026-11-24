@@ -275,7 +275,7 @@ public partial class WorkspaceInputSmoke : Node
             System.Environment.SetEnvironmentVariable(bookmarkVariable, oldBookmarks);
             System.Environment.SetEnvironmentVariable(scienceVariable, science);
             scratch?.Delete(recursive: true);
-            Tree.Quit(CoverageCapture.Complete(exitCode));
+            ProbeHost.Complete(this, exitCode);
         }
     }
 
@@ -720,15 +720,8 @@ public partial class WorkspaceInputSmoke : Node
         await ToSignal(Tree, SceneTree.SignalName.ProcessFrame);
     }
 
-    private async Task Until(Func<bool> ready, string description, int timeoutSeconds = 6)
-    {
-        var stopwatch = System.Diagnostics.Stopwatch.StartNew();
-        while (!ready())
-        {
-            Require(stopwatch.Elapsed.TotalSeconds < timeoutSeconds, $"{description} timed out.");
-            await ToSignal(Tree, SceneTree.SignalName.ProcessFrame);
-        }
-    }
+    private Task Until(Func<bool> ready, string description, int timeoutSeconds = 6) =>
+        ProbeHost.Until(this, ready, timeoutSeconds, $"{description} timed out.");
 
     private static void RequireScenario(SimulationScenario expected, SimulationScenario actual, string action)
     {
@@ -743,9 +736,5 @@ public partial class WorkspaceInputSmoke : Node
             $"{action} must preserve both cameras, epochs, selections, sync settings and ΔT.");
     }
 
-    private static void Require(bool condition, string message)
-    {
-        if (!condition)
-            throw new InvalidOperationException(message);
-    }
+    private static void Require(bool condition, string message) => ProbeHost.Require(condition, message);
 }

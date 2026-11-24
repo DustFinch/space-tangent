@@ -63,27 +63,13 @@ public partial class AddonLifecycleProbe : Node
         catch (Exception error) { GD.PushError(error.ToString()); }
         finally
         {
-            if (scene is not null && GodotObject.IsInstanceValid(scene))
-            {
-                if (scene.GetParent() == this) RemoveChild(scene);
-                scene.Free();
-            }
-            GetTree().Quit(CoverageCapture.Complete(exit));
+            ProbeHost.FreeScene(this, scene);
+            ProbeHost.Complete(this, exit);
         }
     }
 
-    private async Task Until(Func<bool> complete, string operation)
-    {
-        var clock = Stopwatch.StartNew();
-        while (!complete())
-        {
-            Require(clock.Elapsed.TotalSeconds < 40, operation + " timed out.");
-            await ToSignal(GetTree(), SceneTree.SignalName.ProcessFrame);
-        }
-    }
+    private Task Until(Func<bool> complete, string operation) =>
+        ProbeHost.Until(this, complete, 40, operation + " timed out.");
 
-    private static void Require(bool condition, string message)
-    {
-        if (!condition) throw new InvalidOperationException(message);
-    }
+    private static void Require(bool condition, string message) => ProbeHost.Require(condition, message);
 }

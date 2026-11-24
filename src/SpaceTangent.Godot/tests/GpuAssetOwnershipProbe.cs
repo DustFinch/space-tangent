@@ -19,7 +19,7 @@ public partial class GpuAssetOwnershipProbe : Node
             exit = 0;
         }
         catch (Exception error) { GD.PushError(error.ToString()); }
-        GetTree().Quit(CoverageCapture.Complete(exit));
+        ProbeHost.Complete(this, exit);
     }
 
     private static void AbandonedCandidate()
@@ -125,8 +125,5 @@ public partial class GpuAssetOwnershipProbe : Node
         try { action(); } catch (T) { return; }
         throw new InvalidOperationException("Expected " + typeof(T).Name);
     }
-    private static void Require(bool condition, string message)
-    {
-        if (!condition) throw new InvalidOperationException(message);
-    }
+    private static void Require(bool condition, string message) => ProbeHost.Require(condition, message);
 }

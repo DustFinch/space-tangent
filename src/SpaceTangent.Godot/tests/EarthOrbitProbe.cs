@@ -504,7 +504,7 @@ public partial class EarthOrbitProbe : Node
         }
         finally
         {
-            GetTree().Quit(CoverageCapture.Complete(result));
+            ProbeHost.Complete(this, result);
         }
     }
 }

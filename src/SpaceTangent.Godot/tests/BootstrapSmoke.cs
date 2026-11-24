@@ -20,12 +20,7 @@ public partial class BootstrapSmoke : Node
             Assembly.Load("SpaceTangent.Contracts");
             var scene = GD.Load<PackedScene>("res://Main.tscn").Instantiate<SolarSystemScene>();
             AddChild(scene);
-            var startup = System.Diagnostics.Stopwatch.StartNew();
-            while (!scene.InitializationFinished)
-            {
-                Require(startup.Elapsed.TotalSeconds < 20, "World initialization timed out.");
-                await ToSignal(GetTree(), SceneTree.SignalName.ProcessFrame);
-            }
+            await ProbeHost.Until(this, () => scene.InitializationFinished, 20, "World initialization timed out.");
             if (System.Environment.GetEnvironmentVariable("SPACETANGENT_REQUIRE_SIMULATION") == "1")
                 Require(scene.Session is not null && !string.IsNullOrWhiteSpace(
                     System.Environment.GetEnvironmentVariable("SPACETANGENT_DE440")),
@@ -39,7 +34,7 @@ public partial class BootstrapSmoke : Node
                     rims.SurfaceGetArrayLen(0) == 128 && rims.SurfaceGetArrayLen(1) == 128,
                     "Both original Cassini radiator rims must publish 32 boundary rays.");
                 GD.Print("Cassini radiator smoke passed: two circular frusta with 32 boundary rays each.");
-                GetTree().Quit(CoverageCapture.Complete(0));
+                ProbeHost.Complete(this, 0);
                 return;
             }
 
@@ -75,12 +70,12 @@ public partial class BootstrapSmoke : Node
                 await CaptureWorkspace(scene, workspace);
 
             GD.Print("SpaceTangent bootstrap smoke passed");
-            GetTree().Quit(CoverageCapture.Complete(0));
+            ProbeHost.Complete(this, 0);
         }
         catch (Exception exception)
         {
             GD.PushError(exception.ToString());
-            GetTree().Quit(CoverageCapture.Complete(1));
+            ProbeHost.Complete(this, 1);
         }
     }
 
@@ -849,9 +844,5 @@ public partial class BootstrapSmoke : Node
         Require(vertices == triangles * 3 && textures.Count == textureCount, "Unexpected geometry or texture count.");
     }
 
-    private static void Require(bool condition, string message)
-    {
-        if (!condition)
-            throw new InvalidOperationException(message);
-    }
+    private static void Require(bool condition, string message) => ProbeHost.Require(condition, message);
 }

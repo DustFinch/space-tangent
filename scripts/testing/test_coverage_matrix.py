@@ -70,6 +70,18 @@ class CoverageMatrixBoundaryTests(unittest.TestCase):
         self.run['options'] = {'SPACETANGENT_TEST': True}
         self.reject('Probe options must be a string map')
 
+    def test_scope_must_be_an_explicit_nonempty_array(self):
+        for value in (None, [], 'SpaceTangent.Godot'):
+            with self.subTest(value=value):
+                self.run['requiredModules'] = value
+                self.reject('Probe coverage modules must be a nonempty unique subset')
+
+    def test_scope_cannot_name_unknown_or_duplicate_assemblies(self):
+        for value in (['Other'], ['spacetangent.core'], ['SpaceTangent.Godot'] * 2):
+            with self.subTest(value=value):
+                self.run['requiredModules'] = value
+                self.reject('Probe coverage modules must be a nonempty unique subset')
+
     def test_existing_output_is_preserved(self):
         self.output.mkdir()
         previous = self.output / 'previous.xml'

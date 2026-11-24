@@ -38,6 +38,18 @@ foreach ($run in $matrix.runs) {
     if (-not $profilesMap.ContainsKey($run.profile) -or -not (Test-Path -LiteralPath $profilesMap[$run.profile] -PathType Leaf)) { throw "Missing pinned profile: $($run.profile)" }
     if ($run.kind -eq 'probe') {
         if ($run.scene -notmatch '^res://tests/[A-Za-z0-9_-]+\.tscn$' -or [string]::IsNullOrWhiteSpace($run.successMarker)) { throw 'A probe needs an explicit test scene and success marker.' }
+        if ($run.ContainsKey('requiredModules')) {
+            $modules=$run.requiredModules
+            $seenModules=[Collections.Generic.HashSet[string]]::new([StringComparer]::Ordinal)
+            if ($modules -isnot [Array] -or $modules.Count -eq 0 -or $modules.Count -gt $required.Count) {
+                throw 'Probe coverage modules must be a nonempty unique subset of the measured assemblies.'
+            }
+            foreach ($module in $modules) {
+                if ($module -isnot [string] -or $module -cnotin $required -or -not $seenModules.Add($module)) {
+                    throw 'Probe coverage modules must be a nonempty unique subset of the measured assemblies.'
+                }
+            }
+        }
         if ($run.options -and $run.options -isnot [Collections.IDictionary]) { throw 'Probe options must be a string map.' }
         foreach ($key in $run.options.Keys) {
             if ($key -notmatch '^SPACETANGENT_[A-Z0-9_]+$' -or $run.options[$key] -isnot [string]) { throw 'Probe options must be a string map of SPACETANGENT_ controls.' }

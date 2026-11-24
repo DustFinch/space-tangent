@@ -11,11 +11,21 @@ $checkout=[IO.Path]::GetFullPath((Join-Path $PSScriptRoot '../..'))
 # Resolve once against the caller's PowerShell location, before Push-Location.
 # .NET's process current directory may be different in an interactive session.
 function Resolve-Input([string]$path) { $ExecutionContext.SessionState.Path.GetUnresolvedProviderPathFromPSPath($path) }
+function Resolve-Engine([string]$path) {
+    # Resolve a bare executable name through PATH before changing directories.
+    # Explicit paths retain the caller-relative rules used by the other inputs.
+    if (-not [IO.Path]::IsPathRooted($path) -and $path -notmatch '[/\\]') {
+        $command=Get-Command -Name ([WildcardPattern]::Escape($path)) -CommandType Application -ErrorAction SilentlyContinue |
+            Select-Object -First 1
+        if ($command) { return $command.Source }
+    }
+    return Resolve-Input $path
+}
 $CoreCheckout=Resolve-Input $CoreCheckout
 $out=Resolve-Input $OutputDirectory
 $manifestPath=Resolve-Input $Manifest
 $profilesPath=Resolve-Input $Profiles
-$Godot=Resolve-Input $Godot
+$Godot=Resolve-Engine $Godot
 $matrix=Get-Content -LiteralPath $manifestPath -Raw | ConvertFrom-Json -AsHashtable
 $profilesMap=Get-Content -LiteralPath $profilesPath -Raw | ConvertFrom-Json -AsHashtable
 foreach ($key in @($profilesMap.Keys)) { $profilesMap[$key]=Resolve-Input $profilesMap[$key] }

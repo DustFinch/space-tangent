@@ -194,7 +194,7 @@ function global:python {
 & $Runner -Manifest $Manifest -Profiles $Profiles -OutputDirectory $Output -Godot 'unused' -CoreCheckout $Core
 """.replace('SET_CALLER_LOCATION',
                 'Set-Location -LiteralPath '+literal(root)+"\n$Manifest='matrix.json'; $Profiles='profiles.json'; $Output='evidence'; $Core='core'"
-                if mode == 'relative-paths' else '').replace('TRX_LITERAL', literal(trx)).replace('XML_LITERAL', literal(xml))
+                if mode == 'relative-paths' or mode.startswith('engine-') else '').replace('TRX_LITERAL', literal(trx)).replace('XML_LITERAL', literal(xml))
                 .replace('REAL_PYTHON', literal(sys.executable))
                 .replace('MUTATE_SUMMARY_SOURCE', 'Add-Content -LiteralPath ' + literal(source) + " -Value '// Changed during aggregation.'"
                          if mode == 'changed-during-summary' else '')
@@ -230,12 +230,35 @@ function global:python {
                             if mode == 'git-untracked-resource' else
                             "Add-Content -LiteralPath "+literal(app/'src/ignored-cache.bin')+" -Value 'changed ignored cache'")
                 wrapper.write_text(wrapper.read_text().replace("            \n        }", "            "+mutation+"\n        }", 1))
+            environment = os.environ.copy()
+            if mode.startswith('engine-'):
+                engine_directory = root/'engine tools'
+                engine_directory.mkdir()
+                name = 'st-matrix-engine.exe' if os.name == 'nt' else 'st-matrix-engine'
+                executable = engine_directory/name
+                # A real native executable lets Get-Command exercise the platform's
+                # PATH lookup. The fixture is never executed by this orchestration test.
+                shutil.copy2(sys.executable, executable)
+                if mode == 'engine-path':
+                    argument = 'st-matrix-engine'
+                    path_directory = engine_directory
+                else:
+                    argument = str(executable) if mode == 'engine-absolute' else 'engine tools/'+name
+                    # Explicit paths must win even with a same-named PATH entry.
+                    path_directory = root/'other tools'
+                    path_directory.mkdir()
+                    shutil.copy2(sys.executable, path_directory/name)
+                environment['PATH'] = str(path_directory)+os.pathsep+environment.get('PATH', '')
+                script = wrapper.read_text().replace('& $Runner', '. $Runner').replace(
+                    "-Godot 'unused'", '-Godot '+literal(argument))
+                script += "\nif ($Godot -cne "+literal(executable)+") { throw ('Unexpected engine: '+$Godot) }\n"
+                wrapper.write_text(script)
             output = root / 'evidence'
             result = subprocess.run(['pwsh', '-NoProfile', '-File', str(wrapper),
                 '-Runner', str(runner), '-Manifest', str(root / 'matrix.json'),
                 '-Profiles', str(root / 'profiles.json'), '-Output', str(output), '-Core', str(core)],
                 stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, encoding='utf-8',
-                errors='replace', timeout=60)
+                errors='replace', timeout=60, env=environment)
             self.assertTrue((output / 'status.json').is_file(), result.stdout)
             state = json.loads((output / 'status.json').read_text(encoding='utf-8-sig'))
             summary = json.loads((output / 'summary.json').read_text()) if (output / 'summary.json').exists() else None
@@ -322,6 +345,21 @@ function global:python {
 
     def test_relative_parameters_and_profiles_use_the_callers_powershell_location(self):
         result, state, _ = self.exercise('relative-paths')
+        self.assertEqual(0, result.returncode, result.stdout)
+        self.assertEqual('passed', state['status'])
+
+    def test_engine_name_resolves_from_path_before_changing_location(self):
+        result, state, _ = self.exercise('engine-path')
+        self.assertEqual(0, result.returncode, result.stdout)
+        self.assertEqual('passed', state['status'])
+
+    def test_relative_engine_path_uses_the_caller_location_instead_of_path(self):
+        result, state, _ = self.exercise('engine-relative')
+        self.assertEqual(0, result.returncode, result.stdout)
+        self.assertEqual('passed', state['status'])
+
+    def test_absolute_engine_path_is_preserved_with_a_same_named_path_entry(self):
+        result, state, _ = self.exercise('engine-absolute')
         self.assertEqual(0, result.returncode, result.stdout)
         self.assertEqual('passed', state['status'])
 

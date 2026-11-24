@@ -12,6 +12,7 @@ internal partial class SimulationViewport
 
     internal void SetScriptNotice(ScriptNotice? notice)
     {
+        if (_renderResourcesClosed) return;
         if (_notice == notice)
             return;
         _notice = notice;

@@ -12,6 +12,7 @@ internal partial class SimulationViewport
 
     internal void SetMissionAnnotations(IReadOnlyList<MissionAnnotation> annotations, JulianInstant epoch)
     {
+        if (_renderResourcesClosed) return;
         if (_missionAnnotationOverlay is null)
         {
             if (annotations.Count == 0)

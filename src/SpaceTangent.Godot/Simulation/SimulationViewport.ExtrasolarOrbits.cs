@@ -12,7 +12,7 @@ internal partial class SimulationViewport
     private readonly List<MeshInstance3D> _extrasolarOrbitNodes = [];
     private SimulationWorld? _extrasolarOrbitWorld;
 
-    internal int VisibleExtrasolarOrbits => _extrasolarOrbitNodes.Count(node => node.Visible);
+    internal int VisibleExtrasolarOrbits => _renderResourcesClosed ? 0 : (_extrasolarOrbitNodes.Count(node => node.Visible));
 
     private void DrawExtrasolarOrbits(NavigationCamera camera, WorldSnapshot snapshot, double units,
         Func<Vector3d, (Vector3 Position, double Scale)> project)

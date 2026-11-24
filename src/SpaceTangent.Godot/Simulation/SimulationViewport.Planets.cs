@@ -19,15 +19,15 @@ internal partial class SimulationViewport
 
 
     internal bool ShowPlanetOrbits { get; set; } = true;
-    internal int PlanetOrbitCount => _planetOverview?.OrbitCount ?? 0;
-    internal bool PlanetRingsVisible(ObjectId id) => _planetRings.GetValueOrDefault(id)?.Visible == true;
+    internal int PlanetOrbitCount => _renderResourcesClosed ? 0 : (_planetOverview?.OrbitCount ?? 0);
+    internal bool PlanetRingsVisible(ObjectId id) => _renderResourcesClosed ? false : (_planetRings.GetValueOrDefault(id)?.Visible == true);
     internal MeshInstance3D? RingedAtmosphere(ObjectId id) => _planetRings.GetValueOrDefault(id)?.Atmosphere;
-    internal bool PlanetGlobeTextured(ObjectId id) => _planetGlobes.TryGetValue(id, out var mesh) && mesh.Visible &&
+    internal bool PlanetGlobeTextured(ObjectId id) => _renderResourcesClosed ? false : (_planetGlobes.TryGetValue(id, out var mesh) && mesh.Visible &&
         (mesh.MaterialOverride is StandardMaterial3D { AlbedoTexture: not null } ||
             mesh.Mesh is ArrayMesh model && model.GetSurfaceCount() > 0 &&
                 model.SurfaceGetMaterial(0) is ShaderMaterial material && material.GetShaderParameter("has_diffuse").AsBool() ||
             _planetRings.GetValueOrDefault(id)?.Textured == true ||
-            _worldAtmospheres.GetValueOrDefault(id)?.Textured == true);
+            _worldAtmospheres.GetValueOrDefault(id)?.Textured == true));
 
     private void InitializePlanets()
     {
@@ -49,6 +49,7 @@ internal partial class SimulationViewport
 
     internal void SetPlanetTextures(PlanetTextures textures, Texture2DArray? groundMaps = null)
     {
+        if (_renderResourcesClosed) return;
         _surface?.SetPlanetMaps(textures.Surfaces, groundMaps);
         _venusClouds = textures.VenusClouds;
         _archivedPlanetTextures = textures;
@@ -68,6 +69,7 @@ internal partial class SimulationViewport
     internal void SetWorldAtmospheres(IReadOnlyDictionary<ObjectId, OrbitAtmosphereTextures> lookups,
         IReadOnlyDictionary<ObjectId, BodyTileTextures> tiles)
     {
+        if (_renderResourcesClosed) return;
         _archivedAtmosphereLookups = lookups;
         _marsTiles = tiles.GetValueOrDefault(PlanetCatalogue.MarsId);
         ObjectId venus = SolarSystemSample.VenusId;
@@ -85,9 +87,9 @@ internal partial class SimulationViewport
 
     internal BodyTileTextures? LocalSurfaceTiles(ObjectId id) => _worldAtmospheres.GetValueOrDefault(id)?.Tiles;
 
-    internal bool WorldAtmosphereActive(ObjectId id, bool lookup) => id == SolarSystemSample.EarthId
+    internal bool WorldAtmosphereActive(ObjectId id, bool lookup) => _renderResourcesClosed ? false : (id == SolarSystemSample.EarthId
         ? _earthOrbit is { Active: true } air && air.UsesLookup == lookup
-        : _worldAtmospheres.TryGetValue(id, out var atmosphere) && atmosphere.Active && atmosphere.UsesLookup == lookup;
+        : _worldAtmospheres.TryGetValue(id, out var atmosphere) && atmosphere.Active && atmosphere.UsesLookup == lookup);
 
     internal (bool Visible, float Offset)? VenusCloudState => _worldAtmospheres.GetValueOrDefault(SolarSystemSample.VenusId)?.CloudState;
 

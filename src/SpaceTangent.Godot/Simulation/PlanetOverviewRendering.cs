@@ -15,12 +15,12 @@ internal sealed class PlanetOverviewRendering
     private readonly Func<string, Color, float, Node3D> _createMarker;
     private readonly Func<Vector3d, double, StandardMaterial3D> _lineMaterial;
     private readonly Dictionary<ObjectId, Node3D> _planetMarkers = new();
-    private readonly ImmediateMesh _planetPaths = new();
+    private ImmediateMesh _planetPaths = new();
     private readonly List<StandardMaterial3D> _materials = [];
     private MeshInstance3D _planetPathNode = null!;
     private JulianInstant? _pathEpoch;
     private bool _pathOuter;
-    internal int OrbitCount => _planetPaths.GetSurfaceCount();
+    internal int OrbitCount => _closed ? 0 : _planetPaths.GetSurfaceCount();
 
     internal PlanetOverviewRendering(Node3D parent, Func<string, Color, float, Node3D> createMarker,
         Func<Vector3d, double, StandardMaterial3D> lineMaterial)
@@ -32,7 +32,18 @@ internal sealed class PlanetOverviewRendering
         _planetPathNode = new MeshInstance3D { Mesh = _planetPaths, Visible = false };
         _parent.AddChild(_planetPathNode);
     }
-    internal void Close() { ReleaseMaterials(); _planetPaths.Dispose(); }
+    private bool _closed;
+    internal void Close()
+    {
+        if (_closed) return;
+        _closed = true;
+        foreach (var marker in _planetMarkers.Values) marker.Hide();
+        _planetMarkers.Clear();
+        if (_planetPathNode is not null) { _planetPathNode.Hide(); _planetPathNode.Mesh = null; }
+        ReleaseMaterials();
+        _planetPaths.Dispose();
+        _planetPaths = null!;
+    }
     private void ReleaseMaterials()
     {
         foreach (var material in _materials) material.Dispose();
@@ -41,6 +52,7 @@ internal sealed class PlanetOverviewRendering
 
     internal void Draw(WorldSnapshot snapshot, ISolarSystemEphemeris ephemeris, Vector3d sun, bool outer, bool showOrbits)
     {
+        if (_closed) return;
         double scale = outer ? OuterScale : InnerScale;
         foreach (PlanetDefinition planet in PlanetCatalogue.Planets)
         {

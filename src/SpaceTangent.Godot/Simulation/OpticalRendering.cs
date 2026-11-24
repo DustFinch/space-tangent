@@ -13,7 +13,7 @@ internal sealed class OpticalRendering
     private readonly Action<ObserverRenderFrame> _redraw;
     internal OpticalRendering(Node3D parent, Action<ObserverRenderFrame> redraw)
     { _parent = parent; _redraw = redraw; }
-    internal void Remember(ObserverRenderFrame frame) => _lastOpticalFrame = frame.Observer.ActiveOptics is null ? null : frame;
+    internal void Remember(ObserverRenderFrame frame) { if (!_closed) _lastOpticalFrame = frame.Observer.ActiveOptics is null ? null : frame; }
     private CanvasLayer? _opticalLayer;
     private ShaderMaterial? _opticalMaterial;
     private VisualOptics? _opticalView;
@@ -23,8 +23,13 @@ internal sealed class OpticalRendering
     private Vector2 _lastOpticalSize;
     private ulong _nextOpticalUpdate;
 
+    private bool _closed;
     internal void Close()
     {
+        if (_closed) return;
+        _closed = true;
+        _opticalLayer?.Hide();
+        _opticalLayer = null;
         _lastOpticalFrame = null;
         _opticalView = null;
         _opticalMaterial?.Dispose();
@@ -53,6 +58,7 @@ internal sealed class OpticalRendering
 
     internal double Field(ObserverView observer)
     {
+        if (_closed) return observer.EffectiveFieldOfView;
         if (observer.ActiveOptics is not { } optics)
             return observer.EffectiveFieldOfView;
         Vector2 size = _parent.GetViewport().GetVisibleRect().Size;
@@ -62,6 +68,7 @@ internal sealed class OpticalRendering
 
     internal void Draw(ObserverView observer)
     {
+        if (_closed) return;
         var profile = observer.ActiveOptics;
         if (profile is null)
         {

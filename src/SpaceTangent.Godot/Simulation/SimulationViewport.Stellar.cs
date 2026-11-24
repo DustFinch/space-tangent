@@ -13,13 +13,14 @@ internal partial class SimulationViewport
     private StellarRendering Stars => _stars ??= new(this, color => CreateNavigationSphere(color, emissive: true));
     private Shader _stellarShader => Stars.Shader;
     internal SimulationWorld? CatalogueWorld { get; private set; }
-    internal int VisibleDistantStars => _stars?.VisibleDistantStars ?? 0;
-    internal bool StellarDiskResolved => _stars?.StellarDiskResolved == true;
-    internal int VisibleStellarDisks => _stars?.VisibleStellarDisks ?? 0;
-    internal bool SpatialStarFieldVisible => Stars.SpatialStarFieldVisible;
+    internal int VisibleDistantStars => _renderResourcesClosed ? 0 : (_stars?.VisibleDistantStars ?? 0);
+    internal bool StellarDiskResolved => _renderResourcesClosed ? false : (_stars?.StellarDiskResolved == true);
+    internal int VisibleStellarDisks => _renderResourcesClosed ? 0 : (_stars?.VisibleStellarDisks ?? 0);
+    internal bool SpatialStarFieldVisible => _renderResourcesClosed ? false : (Stars.SpatialStarFieldVisible);
 
     internal void SetCatalogueWorld(SimulationWorld world)
     {
+        if (_renderResourcesClosed) return;
         Stars.SetWorld(CatalogueWorld, world);
         if (!ReferenceEquals(CatalogueWorld?.DeepSky, world.DeepSky) || CatalogueWorld?.StellarOrigin != world.StellarOrigin)
             CacheDeepSky(world);

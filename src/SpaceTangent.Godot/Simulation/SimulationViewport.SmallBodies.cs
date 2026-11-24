@@ -18,6 +18,7 @@ internal partial class SimulationViewport
 
     internal void SetPlanetMoonModels(IReadOnlyDictionary<ObjectId, ArrayMesh> models)
     {
+        if (_renderResourcesClosed) return;
         _moonModels = models;
         foreach (var (id, mesh) in models)
         {

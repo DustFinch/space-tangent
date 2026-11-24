@@ -24,6 +24,7 @@ internal partial class SimulationViewport
 
     internal void SetMinorBodySwarm(MinorBodyEntry[] entries)
     {
+        if (_renderResourcesClosed) return;
         _minorBodyEntries = entries;
         _minorBodyPositions = new Vector3d[entries.Length];
         _minorBodyEpoch = null;

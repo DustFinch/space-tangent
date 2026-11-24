@@ -16,11 +16,11 @@ internal partial class SimulationViewport
     private Shader? _deepSkyShader;
     private QuadMesh? _deepSkyQuad;
 
-    internal bool DeepSkyVisible(ObjectId id) => IsVolumetricGalaxy(id) || DeepSkySpriteVisible(id);
-    internal bool DeepSkySpriteVisible(ObjectId id) => _deepSkyObjects.GetValueOrDefault(id)?.Visible == true;
+    internal bool DeepSkyVisible(ObjectId id) => _renderResourcesClosed ? false : (IsVolumetricGalaxy(id) || DeepSkySpriteVisible(id));
+    internal bool DeepSkySpriteVisible(ObjectId id) => _renderResourcesClosed ? false : (_deepSkyObjects.GetValueOrDefault(id)?.Visible == true);
 
-    internal bool DeepSkyLabelVisible(ObjectId id) => _deepSkyObjects.TryGetValue(id, out var mesh) &&
-        _deepSkyPool.Any(item => item.Mesh == mesh && item.Label.Visible);
+    internal bool DeepSkyLabelVisible(ObjectId id) => _renderResourcesClosed ? false : (_deepSkyObjects.TryGetValue(id, out var mesh) &&
+        _deepSkyPool.Any(item => item.Mesh == mesh && item.Label.Visible));
 
     private void CacheDeepSky(SimulationWorld world) => _deepSkyPositions = world.DeepSky.Objects
         .Select(body => (body, body.PositionKilometers + world.StellarOrigin, body.RadiusKilometers)).ToArray();

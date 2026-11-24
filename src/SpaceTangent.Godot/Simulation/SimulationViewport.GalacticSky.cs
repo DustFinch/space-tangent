@@ -11,10 +11,10 @@ namespace SpaceTangent.Godot.Simulation;
 internal partial class SimulationViewport
 {
     internal GalacticTextureCache? GalacticCache { get; set; }
-    internal bool GalacticSkyVisible => _galacticCanvas is { Visible: true };
+    internal bool GalacticSkyVisible => _renderResourcesClosed ? false : (_galacticCanvas is { Visible: true });
     internal Vector3d? GalacticSkyCenter { get; private set; }
-    internal bool GroundGalacticSkyVisible => _surface?.GalacticSkyVisible == true;
-    internal int GroundStarlinkPoints => _surface?.GroundStarlinkPoints ?? 0;
+    internal bool GroundGalacticSkyVisible => _renderResourcesClosed ? false : (_surface?.GalacticSkyVisible == true);
+    internal int GroundStarlinkPoints => _renderResourcesClosed ? 0 : (_surface?.GroundStarlinkPoints ?? 0);
     private ColorRect? _galacticCanvas;
     private ShaderMaterial? _galacticMaterial;
     private Texture2D? _galacticTexture;
@@ -24,6 +24,7 @@ internal partial class SimulationViewport
 
     internal bool IsVolumetricGalaxy(ObjectId id)
     {
+        if (_renderResourcesClosed) return false;
         int index = Array.IndexOf(NearbyGalaxyIds, id);
         return index >= 0 && (_volumetricNeighbours & (1 << index)) != 0;
     }

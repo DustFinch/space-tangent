@@ -6,9 +6,10 @@ namespace SpaceTangent.Godot.Simulation;
 internal partial class SimulationViewport
 {
     private ReferenceMarkRendering? _referenceMarkRendering;
-    internal bool ReferenceMarksVisible => _referenceMarkRendering?.Visible == true;
+    internal bool ReferenceMarksVisible => _renderResourcesClosed ? false : (_referenceMarkRendering?.Visible == true);
     internal void DrawReferenceMarks(ObserverView view, BodyReferenceGeometry? sample)
     {
+        if (_renderResourcesClosed) return;
         _referenceMarkRendering?.Hide();
         if (view.Navigation is not { } pose || sample is not { } geometry) return;
         var flags = ReferenceMarkRendering.CompatibleFlags(view.ReferenceMarks, geometry);

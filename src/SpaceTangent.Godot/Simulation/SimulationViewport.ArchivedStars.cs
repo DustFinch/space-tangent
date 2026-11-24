@@ -8,7 +8,7 @@ internal partial class SimulationViewport
 {
     private RecordedStarRendering? _recordedStars;
     private RecordedStarRendering RecordedStars => _recordedStars ??= new(this);
-    internal int ArchivedStarCount => _recordedStars?.ArchivedStarCount ?? 0;
+    internal int ArchivedStarCount => _renderResourcesClosed ? 0 : (_recordedStars?.ArchivedStarCount ?? 0);
     internal MeshInstance3D? ArchivedGroundGlow => _recordedStars?.ArchivedGroundGlow;
     private void DrawArchivedStars(RecordedStellarView? view, double julianDate) =>
         RecordedStars.DrawStars(view, julianDate, _navigationCamera);

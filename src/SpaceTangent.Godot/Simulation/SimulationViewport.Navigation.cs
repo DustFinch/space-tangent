@@ -24,13 +24,14 @@ internal partial class SimulationViewport
 
     internal void SetEarthOrbitTextures(EarthOrbitTextures textures, OrbitAtmosphereTextures? lookup)
     {
+        if (_renderResourcesClosed) return;
         _earthOrbit = new(_navigationEarth, textures, lookup);
         _archivedEarthMaps = textures;
     }
 
-    internal bool EarthOrbitAtmosphereActive => _earthOrbit?.Active == true;
+    internal bool EarthOrbitAtmosphereActive => _renderResourcesClosed ? false : (_earthOrbit?.Active == true);
     internal MeshInstance3D EarthOrbitGlobe => _navigationEarth;
-    internal bool NavigationCameraCurrent => _navigationCamera.Current;
+    internal bool NavigationCameraCurrent => _renderResourcesClosed ? false : (_navigationCamera.Current);
     internal Camera3D NavigationCameraNode => _navigationCamera;
 
     private void InitializeNavigation()

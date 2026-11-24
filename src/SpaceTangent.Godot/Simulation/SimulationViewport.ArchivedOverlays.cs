@@ -18,7 +18,7 @@ internal partial class SimulationViewport
         ShadingMode = BaseMaterial3D.ShadingModeEnum.Unshaded,
         VertexColorUseAsAlbedo = true
     };
-    internal int ArchivedOrbitSurfaces => _archivedOverlayRoot is { Visible: true } ? _archivedOrbitMesh.GetSurfaceCount() : 0;
+    internal int ArchivedOrbitSurfaces => _renderResourcesClosed ? 0 : (_archivedOverlayRoot is { Visible: true } ? _archivedOrbitMesh.GetSurfaceCount() : 0);
     internal IReadOnlyList<Label3D> ArchivedLabels => _archivedOverlayRoot is { Visible: true } ? _archivedLabels : [];
 
     internal IReadOnlyList<ArchivedSymbol> ArchivedSymbols => _archivedSymbolCanvas is { Visible: true } canvas ? canvas.Symbols : [];

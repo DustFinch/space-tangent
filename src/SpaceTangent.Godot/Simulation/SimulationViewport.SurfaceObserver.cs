@@ -18,8 +18,8 @@ internal partial class SimulationViewport
     private readonly ObserverBodyPath _bodySkyPath = new();
     internal NavigationCamera? BodySurfacePose => _bodyObserver is null ? null : _bodyPose;
     private (EarthObserverCamera Camera, BodySurfaceFrame Frame)? _bodyObserver;
-    internal bool BodyHorizonVisible => _bodyHorizon?.Visible == true;
-    internal bool BodyGroundVisible => _bodyGround?.Visible == true;
+    internal bool BodyHorizonVisible => _renderResourcesClosed ? false : (_bodyHorizon?.Visible == true);
+    internal bool BodyGroundVisible => _renderResourcesClosed ? false : (_bodyGround?.Visible == true);
 
     private bool PrepareBodyObserver(ref ObserverView observer, WorldSnapshot snapshot, DeltaTModel model)
     {

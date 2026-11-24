@@ -35,12 +35,13 @@ internal sealed class StellarRendering
 
     internal bool StellarDiskResolved { get; private set; }
     internal int VisibleStellarDisks => _visibleStars.Count;
-    internal bool SpatialStarFieldVisible => _stellarField.Visible;
+    internal bool SpatialStarFieldVisible => !_closed && _stellarField.Visible;
     internal Shader Shader => _stellarShader;
     internal Dictionary<ObjectId, MeshInstance3D> VisibleStars => _visibleStars;
 
     internal void SetWorld(SimulationWorld? previous, SimulationWorld world)
     {
+        if (_closed) return;
         if (!ReferenceEquals(previous?.Stellar, world.Stellar))
         {
             _fieldStars = world.Stellar.Stars.Where(star => !star.IsBarycenter && star.RadiusKilometers > 0 &&
@@ -54,6 +55,7 @@ internal sealed class StellarRendering
 
     internal void Initialize(Camera3D camera)
     {
+        if (_closed) return;
         _camera = camera;
         _stellarShader = GD.Load<Shader>("res://Shaders/stellar_disk.gdshader");
         _stellarField = new MeshInstance3D { Visible = false, Layers = 3, CastShadow = GeometryInstance3D.ShadowCastingSetting.Off };
@@ -62,6 +64,7 @@ internal sealed class StellarRendering
 
     internal void DrawFieldIfVisible(Vector3d eye, JulianInstant epoch, SimulationWorld world, ObjectId? excluded, bool showStars)
     {
+        if (_closed) return;
         if (showStars && (_fieldStars.Count != 0 || world.DistantStars is not null) &&
             (eye - world.StellarOrigin).Length > StellarEntry.KilometersPerLightYear * .025)
             DrawSpatialField(eye, epoch, world, excluded);
@@ -167,6 +170,7 @@ internal sealed class StellarRendering
     internal void DrawSystem(StellarEntry target, SimulationWorld world, WorldSnapshot snapshot,
         double units, Func<Vector3d, (Vector3 Position, double Scale)> project, DeltaTModel deltaT)
     {
+        if (_closed) return;
         Draw(target);
         StellarEntry root = target;
         while (root.BarycenterId is { } id && world.Stellar.Find(id) is { } parent)
@@ -232,12 +236,18 @@ internal sealed class StellarRendering
     {
         HideResolvedDisks(); _stellarField.Hide(); StellarDiskResolved = false;
     }
+    private bool _closed;
     internal void Close()
     {
+        if (_closed) return;
+        _closed = true;
         ReleaseFieldMesh();
         foreach (var disk in _stellarDisks) { disk.Mesh?.Dispose(); disk.MaterialOverride?.Dispose(); }
         _visibleStars.Clear(); _stellarDisks.Clear();
         _distantStars.Clear(); _distantStarPoints.Clear(); _fieldStars = [];
+        _stellarField?.Hide();
+        _stellarField = null!;
+        StellarDiskResolved = false; VisibleDistantStars = 0;
     }
 
     private void ReleaseFieldMesh()

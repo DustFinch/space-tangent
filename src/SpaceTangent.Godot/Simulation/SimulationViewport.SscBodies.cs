@@ -52,7 +52,7 @@ internal partial class SimulationViewport
     internal MissionSensorRenderResult? MissionSensorResult(ObjectId id) => _missionSensorRendering?.Result(id);
 
     private readonly Dictionary<ObjectId, MissionObservationRendering> _missionObservations = new();
-    internal int ObservationFootprintCount(ObjectId id) => _missionObservations.GetValueOrDefault(id)?.Count ?? 0;
+    internal int ObservationFootprintCount(ObjectId id) => _renderResourcesClosed ? 0 : (_missionObservations.GetValueOrDefault(id)?.Count ?? 0);
 
     private IReadOnlyList<PreparedImportedBody>? _importedAssets;
     private readonly Dictionary<ShaderMaterial, ShaderMaterial> _missionTileMaterials = new();
@@ -83,6 +83,7 @@ internal partial class SimulationViewport
 
     internal void ReplaceImportedBodies(IReadOnlyList<PreparedImportedBody> assets)
     {
+        if (_renderResourcesClosed) return;
         if (ReferenceEquals(_importedAssets, assets))
             return;
         _importedAssets = assets;
@@ -353,7 +354,7 @@ internal partial class SimulationViewport
     private IReadOnlyDictionary<ObjectId, double> _satelliteMagnitudes = new Dictionary<ObjectId, double>();
     private readonly Dictionary<ObjectId, MeshInstance3D> _localSatelliteMarkers = new();
     private SphereMesh? _localSatelliteSphere;
-    internal bool LocalSatelliteVisible(ObjectId id) => _localSatelliteMarkers.GetValueOrDefault(id)?.Visible == true;
+    internal bool LocalSatelliteVisible(ObjectId id) => _renderResourcesClosed ? false : (_localSatelliteMarkers.GetValueOrDefault(id)?.Visible == true);
 
     private void HideLocalSatelliteMarkers()
     {

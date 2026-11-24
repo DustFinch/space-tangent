@@ -15,7 +15,7 @@ internal sealed class SkyPresentation
     internal BrightSkyOverlay Overlay { get; }
     internal SkySurveyCanvas Survey { get; }
     private readonly WorldEnvironment _environment;
-    private readonly SkyEnvironment _canvasBackground = new()
+    private SkyEnvironment _canvasBackground = new()
     {
         BackgroundMode = SkyEnvironment.BGMode.Canvas,
         BackgroundCanvasMaxLayer = -1
@@ -41,6 +41,7 @@ internal sealed class SkyPresentation
     internal SkyPresentationState PrepareSurveys(ObserverRenderFrame frame, bool spatialStarsVisible,
         bool compactLensVisible, bool galacticMap)
     {
+        if (_closed) return default;
         var observer = frame.Observer;
         bool localSky = observer.Sky.Stars || observer.Sky.Labels || observer.Sky.EquatorialGrid || observer.Sky.Constellations;
         bool catalogue = localSky && !spatialStarsVisible;
@@ -61,6 +62,7 @@ internal sealed class SkyPresentation
 
     internal bool UpdateVisibility(ObserverRenderFrame frame, SkyPresentationState state, bool galacticVisible)
     {
+        if (_closed) return false;
         var observer = frame.Observer;
         var camera = state.Camera;
         bool catalogue = state.Catalogue, orbital = state.Orbital, survey = state.Survey;
@@ -77,10 +79,15 @@ internal sealed class SkyPresentation
         return render;
     }
 
+    private bool _closed;
     internal void Close()
     {
+        if (_closed) return;
+        _closed = true;
+        Overlay.Hide(); Survey.Hide();
         _environment.Environment = null;
         _canvasBackground.Dispose();
+        _canvasBackground = null!;
     }
 
     private static Vector3 Icrs(Vector3 value) => new(value.X, -value.Z, value.Y);

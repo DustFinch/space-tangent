@@ -13,12 +13,17 @@ internal sealed class MissionTrailRendering
     private readonly Node3D _parent;
     internal MissionTrailRendering(Node3D parent) => _parent = parent;
     internal void Hide() => _missionTrailNode?.Hide();
+    private bool _closed;
     internal void Close()
     {
+        if (_closed) return;
+        _closed = true;
         Reset();
         _missionTrailNode?.MaterialOverride?.Dispose();
         _missionTrailMesh?.Dispose();
+        if (_missionTrailNode is { } node) { node.Mesh = null; node.MaterialOverride = null; }
         _missionTrailMesh = null;
+        _missionTrailNode = null;
     }
     private MeshInstance3D? _missionTrailNode;
     private ImmediateMesh? _missionTrailMesh;
@@ -46,6 +51,7 @@ internal sealed class MissionTrailRendering
     internal void Draw(SimulationWorld? world, WorldSnapshot snapshot, ObjectId? target,
         Func<Vector3d, (Vector3 Position, double Scale)> project, bool showOrbits, bool incremental, bool archived)
     {
+        if (_closed) return;
         _missionTrailNode?.Hide();
         if (!showOrbits || world is null || target is not { } id ||
             !snapshot.TryStateCenter(id, out var center) || !snapshot.TryState(center, out var origin))

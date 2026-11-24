@@ -17,29 +17,35 @@ internal partial class SimulationViewport
 
     internal DemoSurfaceCache? DemoSurfaces { get; init; }
     private readonly Dictionary<ObjectId, DemoGlobe> _demoGlobes = new();
-    internal bool DemoWorldVisible(ObjectId id) => _demoGlobes.TryGetValue(id, out var visual) &&
-        (visual.Globe.Visible || visual.Terrain?.Visible == true);
+    internal bool DemoWorldVisible(ObjectId id) => _renderResourcesClosed ? false : (_demoGlobes.TryGetValue(id, out var visual) &&
+        (visual.Globe.Visible || visual.Terrain?.Visible == true));
 
     internal void SetDemoTerrainProbeLight(ObjectId id, Vector3? direction)
     {
+        if (_renderResourcesClosed) return;
         if (_demoGlobes.GetValueOrDefault(id)?.Terrain is { } terrain)
             terrain.ProbeLightDirection = direction;
     }
 
-    internal void SetDemoTerrainShadows(ObjectId id, bool enabled) => _demoGlobes.GetValueOrDefault(id)?.Terrain?.SetShadows(enabled);
+    internal void SetDemoTerrainShadows(ObjectId id, bool enabled)
+    {
+        if (_renderResourcesClosed) return;
+        _demoGlobes.GetValueOrDefault(id)?.Terrain?.SetShadows(enabled);
+    }
 
-    internal int DemoTerrainLevel(ObjectId id) => _demoGlobes.GetValueOrDefault(id)?.Terrain?.Level ?? -1;
+    internal int DemoTerrainLevel(ObjectId id) => _renderResourcesClosed ? -1 : (_demoGlobes.GetValueOrDefault(id)?.Terrain?.Level ?? -1);
 
     internal bool PublishDemoTerrain()
     {
+        if (_renderResourcesClosed) return false;
         bool changed = false;
         foreach (var visual in _demoGlobes.Values)
             changed |= visual.Terrain?.Publish() == true;
         return changed;
     }
-    internal bool DemoWorldTextured(ObjectId id) => _demoGlobes.GetValueOrDefault(id)?.Maps is not null;
-    internal bool DemoAirVisible(ObjectId id) => _demoGlobes.GetValueOrDefault(id)?.Atmosphere?.Visible == true;
-    internal bool DemoRingsVisible(ObjectId id) => _demoGlobes.GetValueOrDefault(id)?.Rings?.Visible == true;
+    internal bool DemoWorldTextured(ObjectId id) => _renderResourcesClosed ? false : (_demoGlobes.GetValueOrDefault(id)?.Maps is not null);
+    internal bool DemoAirVisible(ObjectId id) => _renderResourcesClosed ? false : (_demoGlobes.GetValueOrDefault(id)?.Atmosphere?.Visible == true);
+    internal bool DemoRingsVisible(ObjectId id) => _renderResourcesClosed ? false : (_demoGlobes.GetValueOrDefault(id)?.Rings?.Visible == true);
 
     private void DrawDemoWorlds(NavigationCamera pose, WorldSnapshot snapshot, double units, SkyLayerSettings sky,
         Func<Vector3d, (Vector3 Position, double Scale)> project)

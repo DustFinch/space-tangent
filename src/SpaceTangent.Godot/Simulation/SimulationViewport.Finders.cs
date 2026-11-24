@@ -7,7 +7,7 @@ namespace SpaceTangent.Godot.Simulation;
 internal partial class SimulationViewport
 {
     private FinderOverlay? _finderOverlay;
-    internal bool FindersVisible => _finderOverlay?.Visible == true;
+    internal bool FindersVisible => _renderResourcesClosed ? false : (_finderOverlay?.Visible == true);
 
     private void DrawFinders(ObserverView observer)
     {

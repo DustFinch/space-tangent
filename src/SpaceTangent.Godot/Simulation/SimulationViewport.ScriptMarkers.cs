@@ -16,6 +16,7 @@ internal partial class SimulationViewport
     internal void DrawScriptMarkers(ObserverView observer, WorldSnapshot snapshot,
         IReadOnlyDictionary<ObjectId, ScriptMarker> markers, DeltaTModel deltaT)
     {
+        if (_renderResourcesClosed) return;
         if (markers.Count == 0 || observer.Navigation is not { } pose || CatalogueWorld is not { } world)
         {
             _scriptMarkerCanvas?.Markers.Clear();

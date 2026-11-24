@@ -23,7 +23,7 @@ internal sealed class MissionCameraRendering
     private MeshInstance3D _missionNode = null!, _missionFrusta = null!;
     private Label3D _missionLabel = null!;
     private MeshInstance3D _saturnSurface = null!, _projectedFrusta = null!, _footprints = null!;
-    private readonly ImmediateMesh _projectionMesh = new(), _footprintMesh = new();
+    private ImmediateMesh _projectionMesh = new(), _footprintMesh = new();
     private StandardMaterial3D[] _footprintMaterials = [];
 
     internal MissionCameraRendering(Node3D parent, Camera3D camera, Node3D sun, Node3D saturn,
@@ -58,6 +58,7 @@ internal sealed class MissionCameraRendering
 
     internal void Hide()
     {
+        if (_closed) return;
         _missionNode.Hide();
         _missionLabel.Hide();
         _missionFrusta.Hide();
@@ -67,12 +68,21 @@ internal sealed class MissionCameraRendering
         ProbeStatus = null;
     }
 
+    private bool _closed;
     internal void Close()
     {
+        if (_closed) return;
+        Hide();
+        _closed = true;
         foreach (var material in _footprintMaterials) material.Dispose();
         _footprintMaterials = [];
+        _projectedFrusta.Mesh = _footprints.Mesh = null;
         _projectionMesh.Dispose(); _footprintMesh.Dispose();
+        _projectionMesh = _footprintMesh = null!;
         _saturnSurface.Mesh?.Dispose(); _saturnSurface.MaterialOverride?.Dispose();
+        _saturnSurface.Mesh = null; _saturnSurface.MaterialOverride = null;
+        _missionNode.Mesh = _missionFrusta.Mesh = null;
+        _mission = _timeline = null; _probe = null;
     }
 
     internal MeshInstance3D MissionMesh => _missionNode;
@@ -81,10 +91,11 @@ internal sealed class MissionCameraRendering
     internal MeshInstance3D MissionProjectedFrusta => _projectedFrusta;
     internal bool MissionFootprintVisible => _footprints.Visible;
     internal bool MissionProjectionVisible => _projectedFrusta.Visible;
-    internal int MissionFootprintCount => _footprintMesh.GetSurfaceCount();
+    internal int MissionFootprintCount => _closed ? 0 : _footprintMesh.GetSurfaceCount();
 
     internal void ReplaceMission(PreparedMission? asset, PreparedMission? timeline, PreparedProbe? probe)
     {
+        if (_closed) return;
         if (ReferenceEquals(_mission, asset) && ReferenceEquals(_timeline, timeline) && ReferenceEquals(_probe, probe))
             return;
         _mission = asset;
@@ -100,6 +111,7 @@ internal sealed class MissionCameraRendering
 
     internal bool DrawMission(WorldSnapshot snapshot, bool timeline)
     {
+        if (_closed) return false;
         _hideOrbitalMarkers();
 
         _camera.Size = 210;
@@ -149,6 +161,7 @@ internal sealed class MissionCameraRendering
 
     internal bool DrawProbe(WorldSnapshot snapshot)
     {
+        if (_closed) return false;
         _hideOrbitalMarkers();
         _camera.Size = 60;
         if (_probe is not { } probe || !snapshot.TryOrientation(probe.Track.Id, out var rotation) ||

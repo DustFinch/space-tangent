@@ -17,6 +17,7 @@ internal partial class SimulationViewport
 
     internal void SetSkyData(BrightSkyData data)
     {
+        if (_renderResourcesClosed) return;
         _compactSky = data;
         SetMinorBodySwarm(data.MinorBodies);
         _satelliteMagnitudes = data.SatelliteMagnitudes;
@@ -29,6 +30,7 @@ internal partial class SimulationViewport
 
     internal bool Draw(ObserverView observer, WorldSnapshot snapshot, DeltaTModel deltaT)
     {
+        if (_renderResourcesClosed) return false;
         _frameDeltaT = deltaT;
         if (!PrepareBodyObserver(ref observer, snapshot, deltaT))
         {
@@ -83,7 +85,7 @@ internal partial class SimulationViewport
 
     internal BrightSkyOverlay? SpaceCultureOverlay => _spaceSky is { Visible: true } ? _spaceSky : null;
 
-    internal bool TransientStarVisible(ObjectId id) => _spaceSky?.TransientVisible(id) == true;
+    internal bool TransientStarVisible(ObjectId id) => _renderResourcesClosed ? false : (_spaceSky?.TransientVisible(id) == true);
 
     internal ObjectId? PickObject(Vector2 position) =>
         InsideEyepiece(position) ? PickNavigationBody(position) ?? _surface?.PickStar(position) ?? _spaceSky?.Pick(position) : null;

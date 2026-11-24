@@ -13,9 +13,9 @@ internal partial class SimulationViewport
     internal bool CinematicCompactLens { get; init; }
     internal bool CompactLensAllowed { get; set; } = true;
     internal bool CompactDiskEmission { get; set; } = true;
-    internal bool CompactLensVisible => _compactLens?.Visible == true;
-    internal int CompactSkyCaptures => _compactLens?.Captures ?? 0;
-    internal bool CompactCompanionVisible => _compactCompanion?.Visible == true;
+    internal bool CompactLensVisible => _renderResourcesClosed ? false : (_compactLens?.Visible == true);
+    internal int CompactSkyCaptures => _renderResourcesClosed ? 0 : (_compactLens?.Captures ?? 0);
+    internal bool CompactCompanionVisible => _renderResourcesClosed ? false : (_compactCompanion?.Visible == true);
     private CompactLensRenderer? _compactLens;
     private BrightSkyData? _compactSky;
     private MeshInstance3D? _compactCompanion, _companionGlare;

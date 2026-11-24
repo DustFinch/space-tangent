@@ -8,7 +8,7 @@ namespace SpaceTangent.Godot.Simulation;
 internal partial class SimulationViewport
 {
     private readonly List<ArchivedComet> _archivedComets = [];
-    internal int ArchivedCometCount => _archivedComets.Count(comet => comet.Visible);
+    internal int ArchivedCometCount => _renderResourcesClosed ? 0 : (_archivedComets.Count(comet => comet.Visible));
 
     private void DrawArchivedComets(IReadOnlyList<RecordedCometTail> tails, double scale)
     {
@@ -32,6 +32,7 @@ internal partial class SimulationViewport
 
     internal void HideArchivedComets()
     {
+        if (_renderResourcesClosed) return;
         foreach (var comet in _archivedComets)
             comet.Hide();
     }

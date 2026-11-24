@@ -15,11 +15,12 @@ internal partial class SimulationViewport
     private ImmediateMesh? _shipTrailMesh;
 
     internal static bool ShipModelAvailable => ResourceLoader.Exists(ShipModel);
-    internal bool ShipHullVisible => _shipModel?.Visible == true;
-    internal bool ShipTrailVisible => _shipTrail?.Visible == true;
+    internal bool ShipHullVisible => _renderResourcesClosed ? false : (_shipModel?.Visible == true);
+    internal bool ShipTrailVisible => _renderResourcesClosed ? false : (_shipTrail?.Visible == true);
 
     internal void DrawShip(ShipView? ship, NavigationCamera? camera)
     {
+        if (_renderResourcesClosed) return;
         if (ship is null || camera is not { } pose)
         {
             _shipModel?.Hide();

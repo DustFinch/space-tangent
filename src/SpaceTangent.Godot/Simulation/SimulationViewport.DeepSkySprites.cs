@@ -13,6 +13,7 @@ internal partial class SimulationViewport
 
     internal void SetDeepSkySprites(IReadOnlyDictionary<ObjectId, IReadOnlyList<DecodedModelSprite>>? source)
     {
+        if (_renderResourcesClosed) return;
         if (ReferenceEquals(source, _deepSkySpriteSource))
             return;
         _deepSkySpriteSource = source;

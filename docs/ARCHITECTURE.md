@@ -102,3 +102,5 @@ This maps production ownership, not a list of renamed files. Existing entry poin
 SolarSystemScene still composes the engine tree and coordinates each frame. SimulationViewport still prepares coordinates, preserves stage ordering and handles picking. Existing surface, atmosphere, ring, annotation and compact-lens owners remain in place. There is no new global event bus, dependency-injection framework or universal importer.
 
 The world-replacement preparation and synchronous preference rollback boundaries also fix two independently reproduced failure cases: a later observer evaluation could previously leave an earlier observer changed, and failed preference persistence could leave a newly applied world active. Their regression tests are separate from the mechanical extractions.
+
+Final viewport closure is terminal: drawing and resource replacement become no-ops, count/visibility queries return neutral values, and owned render resources are detached and cleared. Temporary layout detachment does not close a view. Engine node handles are borrowed while their tree is alive; they must not be used after native tree destruction.

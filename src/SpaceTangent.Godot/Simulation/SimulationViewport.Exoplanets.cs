@@ -14,10 +14,14 @@ internal partial class SimulationViewport
     private IReadOnlyDictionary<string, Texture2D> _exoplanetTextures = new Dictionary<string, Texture2D>();
     private Shader? _exoplanetGlobeShader;
 
-    internal void SetExoplanetTextures(IReadOnlyDictionary<string, Texture2D> textures) => _exoplanetTextures = textures;
-    internal bool ExoplanetVisible(ObjectId id) => _visibleExoplanets.ContainsKey(id);
-    internal bool ExoplanetTextured(ObjectId id) => _visibleExoplanets.GetValueOrDefault(id)?.MaterialOverride is ShaderMaterial material &&
-        material.GetShaderParameter("has_globe_map").AsBool();
+    internal void SetExoplanetTextures(IReadOnlyDictionary<string, Texture2D> textures)
+    {
+        if (_renderResourcesClosed) return;
+        _exoplanetTextures = textures;
+    }
+    internal bool ExoplanetVisible(ObjectId id) => _renderResourcesClosed ? false : (_visibleExoplanets.ContainsKey(id));
+    internal bool ExoplanetTextured(ObjectId id) => _renderResourcesClosed ? false : (_visibleExoplanets.GetValueOrDefault(id)?.MaterialOverride is ShaderMaterial material &&
+        material.GetShaderParameter("has_globe_map").AsBool());
 
     private void DrawExoplanets(SimulationWorld world, NavigationCamera pose, WorldSnapshot snapshot,
         Vector3d eyeOffset, double units, bool labels, Func<Vector3d, (Vector3 Position, double Scale)> project)

@@ -13,7 +13,7 @@ internal partial class SimulationViewport
     private readonly List<Label3D> _siteLabels = new();
     private readonly HashSet<ObjectId> _visibleSites = new();
     internal bool ShowSurfaceSiteLabels { get; set; }
-    internal bool SiteLabelVisible(ObjectId id) => _visibleSites.Contains(id);
+    internal bool SiteLabelVisible(ObjectId id) => _renderResourcesClosed ? false : (_visibleSites.Contains(id));
 
     private void HideSurfaceSites()
     {

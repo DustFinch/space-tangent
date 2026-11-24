@@ -11,13 +11,13 @@ internal partial class SimulationViewport
     private MissionTrailRendering? _missionTrailRendering;
     private MissionTrailRendering Trail => _missionTrailRendering ??= new(this);
     internal bool IncrementalPaths { get; set; } = true;
-    internal bool HasPendingPaths => _missionTrailRendering?.HasPending == true || _surface?.HasPendingPath == true || _bodyObserver is not null && _bodySkyPath.HasPending;
+    internal bool HasPendingPaths => _renderResourcesClosed ? false : (_missionTrailRendering?.HasPending == true || _surface?.HasPendingPath == true || _bodyObserver is not null && _bodySkyPath.HasPending);
     internal JulianInstant? MissionTrailEpoch => _missionTrailRendering?.MissionTrailEpoch;
     internal double? SelectedBodyPathDay => _bodyObserver is null ? _surface?.BodyPathDay : _bodySkyPath.PublishedDay;
-    internal IReadOnlyList<(Vector3d? Offset, float Shade)> MissionTrailSamples => Trail.MissionTrailSamples;
+    internal IReadOnlyList<(Vector3d? Offset, float Shade)> MissionTrailSamples => _renderResourcesClosed ? [] : Trail.MissionTrailSamples;
     internal (Color First, Color Last)? MissionTrailEdgeColors => _missionTrailRendering?.MissionTrailEdgeColors;
-    internal bool MissionTrailVisible => _missionTrailRendering?.MissionTrailVisible == true;
-    internal int MissionTrailPointCount => _missionTrailRendering?.MissionTrailPointCount ?? 0;
+    internal bool MissionTrailVisible => _renderResourcesClosed ? false : (_missionTrailRendering?.MissionTrailVisible == true);
+    internal int MissionTrailPointCount => _renderResourcesClosed ? 0 : (_missionTrailRendering?.MissionTrailPointCount ?? 0);
     internal Vector3d? MissionTrailFirstPoint => _missionTrailRendering?.MissionTrailFirstPoint;
     internal Vector3d? MissionTrailLastPoint => _missionTrailRendering?.MissionTrailLastPoint;
     private void CancelMissionTrail() => _missionTrailRendering?.Reset();

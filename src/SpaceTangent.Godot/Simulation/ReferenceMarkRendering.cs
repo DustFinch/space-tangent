@@ -12,7 +12,18 @@ internal sealed class ReferenceMarkRendering(Node3D parent)
     private MeshInstance3D? _referenceMarks;
     internal bool Visible => _referenceMarks?.Visible == true;
     internal void Hide() => _referenceMarks?.Hide();
-    internal void Close() { _referenceMarks?.MaterialOverride?.Dispose(); _referenceLines?.Dispose(); }
+    private bool _closed;
+    internal void Close()
+    {
+        if (_closed) return;
+        _closed = true;
+        _referenceMarks?.Hide();
+        _referenceMarks?.MaterialOverride?.Dispose();
+        if (_referenceMarks is { } node) { node.MaterialOverride = null; node.Mesh = null; }
+        _referenceLines?.Dispose();
+        _referenceLines = null;
+        _referenceMarks = null;
+    }
     internal static BodyReferenceMarks CompatibleFlags(BodyReferenceMarks flags, BodyReferenceGeometry geometry)
     {
         if (!geometry.Body.HasValue)
@@ -25,6 +36,7 @@ internal sealed class ReferenceMarkRendering(Node3D parent)
     }
     internal void Draw(BodyReferenceMarks flags, BodyReferenceGeometry geometry, Vector3 center, double scale)
     {
+        if (_closed) return;
         if (geometry.EquatorialRadius * scale < .03)
             return;
         if (_referenceLines is null)

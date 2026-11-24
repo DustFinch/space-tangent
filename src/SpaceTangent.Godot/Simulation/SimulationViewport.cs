@@ -37,15 +37,16 @@ internal partial class SimulationViewport : Node3D
     internal MeshInstance3D? ScienceBodyNode(ObjectId id) => _satellites.TryGetValue(id, out var entry) ? entry.Node : null;
 
     internal ISolarSystemEphemeris? PlanetEphemeris { get; set; }
-    internal Vector3 EarthPosition => _earth.Position;
-    internal Vector3 MoonPosition => _moon.Position;
-    internal bool MoonVisible => _moon.Visible;
+    internal Vector3 EarthPosition => _renderResourcesClosed ? default : _earth.Position;
+    internal Vector3 MoonPosition => _renderResourcesClosed ? default : _moon.Position;
+    internal bool MoonVisible => _renderResourcesClosed ? false : (_moon.Visible);
     internal string? ProbeStatus => _missionRendering?.ProbeStatus;
     internal BodyTerrainProjection? Terrain => _terrain;
     internal BodyTerrainProjection? MarsTerrain => _marsTerrain;
 
     public override void _Ready()
     {
+        if (_renderResourcesClosed) return;
         _camera = new Camera3D
         {
             Projection = Camera3D.ProjectionType.Orthogonal,
@@ -99,6 +100,8 @@ internal partial class SimulationViewport : Node3D
     {
         if (_renderResourcesClosed) return;
         _renderResourcesClosed = true;
+        Hide();
+        foreach (CanvasLayer layer in FindChildren("*", "CanvasLayer", recursive: true, owned: false)) layer.Hide();
         DisconnectViewportSize();
         _missionRendering?.Close();
         _missionTrailRendering?.Close();
@@ -109,6 +112,11 @@ internal partial class SimulationViewport : Node3D
         _planetOverview?.Close();
         _skyPresentation?.Close();
         ReleaseImportedDrawingResources();
+        CatalogueWorld = null;
+        _satelliteAssets = null;
+        _importedAssets = null;
+        ArchivedGeometry = null;
+        MinorBodyPointCount = 0;
     }
 
     private void FitCamera()
@@ -121,6 +129,7 @@ internal partial class SimulationViewport : Node3D
 
     internal void ReplaceSatellites(IReadOnlyList<PreparedSatellite> assets)
     {
+        if (_renderResourcesClosed) return;
         if (ReferenceEquals(_satelliteAssets, assets))
             return;
         _satelliteAssets = assets;
@@ -142,16 +151,19 @@ internal partial class SimulationViewport : Node3D
     internal MeshInstance3D SatelliteMesh(ObjectId id) => _satellites[id].Node;
 
     internal MeshInstance3D MissionMesh => _missionRendering.MissionMesh;
-    internal bool MissionUsesSun => _sun.Visible;
-    internal bool MissionUsesSaturn => _missionRendering.MissionUsesSaturn;
+    internal bool MissionUsesSun => _renderResourcesClosed ? false : (_sun.Visible);
+    internal bool MissionUsesSaturn => _renderResourcesClosed ? false : (_missionRendering.MissionUsesSaturn);
     internal MeshInstance3D MissionFrusta => _missionRendering.MissionFrusta;
     internal MeshInstance3D MissionProjectedFrusta => _missionRendering.MissionProjectedFrusta;
-    internal bool MissionFootprintVisible => _missionRendering.MissionFootprintVisible;
-    internal bool MissionProjectionVisible => _missionRendering.MissionProjectionVisible;
-    internal int MissionFootprintCount => _missionRendering.MissionFootprintCount;
+    internal bool MissionFootprintVisible => _renderResourcesClosed ? false : (_missionRendering.MissionFootprintVisible);
+    internal bool MissionProjectionVisible => _renderResourcesClosed ? false : (_missionRendering.MissionProjectionVisible);
+    internal int MissionFootprintCount => _renderResourcesClosed ? 0 : (_missionRendering.MissionFootprintCount);
 
-    internal void ReplaceMission(PreparedMission? asset, PreparedMission? timeline, PreparedProbe? probe) =>
+    internal void ReplaceMission(PreparedMission? asset, PreparedMission? timeline, PreparedProbe? probe)
+    {
+        if (_renderResourcesClosed) return;
         _missionRendering.ReplaceMission(asset, timeline, probe);
+    }
 
     internal static ArrayMesh? CreateFrusta(IReadOnlyList<SpiceSensor> sensors, GpuAssetPublication? publication = null)
     {
@@ -195,6 +207,7 @@ internal partial class SimulationViewport : Node3D
 
     internal void SetSurfaceTextures(SurfaceTextures textures, Texture2D? groundRingAtlas = null)
     {
+        if (_renderResourcesClosed) return;
         _surface = new SurfaceProjection(this, textures, groundRingAtlas);
         _archivedMoonMap = textures.Moon;
         _navigationMoonMaterial.SetShaderParameter("surface_map", textures.Moon);
@@ -203,6 +216,7 @@ internal partial class SimulationViewport : Node3D
 
     internal void ReplaceLunarTerrain(BodyTerrainAsset? asset)
     {
+        if (_renderResourcesClosed) return;
         if (ReferenceEquals(_terrainAsset, asset))
             return;
         _terrainAsset = asset;
@@ -216,6 +230,7 @@ internal partial class SimulationViewport : Node3D
 
     internal void ReplaceMarsTerrain(BodyTerrainAsset? asset)
     {
+        if (_renderResourcesClosed) return;
         if (ReferenceEquals(_marsTerrainAsset, asset))
             return;
         _marsTerrainAsset = asset;
@@ -229,6 +244,7 @@ internal partial class SimulationViewport : Node3D
 
     internal (Vector3d Ray, HorizontalCoordinates? Horizon)? PointerDirection(Vector2 position)
     {
+        if (_renderResourcesClosed) return null;
         if (_surface?.PointerDirection(position) is { } ground)
             return ground;
         if (!_navigationCamera.Current)
@@ -238,18 +254,30 @@ internal partial class SimulationViewport : Node3D
         return (ray, _bodyObserver?.Frame.Direction(ray));
     }
 
-    internal void SetSurfaceControls(bool clouds, bool lunarLight) => _surface!.SetControls(clouds, lunarLight);
+    internal void SetSurfaceControls(bool clouds, bool lunarLight)
+    {
+        if (_renderResourcesClosed) return;
+        _surface!.SetControls(clouds, lunarLight);
+    }
 
-    internal void SetLandscape(LandscapeTextures? textures, bool showFog) => _surface?.SetLandscape(textures, showFog);
+    internal void SetLandscape(LandscapeTextures? textures, bool showFog)
+    {
+        if (_renderResourcesClosed) return;
+        _surface?.SetLandscape(textures, showFog);
+    }
 
-    internal bool LandscapeFogVisible => _surface?.LandscapeFogVisible == true;
+    internal bool LandscapeFogVisible => _renderResourcesClosed ? false : (_surface?.LandscapeFogVisible == true);
 
     internal string? VisibleLandscape => _surface?.VisibleLandscape;
 
-    internal int ActiveMeteorTrailCount => _surface?.ActiveMeteorTrailCount ?? 0;
-    internal bool ShowsMeteorRadiant(string code) => _surface?.ShowsMeteorRadiant(code) == true;
+    internal int ActiveMeteorTrailCount => _renderResourcesClosed ? 0 : (_surface?.ActiveMeteorTrailCount ?? 0);
+    internal bool ShowsMeteorRadiant(string code) => _renderResourcesClosed ? false : (_surface?.ShowsMeteorRadiant(code) == true);
 
-    internal void SetSurfacePitch(double degrees) => _surface!.PitchDegrees = degrees;
+    internal void SetSurfacePitch(double degrees)
+    {
+        if (_renderResourcesClosed) return;
+        _surface!.PitchDegrees = degrees;
+    }
 
     private bool DrawScene(ObserverView observer, WorldSnapshot snapshot, DeltaTModel deltaT)
     {

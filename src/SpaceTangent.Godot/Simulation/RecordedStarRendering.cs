@@ -22,6 +22,7 @@ internal sealed class RecordedStarRendering
 
     internal void DrawGroundGlow(RecordedSceneGeometry? frame, Camera3D camera)
     {
+        if (_closed) return;
         if (frame?.StellarView?.Ground is not { Glow: > 0 } ground || DisplayServer.GetName() == "headless")
         {
             _archivedGroundGlow?.Hide();
@@ -62,6 +63,7 @@ internal sealed class RecordedStarRendering
 
     internal void DrawPoints(IReadOnlyList<RecordedStarPoint>? points, Camera3D camera)
     {
+        if (_closed) return;
         if (points is not { Count: > 0 } || DisplayServer.GetName() == "headless")
         {
             if (_archivedStarPoints is { } hidden)
@@ -100,6 +102,7 @@ internal sealed class RecordedStarRendering
 
     internal void DrawStars(RecordedStellarView? view, double julianDate, Camera3D camera)
     {
+        if (_closed) return;
         if (view is null || DisplayServer.GetName() == "headless")
         {
             _archivedStarBackground?.Hide();
@@ -188,14 +191,20 @@ internal sealed class RecordedStarRendering
         previous?.Dispose();
     }
 
+    private bool _closed;
     internal void Close()
     {
+        if (_closed) return;
+        _closed = true;
         foreach (var node in new[] { _archivedStarBackground, _archivedMovingStars, _archivedStarPoints, _archivedGroundGlow })
         {
             if (node is null) continue;
             ReplaceMesh(node, null);
             node.MaterialOverride?.Dispose();
+            node.MaterialOverride = null;
+            node.Hide();
         }
+        _archivedStarBackground = _archivedMovingStars = _archivedStarPoints = _archivedGroundGlow = null;
         _archivedBackgroundSource = _archivedMovingSource = null;
         _archivedStarPointSource = null;
         _archivedMovingPositions = default;

@@ -280,7 +280,7 @@ public sealed partial class SimulationSession
     private readonly List<ObserverView> _views;
     /// <summary>View indices whose saved non-Earth site was reset by the last successful world replacement.</summary>
     public IReadOnlyList<int> SurfaceObserverFallbacks { get; private set; } = [];
-    private int _clockOwner;
+    private readonly ObserverClock _clocks;
     private readonly List<int> _viewIds = [0];
     private int _nextViewId = 1;
     private readonly Dictionary<int, bool> _scriptedZoomChanges = [];
@@ -292,12 +292,13 @@ public sealed partial class SimulationSession
             throw new ArgumentOutOfRangeException(nameof(initialEpoch));
         World = world;
         _views = [new(initialEpoch, CameraMode.Solar, null, false) { Places = default(ObserverPlaceMemory).EnsureIdentity() }];
+        _clocks = new(_views);
         SetDeltaT(deltaT);
     }
 
     public SimulationWorld World { get; private set; }
     public DeltaTModel DeltaT { get; private set; }
-    public bool Synchronized { get; private set; } = true;
+    public bool Synchronized => _clocks.Synchronized;
     public bool NightMode { get; set; }
     public ViewSplit SplitLayout { get; private set; }
     public ObserverLayout Layout { get; private set; } = ObserverLayout.Leaf(0);
@@ -309,7 +310,7 @@ public sealed partial class SimulationSession
 
     public SimulationScenario CaptureScenario(int activeView)
     {
-        return new(Array.AsReadOnly(_views.ToArray()), Synchronized, _clockOwner, activeView, DeltaT)
+        return new(Array.AsReadOnly(_views.ToArray()), Synchronized, _clocks.Owner, activeView, DeltaT)
             { SplitLayout = SplitLayout, Layout = Layout.IsDefault ? null : Layout, NightMode = NightMode };
     }
 
@@ -396,9 +397,8 @@ public sealed partial class SimulationSession
             _viewIds.Add(_nextViewId++);
         }
         Layout = layout;
-        Synchronized = scenario.Synchronized;
+        _clocks.Restore(scenario.Synchronized, scenario.ClockOwner);
         NightMode = scenario.NightMode;
-        _clockOwner = scenario.ClockOwner;
         if (Synchronized)
             SharePlaybackRate(owner.PlaybackRate ?? DefaultPlaybackRate(owner.Mode));
         SplitLayout = scenario.SplitLayout;
@@ -538,30 +538,10 @@ public sealed partial class SimulationSession
         Layout = Layout.Remove(view)!;
         if (Layout.View is null)
             SplitLayout = Layout.Direction;
-        if (_clockOwner == view)
-            _clockOwner = 0;
-        else if (_clockOwner > view)
-            _clockOwner--;
+        _clocks.OnViewRemoved(view);
     }
 
-    public void Synchronize(bool enabled, int source)
-    {
-        ObserverView anchor = _views[source];
-        if (Synchronized == enabled)
-            return;
-        Synchronized = enabled;
-        if (enabled)
-        {
-            SharePlaybackRate(anchor.PlaybackRate ?? DefaultPlaybackRate(anchor.Mode));
-            SetClock(source, anchor.Epoch, anchor.Playing);
-            for (int index = 0; index < _views.Count; index++)
-                _views[index] = _views[index] with
-                {
-                    LightTimeDelayed = anchor.LightTimeDelayed,
-                    LightTimeOffsetNanoseconds = anchor.LightTimeOffsetNanoseconds
-                };
-        }
-    }
+    public void Synchronize(bool enabled, int source) => _clocks.Synchronize(enabled, source);
 
     public void SetDeltaT(DeltaTModel model)
     {
@@ -652,17 +632,8 @@ public sealed partial class SimulationSession
     // became the clock owner.
     public void SetPlaybackRate(int view, double rate) => SetPlaybackRate(view, rate, synchronizeRate: true);
 
-    internal void SetPlaybackRate(int view, double rate, bool synchronizeRate)
-    {
-        if (!ObserverView.ValidPlaybackRate(rate))
-            throw new ArgumentOutOfRangeException(nameof(rate));
-        double? playback = rate == 0 ? null : rate;
-        _views[view] = _views[view] with { PlaybackRate = playback };
-        if (synchronizeRate && Synchronized)
-            for (int index = 0; index < _views.Count; index++)
-                _views[index] = _views[index] with { PlaybackRate = playback };
-        SetPlaying(view, rate != 0);
-    }
+    internal void SetPlaybackRate(int view, double rate, bool synchronizeRate) =>
+        _clocks.SetPlaybackRate(view, rate, synchronizeRate);
 
     public void Seek(int view, JulianInstant epoch)
     {
@@ -675,28 +646,15 @@ public sealed partial class SimulationSession
     {
         if (!double.IsFinite(seconds))
             throw new ArgumentOutOfRangeException(nameof(seconds));
-        ObserverView previous = _views[view];
-        double first = (double)World.Ephemeris.Start.DifferenceNanoseconds(previous.Epoch) / JulianInstant.NanosecondsPerSecond;
-        double last = (double)World.Ephemeris.End.DifferenceNanoseconds(previous.Epoch) / JulianInstant.NanosecondsPerSecond;
-        if (seconds <= first)
-            SetClock(view, World.Ephemeris.Start, false);
-        else if (seconds >= last)
-            SetClock(view, World.Ephemeris.End, false);
-        else
-            SetClock(view, previous.Epoch.AddSeconds(seconds), previous.Playing);
+        _clocks.Step(view, seconds, World.Ephemeris.Start, World.Ephemeris.End);
     }
 
-    internal static double DefaultPlaybackRate(CameraMode mode) => mode switch
-    {
-        CameraMode.Probe => 1,
-        CameraMode.Satellites or CameraMode.Mission or CameraMode.Timeline => 180,
-        _ => JulianInstant.SecondsPerDay
-    };
+    internal static double DefaultPlaybackRate(CameraMode mode) => ObserverClock.DefaultPlaybackRate(mode);
 
     public bool Tick(double elapsed)
     {
         bool changed = ExpireScriptNotices(elapsed);
-        int start = Synchronized ? _clockOwner : 0;
+        int start = Synchronized ? _clocks.Owner : 0;
         int end = Synchronized ? start + 1 : _views.Count;
         for (int view = start; view < end; view++)
         {
@@ -766,24 +724,9 @@ public sealed partial class SimulationSession
         return true;
     }
 
-    private void SetClock(int view, JulianInstant epoch, bool playing)
-    {
-        if (!Synchronized)
-        {
-            _views[view] = _views[view] with { Epoch = epoch, Playing = playing };
-            return;
-        }
-        double sharedRate = CurrentPlaybackRate(view);
-        _clockOwner = view;
-        for (int index = 0; index < _views.Count; index++)
-            _views[index] = _views[index] with { Epoch = epoch, Playing = playing, PlaybackRate = sharedRate };
-    }
+    private void SetClock(int view, JulianInstant epoch, bool playing) => _clocks.SetClock(view, epoch, playing);
 
-    private void SharePlaybackRate(double rate)
-    {
-        for (int index = 0; index < _views.Count; index++)
-            _views[index] = _views[index] with { PlaybackRate = rate };
-    }
+    private void SharePlaybackRate(double rate) => _clocks.SharePlaybackRate(rate);
 
     private static bool Covers(SimulationWorld world, JulianInstant epoch) =>
         epoch.Scale == TimeScale.Tdb && epoch.CompareTo(world.Ephemeris.Start) >= 0 &&

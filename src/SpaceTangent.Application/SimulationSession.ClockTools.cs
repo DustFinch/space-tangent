@@ -7,24 +7,10 @@ namespace SpaceTangent.Application;
 public sealed partial class SimulationSession
 {
     public const double LightKilometersPerSecond = 299_792.458;
-    private const double KeyboardMaximumRate = 1_000_000;
 
-    public double CurrentPlaybackRate(int view)
-    {
-        ObserverView clock = _views[Synchronized ? _clockOwner : view];
-        return clock.PlaybackRate ?? DefaultPlaybackRate(clock.Mode);
-    }
+    public double CurrentPlaybackRate(int view) => _clocks.CurrentPlaybackRate(view);
 
-    public void AdjustPlaybackRate(int view, bool faster)
-    {
-        double previous = CurrentPlaybackRate(view);
-        double magnitude = Math.Clamp(Math.Abs(previous) * (faster ? 10 : .1), 1, KeyboardMaximumRate);
-        double next = Math.CopySign(magnitude, previous);
-        for (int index = 0; index < _views.Count; index++)
-            if (index == view || Synchronized)
-                _views[index] = _views[index] with { PlaybackRate = next };
-        SetClock(view, _views[view].Epoch, _views[view].Playing);
-    }
+    public void AdjustPlaybackRate(int view, bool faster) => _clocks.AdjustPlaybackRate(view, faster);
 
     public void ReversePlayback(int view) => SetPlaybackRate(view, -CurrentPlaybackRate(view));
 

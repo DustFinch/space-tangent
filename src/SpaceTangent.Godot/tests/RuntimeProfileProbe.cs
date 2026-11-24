@@ -14,6 +14,18 @@ namespace SpaceTangent.Godot.Tests;
 /// <summary>Frame wall time includes a framebuffer readback; this is not a GPU timestamp measurement.</summary>
 public partial class RuntimeProfileProbe : Node
 {
+    private readonly record struct FrameAllocation(long ProcessAllocatedBytes, int Gen0, int Gen1, int Gen2);
+    private readonly record struct MemoryMark(string Label, long ManagedBytes, long PrivateBytes, long WorkingSetBytes,
+        long TotalAllocatedBytes, int Gen0, int Gen1, int Gen2);
+
+    private static MemoryMark Memory(string label)
+    {
+        using var process = Process.GetCurrentProcess();
+        return new(label, GC.GetTotalMemory(forceFullCollection: false), process.PrivateMemorySize64,
+            process.WorkingSet64, GC.GetTotalAllocatedBytes(precise: true),
+            GC.CollectionCount(0), GC.CollectionCount(1), GC.CollectionCount(2));
+    }
+
     public override async void _Ready()
     {
         int result = 1;
@@ -23,6 +35,8 @@ public partial class RuntimeProfileProbe : Node
             string output = System.Environment.GetEnvironmentVariable("SPACETANGENT_PROFILE_OUTPUT")
                 ?? throw new InvalidOperationException("Set SPACETANGENT_PROFILE_OUTPUT.");
             Directory.CreateDirectory(output);
+            var allocations = new Dictionary<string, FrameAllocation[]>();
+            var memory = new List<MemoryMark> { Memory("before-startup") };
             DisplayServer.WindowSetVsyncMode(DisplayServer.VSyncMode.Disabled);
             var scene = GD.Load<PackedScene>("res://Main.tscn").Instantiate<SolarSystemScene>();
             AddChild(scene);
@@ -39,6 +53,7 @@ public partial class RuntimeProfileProbe : Node
                 await ToSignal(GetTree(), SceneTree.SignalName.ProcessFrame);
             }
             await Frames("jason-full-moon");
+            memory.Add(Memory("after-startup-frames"));
             if (session[0].Navigation?.Target is { } trailTarget && session.World.Satellites.FirstOrDefault(item => item.Id == trailTarget) is { Display: { } display } track)
             {
                 double duration = display.OrbitDurationSeconds ?? track.OrbitPeriodSeconds;
@@ -55,8 +70,33 @@ public partial class RuntimeProfileProbe : Node
                 }
                 GD.Print("Scheduled trail passed: all 65 real Jason-1 samples agree with full snapshots.");
             }
+            await Frames("jason-forward-paths", 600);
+            await Frames("jason-reverse-paths", -600);
             if (!await scene.ReloadAddOns()) throw new InvalidOperationException("Reload failed.");
+            memory.Add(Memory("after-first-reload"));
+            for (int cycle = 1; cycle <= 8; cycle++)
+            {
+                if (!await scene.ReloadAddOns()) throw new InvalidOperationException("Repeated reload failed.");
+                await ToSignal(GetTree(), SceneTree.SignalName.ProcessFrame);
+                memory.Add(Memory("after-reload-" + cycle));
+            }
             var epoch = JulianInstant.FromJulianDate(2451545, TimeScale.Tdb);
+            string workload = Path.Combine(output, "workload.stscene");
+            var earth = new ObserverView(epoch, CameraMode.Solar, SolarSystemSample.EarthId, false);
+            ScenarioFile.Save(workload, new([earth], false, 0, 0, session.DeltaT));
+            if (!scene.LoadScenario(workload)) throw new InvalidOperationException("Earth profile scene failed.");
+            session.OpenSpaceView(0);
+            scene.Seek(0, epoch);
+            await Frames("earth-space");
+            ScenarioFile.Save(workload, new([earth with { Mode = CameraMode.Surface,
+                EarthObserver = EarthObserverCamera.GreenwichFullMoon }], false, 0, 0, session.DeltaT));
+            if (!scene.LoadScenario(workload)) throw new InvalidOperationException("Surface profile scene failed.");
+            await Frames("earth-surface");
+            if (session.World.MissionId is not null)
+            {
+                scene.SetMode(0, CameraMode.Mission);
+                await Frames("cassini-mission");
+            }
             var snapshot = session.World.Graph.Evaluate(epoch, session.DeltaT);
             var hole = BlackHoleCatalogue.Default.Entries.Single(item => item.Id == SimulationWorld.CygnusLensId);
             if (!snapshot.TryState(hole.Id, out var state) || !snapshot.TryState(SimulationWorld.CygnusCompanionId, out var companion))
@@ -116,22 +156,37 @@ public partial class RuntimeProfileProbe : Node
             {
                 Engine = Engine.GetVersionInfo()["string"].AsString(),
                 Renderer = RenderingServer.GetCurrentRenderingMethod(),
-                Timings = RuntimeProfile.Snapshot()
+                Timings = RuntimeProfile.Snapshot(),
+                FrameAllocations = allocations,
+                Memory = memory.Append(Memory("after-all-workloads")).ToArray(),
+                MemoryScope = "Precise process-wide managed allocations and GC, including probe/readback work; heap snapshots do not force collection. Frame wall time includes readback."
             }, new JsonSerializerOptions { WriteIndented = true }));
             GD.Print("SpaceTangent runtime profile passed");
             result = 0;
 
-            async Task Frames(string label)
+            async Task Frames(string label, double stepSeconds = 0)
             {
+                var measured = new FrameAllocation[30];
                 for (int index = 0; index < 40; index++)
                 {
+                    long before = GC.GetTotalAllocatedBytes(precise: true);
+                    int gen0 = GC.CollectionCount(0), gen1 = GC.CollectionCount(1), gen2 = GC.CollectionCount(2);
                     var clock = Stopwatch.StartNew();
+                    if (stepSeconds != 0)
+                        scene.Seek(0, session[0].Epoch.AddSeconds(stepSeconds));
                     await ToSignal(GetTree(), SceneTree.SignalName.ProcessFrame);
                     await ToSignal(RenderingServer.Singleton, RenderingServer.SignalName.FramePostDraw);
                     using Image image = GetViewport().GetTexture().GetImage();
-                    if (index >= 10) RuntimeProfile.Record("frame-readback." + label, clock.Elapsed.TotalMilliseconds);
+                    if (index >= 10)
+                    {
+                        double elapsed = clock.Elapsed.TotalMilliseconds;
+                        measured[index - 10] = new(GC.GetTotalAllocatedBytes(precise: true) - before,
+                            GC.CollectionCount(0) - gen0, GC.CollectionCount(1) - gen1, GC.CollectionCount(2) - gen2);
+                        RuntimeProfile.Record("frame-readback." + label, elapsed);
+                    }
                     if (index == 39) image.SavePng(Path.Combine(output, label + ".png"));
                 }
+                allocations.Add(label, measured);
             }
         }
         catch (Exception error) { GD.PushError(error.ToString()); }

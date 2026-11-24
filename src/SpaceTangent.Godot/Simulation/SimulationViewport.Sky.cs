@@ -109,7 +109,7 @@ internal partial class SimulationViewport
         }
         DrawEyepiece(observer);
         DrawFinders(observer);
-        _lastOpticalFrame = observer.ActiveOptics is null ? null : (observer, snapshot, deltaT);
+        Optics.Remember(new(observer, snapshot, deltaT));
         return available;
 
         static Vector3 Icrs(Vector3 value) => new(value.X, -value.Z, value.Y);

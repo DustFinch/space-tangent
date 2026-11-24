@@ -305,7 +305,7 @@ internal partial class SimulationViewport
         HideStellarObjects();
         HideCompactObjects();
         HideExtrasolarOrbits();
-        _missionTrailNode?.Hide();
+        _missionTrailRendering?.Hide();
         HideImportedBodies();
         HideLocalSatelliteMarkers();
         HideMinorBodySwarm();

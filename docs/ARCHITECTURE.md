@@ -50,7 +50,7 @@ Reload preserves the last successful world on rejected input and keeps the obser
 
 `ObserverCalculationSlot` owns supersession and shutdown of each background calculation channel. Cancellation sources remain alive until their worker scopes complete; the event/night shared channel keeps its original behavior. `ObserverScriptPlayer` owns foreground Lua and its view media, with separate ports for rendering, view operations, capture and status. Plugins retain their own quotas and lifecycle.
 
-`SimulationViewport` owns a view's drawing and picking. Their partial files group related implementation; component ownership must remain explicit across those files.
+`SimulationViewport` coordinates a view's drawing and picking. `MissionTrailRendering` owns its rolling samples, publication keys and trail mesh while consuming the already evaluated frame and explicit projection/settings. `OpticalRendering` owns the eyepiece, display cache and resize redraw; `ObserverRenderFrame` carries captured observer/snapshot/ΔT inputs without evaluating the world again. Other rendering areas retain their existing owners while they are separated incrementally.
 
 Rendering consumes a world snapshot evaluated at the observer's epoch and delta-T model. Reuse is valid only for the same relevant world and time dependencies. Stateful imported Lua models retain their evaluation order; background observation calculations use the world's graph that excludes scripted models and their unsafe dependencies.
 

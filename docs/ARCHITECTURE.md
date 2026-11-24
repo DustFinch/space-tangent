@@ -26,6 +26,8 @@ A view index describes its current place in the layout. A lifetime identity keep
 
 Observers retain exact TDB epochs. Linked views share their clock owner's epoch, play state and rate; independent views retain their own clocks. The selected delta-T model affects derived calculations such as Earth orientation without replacing the saved TDB epoch.
 
+`ObserverBookmarkStore` owns bookmark collection changes and publishes its visible list after successful persistence. The existing file codec and scene-link privacy rules remain shared by UI and imports.
+
 `ObserverPlaceAutosave` owns one session's frozen preferences path, revision tracking, debounced writes and retry delay. The adapter decides whether startup policy enables it and displays failures; scenarios, replay and batch startup keep their existing privacy rules.
 
 Scenario restoration validates the complete input before changing live state. Saved scenarios and recordings preserve place history, while shared links and bookmarks retain the active cameras without publishing unrelated private locations. See [observer views](OBSERVER_VIEWS.md).

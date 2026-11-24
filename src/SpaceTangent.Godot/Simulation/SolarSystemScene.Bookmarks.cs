@@ -7,8 +7,8 @@ namespace SpaceTangent.Godot.Simulation;
 
 public partial class SolarSystemScene
 {
-    private ObserverBookmarkFile _bookmarkFile = null!;
-    private IReadOnlyList<ObserverBookmark> _bookmarks = [];
+    private ObserverBookmarkStore _bookmarkStore = null!;
+    private IReadOnlyList<ObserverBookmark> _bookmarks => _bookmarkStore.Items;
     private LineEdit _bookmarkName = null!, _sceneLink = null!;
     private OptionButton _bookmarkList = null!;
     private Button _openBookmark = null!, _deleteBookmark = null!;
@@ -18,11 +18,11 @@ public partial class SolarSystemScene
     private void AddObserverBookmarks(VBoxContainer panel)
     {
         string? configured = System.Environment.GetEnvironmentVariable("SPACETANGENT_BOOKMARKS_PATH");
-        _bookmarkFile = new(string.IsNullOrWhiteSpace(configured)
+        _bookmarkStore = new(string.IsNullOrWhiteSpace(configured)
             ? ProjectSettings.GlobalizePath("user://bookmarks.json") : configured);
         try
         {
-            _bookmarks = _bookmarkFile.Load();
+            _bookmarkStore.Load();
         }
         catch (Exception error) when (IsLoadError(error))
         {
@@ -83,9 +83,7 @@ public partial class SolarSystemScene
     {
         try
         {
-            var (next, added, skipped) = _bookmarkFile.ImportFavorites(path, _bookmarks, Session!.World, Session.DeltaT);
-            int selected = added == 0 ? Math.Max(0, _bookmarkList.Selected) : _bookmarks.Count;
-            _bookmarks = next;
+            var (selected, added, skipped) = _bookmarkStore.ImportFavorites(path, Session!.World, Session.DeltaT, _bookmarkList.Selected);
             RefreshBookmarks(selected);
             _status.Text = $"Imported {added} favorites ({skipped} skipped).";
             return true;
@@ -101,13 +99,8 @@ public partial class SolarSystemScene
     {
         try
         {
-            string name = _bookmarkName.Text.Trim();
-            string link = SceneLink.Write(Session!.CaptureScenario(_active));
-            var next = _bookmarks.Where(bookmark => !bookmark.Name.Equals(name, StringComparison.OrdinalIgnoreCase)).ToList();
-            next.Add(new(name, link));
-            _bookmarkFile.Save(next);
-            _bookmarks = next.AsReadOnly();
-            RefreshBookmarks(next.Count - 1);
+            int selected = _bookmarkStore.Store(_bookmarkName.Text, Session!.CaptureScenario(_active));
+            RefreshBookmarks(selected);
             _status.Text = "Bookmark saved.";
         }
         catch (Exception error) when (IsLoadError(error))
@@ -123,10 +116,7 @@ public partial class SolarSystemScene
             return;
         try
         {
-            var next = _bookmarks.Where((_, index) => index != selected).ToArray();
-            _bookmarkFile.Save(next);
-            _bookmarks = Array.AsReadOnly(next);
-            RefreshBookmarks(Math.Min(selected, next.Length - 1));
+            RefreshBookmarks(_bookmarkStore.Delete(selected));
             _status.Text = "Bookmark deleted.";
         }
         catch (Exception error) when (IsLoadError(error))

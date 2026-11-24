@@ -64,7 +64,7 @@ Scientific values, persistence, rendered images and performance have separate ch
 
 Performance comparisons use the same workload, inputs, runtime, hardware and resolution without coverage instrumentation. Raw profiles include allocation and GC context, and frame readbacks are reported as wall time. Test scenes and diagnostic workload hosts are excluded from exported releases. See [coverage and acceptance](TEST_COVERAGE.md) for the evidence and failure policies.
 
-Godot probes keep their scenario entry scenes and markers. ProbeHost shares engine-local assertions, frame waits, explicit scene cleanup and coverage-aware exit; scenarios retain their own timeouts and negative expectations. A matrix run can declare a narrow measured assembly scope, while final acceptance still requires all four production modules independently at 95%.
+Godot probes keep their scenario entry scenes and markers. Several use ProbeHost for engine-local assertions, frame waits, explicit scene cleanup and coverage-aware exit; others call CoverageCapture.Complete directly. Scenarios retain their own timeouts and negative expectations. A matrix run can declare a narrow measured assembly scope, while final acceptance still requires all four production modules independently at 95%.
 
 ## Responsibility crosswalk
 
@@ -97,7 +97,7 @@ This maps production ownership, not a list of renamed files. Existing entry poin
 | SampledMissionCatalog | Ordered pool and runtime object binding | MissionRuntimeBinding |
 | SscBodyCatalogue | Ordered sources, symbols and resource resolution | SscInstallationInputs and narrow SscResourceContext |
 | SscBodyCatalogue | Parent traversal, cycles and rejected references | SscRuntimeBinding |
-| Six probe entry facades | Frame waits, assertions and completion protocol | ProbeHost; assertions and markers remain scenario-specific |
+| Probe entry facades using ProbeHost | Frame waits, assertions and completion protocol | ProbeHost; assertions and markers remain scenario-specific |
 
 SolarSystemScene still composes the engine tree and coordinates each frame. SimulationViewport still prepares coordinates, preserves stage ordering and handles picking. Existing surface, atmosphere, ring, annotation and compact-lens owners remain in place. There is no new global event bus, dependency-injection framework or universal importer.
 

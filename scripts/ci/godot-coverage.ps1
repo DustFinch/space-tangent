@@ -22,11 +22,20 @@ $capture=Join-Path $root 'capture'
 & (Join-Path $checkout 'scripts/testing/godot-probe-coverage.ps1') -DataProfile $profile -OutputDirectory $capture `
     -Scene res://tests/BootstrapSmoke.tscn -SuccessMarker 'SpaceTangent bootstrap smoke passed' `
     -Godot $Godot -ProbeOptions $options -SkipBuild:$SkipBuild
+$ownership=Join-Path $root 'native-ownership'
+& (Join-Path $checkout 'scripts/testing/godot-probe-coverage.ps1') -DataProfile $profile -OutputDirectory $ownership `
+    -Scene res://tests/GpuAssetOwnershipProbe.tscn -SuccessMarker 'SpaceTangent GPU asset ownership probe passed' `
+    -Godot $Godot -RequiredModules @('SpaceTangent.Godot') -SkipBuild
+foreach ($run in @($capture, $ownership)) {
+    if ((Get-Content -LiteralPath (Join-Path $run 'godot.log') -Raw) -match '(?m)^ERROR:|SCRIPT ERROR|SHADER ERROR') {
+        throw 'Public-data Godot collection produced unexpected engine diagnostics.'
+    }
+}
 # This public-data headless baseline is deliberately separate from the full optional-data GPU matrix.
-$report=@((Join-Path $capture 'coverage.xml'),'--require','SpaceTangent.Core','--require','SpaceTangent.Contracts',
+$report=@((Join-Path $capture 'coverage.xml'),(Join-Path $ownership 'coverage.xml'),'--require','SpaceTangent.Core','--require','SpaceTangent.Contracts',
     '--require','SpaceTangent.Application','--require','SpaceTangent.Godot','--output',(Join-Path $root 'summary.json'))
 if ($env:GITHUB_STEP_SUMMARY) {
-    'Public-data headless startup only; optional scientific datasets and rendered GPU acceptance are separate.' |
+    'Public-data headless startup and native resource ownership; optional scientific datasets and rendered GPU acceptance are separate.' |
         Add-Content -LiteralPath $env:GITHUB_STEP_SUMMARY -Encoding utf8
     $report+=@('--markdown-output',$env:GITHUB_STEP_SUMMARY)
 }

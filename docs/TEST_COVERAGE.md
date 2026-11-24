@@ -188,3 +188,26 @@ Build and import the Godot project first. The suite never captures input or open
 The same probe remains usable with the instrumented GPU runner and an inactive desktop. Set `SPACETANGENT_EARTH_PROBE_OUTPUT` through its probe options and require the normal or batch policy marker and coverage tracker checks. The probe propagates coverage-flush failures into its result instead of ignoring `CoverageCapture.Complete`.
 
 Application regressions separately verify that large current-format recordings replay, shared links retain active cameras without private place histories or persistent view keys, scene files preserve that history, oversized bookmarks fail before replacement, and only old temporary files belonging to the exact preferences destination are cleaned.
+
+## Resource ownership and publication regressions
+
+Run the six committed resource probes together with a hash-pinned workspace profile containing DE440, Jason-1/SORCE science inputs and the original Cassini default mission. The mission also needs the default installation files described in [Cassini installation](CASSINI_MISSION.md); a profile alone does not copy those files into a clean checkout. Missing real inputs fail the probes. On a shared Windows computer:
+
+```powershell
+./scripts/testing/resource-probes.ps1 -DataProfile C:/TestData/workspace.json -OutputDirectory C:/TestResults/resources-01 -Godot C:/Tools/Godot/Godot_console.exe -IsolatedDesktop
+```
+
+Use a new output directory each time. The suite builds/imports once, runs each probe with coverage in a separate process, and accepts only exit 0, its exact marker, required tracker hits and no engine/script/shader errors. It records progress and failures in `status.json`, raw logs and per-probe XML. It never switches desktops or synthesizes system mouse input. Linux rendered acceptance requires an explicitly dedicated display. These six reports supplement the full source-checked coverage matrix; they do not establish the four-module 95% threshold on their own.
+
+| Probe | Required evidence |
+|---|---|
+| GpuAssetOwnershipProbe | Abandoned/committed/shared dependencies and 32 alternating updates; native ObjectDB identities independently of disposed C# wrappers; a node keeps a mesh alive until its last native reference is released |
+| AddonLifecycleProbe | Overlapping real loads, supersession, stable observers and close during preparation |
+| AddonPreferenceFailureProbe | Preference-save rejection rolls back the world and observer state |
+| AddonBindingFailureProbe | Faults after preferences commit, before/among/after two view bindings; bounded retention, repair, subsequent source toggles, close and late callbacks |
+| ClosedViewportProbe | Temporary detach/reattach preserves drawing; final close destroys owned resources and rejects late draw/replace/query work without resurrection |
+| ResourceLifecycleProbe | 24 split/no-op cycles plus 24 actual Cassini publications; deletion of previously drawn native mission meshes, unchanged shared Jason-1 mesh, both cameras/clocks/ΔT; final node/resource counts return to a warmed baseline |
+
+The soak writes `memory.json`; native node counts must match the warmed baseline, and resource counts may exceed it by at most two cache entries. Explicit GC/finalizer drains make managed bindings settle and are outside performance measurements. Private/managed byte samples remain diagnostics: allocator reservations and driver VRAM are not bounded by this test. Native ObjectDB deletion establishes release of engine objects, not the timing of driver memory reclamation.
+
+Public Windows/Linux Godot CI runs GpuAssetOwnershipProbe headlessly alongside BootstrapSmoke in the public-data coverage job. Their separate raw reports are uploaded and combined into that limited headless table. The remaining five probes use real optional add-ons and rendered workflows, so they belong to the local resource suite and full GPU matrix rather than the data-free CI profile.

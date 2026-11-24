@@ -103,6 +103,7 @@ internal partial class SimulationViewport : Node3D
         _missionRendering?.Close();
         _missionTrailRendering?.Close();
         _opticalRendering?.Close();
+        _referenceMarkRendering?.Close();
         _stars?.Close();
         _recordedStars?.Close();
         _planetOverview?.Close();

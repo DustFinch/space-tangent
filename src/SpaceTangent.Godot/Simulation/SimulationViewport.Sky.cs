@@ -10,33 +10,17 @@ namespace SpaceTangent.Godot.Simulation;
 
 internal partial class SimulationViewport
 {
-    private BrightSkyOverlay? _spaceSky;
-    internal SkySurveyCanvas? SpaceSurveyCanvas { get; private set; }
+    private SkyPresentation? _skyPresentation;
+    private BrightSkyOverlay? _spaceSky => _skyPresentation?.Overlay;
+    internal SkySurveyCanvas? SpaceSurveyCanvas => _skyPresentation?.Survey;
     internal SkySurveyCanvas? SurfaceSurveyCanvas => _surface?.SurveyCanvas;
-    private WorldEnvironment? _skyEnvironment;
-    private readonly SkyEnvironment _canvasBackground = new()
-    {
-        BackgroundMode = SkyEnvironment.BGMode.Canvas,
-        BackgroundCanvasMaxLayer = -1
-    };
 
     internal void SetSkyData(BrightSkyData data)
     {
         _compactSky = data;
         SetMinorBodySwarm(data.MinorBodies);
         _satelliteMagnitudes = data.SatelliteMagnitudes;
-        var layer = new CanvasLayer { Layer = -1 };
-        AddChild(layer);
-        InstallGalacticSky(layer, data.ZodiacalMap);
-        SpaceSurveyCanvas = new(data.Surveys, additive: true);
-        layer.AddChild(SpaceSurveyCanvas);
-        SpaceSurveyCanvas.SetAnchorsAndOffsetsPreset(Control.LayoutPreset.FullRect);
-        _spaceSky = new();
-        _spaceSky.Configure(data, fillBackground: true);
-        layer.AddChild(_spaceSky);
-        _spaceSky.SetAnchorsAndOffsetsPreset(Control.LayoutPreset.FullRect);
-        _skyEnvironment = new();
-        AddChild(_skyEnvironment);
+        _skyPresentation = new(this, data, layer => InstallGalacticSky(layer, data.ZodiacalMap));
         _surface?.SetSkyData(data);
     }
 
@@ -66,31 +50,13 @@ internal partial class SimulationViewport
         DrawArchivedGroundGlow(ArchivedGeometry);
         if (_spaceSky is not null)
         {
-            bool localSky = observer.Sky.Stars || observer.Sky.Labels || observer.Sky.EquatorialGrid || observer.Sky.Constellations;
-            bool catalogue = localSky && !SpatialStarFieldVisible;
-            bool orbital = observer.Mode != CameraMode.Surface || observer.Navigation is not null;
-            var camera = GetViewport().GetCamera3D();
-            float tangent = camera is null ? 0 : MathF.Tan(Mathf.DegToRad(camera.Fov / 2));
-            if (camera?.KeepAspect == Camera3D.KeepAspectEnum.Width && _spaceSky.Size.X > 0)
-                tangent *= _spaceSky.Size.Y / _spaceSky.Size.X;
-
-            Basis orientation = camera?.GlobalBasis ?? Basis.Identity;
-            bool survey = SpaceSurveyCanvas!.ShowFrame(orbital && !CompactLensVisible ? observer.Sky.SurveyId : null,
-                Icrs(-orientation.Z), Icrs(orientation.X), Icrs(orientation.Y), tangent,
-                (float)observer.Sky.EffectiveSurveyBrightness, _galacticTexture is null,
-                photographs: orbital && !CompactLensVisible && observer.Sky.DeepSky && observer.Sky.SurveyId is null,
-                julianDate: observer.Epoch.ToJulianDate());
-            DrawGalacticSky(orbital, camera, tangent, observer, snapshot, deltaT, SpaceSurveyCanvas.HasSurvey);
-            bool culture = observer.Sky.ConstellationArt ||
-                (observer.Sky.Constellations && observer.Sky.CultureId is not null);
-            bool render = (catalogue || culture || observer.Sky.HasAlternateGrids || observer.Sky.ConstellationBoundaries ||
-                (observer.Sky.Markings != SkyMarkings.None && camera?.Projection == Camera3D.ProjectionType.Perspective) ||
-                (observer.Sky.Stars && _spaceSky.HasTransientStars)) && orbital;
-            _spaceSky.Visible = render;
-            _spaceSky.SetFillBackground(!GalacticSkyVisible && !survey);
-            SkyEnvironment? background = render || GalacticSkyVisible || survey ? _canvasBackground : null;
-            if (_skyEnvironment!.Environment != background)
-                _skyEnvironment.Environment = background;
+            var frame = new ObserverRenderFrame(observer, snapshot, deltaT);
+            var display = _skyPresentation!.PrepareSurveys(frame, SpatialStarFieldVisible, CompactLensVisible, _galacticTexture is not null);
+            var camera = display.Camera;
+            float tangent = display.Tangent;
+            bool catalogue = display.Catalogue;
+            DrawGalacticSky(display.Orbital, camera, tangent, observer, snapshot, deltaT, SpaceSurveyCanvas!.HasSurvey);
+            bool render = _skyPresentation.UpdateVisibility(frame, display, GalacticSkyVisible);
             if (render && camera is not null)
             {
                 Basis basis = camera.GlobalBasis;

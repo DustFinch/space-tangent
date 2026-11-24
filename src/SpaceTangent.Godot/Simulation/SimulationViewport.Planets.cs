@@ -10,20 +10,16 @@ namespace SpaceTangent.Godot.Simulation;
 
 internal partial class SimulationViewport
 {
-    private const double OuterOverviewKilometersPerUnit = 25_000_000;
+    private const double OuterOverviewKilometersPerUnit = PlanetOverviewRendering.OuterScale;
+    private PlanetOverviewRendering _planetOverview = null!;
     private readonly Dictionary<ObjectId, PlanetRingRendering> _planetRings = new();
-    private readonly Dictionary<ObjectId, Node3D> _planetMarkers = new();
     private readonly Dictionary<ObjectId, MeshInstance3D> _planetGlobes = new();
     private readonly Dictionary<ObjectId, WorldOrbitAtmosphere> _worldAtmospheres = new();
     private BodyTileTextures? _marsTiles;
-    private readonly ImmediateMesh _planetPaths = new();
-    private MeshInstance3D _planetPathNode = null!;
 
-    private JulianInstant? _pathEpoch;
-    private bool _pathOuter;
 
     internal bool ShowPlanetOrbits { get; set; } = true;
-    internal int PlanetOrbitCount => _planetPaths.GetSurfaceCount();
+    internal int PlanetOrbitCount => _planetOverview?.OrbitCount ?? 0;
     internal bool PlanetRingsVisible(ObjectId id) => _planetRings.GetValueOrDefault(id)?.Visible == true;
     internal MeshInstance3D? RingedAtmosphere(ObjectId id) => _planetRings.GetValueOrDefault(id)?.Atmosphere;
     internal bool PlanetGlobeTextured(ObjectId id) => _planetGlobes.TryGetValue(id, out var mesh) && mesh.Visible &&
@@ -35,16 +31,16 @@ internal partial class SimulationViewport
 
     private void InitializePlanets()
     {
+        _planetOverview = new(this, CreateMarker, LineMaterial);
         foreach (PlanetDefinition planet in PlanetCatalogue.Planets)
         {
             if (planet.Id == SolarSystemSample.EarthId)
                 continue;
             Color color = new(planet.Color);
-            _planetMarkers.Add(planet.Id, CreateMarker(planet.Name, color, 2.8f));
+            _planetOverview.AddPlanet(planet);
             _planetGlobes.Add(planet.Id, CreateNavigationSphere(color));
         }
-        _planetPathNode = new MeshInstance3D { Mesh = _planetPaths, Visible = false };
-        AddChild(_planetPathNode);
+        _planetOverview.InitializePaths();
 
         InitializeSmallBodies();
     }
@@ -116,64 +112,9 @@ internal partial class SimulationViewport
         }
     }
 
-    private void DrawPlanetOverview(WorldSnapshot snapshot, ISolarSystemEphemeris ephemeris, Vector3d sun, bool outer)
-    {
-        double scale = outer ? OuterOverviewKilometersPerUnit : OverviewKilometersPerUnit;
-        foreach (PlanetDefinition planet in PlanetCatalogue.Planets)
-        {
-            if (!_planetMarkers.TryGetValue(planet.Id, out Node3D? marker))
-                continue;
-            bool inRange = outer ? planet.NaifId >= 599 : planet.NaifId <= 499;
-            if (inRange && snapshot.TryState(planet.Id, out CartesianState state))
-            {
-                marker.Position = ToGodot(state.PositionKilometers - sun, scale);
-                marker.Show();
-            }
-        }
-        if (!ShowPlanetOrbits)
-            return;
-        if (_pathEpoch is not { } previous || _pathOuter != outer || Math.Abs((double)snapshot.Epoch.DifferenceNanoseconds(previous) / JulianInstant.NanosecondsPerSecond) > 86400 * 40)
-        {
-            _pathEpoch = snapshot.Epoch;
-            _pathOuter = outer;
-            _planetPaths.ClearSurfaces();
-            foreach (PlanetDefinition planet in PlanetCatalogue.Planets)
-            {
-                if (outer != (planet.NaifId >= 599))
-                    continue;
-                double halfPeriod = planet.PeriodDays * 43200;
-                JulianInstant start = snapshot.Epoch.AddSeconds(-halfPeriod);
-                JulianInstant end = snapshot.Epoch.AddSeconds(halfPeriod);
-                if (end.CompareTo(ephemeris.End) > 0)
-                    start = ephemeris.End.AddSeconds(-2 * halfPeriod);
-                if (start.CompareTo(ephemeris.Start) < 0)
-                    end = ephemeris.Start.AddSeconds(2 * halfPeriod);
-                if (start.CompareTo(ephemeris.Start) < 0)
-                    start = ephemeris.Start;
-                if (end.CompareTo(ephemeris.End) > 0)
-                    end = ephemeris.End;
-                double duration = (double)end.DifferenceNanoseconds(start) / JulianInstant.NanosecondsPerSecond;
-                Color color = new(planet.Color);
-                color.A = .5f;
-                _planetPaths.SurfaceBegin(Mesh.PrimitiveType.LineStrip, LineMaterial(new(color.R, color.G, color.B), color.A));
-                const int samples = 120;
-                for (int step = 0; step <= samples; step++)
-                {
-                    SolarSystemSample sample = ephemeris.Sample(step == samples ? end : start.AddSeconds(duration * step / samples));
-                    _planetPaths.SurfaceAddVertex(ToGodot(sample.RelativeState(planet.SystemId, SolarSystemSample.SunId).PositionKilometers, scale));
-                }
-                _planetPaths.SurfaceEnd();
-            }
-        }
-        _planetPathNode.Show();
-    }
-
-    private void HidePlanetOverview()
-    {
-        foreach (Node3D marker in _planetMarkers.Values)
-            marker.Hide();
-        _planetPathNode.Hide();
-    }
+    private void DrawPlanetOverview(WorldSnapshot snapshot, ISolarSystemEphemeris ephemeris, Vector3d sun, bool outer) =>
+        _planetOverview.Draw(snapshot, ephemeris, sun, outer, ShowPlanetOrbits);
+    private void HidePlanetOverview() => _planetOverview.Hide();
 
     private void DrawPlanetGlobes(WorldSnapshot snapshot, NavigationCamera pose, Vector3d eyeOffset, double units, SkyLayerSettings sky, ObjectId? selection,
         Func<Vector3d, (Vector3 Position, double Scale)> project)

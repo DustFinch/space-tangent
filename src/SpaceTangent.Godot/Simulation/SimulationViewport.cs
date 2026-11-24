@@ -18,7 +18,7 @@ internal sealed record PreparedProbe(SscHuygensTrack Track, ArrayMesh Mesh, floa
 
 internal partial class SimulationViewport : Node3D
 {
-    private const double OverviewKilometersPerUnit = 1_000_000;
+    private const double OverviewKilometersPerUnit = PlanetOverviewRendering.InnerScale;
     private const double LunarKilometersPerUnit = 4_000;
     private const double SatelliteKilometersPerUnit = 75;
     private const double MissionKilometersPerUnit = MissionCameraRendering.KilometersPerUnit;
@@ -103,6 +103,8 @@ internal partial class SimulationViewport : Node3D
         _missionRendering?.Close();
         _missionTrailRendering?.Close();
         _opticalRendering?.Close();
+        _planetOverview?.Close();
+        _skyPresentation?.Close();
         ReleaseImportedDrawingResources();
     }
 

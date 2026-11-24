@@ -93,6 +93,15 @@ class CoverageMatrixExecutionTests(unittest.TestCase):
     def exercise(self, mode):
         with tempfile.TemporaryDirectory(prefix='matrix execution ') as folder:
             root = Path(folder)
+            if os.name == 'nt' and mode == 'engine-relative':
+                # Hosted runners can supply TEMP through an 8.3 alias. Exercise
+                # the same spelling difference locally instead of comparing strings.
+                import ctypes
+                buffer = ctypes.create_unicode_buffer(32768)
+                length = ctypes.windll.kernel32.GetShortPathNameW(folder, buffer, len(buffer))
+                if not length or length >= len(buffer):
+                    raise ctypes.WinError()
+                root = Path(buffer.value)
             app, core = root / 'application', root / 'core'
             scripts = app / 'scripts/testing'
             scripts.mkdir(parents=True)
@@ -251,7 +260,7 @@ function global:python {
                 environment['PATH'] = str(path_directory)+os.pathsep+environment.get('PATH', '')
                 script = wrapper.read_text().replace('& $Runner', '. $Runner').replace(
                     "-Godot 'unused'", '-Godot '+literal(argument))
-                script += "\nif ($Godot -cne "+literal(executable)+") { throw ('Unexpected engine: '+$Godot) }\n"
+                script += "\nWrite-Output ('Resolved engine: '+$Godot)\n"
                 wrapper.write_text(script)
             output = root / 'evidence'
             result = subprocess.run(['pwsh', '-NoProfile', '-File', str(wrapper),
@@ -259,6 +268,13 @@ function global:python {
                 '-Profiles', str(root / 'profiles.json'), '-Output', str(output), '-Core', str(core)],
                 stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, encoding='utf-8',
                 errors='replace', timeout=60, env=environment)
+            if mode.startswith('engine-') and result.returncode == 0:
+                paths = [line.removeprefix('Resolved engine: ') for line in result.stdout.splitlines()
+                         if line.startswith('Resolved engine: ')]
+                self.assertEqual(1, len(paths), result.stdout)
+                resolved = Path(paths[0])
+                self.assertTrue(resolved.is_absolute() and resolved.is_file(), result.stdout)
+                self.assertTrue(resolved.samefile(executable), result.stdout)
             self.assertTrue((output / 'status.json').is_file(), result.stdout)
             state = json.loads((output / 'status.json').read_text(encoding='utf-8-sig'))
             summary = json.loads((output / 'summary.json').read_text()) if (output / 'summary.json').exists() else None

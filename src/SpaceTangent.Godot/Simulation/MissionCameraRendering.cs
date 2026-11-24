@@ -102,6 +102,8 @@ internal sealed class MissionCameraRendering
         _timeline = timeline;
         _probe = probe;
         _missionNode.Hide();
+        // Hidden nodes still own native references to their last drawn mesh.
+        _missionNode.Mesh = null;
         _missionLabel.Hide();
         _missionFrusta.Mesh = asset?.Frusta;
         _missionFrusta.Hide();

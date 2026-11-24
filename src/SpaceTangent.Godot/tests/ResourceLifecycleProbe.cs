@@ -9,7 +9,8 @@ using SpaceTangent.Godot.Simulation;
 
 namespace SpaceTangent.Godot.Tests;
 
-// Process memory is evidence, not a timing/GC-dependent pass threshold.
+// Native identity and warmed engine counts are assertions. Process memory is
+// evidence only; explicit finalizer drains here are not performance measurements.
 public partial class ResourceLifecycleProbe : Node
 {
     private sealed record Mark(int Cycle, long ManagedBytes, long PrivateBytes, double Objects, double Resources, double Nodes);
@@ -23,6 +24,10 @@ public partial class ResourceLifecycleProbe : Node
         {
             string output = System.Environment.GetEnvironmentVariable("SPACETANGENT_PROBE_CAPTURE")
                 ?? throw new InvalidOperationException("An isolated evidence path is required.");
+            await WarmUp();
+            await DrainFinalizers();
+            Capture(-1);
+            Mark baseline = marks[^1];
             GetTree().Root.Size = new(1600, 900);
             scene = GD.Load<PackedScene>("res://Main.tscn").Instantiate<SolarSystemScene>();
             AddChild(scene);
@@ -37,6 +42,9 @@ public partial class ResourceLifecycleProbe : Node
             session.SetPlaying(1, false);
             session.Synchronize(false, 0);
             session.Step(1, 3600);
+            ProbeHost.Require(scene.PublishedAddons?.Mission is not null, "The real Cassini mission is required for generation changes.");
+            ulong scienceId = scene.PublishedAddons!.Satellites.First(body => body.Track.Id == new ObjectId("norad/26997")).Mesh.GetInstanceId();
+            var missionIds = new HashSet<ulong> { scene.PublishedAddons.Mission!.Mesh.GetInstanceId() };
             await Frames();
             Capture(0);
             for (int cycle = 1; cycle <= 24; cycle++)
@@ -55,7 +63,8 @@ public partial class ResourceLifecycleProbe : Node
                 await Frames();
                 var expected = session.CaptureScenario(0);
                 int[] identities = Enumerable.Range(0, session.ViewCount).Select(session.ViewIdentity).ToArray();
-                ProbeHost.Require(await scene.ReloadAddOns(), "The repeated real-data reload failed.");
+                var previous = scene.PublishedAddons;
+                ProbeHost.Require(await scene.ReloadAddOns() && ReferenceEquals(previous, scene.PublishedAddons), "The no-op reload must retain its generation.");
                 var actual = session.CaptureScenario(0);
                 ProbeHost.Require(expected.Views.SequenceEqual(actual.Views) && expected.DeltaT == actual.DeltaT &&
                     expected.Synchronized == actual.Synchronized && expected.ClockOwner == actual.ClockOwner &&
@@ -65,13 +74,50 @@ public partial class ResourceLifecycleProbe : Node
                 await Frames();
                 Capture(cycle);
             }
+            for (int cycle = 1; cycle <= 24; cycle++)
+            {
+                var previous = scene.PublishedAddons!;
+                if (previous.Mission is not null)
+                {
+                    var epoch = SimulationSession.MissionPreview;
+                    var observer = new ObserverView(epoch, CameraMode.Mission, previous.Mission.Id, false);
+                    ProbeHost.Require(scene.Renderer(0).Draw(observer, session.World.Graph.Evaluate(epoch, session.DeltaT), session.DeltaT) &&
+                        scene.Renderer(0).MissionMesh.Mesh?.GetInstanceId() == previous.Mission.Mesh.GetInstanceId(),
+                        "The retiring mission mesh must first be borrowed by a rendered view.");
+                }
+                ulong? oldMesh = previous.Mission?.Mesh.GetInstanceId();
+                var expected = session.CaptureScenario(0);
+                var requested = scene.AppliedAddonSettings.SetDefault(SpaceTangent.Application.Addons.AddonSourceKind.Mission, previous.Mission is null);
+                ProbeHost.Require(await scene.ReloadAddOns(requested), "The changed real mission must publish.");
+                var current = scene.PublishedAddons!;
+                ProbeHost.Require(!ReferenceEquals(previous, current) && previous.IsDisposed && scene.RetiringAddons is null,
+                    "Every changed cycle must publish and retire a real generation.");
+                if (oldMesh is { } retired)
+                    ProbeHost.Require(!GodotObject.IsInstanceIdValid(retired), "The obsolete mission mesh must be deleted natively.");
+                if (current.Mission is { } mission)
+                    ProbeHost.Require(missionIds.Add(mission.Mesh.GetInstanceId()), "Enabling the mission must create a fresh native mesh.");
+                ProbeHost.Require(current.Satellites.First(body => body.Track.Id == new ObjectId("norad/26997")).Mesh.GetInstanceId() == scienceId &&
+                    GodotObject.IsInstanceIdValid(scienceId), "The unchanged Jason-1 resource must remain shared.");
+                var actual = session.CaptureScenario(0);
+                ProbeHost.Require(expected.Views.SequenceEqual(actual.Views) && expected.DeltaT == actual.DeltaT && expected.Layout == actual.Layout &&
+                    expected.Synchronized == actual.Synchronized && expected.ClockOwner == actual.ClockOwner,
+                    "Mission publication must preserve both cameras, epochs and delta-T.");
+                ProbeHost.Require(await scene.ReloadAddOns() && ReferenceEquals(current, scene.PublishedAddons), "No-op after a changed generation must reuse it.");
+                await Frames();
+                Capture(24 + cycle);
+            }
             RemoveChild(scene);
             scene.Free();
             scene = null;
-            await Frames();
-            Capture(25);
+            await DrainFinalizers();
+            Capture(49);
+            ProbeHost.Require(missionIds.All(id => !GodotObject.IsInstanceIdValid(id)) && !GodotObject.IsInstanceIdValid(scienceId),
+                "Scene shutdown must delete all created mission meshes and the shared science mesh.");
+            Mark final = marks[^1];
             File.WriteAllText(output, JsonSerializer.Serialize(marks, new JsonSerializerOptions { WriteIndented = true }));
-            GD.Print("SpaceTangent resource lifecycle probe passed: 24 split/close/reload cycles and scene shutdown");
+            ProbeHost.Require(final.Nodes == baseline.Nodes && final.Resources <= baseline.Resources + 2,
+                $"Native objects did not return to the warmed baseline: nodes {baseline.Nodes}->{final.Nodes}, resources {baseline.Resources}->{final.Resources} (allow 2 cached resources).");
+            GD.Print("SpaceTangent resource lifecycle probe passed: 24 split/no-op cycles, 24 changed generations, native deletion and warmed baseline");
             exit = 0;
         }
         catch (Exception error) { GD.PushError(error.ToString()); }
@@ -84,6 +130,33 @@ public partial class ResourceLifecycleProbe : Node
                 Performance.GetMonitor(Performance.Monitor.ObjectCount),
                 Performance.GetMonitor(Performance.Monitor.ObjectResourceCount),
                 Performance.GetMonitor(Performance.Monitor.ObjectNodeCount)));
+        }
+    }
+
+    private async Task WarmUp()
+    {
+        SolarSystemScene? warm = null;
+        try
+        {
+            warm = GD.Load<PackedScene>("res://Main.tscn").Instantiate<SolarSystemScene>(); AddChild(warm);
+            await ProbeHost.Until(this, () => warm.InitializationFinished, 60, "Warm-up startup timed out.");
+            ProbeHost.Require(warm.Session is not null && warm.PublishedAddons?.Mission is not null, "Warm-up requires the real mission.");
+            warm.Session!.SetPlaying(0, false); warm.SetMode(0, CameraMode.Satellites);
+            if (warm.Session.ViewCount == 1) warm.ToggleSplit();
+            warm.ShowFullMoon(1); warm.Session.Synchronize(false, 0);
+            foreach (bool enabled in new[] { false, true })
+                ProbeHost.Require(await warm.ReloadAddOns(warm.AppliedAddonSettings.SetDefault(SpaceTangent.Application.Addons.AddonSourceKind.Mission, enabled)), "Warm up both publication states.");
+            await Frames();
+        }
+        finally { ProbeHost.FreeScene(this, warm); warm = null; }
+    }
+
+    private async Task DrainFinalizers()
+    {
+        for (int pass = 0; pass < 3; pass++)
+        {
+            GC.Collect(); GC.WaitForPendingFinalizers();
+            await Frames();
         }
     }
 

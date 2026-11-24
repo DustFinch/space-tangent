@@ -46,6 +46,8 @@ Reload preserves the last successful world on rejected input and keeps the obser
 
 `SolarSystemScene` connects application workflows, controls and views. `ObserverViewHost` owns control creation, active-index remapping, layout dividers and their callbacks, and suppression of programmatic field updates. It receives typed observer actions and explicit renderer creation/resource-binding callbacks, preserving the original node-ready order. `ObserverNavigationInput` owns held movement keys, pointer gestures and inertia, translating engine input into the same session operations through narrow presentation callbacks. Pre-ready release state and focus-loss cleanup retain their original lifetimes.
 
+`ObserverTimePanel` owns clock and calendar controls and their display cache. Typed commands keep time changes in the session; the panel reads the active observer without reaching into scene fields.
+
 `SimulationViewport` owns a view's drawing and picking. Their partial files group related implementation; component ownership must remain explicit across those files.
 
 Rendering consumes a world snapshot evaluated at the observer's epoch and delta-T model. Reuse is valid only for the same relevant world and time dependencies. Stateful imported Lua models retain their evaluation order; background observation calculations use the world's graph that excludes scripted models and their unsafe dependencies.

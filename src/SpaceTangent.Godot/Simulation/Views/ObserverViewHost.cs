@@ -259,11 +259,6 @@ internal sealed class ObserverViewHost
         finally { _refreshingField = false; }
     }
 
-    private static Button AddButton(Container parent, string text, Action onPressed)
-    {
-        var button = new Button { Text = text };
-        button.Pressed += () => onPressed();
-        parent.AddChild(button);
-        return button;
-    }
+    private static Button AddButton(Container parent, string text, Action onPressed) =>
+        SimulatorButtons.Add(parent, text, onPressed);
 }

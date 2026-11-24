@@ -46,17 +46,13 @@ public partial class SolarSystemScene : Control
     private PopupMenu _skyMarkingsMenu = null!;
     private SimulatorWorkspace _workspace = null!;
     private ObjectSearchPanel _objectSearch = null!;
-    private Label _timeHeading = null!, _dataSummary = null!;
+    private Label _dataSummary = null!;
     private EarthObserverPanel _earthObserver = null!;
     private Button _satelliteLayersMode = null!;
-    private Button _playFromPanel = null!;
-    private Label _calendarTime = null!;
-    private Label _otherCalendars = null!;
-    private long? _otherCalendarDay;
     private Button _spaceMode = null!, _observatoryMode = null!;
     private Button _split = null!;
-    private CheckButton _sync = null!;
-    private OptionButton _deltaT = null!;
+    private ObserverTimePanel _timePanel = null!;
+    private OptionButton _deltaT => _timePanel.Model;
     private Label _status = null!;
     private int _active { get => _viewHost.Active; set => _viewHost.Active = value; }
     private readonly AddonLoadCoordinator _addonLoads = new();
@@ -272,59 +268,8 @@ public partial class SolarSystemScene : Control
         _objectSearch = new(search, Session!.World.Catalogue, SelectObject, AimAtSkyMarker,
             NavigateFromSearch, SearchNavigationAction);
         var location = _workspace.AddPage("Location", WorkspaceText.Choose("Observing", "Наблюдения"), tabTitle: WorkspaceText.Choose("Location", "Место"));
-        var time = _workspace.AddPage("Time", WorkspaceText.Choose("Time", "Время"), "Location");
-        _timeHeading = new Label { ThemeTypeVariation = "WorkspaceTitle" };
-        time.AddChild(_timeHeading);
-        _calendarTime = SimulatorTheme.Detail("");
-        time.AddChild(_calendarTime);
-        _playFromPanel = AddButton(time, PlaybackButton(false), () => TogglePlaying(_active));
-        _sync = new CheckButton { Name = "SyncViewTime", ButtonPressed = true };
-        _sync.Toggled += enabled => Synchronize(enabled, _active);
-        _sync.TooltipText = WorkspaceText.Choose("Synchronize the clocks of all views",
-            "Синхронизировать часы всех видов");
-        toolbar.AddChild(_sync);
-        time.AddChild(SimulatorTheme.Section(WorkspaceText.Choose("Go to date", "Перейти к дате")));
-        var dateFields = new HBoxContainer();
-        time.AddChild(dateFields);
-        var utcDate = new LineEdit { Name = "UtcDate", PlaceholderText = "YYYY-MM-DD", SizeFlagsHorizontal = SizeFlags.ExpandFill };
-        var utcTime = new LineEdit { Name = "UtcTime", PlaceholderText = "HH:MM:SS", SizeFlagsHorizontal = SizeFlags.ExpandFill };
-        dateFields.AddChild(utcDate);
-        dateFields.AddChild(utcTime);
-        utcDate.TextSubmitted += _ => SeekUtc(utcDate.Text, utcTime.Text);
-        utcTime.TextSubmitted += _ => SeekUtc(utcDate.Text, utcTime.Text);
-        var dateActions = new HBoxContainer();
-        time.AddChild(dateActions);
-        AddButton(dateActions, "Now", () =>
-        {
-            DateTime utc = DateTime.UtcNow;
-            SeekUtc(utc.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture), utc.ToString("HH:mm:ss", CultureInfo.InvariantCulture));
-        });
-        AddButton(dateActions, "Go to UTC", () => SeekUtc(utcDate.Text, utcTime.Text));
-        var epochInput = new LineEdit { PlaceholderText = "Julian date (TDB)", Name = "TimePanelEpoch" };
-        epochInput.TextSubmitted += text => SeekTimeline(_active, text);
-        time.AddChild(epochInput);
-        time.AddChild(SimulatorTheme.Section(WorkspaceText.Choose("Step", "Шаг времени")));
-        var steps = new HFlowContainer();
-        time.AddChild(steps);
-        foreach (var (label, seconds) in new[]
-                 { ("−1 y", -31_557_600), ("−1 d", -86400), ("−1 h", -3600), ("+1 h", 3600), ("+1 d", 86400), ("+1 y", 31_557_600) })
-            AddButton(steps, label, () => Advance(_active, seconds));
-        time.AddChild(SimulatorTheme.Section(WorkspaceText.Choose("ΔT model", "Модель ΔT")));
-        _deltaT = new OptionButton { Name = "DeltaTModel" };
-        _deltaT.AddItem("ΔT · Espenak–Meeus", (int)DeltaTModel.EspenakMeeus2006);
-        _deltaT.AddItem("ΔT · Morrison–Stephenson", (int)DeltaTModel.MorrisonStephenson2004);
-        _deltaT.AddItem("ΔT · Fixed offset", (int)DeltaTModel.FixedOffset);
-        _deltaT.ItemSelected += index => SetDeltaT((DeltaTModel)_deltaT.GetItemId((int)index));
-        time.AddChild(_deltaT);
-
-        var calendars = _workspace.AddPage("Calendars", WorkspaceText.Choose("Calendars", "Календари"), "Location");
-        calendars.AddChild(SimulatorTheme.Detail(WorkspaceText.Choose(
-            "Civil day from UTC, or the selected modeled UT1 outside UTC coverage. These calendars do not change the simulation clock.",
-            "Гражданская дата UTC, а вне покрытия — выбранная модель UT1. Эти календари не меняют часы симуляции.")));
-        _otherCalendars = SimulatorTheme.Detail("");
-        _otherCalendars.Name = "CalendarLabels";
-        calendars.AddChild(_otherCalendars);
-        _otherCalendars.VisibilityChanged += () => { if (_otherCalendars.IsVisibleInTree()) UpdateActiveFrame(); };
+        _timePanel = new(_workspace, _viewHost,
+            new(TogglePlaying, Synchronize, SeekUtc, SeekTimeline, Advance, SetDeltaT, UpdateActiveFrame), CivilTimeLabel);
         BuildAlmanacControls();
         BuildObserverCharts();
 
@@ -1658,24 +1603,7 @@ public partial class SolarSystemScene : Control
         _spaceMode.SetPressedNoSignal(!observatory);
         _observatoryMode.SetPressedNoSignal(observatory);
         _observatoryMode.Disabled = _surfaceTextures is null && active.EarthObserver?.IsEarth != false;
-        _sync.Visible = _views.Count > 1;
-        _sync.SetPressedNoSignal(Session.Synchronized);
-        _sync.Text = Session.Synchronized ? WorkspaceText.Choose("Clocks linked", "Часы связаны")
-            : WorkspaceText.Choose("Clocks independent", "Часы раздельны");
-        string playback = active.Playing ? WorkspaceText.Choose("Playing", "Идёт") : WorkspaceText.Choose("Paused", "Пауза");
-        _workspace.Observation.Text = $"{WorkspaceText.Choose("View", "Вид")} {_active + 1} · {playback}";
-        _timeHeading.Text = FormattableString.Invariant($"JD {active.Epoch.ToJulianDate():F6}");
-        _calendarTime.Text = CivilTimeLabel(active.Epoch, Session!.DeltaT);
-        if (_otherCalendars.IsVisibleInTree())
-        {
-            var civilDay = CivilCalendarDisplay.CivilDay(active.Epoch, Session.DeltaT);
-            if (_otherCalendarDay != civilDay?.DayNumber || _otherCalendars.Text.Length == 0)
-            {
-                _otherCalendarDay = civilDay?.DayNumber;
-                _otherCalendars.Text = civilDay is { } date ? CivilCalendarDisplay.Format(date) : "Civil calendars unavailable at this epoch.";
-            }
-        }
-        _playFromPanel.Text = PlaybackButton(active.Playing);
+        _timePanel.Update(_active, active, Session.Synchronized, _views.Count, Session.DeltaT);
         _earthObserver.Update(_active, active, _views[_active].Snapshot, Session.World.Ephemeris, Session.DeltaT,
             Session.World.BrightStars, CurrentObserverNight(), Session.World.EarthPlaces, Session.World);
         _showPlanetOrbits.SetPressedNoSignal(!active.Sky.HideOrbits);
@@ -1873,11 +1801,7 @@ public partial class SolarSystemScene : Control
 
     private static string PlaybackButton(bool playing) => ViewControls.PlaybackButton(playing);
 
-    private static Button AddButton(Container parent, string text, Action onPressed)
-    {
-        var button = new Button { Text = text };
-        button.Pressed += () => onPressed();
-        parent.AddChild(button);
-        return button;
-    }
+    private static Button AddButton(Container parent, string text, Action onPressed) =>
+        SimulatorButtons.Add(parent, text, onPressed);
+
 }

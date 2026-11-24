@@ -6,69 +6,41 @@ namespace SpaceTangent.Godot.Simulation;
 
 public partial class SolarSystemScene
 {
-    private string? _observerPlacesPath;
-    private int _observerPlacesRevision;
-    private double _observerPlacesDelay;
-    private bool _observerPlacesDirty;
-    private bool _observerPlacesEnabled;
+    private ObserverPlaceAutosave? _observerPlaces;
     private bool _restoredStartupWorkspace;
 
     private void RestoreObserverPlaces()
     {
-        _observerPlacesEnabled = !_startupArguments.Any(argument => argument is
-            "--smoke-startup" or "--startup-scenario" or "--startup-default-settings" or "--startup-replay");
-        if (!_observerPlacesEnabled) return;
+        if (_startupArguments.Any(argument => argument is
+            "--smoke-startup" or "--startup-scenario" or "--startup-default-settings" or "--startup-replay")) return;
         string? configured = System.Environment.GetEnvironmentVariable("SPACETANGENT_OBSERVER_PLACES_PATH");
         // Freeze the path before probes or UI actions temporarily change the Delta-T file.
-        _observerPlacesPath = Path.GetFullPath(string.IsNullOrWhiteSpace(configured)
+        _observerPlaces = new(Session!, string.IsNullOrWhiteSpace(configured)
             ? SettingsPath() + ".observer-places.json" : configured);
+        try
         {
-            try
+            int count = _observerPlaces.Restore(adoptSingleDefault: !_restoredStartupWorkspace);
+            if (count > 0)
             {
-                if (File.Exists(_observerPlacesPath))
-                {
-                    int count = ObserverPlacePreferences.Apply(ObserverPlacePreferences.Load(_observerPlacesPath),
-                        Session!, adoptSingleDefault: !_restoredStartupWorkspace);
-                    if (count > 0)
-                    {
-                        Refresh();
-                        GD.Print($"SpaceTangent restored observing places for {count} views.");
-                    }
-                }
+                Refresh();
+                GD.Print($"SpaceTangent restored observing places for {count} views.");
             }
-            catch (Exception error) when (IsLoadError(error))
-            { _status.Text = $"Could not restore observing places. {error.Message}"; }
         }
-        _observerPlacesRevision = Session!.ObserverPlacesVersion;
+        catch (Exception error) when (IsLoadError(error))
+        { _status.Text = $"Could not restore observing places. {error.Message}"; }
     }
 
     private void AdvanceObserverPlaces(double delta)
     {
-        if (!_observerPlacesEnabled || Session is null || _observerPlacesPath is null) return;
-        if (_observerPlacesRevision != Session.ObserverPlacesVersion)
-        {
-            _observerPlacesRevision = Session.ObserverPlacesVersion;
-            _observerPlacesDirty = true;
-            _observerPlacesDelay = .5;
-        }
-        if (_observerPlacesDirty && (_observerPlacesDelay -= delta) <= 0)
-            FlushObserverPlaces();
+        try { _observerPlaces?.Advance(delta); }
+        catch (Exception error) when (IsLoadError(error))
+        { _status.Text = $"Could not save observing places. {error.Message}"; }
     }
 
     private void FlushObserverPlaces()
     {
-        if (!_observerPlacesEnabled || Session is null || _observerPlacesPath is null ||
-            (!_observerPlacesDirty && _observerPlacesRevision == Session.ObserverPlacesVersion)) return;
-        try
-        {
-            ObserverPlacePreferences.Save(_observerPlacesPath, Session);
-            _observerPlacesDirty = false;
-            _observerPlacesRevision = Session.ObserverPlacesVersion;
-        }
+        try { _observerPlaces?.Flush(); }
         catch (Exception error) when (IsLoadError(error))
-        {
-            _status.Text = $"Could not save observing places. {error.Message}";
-            _observerPlacesDelay = 5;
-        }
+        { _status.Text = $"Could not save observing places. {error.Message}"; }
     }
 }

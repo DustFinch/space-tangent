@@ -62,7 +62,7 @@ internal partial class SimulationViewport : Node3D
         AddChild(_camera);
         _camera.LookAt(Vector3.Zero, Vector3.Forward);
         _camera.MakeCurrent();
-        GetViewport().SizeChanged += FitCamera;
+        WatchViewportSize();
         FitCamera();
         _sun = CreateMarker("Sun", new Color("#ffce69"), 4);
         _earth = CreateMarker("Earth", new Color("#6fa8ff"), 3);
@@ -92,6 +92,45 @@ internal partial class SimulationViewport : Node3D
         AddChild(_saturnSurface);
         AddChild(_projectedFrusta);
         AddChild(_footprints);
+    }
+
+    private Viewport? _sizeEvents;
+    private bool _renderResourcesClosed;
+
+    public override void _EnterTree()
+    {
+        // Layout rebuilds detach and reattach the same view. Native resources
+        // survive that transition; only the viewport subscription is rebound.
+        if (_camera is not null && !_renderResourcesClosed) WatchViewportSize();
+    }
+
+    public override void _ExitTree() => DisconnectViewportSize();
+
+    private void WatchViewportSize()
+    {
+        var viewport = GetViewport();
+        if (ReferenceEquals(viewport, _sizeEvents)) return;
+        DisconnectViewportSize();
+        _sizeEvents = viewport;
+        viewport.SizeChanged += FitCamera;
+    }
+
+    private void DisconnectViewportSize()
+    {
+        if (_sizeEvents is { } viewport && GodotObject.IsInstanceValid(viewport))
+            viewport.SizeChanged -= FitCamera;
+        _sizeEvents = null;
+    }
+
+    // Called by the view owner only for final removal/shutdown, not reparenting.
+    internal void CloseOwnedResources()
+    {
+        if (_renderResourcesClosed) return;
+        _renderResourcesClosed = true;
+        DisconnectViewportSize();
+        _missionTrailRendering?.Close();
+        _opticalRendering?.Close();
+        ReleaseImportedDrawingResources();
     }
 
     private void FitCamera()
@@ -147,11 +186,13 @@ internal partial class SimulationViewport : Node3D
         _footprintMaterials = asset?.Sensors.Select(sensor => LineMaterial(sensor.Color, sensor.FootprintOpacity)).ToArray() ?? [];
     }
 
-    internal static ArrayMesh? CreateFrusta(IReadOnlyList<SpiceSensor> sensors)
+    internal static ArrayMesh? CreateFrusta(IReadOnlyList<SpiceSensor> sensors, GpuAssetPublication? publication = null)
     {
         if (sensors.Count == 0)
             return null;
+        using var asset = new GpuAssetPublication.AssetScope(publication);
         var mesh = new ArrayMesh();
+        asset.Own(mesh);
         foreach (SpiceSensor sensor in sensors)
         {
             // Body coordinates in the same kilometers-per-unit scale as the mission view.
@@ -171,9 +212,11 @@ internal partial class SimulationViewport : Node3D
             arrays.Resize((int)Mesh.ArrayType.Max);
             arrays[(int)Mesh.ArrayType.Vertex] = lines;
             mesh.AddSurfaceFromArrays(Mesh.PrimitiveType.Lines, arrays);
-            mesh.SurfaceSetMaterial(mesh.GetSurfaceCount() - 1, LineMaterial(sensor.Color, sensor.FrustumOpacity));
+            var material = LineMaterial(sensor.Color, sensor.FrustumOpacity);
+            asset.Own(material);
+            mesh.SurfaceSetMaterial(mesh.GetSurfaceCount() - 1, material);
         }
-        return mesh;
+        return asset.Complete(mesh);
     }
 
     private static StandardMaterial3D LineMaterial(Vector3d color, double opacity) => new()

@@ -751,6 +751,10 @@ public partial class BootstrapSmoke : Node
             MeshInstance3D model = renderer.MissionMesh;
             var originalWorld = session.World;
             Mesh originalModel = model.Mesh;
+            // A replaced generation releases its mesh wrapper. Preserve the same
+            // expected geometry while that generation is still the active owner.
+            int originalSurfaceCount = originalModel.GetSurfaceCount();
+            Aabb originalBounds = originalModel.GetAabb();
             File.WriteAllText(Path.Combine(root.FullName, "unused.txt"), "The loader never reads this file.");
             Require(await scene.ReloadAddOns() && ReferenceEquals(originalWorld, session.World) &&
                 ReferenceEquals(originalModel, model.Mesh), "Unobserved files must preserve the cached world and model.");
@@ -783,8 +787,8 @@ public partial class BootstrapSmoke : Node
                 "The controlled edit must preserve both the original timestamp and file size.");
             Require(await scene.ReloadAddOns(), "The equal-size SSC edit must reload successfully.");
             Require(model.Visible && model.Mesh is ArrayMesh refreshed &&
-                refreshed.GetSurfaceCount() == originalModel.GetSurfaceCount() &&
-                refreshed.GetAabb() == originalModel.GetAabb() && refreshed.GetAabb() != overrideBounds,
+                refreshed.GetSurfaceCount() == originalSurfaceCount &&
+                refreshed.GetAabb() == originalBounds && refreshed.GetAabb() != overrideBounds,
                 "The equal-size edit must restore the original Cassini geometry.");
             Require(ReferenceEquals(satellite, renderer.SatelliteMesh(new ObjectId("norad/26997"))),
                 "The equal-size edit must reuse the unaffected Jason-1 node.");

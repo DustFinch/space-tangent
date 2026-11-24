@@ -11,10 +11,11 @@ internal sealed record PreparedMissionSwarm(MissionSwarmStyle Style, ArrayMesh M
 internal static class MissionSwarmRendering
 {
     internal static PreparedMissionSwarm Publish(MissionSwarmStyle style,
-        Dictionary<string, (ArrayMesh Mesh, Texture2D Data)> resources)
+        Dictionary<string, (ArrayMesh Mesh, Texture2D Data)> resources, GpuAssetPublication? publication = null)
     {
         if (!resources.TryGetValue(style.SourcePath, out var shared))
         {
+            using var asset = new GpuAssetPublication.AssetScope(publication);
             var elements = style.Elements;
             const int width = 1024, maxHeight = 8192;
             int height = (int)((elements.Count * 3L + width - 1) / width);
@@ -34,11 +35,12 @@ internal static class MissionSwarmRendering
             arrays.Resize((int)Mesh.ArrayType.Max);
             arrays[(int)Mesh.ArrayType.Vertex] = points;
             arrays[(int)Mesh.ArrayType.TexUV] = coordinates;
-            var mesh = new ArrayMesh();
+            var mesh = new ArrayMesh(); asset.Own(mesh);
             mesh.AddSurfaceFromArrays(Mesh.PrimitiveType.Points, arrays);
             float radius = elements.BoundingRadiusKilometers;
             mesh.CustomAabb = new(-Vector3.One * radius, Vector3.One * (2 * radius));
-            shared = (mesh, ImageTexture.CreateFromImage(image));
+            var texture = ImageTexture.CreateFromImage(image); asset.Own(texture);
+            shared = (asset.Complete(mesh), texture);
             resources.Add(style.SourcePath, shared);
         }
         return new(style, shared.Mesh, shared.Data);

@@ -692,6 +692,8 @@ public partial class SolarSystemScene : Control
         _galacticSky.Dispose();
         _brightSky?.Surveys.Dispose();
         _addonResources.Retire(_addOns?.Decoded.DistantStars.Value);
+        foreach (var view in _views) view.Renderer.CloseOwnedResources();
+        _addOns?.Dispose();
         _eventSearch.Dispose();
         _almanacSearch.Dispose();
         _chartSearch.Dispose();
@@ -871,7 +873,11 @@ public partial class SolarSystemScene : Control
 
     private void RemoveViewPanel(int index) => _viewHost.RemovePanel(index);
 
-    private void RemoveViewMedia(SimulationViewport renderer) => _scriptPlayer?.RemoveView(renderer);
+    private void RemoveViewMedia(SimulationViewport renderer)
+    {
+        _scriptPlayer?.RemoveView(renderer);
+        renderer.CloseOwnedResources();
+    }
 
     private void SetSplitLayout(ViewSplit layout)
     {
@@ -1215,6 +1221,7 @@ public partial class SolarSystemScene : Control
         CancellationToken token = BeginLoad();
         int generation = _loadGeneration;
         AddonPreparation.DecodedAddOns? candidate = null;
+        AddonGeneration? publishedCandidate = null;
         try
         {
             _status.Text = "Reloading add-ons…";
@@ -1225,7 +1232,7 @@ public partial class SolarSystemScene : Control
             var decoded = candidate = await AddonLoader.Load(Session!.World.Ephemeris, previous?.Decoded, settings, _localAddonFile, _brightSky?.Catalogue, token);
             if (!CanPublish(generation, token))
                 return false;
-            AddonGeneration next = AddonDiagnostics.Read(AddonStage.RenderResources, null, () => AddonLoader.Publish(decoded, previous));
+            AddonGeneration next = publishedCandidate = AddonDiagnostics.Read(AddonStage.RenderResources, null, () => AddonLoader.Publish(decoded, previous));
             int[] surfaceFallbacks = [];
             if (!ReferenceEquals(previous, next))
             {
@@ -1242,6 +1249,7 @@ public partial class SolarSystemScene : Control
                 Refresh();
                 // Retire the previous index after every live view has switched successfully.
                 DisposeSupersededStars(previous?.Decoded);
+                previous?.Dispose();
             }
             else if (requested is not null)
                 _localAddonFile.Save(requested);
@@ -1271,6 +1279,8 @@ public partial class SolarSystemScene : Control
         finally
         {
             DisposeSupersededStars(candidate);
+            if (publishedCandidate is not null && !ReferenceEquals(publishedCandidate, _addOns))
+                publishedCandidate.Dispose();
             if (CanPublish(generation, token))
             {
                 _localAddonPanel.SetBusy(false);

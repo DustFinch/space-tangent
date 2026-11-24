@@ -23,6 +23,14 @@ internal sealed class OpticalRendering
     private Vector2 _lastOpticalSize;
     private ulong _nextOpticalUpdate;
 
+    internal void Close()
+    {
+        _lastOpticalFrame = null;
+        _opticalView = null;
+        _opticalMaterial?.Dispose();
+        _opticalMaterial = null;
+    }
+
     internal bool EyepieceVisible => _opticalLayer?.Visible == true;
 
     internal void Process(double delta)

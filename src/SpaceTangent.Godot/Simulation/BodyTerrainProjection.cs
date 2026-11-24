@@ -11,14 +11,17 @@ namespace SpaceTangent.Godot.Simulation;
 
 internal sealed record BodyTerrainAsset(Texture2D Heights, float RadiusKilometers, Mesh Globe, Mesh Patch)
 {
-    internal static BodyTerrainAsset Publish(DecodedBodyTerrain decoded)
+    internal static BodyTerrainAsset Publish(DecodedBodyTerrain decoded, GpuAssetPublication? publication = null)
     {
+        using var asset = new GpuAssetPublication.AssetScope(publication);
         using Image image = Image.CreateFromData(decoded.Width, decoded.Height, false, Image.Format.Rf, decoded.Meters);
         if (image.IsEmpty())
             throw new InvalidDataException("Could not create the terrain height texture.");
-        return new(ImageTexture.CreateFromImage(image), decoded.RadiusKilometers,
-            new SphereMesh { Radius = 1, Height = 2, RadialSegments = 256, Rings = 128 },
-            new PlaneMesh { Size = new(2, 2), SubdivideWidth = 191, SubdivideDepth = 191 });
+        var heights = ImageTexture.CreateFromImage(image); asset.Own(heights);
+        var globe = new SphereMesh { Radius = 1, Height = 2, RadialSegments = 256, Rings = 128 }; asset.Own(globe);
+        var patch = new PlaneMesh { Size = new(2, 2), SubdivideWidth = 191, SubdivideDepth = 191 }; asset.Own(patch);
+        asset.Complete(heights);
+        return new(heights, decoded.RadiusKilometers, globe, patch);
     }
 }
 

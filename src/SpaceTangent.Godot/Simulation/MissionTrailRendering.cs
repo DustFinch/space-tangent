@@ -13,6 +13,13 @@ internal sealed class MissionTrailRendering
     private readonly Node3D _parent;
     internal MissionTrailRendering(Node3D parent) => _parent = parent;
     internal void Hide() => _missionTrailNode?.Hide();
+    internal void Close()
+    {
+        Reset();
+        _missionTrailNode?.MaterialOverride?.Dispose();
+        _missionTrailMesh?.Dispose();
+        _missionTrailMesh = null;
+    }
     private MeshInstance3D? _missionTrailNode;
     private ImmediateMesh? _missionTrailMesh;
     private readonly RollingSamples<(SimulationWorld World, ObjectId Id, ObjectId Center, MissionDisplay Style, DeltaTModel? Model), JulianInstant,

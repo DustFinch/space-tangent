@@ -54,6 +54,11 @@ internal sealed class SurfaceTileTexture
     }
 
     internal int Count => _map.Tiles.Count;
+    internal void RegisterOwned(Action<Resource> own)
+    {
+        own(_pages);
+        foreach (var pool in _pools.Distinct()) own(pool);
+    }
 
     internal void Bind(ShaderMaterial material, bool normal)
     {

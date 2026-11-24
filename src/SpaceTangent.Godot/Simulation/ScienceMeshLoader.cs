@@ -8,14 +8,16 @@ namespace SpaceTangent.Godot.Simulation;
 
 internal static class ScienceMeshLoader
 {
-    internal static ArrayMesh Publish(DecodedScienceModel source, string meshPath, bool litBody = false, Texture2D? bodySurface = null) =>
-        AddonDiagnostics.Read(AddonStage.RenderResources, meshPath, () => PublishCore(source, meshPath, litBody, bodySurface));
+    internal static ArrayMesh Publish(DecodedScienceModel source, string meshPath, bool litBody = false, Texture2D? bodySurface = null, GpuAssetPublication? publication = null) =>
+        AddonDiagnostics.Read(AddonStage.RenderResources, meshPath, () => PublishCore(source, meshPath, litBody, bodySurface, publication));
 
-    private static ArrayMesh PublishCore(DecodedScienceModel source, string meshPath, bool litBody, Texture2D? bodySurface)
+    private static ArrayMesh PublishCore(DecodedScienceModel source, string meshPath, bool litBody, Texture2D? bodySurface, GpuAssetPublication? publication)
     {
         if (source.Surfaces.Count == 0)
             throw new InvalidDataException("This model must contain triangle surfaces.");
+        using var asset = new GpuAssetPublication.AssetScope(publication);
         var mesh = new ArrayMesh();
+        asset.Own(mesh);
         var textures = new Dictionary<string, Texture2D>(StringComparer.Ordinal);
         Shader? shader = litBody ? GD.Load<Shader>("res://Shaders/planet_moon_model.gdshader") : null;
         foreach (DecodedSurface surface in source.Surfaces)
@@ -38,6 +40,7 @@ internal static class ScienceMeshLoader
                 bool blend = definition.AlphaCutoff is null && (definition.AlphaBlend || definition.Opacity < 1);
                 string path = blend ? "res://Shaders/model_emission_alpha.gdshader" : "res://Shaders/model_emission.gdshader";
                 var glowing = new ShaderMaterial { Shader = GD.Load<Shader>(path) };
+                asset.Own(glowing);
                 glowing.SetShaderParameter("base_color", color);
                 if (albedo is not null)
                     glowing.SetShaderParameter("albedo_map", albedo);
@@ -56,6 +59,7 @@ internal static class ScienceMeshLoader
                 {
                     Shader = hasSpecular ? GD.Load<Shader>("res://Shaders/planet_moon_model_specular.gdshader") : shader
                 };
+                asset.Own(body);
                 body.SetShaderParameter("base_color", definition.Texture is null && bodySurface is not null ? Colors.White : color);
                 if (hasSpecular)
                 {
@@ -106,6 +110,7 @@ internal static class ScienceMeshLoader
                     EmissionTexture = definition.EmissionTexture is { } glow ? Texture(glow) : null
                 };
             }
+            asset.Own(material);
             if (definition.NormalTexture is { } normal)
             {
                 arrays[(int)Mesh.ArrayType.Tangent] = Tangents(vertices, normals, uvs);
@@ -115,7 +120,7 @@ internal static class ScienceMeshLoader
             mesh.AddSurfaceFromArrays(Mesh.PrimitiveType.Triangles, arrays);
             mesh.SurfaceSetMaterial(mesh.GetSurfaceCount() - 1, material);
         }
-        return mesh;
+        return asset.Complete(mesh, bodySurface);
 
         Texture2D Texture(string name)
         {
@@ -138,6 +143,7 @@ internal static class ScienceMeshLoader
             if (litBody && !image.IsCompressed() && !image.HasMipmaps())
                 image.GenerateMipmaps();
             textures.Add(name, available = ImageTexture.CreateFromImage(image));
+            asset.Own(available);
             return available;
         }
     }

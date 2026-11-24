@@ -70,6 +70,17 @@ internal partial class SimulationViewport
 
     internal MeshInstance3D? ImportedRingNode(ObjectId id) => _importedRings.GetValueOrDefault(id);
 
+    private void ReleaseImportedDrawingResources()
+    {
+        foreach (var mesh in _missionVectorMeshes.Values)
+            mesh.Dispose();
+        _missionVectorMeshes.Clear();
+        _missionDirectionLabels.Clear();
+        foreach (var material in _missionTileMaterials.Values)
+            material.Dispose();
+        _missionTileMaterials.Clear();
+    }
+
     internal void ReplaceImportedBodies(IReadOnlyList<PreparedImportedBody> assets)
     {
         if (ReferenceEquals(_importedAssets, assets))
@@ -90,13 +101,7 @@ internal partial class SimulationViewport
         }
         _importedRings.Clear();
         _missionObservations.Clear();
-        foreach (var mesh in _missionVectorMeshes.Values)
-            mesh.Dispose();
-        _missionVectorMeshes.Clear();
-        _missionDirectionLabels.Clear();
-        foreach (var material in _missionTileMaterials.Values)
-            material.Dispose();
-        _missionTileMaterials.Clear();
+        ReleaseImportedDrawingResources();
         foreach (PreparedImportedBody asset in assets)
         {
             var color = asset.Color;

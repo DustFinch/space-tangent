@@ -21,18 +21,11 @@ internal partial class SimulationViewport : Node3D
     private const double OverviewKilometersPerUnit = 1_000_000;
     private const double LunarKilometersPerUnit = 4_000;
     private const double SatelliteKilometersPerUnit = 75;
-    private const double MissionKilometersPerUnit = 2500;
+    private const double MissionKilometersPerUnit = MissionCameraRendering.KilometersPerUnit;
 
     private Camera3D _camera = null!;
     private Node3D _sun = null!, _earth = null!, _moon = null!, _saturn = null!;
-    private PreparedMission? _mission;
-    private PreparedMission? _timeline;
-    private PreparedProbe? _probe;
-    private MeshInstance3D _missionNode = null!, _missionFrusta = null!;
-    private Label3D _missionLabel = null!;
-    private MeshInstance3D _saturnSurface = null!, _projectedFrusta = null!, _footprints = null!;
-    private readonly ImmediateMesh _projectionMesh = new(), _footprintMesh = new();
-    private StandardMaterial3D[] _footprintMaterials = [];
+    private MissionCameraRendering _missionRendering = null!;
     private SurfaceProjection? _surface;
     private BodyTerrainProjection? _terrain;
     private BodyTerrainAsset? _terrainAsset;
@@ -47,7 +40,7 @@ internal partial class SimulationViewport : Node3D
     internal Vector3 EarthPosition => _earth.Position;
     internal Vector3 MoonPosition => _moon.Position;
     internal bool MoonVisible => _moon.Visible;
-    internal string? ProbeStatus { get; private set; }
+    internal string? ProbeStatus => _missionRendering?.ProbeStatus;
     internal BodyTerrainProjection? Terrain => _terrain;
     internal BodyTerrainProjection? MarsTerrain => _marsTerrain;
 
@@ -70,28 +63,7 @@ internal partial class SimulationViewport : Node3D
         InitializeNavigation();
         InitializePlanets();
         _saturn = CreateMarker("Saturn barycenter", new Color("#d9bb7f"), 9);
-        _missionNode = new MeshInstance3D { Visible = false };
-        AddChild(_missionNode);
-        _missionLabel = CreateLabel("Cassini", Vector3.Zero);
-        _missionLabel.Hide();
-        AddChild(_missionLabel);
-        _missionFrusta = new MeshInstance3D { Visible = false };
-        AddChild(_missionFrusta);
-        _saturnSurface = new MeshInstance3D
-        {
-            Mesh = new SphereMesh { Radius = 1, Height = 2, RadialSegments = 128, Rings = 64 },
-            MaterialOverride = new StandardMaterial3D
-            {
-                AlbedoColor = new Color("#806e52"),
-                ShadingMode = BaseMaterial3D.ShadingModeEnum.Unshaded
-            },
-            Visible = false
-        };
-        _projectedFrusta = new MeshInstance3D { Mesh = _projectionMesh, Visible = false };
-        _footprints = new MeshInstance3D { Mesh = _footprintMesh, Visible = false };
-        AddChild(_saturnSurface);
-        AddChild(_projectedFrusta);
-        AddChild(_footprints);
+        _missionRendering = new(this, _camera, _sun, _saturn, HideOrbitalMarkers, CreateLabel, LineMaterial);
     }
 
     private Viewport? _sizeEvents;
@@ -128,6 +100,7 @@ internal partial class SimulationViewport : Node3D
         if (_renderResourcesClosed) return;
         _renderResourcesClosed = true;
         DisconnectViewportSize();
+        _missionRendering?.Close();
         _missionTrailRendering?.Close();
         _opticalRendering?.Close();
         ReleaseImportedDrawingResources();
@@ -163,28 +136,17 @@ internal partial class SimulationViewport : Node3D
 
     internal MeshInstance3D SatelliteMesh(ObjectId id) => _satellites[id].Node;
 
-    internal MeshInstance3D MissionMesh => _missionNode;
+    internal MeshInstance3D MissionMesh => _missionRendering.MissionMesh;
     internal bool MissionUsesSun => _sun.Visible;
-    internal bool MissionUsesSaturn => _saturn.Visible || _saturnSurface.Visible;
-    internal MeshInstance3D MissionFrusta => _missionFrusta;
-    internal MeshInstance3D MissionProjectedFrusta => _projectedFrusta;
-    internal bool MissionFootprintVisible => _footprints.Visible;
-    internal bool MissionProjectionVisible => _projectedFrusta.Visible;
-    internal int MissionFootprintCount => _footprintMesh.GetSurfaceCount();
+    internal bool MissionUsesSaturn => _missionRendering.MissionUsesSaturn;
+    internal MeshInstance3D MissionFrusta => _missionRendering.MissionFrusta;
+    internal MeshInstance3D MissionProjectedFrusta => _missionRendering.MissionProjectedFrusta;
+    internal bool MissionFootprintVisible => _missionRendering.MissionFootprintVisible;
+    internal bool MissionProjectionVisible => _missionRendering.MissionProjectionVisible;
+    internal int MissionFootprintCount => _missionRendering.MissionFootprintCount;
 
-    internal void ReplaceMission(PreparedMission? asset, PreparedMission? timeline, PreparedProbe? probe)
-    {
-        if (ReferenceEquals(_mission, asset) && ReferenceEquals(_timeline, timeline) && ReferenceEquals(_probe, probe))
-            return;
-        _mission = asset;
-        _timeline = timeline;
-        _probe = probe;
-        _missionNode.Hide();
-        _missionLabel.Hide();
-        _missionFrusta.Mesh = asset?.Frusta;
-        _missionFrusta.Hide();
-        _footprintMaterials = asset?.Sensors.Select(sensor => LineMaterial(sensor.Color, sensor.FootprintOpacity)).ToArray() ?? [];
-    }
+    internal void ReplaceMission(PreparedMission? asset, PreparedMission? timeline, PreparedProbe? probe) =>
+        _missionRendering.ReplaceMission(asset, timeline, probe);
 
     internal static ArrayMesh? CreateFrusta(IReadOnlyList<SpiceSensor> sensors, GpuAssetPublication? publication = null)
     {
@@ -290,13 +252,7 @@ internal partial class SimulationViewport : Node3D
         if (_surface is not null) _surface.IncrementalPaths = IncrementalPaths && ArchivedGeometry is null;
         SolarSystemSample sample = snapshot.SolarSystem ?? throw new InvalidOperationException("The view needs a solar-system snapshot.");
         _saturn.Hide();
-        _missionNode.Hide();
-        _missionLabel.Hide();
-        _missionFrusta.Hide();
-        _saturnSurface.Hide();
-        _projectedFrusta.Hide();
-        _footprints.Hide();
-        ProbeStatus = null;
+        _missionRendering.Hide();
         _terrain?.Hide();
         _marsTerrain?.Hide();
         HidePlanetOverview();
@@ -324,9 +280,9 @@ internal partial class SimulationViewport : Node3D
         }
 
         if (observer.Mode is CameraMode.Mission or CameraMode.Timeline)
-            return DrawMission(snapshot, observer.Mode == CameraMode.Timeline);
+            return _missionRendering.DrawMission(snapshot, observer.Mode == CameraMode.Timeline);
         if (observer.Mode == CameraMode.Probe)
-            return DrawProbe(snapshot);
+            return _missionRendering.DrawProbe(snapshot);
         if (observer.Mode == CameraMode.LunarTerrain)
         {
             HideOrbitalMarkers();
@@ -386,78 +342,6 @@ internal partial class SimulationViewport : Node3D
         return observer.Mode != CameraMode.Surface;
     }
 
-    private bool DrawMission(WorldSnapshot snapshot, bool timeline)
-    {
-        HideOrbitalMarkers();
-
-        _camera.Size = 210;
-        PreparedMission? mission = timeline ? _timeline : _mission;
-        if (mission is null)
-            return false;
-        SaturnSurfacePose pose = default;
-        bool hasSurface = !timeline && mission.Surface?.TrySample(snapshot.Epoch, out pose) == true;
-        _saturn.Visible = !timeline;
-        if (hasSurface)
-            DrawSaturn(pose);
-        if (!snapshot.TryState(mission.Id, out var state) ||
-            !snapshot.TryStateCenter(mission.Id, out ObjectId centerId) || !snapshot.TryState(centerId, out var center))
-            return false;
-
-        Vector3d observer = (state - center).PositionKilometers;
-        double scale = MissionKilometersPerUnit;
-        if (timeline)
-        {
-            scale = Math.Max(scale, observer.Length / 75);
-            _saturn.Visible = centerId == SolarSystemSample.SaturnBarycenterId;
-            _sun.Visible = centerId == SolarSystemSample.SunId;
-            _sun.Position = Vector3.Zero;
-        }
-        Vector3 position = ToGodot(observer, scale);
-        _camera.Size = Math.Max(210, 2.5f * position.Length());
-        if (!snapshot.TryOrientation(mission.Id, out var rotation))
-            return false;
-
-        Basis3d body = rotation.ToWorld;
-        var attitude = new Basis(ToGodot(body.X, 1), ToGodot(body.Y, 1), ToGodot(body.Z, 1));
-        if (_missionNode.Mesh != mission.Mesh)
-            _missionNode.Mesh = mission.Mesh;
-        _missionNode.Transform = new(attitude.Scaled(Vector3.One * mission.MarkerScale), position);
-        _missionNode.Show();
-        _missionLabel.Position = position + new Vector3(0, 0, 9);
-        _missionLabel.Show();
-        if (hasSurface && mission.Frusta is not null)
-            DrawProjectedFrusta(mission, pose, observer, body);
-        else if (mission.Frusta is not null)
-        {
-            _missionFrusta.Transform = new(attitude, position);
-            _missionFrusta.Show();
-        }
-        return true;
-    }
-
-    private bool DrawProbe(WorldSnapshot snapshot)
-    {
-        HideOrbitalMarkers();
-        _camera.Size = 60;
-        if (_probe is not { } probe || !snapshot.TryOrientation(probe.Track.Id, out var rotation) ||
-            !snapshot.TryState(probe.Track.Id, out var state) ||
-            !snapshot.TryStateCenter(probe.Track.Id, out var centerId) || !snapshot.TryState(centerId, out var center))
-            return false;
-
-        Basis3d body = rotation.ToWorld, mesh = probe.Track.MeshToBody;
-        Vector3 Column(Vector3d value) => ToGodot(body.Transform(value), 1) * probe.MarkerScale;
-        _missionNode.Mesh = probe.Mesh;
-        _missionNode.Transform = new(new Basis(Column(mesh.X), Column(mesh.Y), Column(mesh.Z)), Vector3.Zero);
-        _missionNode.Show();
-        double distance = (state - center).PositionKilometers.Length;
-        ProbeStatus = centerId == probe.Track.Carrier
-            ? FormattableString.Invariant($"Attached to Cassini · {distance * 1000:F2} m")
-            : snapshot.Epoch.CompareTo(probe.Track.Landing) < 0
-                ? FormattableString.Invariant($"Free flight · {distance:F1} km from Titan center")
-                : "Landed on Titan";
-        return true;
-    }
-
     private void HideOrbitalMarkers()
     {
         _sun.Hide();
@@ -465,77 +349,6 @@ internal partial class SimulationViewport : Node3D
         _moon.Hide();
         foreach (var (_, node) in _satellites.Values)
             node.Hide();
-    }
-
-    private void DrawSaturn(SaturnSurfacePose pose)
-    {
-        Basis3d matrix = pose.InertialToFixed;
-        Vector3 x = ToGodot(new(matrix.X.X, matrix.Y.X, matrix.Z.X), 1);
-        Vector3 y = ToGodot(new(matrix.X.Y, matrix.Y.Y, matrix.Z.Y), 1);
-        Vector3 z = ToGodot(new(matrix.X.Z, matrix.Y.Z, matrix.Z.Z), 1);
-        Vector3d radii = pose.RadiiKilometers / MissionKilometersPerUnit;
-        _saturnSurface.Transform = new(new Basis(x * (float)radii.X, y * (float)radii.Y, z * (float)radii.Z),
-            ToGodot(pose.CenterKilometers, MissionKilometersPerUnit));
-        _saturn.Hide();
-        _saturnSurface.Show();
-    }
-
-    private void DrawProjectedFrusta(PreparedMission mission, SaturnSurfacePose pose, Vector3d observer, Basis3d attitude)
-    {
-        const int EdgeSamples = 12;
-        _projectionMesh.ClearSurfaces();
-        _footprintMesh.ClearSurfaces();
-        Vector3 apex = ToGodot(observer, MissionKilometersPerUnit);
-        for (int index = 0; index < mission.Sensors.Count; index++)
-        {
-            SpiceSensor sensor = mission.Sensors[index];
-            var surfaceSegments = new List<Vector3>();
-            _projectionMesh.SurfaceBegin(Mesh.PrimitiveType.Lines, mission.Frusta!.SurfaceGetMaterial(index));
-            for (int edge = 0; edge < sensor.CornersInBody.Count; edge++)
-            {
-                Vector3d first = sensor.CornersInBody[edge];
-                Vector3d second = sensor.CornersInBody[(edge + 1) % sensor.CornersInBody.Count];
-                Vector3 previous = default;
-                bool previousHit = false;
-                for (int sample = 0; sample <= EdgeSamples; sample++)
-                {
-                    Vector3d ray = attitude.Transform(first + (second - first) * (sample / (double)EdgeSamples));
-                    bool hit = pose.TryIntercept(observer, ray, sensor.RangeKilometers, out var endpoint);
-                    if (hit)
-                        endpoint = pose.CenterKilometers + (endpoint - pose.CenterKilometers) * 1.0005;
-                    else
-                        endpoint = observer + ray / ray.Length * sensor.RangeKilometers;
-                    Vector3 point = ToGodot(endpoint, MissionKilometersPerUnit);
-                    if (sample == 0)
-                    {
-                        _projectionMesh.SurfaceAddVertex(apex);
-                        _projectionMesh.SurfaceAddVertex(point);
-                    }
-                    else if (hit && previousHit)
-                    {
-                        surfaceSegments.Add(previous);
-                        surfaceSegments.Add(point);
-                    }
-                    else if (!hit && !previousHit)
-                    {
-                        _projectionMesh.SurfaceAddVertex(previous);
-                        _projectionMesh.SurfaceAddVertex(point);
-                    }
-                    previous = point;
-                    previousHit = hit;
-                }
-            }
-            _projectionMesh.SurfaceEnd();
-            if (surfaceSegments.Count > 0)
-            {
-                _footprintMesh.SurfaceBegin(Mesh.PrimitiveType.Lines, _footprintMaterials[index]);
-                foreach (Vector3 point in surfaceSegments)
-                    _footprintMesh.SurfaceAddVertex(point);
-                _footprintMesh.SurfaceEnd();
-            }
-        }
-        _projectedFrusta.Show();
-        _footprints.Visible = _footprintMesh.GetSurfaceCount() > 0;
     }
 
     private static Vector3 ToGodot(Vector3d value, double scale) =>

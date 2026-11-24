@@ -49,6 +49,7 @@ public partial class ClosedViewportProbe : Node
 
     private static void CheckClosed(SimulationViewport view)
     {
+        Require(view.PickObject(default) is null, "Closed picking must not access native nodes, including before Ready and after Free.");
         Require(!view.Draw(default, null!, default), "Closed drawing must be a no-op even with unavailable frame data.");
         view.DrawReferenceMarks(default, null);
         view.DrawShip(null, null);

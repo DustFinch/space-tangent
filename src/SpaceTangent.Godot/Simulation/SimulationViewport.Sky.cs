@@ -88,5 +88,5 @@ internal partial class SimulationViewport
     internal bool TransientStarVisible(ObjectId id) => _renderResourcesClosed ? false : (_spaceSky?.TransientVisible(id) == true);
 
     internal ObjectId? PickObject(Vector2 position) =>
-        InsideEyepiece(position) ? PickNavigationBody(position) ?? _surface?.PickStar(position) ?? _spaceSky?.Pick(position) : null;
+        !_renderResourcesClosed && InsideEyepiece(position) ? PickNavigationBody(position) ?? _surface?.PickStar(position) ?? _spaceSky?.Pick(position) : null;
 }

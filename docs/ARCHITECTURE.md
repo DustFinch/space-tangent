@@ -63,3 +63,40 @@ Scientific values, persistence, rendered images and performance have separate ch
 Performance comparisons use the same workload, inputs, runtime, hardware and resolution without coverage instrumentation. Raw profiles include allocation and GC context, and frame readbacks are reported as wall time. Test scenes and diagnostic workload hosts are excluded from exported releases. See [coverage and acceptance](TEST_COVERAGE.md) for the evidence and failure policies.
 
 Godot probes keep their scenario entry scenes and markers. ProbeHost shares engine-local assertions, frame waits, explicit scene cleanup and coverage-aware exit; scenarios retain their own timeouts and negative expectations. A matrix run can declare a narrow measured assembly scope, while final acceptance still requires all four production modules independently at 95%.
+
+## Responsibility crosswalk
+
+This maps production ownership, not a list of renamed files. Existing entry points remain available.
+
+| Previous owner | Responsibility | Current owner |
+| --- | --- | --- |
+| SimulationSession.cs | Installed model graph construction | SimulationWorldAssembly |
+| SimulationSession.cs | Linked and independent clocks | ObserverClock through SimulationSession |
+| SimulationSession.cs | Whole-scenario validation and restoration | ScenarioRestoration |
+| SimulationSession.cs | Camera entry constraints | CameraModeRules |
+| SimulationSession.cs | Observer-compatible world replacement and rollback | WorldReplacementPlan and the session commit boundary |
+| Godot AddonLoader | Worker-side I/O, dependency capture and decoded assets | Application AddonPreparation with explicit inputs |
+| SolarSystemScene | Latest-request cancellation | AddonLoadCoordinator; native lifetime stays in adapter |
+| SolarSystemScene | View controls, layout and callback remapping | ObserverViewHost |
+| SolarSystemScene | Gesture state and navigation input | ObserverNavigationInput |
+| SolarSystemScene | Time/calendar and layer widgets | ObserverTimePanel and ObserverLayersPanel |
+| SolarSystemScene | Foreground scripting and media | ObserverScriptPlayer with narrow operation ports |
+| SolarSystemScene | Place autosave, bookmarks and workspace streams | ObserverPlaceAutosave, ObserverBookmarkStore, ObserverWorkspaceReader |
+| SolarSystemScene | Deferred catalogue retirement | SharedResourceRetirement and captured calculation scopes |
+| Implicit resource wrappers | Shared GPU candidate publication and release | GpuAssetPublication per-asset groups and PublishedRenderAssets |
+| SimulationViewport | Trail cache, scheduler and mesh | MissionTrailRendering |
+| SimulationViewport | Eyepiece and resize redraw | OpticalRendering |
+| SimulationViewport | Mission camera, probes and sensors | MissionCameraRendering |
+| SimulationViewport | Survey/sky canvases and environment | SkyPresentation |
+| SimulationViewport | Schematic planet markers and paths | PlanetOverviewRendering |
+| SimulationViewport | Live and recorded stars | StellarRendering and RecordedStarRendering |
+| SimulationViewport | Axes, grids and terminator meshes | ReferenceMarkRendering |
+| SampledMissionCatalog | JSON document graph and traversal lifetime | MissionDocumentSet |
+| SampledMissionCatalog | Ordered pool and runtime object binding | MissionRuntimeBinding |
+| SscBodyCatalogue | Ordered sources, symbols and resource resolution | SscInstallationInputs and narrow SscResourceContext |
+| SscBodyCatalogue | Parent traversal, cycles and rejected references | SscRuntimeBinding |
+| Six probe entry facades | Frame waits, assertions and completion protocol | ProbeHost; assertions and markers remain scenario-specific |
+
+SolarSystemScene still composes the engine tree and coordinates each frame. SimulationViewport still prepares coordinates, preserves stage ordering and handles picking. Existing surface, atmosphere, ring, annotation and compact-lens owners remain in place. There is no new global event bus, dependency-injection framework or universal importer.
+
+The world-replacement preparation and synchronous preference rollback boundaries also fix two independently reproduced failure cases: a later observer evaluation could previously leave an earlier observer changed, and failed preference persistence could leave a newly applied world active. Their regression tests are separate from the mechanical extractions.

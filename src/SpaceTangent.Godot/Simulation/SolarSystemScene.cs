@@ -19,8 +19,8 @@ public partial class SolarSystemScene : Control
     private static readonly int NavigationOption = ObserverViewHost.NavigationOption;
     private readonly ObserverViewHost _viewHost = new();
     private List<ViewControls> _views => _viewHost.Views;
-    private readonly HashSet<Key> _freeFlightKeys = [];
-    private bool _freeFlightBoost;
+    private ObserverNavigationInput? _navigationInput;
+    private ObserverNavigationInput Navigation => _navigationInput ??= new(this, _viewHost);
     private AddonGeneration? _addOns;
     private LocalAddonSettings _localAddons = LocalAddonSettings.Empty;
     private LocalAddonSettingsFile _localAddonFile = null!;
@@ -230,6 +230,8 @@ public partial class SolarSystemScene : Control
             new(JulianInstant.J2000Day, 0, TimeScale.Tdb), ReadDeltaT());
         Session.OpenSpaceView(0);
         Session.SetSkyLayers(0, Session[0].Sky with { Stars = true });
+        Navigation.Initialize(Session, new(ActivateView, SelectObject, ChangeViewMagnification,
+            UpdatePointerReadout, text => _status.Text = text, () => Refresh()));
         _viewHost.Initialize(Session, _workspace.Views,
             new(Advance, TogglePlaying, SetMode, SetViewField, SelectSatelliteItem, SeekTimeline,
                 SetLunarTerrainCamera, SeekTerrain, HandleViewInput, () => _viewSizeChanged = true),
@@ -623,22 +625,7 @@ public partial class SolarSystemScene : Control
 
     public override void _Input(InputEvent input)
     {
-        if (input is InputEventMouseButton { ButtonIndex: MouseButton.Right, Pressed: false })
-            foreach (var view in _views)
-                view.DraggingCamera = false;
-        if (input is InputEventMouseButton { ButtonIndex: MouseButton.Left, Pressed: false })
-            foreach (var view in _views)
-                if (view.LookPress.HasValue)
-                    DeferLookRelease(view);
-
-        if (input is InputEventKey flightKey)
-        {
-            _freeFlightBoost = FreeFlightKey(flightKey) == Key.Shift ? flightKey.Pressed : flightKey.ShiftPressed;
-            if (!flightKey.Pressed)
-                _freeFlightKeys.Remove(FreeFlightKey(flightKey));
-            if (flightKey.CtrlPressed || flightKey.AltPressed || flightKey.MetaPressed)
-                _freeFlightKeys.Clear();
-        }
+        Navigation.HandleGlobalInput(input);
         if (input is InputEventKey shipKey && HandleShipInput(shipKey))
         {
             GetViewport().SetInputAsHandled();
@@ -825,10 +812,7 @@ public partial class SolarSystemScene : Control
         if (what == NotificationApplicationFocusOut)
         {
             _shipKeys.Clear();
-            _freeFlightKeys.Clear();
-            _freeFlightBoost = false;
-            foreach (var view in _views)
-                ClearCameraInertia(view);
+            Navigation.FocusLost();
         }
     }
 
@@ -1099,39 +1083,9 @@ public partial class SolarSystemScene : Control
         return true;
     }
 
-    private bool TryFreeFlightKey(InputEventKey key)
-    {
-        if (key.CtrlPressed || key.AltPressed || key.MetaPressed || GetViewport().GuiGetFocusOwner() is LineEdit)
-            return false;
-        Key movement = FreeFlightKey(key);
-        if (movement is not (Key.W or Key.A or Key.S or Key.D or Key.Q or Key.E or Key.R or Key.F) ||
-            !Session!.CanMoveFreeFlight(_active))
-            return false;
-        if (!key.Echo)
-            _freeFlightKeys.Add(movement);
-        _freeFlightBoost = key.ShiftPressed;
-        return true;
-    }
+    private bool TryFreeFlightKey(InputEventKey key) => Navigation.TryFreeFlightKey(key);
 
-    private static Key FreeFlightKey(InputEventKey key) => key.PhysicalKeycode == Key.None ? key.Keycode : key.PhysicalKeycode;
-
-    private bool StepFreeFlight(double delta)
-    {
-        if (_freeFlightKeys.Count == 0)
-            return false;
-        var session = Session!;
-        if (!session.CanMoveFreeFlight(_active) || GetViewport().GuiGetFocusOwner() is LineEdit)
-        {
-            _freeFlightKeys.Clear();
-            return false;
-        }
-        int right = (Held(Key.D) ? 1 : 0) - (Held(Key.A) ? 1 : 0);
-        int up = (Held(Key.E) || Held(Key.R) ? 1 : 0) - (Held(Key.Q) || Held(Key.F) ? 1 : 0);
-        int forward = (Held(Key.W) ? 1 : 0) - (Held(Key.S) ? 1 : 0);
-        return session.MoveFreeFlight(_active, right, up, forward, delta, _freeFlightBoost);
-
-        bool Held(Key key) => _freeFlightKeys.Contains(key);
-    }
+    private bool StepFreeFlight(double delta) => Navigation.StepFreeFlight(delta);
 
     private void UpdateViewLayout()
     {
@@ -1269,7 +1223,7 @@ public partial class SolarSystemScene : Control
                 session.RemoveView(index);
                 RemoveViewPanel(index);
                 _shipKeys.Clear();
-                _freeFlightKeys.Clear();
+                Navigation.ClearKeys();
                 _active = sibling > index ? sibling - 1 : sibling;
                 UpdateViewLayout();
                 break;
@@ -1285,7 +1239,7 @@ public partial class SolarSystemScene : Control
                     RemoveViewPanel(view);
                 }
                 _shipKeys.Clear();
-                _freeFlightKeys.Clear();
+                Navigation.ClearKeys();
                 _active = 0;
                 UpdateViewLayout();
                 break;
@@ -1384,7 +1338,7 @@ public partial class SolarSystemScene : Control
         ObserverLayout previousLayout = Session!.Layout;
         ViewSplit previousDirection = Session.SplitLayout;
         Session.RestoreScenario(scenario);
-        _freeFlightKeys.Clear();
+        Navigation.ClearKeys();
         foreach (var view in _views)
             ClearCameraInertia(view);
         ResetPerspectiveScale();
@@ -1567,198 +1521,13 @@ public partial class SolarSystemScene : Control
 
     private void SelectSatelliteItem(int view, int item) => SelectSatellite(view, Assets[item].Track.Id);
 
-    private void HandleViewInput(int view, InputEvent input)
-    {
-        if (input is InputEventMouseButton { Pressed: true })
-            ActivateView(view);
-        var controls = _views[view];
-        if (input is InputEventMouseMotion pointer)
-        {
-            controls.PointerPosition = pointer.Position;
-            UpdatePointerReadout(controls, Session![view].Sky);
-        }
-        if (input is InputEventMouseButton { ButtonIndex: MouseButton.Right } right)
-        {
-            controls.DraggingCamera = right.Pressed;
-            if (right.Pressed)
-                controls.CameraDragVelocity = Vector2.Zero;
-        }
-        var measurements = controls.Measurements;
-        if (measurements.HandleAngleInput(input))
-        {
-            if (measurements.AngleDegrees is { } angle)
-                _status.Text = "Angle " + MeasurementOverlay.FormatAngle(angle);
-            GetViewport().SetInputAsHandled();
-            return;
-        }
-        if (input is InputEventMouseButton { ButtonIndex: MouseButton.Left } left)
-        {
-            if (left.Pressed)
-            {
-                controls.LookGesture++;
-                controls.LookPress = left.Position;
-                controls.Looking = false;
-                controls.CameraDragVelocity = Vector2.Zero;
-            }
-            else if (controls.LookPress is { } press)
-            {
-                controls.LookPress = null;
-                if (!controls.Looking && left.Position.DistanceTo(press) <= 4 &&
-                    controls.Renderer.PickObject(press) is { } target)
-                    SelectObject(target);
-                controls.Looking = false;
-            }
-            GetViewport().SetInputAsHandled();
-            return;
-        }
-        bool adjusted = input switch
-        {
-            InputEventMouseButton { Pressed: true, ButtonIndex: MouseButton.WheelUp or MouseButton.WheelDown } wheel =>
-                AdjustWheel(view, wheel),
-            InputEventMouseMotion motion when (motion.ButtonMask & MouseButtonMask.Right) != 0 =>
-                ApplyCameraMotion(view, motion, lookAround: false),
-            InputEventMouseMotion motion when controls.LookPress is { } press &&
-                (motion.ButtonMask & MouseButtonMask.Left) != 0 &&
-                (controls.Looking || motion.Position.DistanceTo(press) > 4) =>
-                ApplyCameraMotion(view, motion, lookAround: true),
-            _ => false
-        };
-        if (adjusted)
-        {
-            GetViewport().SetInputAsHandled();
-            Refresh();
-        }
-    }
+    private void HandleViewInput(int view, InputEvent input) => Navigation.HandleViewInput(view, input);
 
-    private static void DeferLookRelease(ViewControls controls)
-    {
-        // Let the viewport resolve a click before cleaning up releases outside it.
-        int gesture = controls.LookGesture;
-        Callable.From(() =>
-        {
-            if (controls.LookGesture != gesture)
-                return;
-            controls.LookPress = null;
-            controls.Looking = false;
-        }).CallDeferred();
-    }
+    private bool StepCameraInertia(double elapsed) => Navigation.StepCameraInertia(elapsed);
 
-    private const double CameraInertiaSeconds = .3;
+    private bool StopCameraMotion(int view, out bool stoppedFlight) => Navigation.StopCameraMotion(view, out stoppedFlight);
 
-    private bool ApplyCameraMotion(int view, InputEventMouseMotion motion, bool lookAround)
-    {
-        var controls = _views[view];
-        if (lookAround)
-            controls.Looking = true;
-        bool moved = AdjustDrag(view, motion.Relative, lookAround);
-        if (moved && (controls.DraggingCamera || controls.Looking) && Session![view].CameraInertia &&
-            !Session.InShip(view) && motion.Velocity.IsFinite())
-        {
-            controls.CameraCoastLooksAround = lookAround;
-            controls.CameraDragVelocity = controls.CameraDragVelocity.Lerp(motion.Velocity.LimitLength(4000), .5f);
-        }
-        return moved;
-    }
-
-    private bool StepCameraInertia(double elapsed)
-    {
-        if (!(elapsed > 0))
-            return false;
-        double decay = Math.Exp(-Math.Min(elapsed, .1) / CameraInertiaSeconds);
-        double integrated = CameraInertiaSeconds * (1 - decay);
-        bool changed = false;
-        var session = Session!;
-        for (int index = 0; index < _views.Count; index++)
-        {
-            var controls = _views[index];
-            if (!session[index].CameraInertia || session.IsFlying(index) || session.InShip(index))
-            {
-                controls.CameraDragVelocity = Vector2.Zero;
-                controls.CameraDollyRate = 0;
-                continue;
-            }
-            if (!controls.DraggingCamera && !controls.Looking && controls.CameraDragVelocity.LengthSquared() > 1)
-            {
-                changed |= AdjustDrag(index, controls.CameraDragVelocity * (float)integrated, controls.CameraCoastLooksAround);
-                controls.CameraDragVelocity *= (float)decay;
-            }
-            if (Math.Abs(controls.CameraDollyRate) > .001)
-            {
-                changed |= session.AdjustCamera(index, 0, 0, Math.Exp(controls.CameraDollyRate * integrated));
-                controls.CameraDollyRate *= decay;
-            }
-        }
-        return changed;
-    }
-
-    private bool StopCameraMotion(int index, out bool stoppedFlight)
-    {
-        var controls = _views[index];
-        stoppedFlight = Session!.CancelFlight(index);
-        bool moving = _freeFlightKeys.Count > 0 || controls.DraggingCamera || controls.Looking ||
-            controls.CameraDragVelocity.LengthSquared() > 1 ||
-            Math.Abs(controls.CameraDollyRate) > .001;
-        ClearCameraInertia(controls);
-        _freeFlightKeys.Clear();
-        return stoppedFlight || moving;
-    }
-
-    private static void ClearCameraInertia(ViewControls controls)
-    {
-        controls.DraggingCamera = false;
-        controls.LookPress = null;
-        controls.Looking = false;
-        controls.CameraDragVelocity = Vector2.Zero;
-        controls.CameraDollyRate = 0;
-    }
-
-    private bool AdjustDrag(int view, Vector2 pixels, bool lookAround)
-    {
-        var session = Session!;
-        if (!pixels.IsFinite())
-            return false;
-        var observer = session[view];
-        double sensitivity = observer.MouseSensitivity ?? 1;
-        if (session.InShip(view))
-            return session.AdjustCamera(view, -.006 * pixels.X * sensitivity, .006 * pixels.Y * sensitivity, 1);
-        bool ground = observer is { Mode: CameraMode.Surface, Navigation: null };
-        bool look = lookAround || ground || observer.Navigation is { Target: null };
-        const double radiansPerPixel = .003;
-        if (look)
-            sensitivity *= Math.Tan(observer.EffectiveFieldOfView * Math.PI / 360) / Math.Tan(50 * Math.PI / 360);
-        double yaw = Math.Clamp(-pixels.X * radiansPerPixel * sensitivity, -1, 1);
-        double pitch = Math.Clamp(-pixels.Y * radiansPerPixel * sensitivity, -1, 1);
-        if (!ground)
-            return session.AdjustCamera(view, yaw, pitch, 1, orbitTarget: !lookAround);
-
-        var camera = observer.ObserverCamera;
-        double direction = observer.ActiveOptics?.Inverted == true ? -1 : 1;
-        session.SetEarthObserver(view, camera.Turn(direction * yaw, direction * pitch));
-        return true;
-    }
-
-    private bool AdjustWheel(int view, InputEventMouseButton wheel)
-    {
-        var session = Session!;
-        var observer = session[view];
-        bool inward = wheel.ButtonIndex == MouseButton.WheelUp;
-        if (!session.InShip(view) && observer.ActiveOptics is not null ||
-            wheel.CtrlPressed || observer is { Mode: CameraMode.Surface, Navigation: null })
-        {
-            ChangeViewMagnification(view, inward, .85);
-            return true;
-        }
-
-        if (observer.CameraInertia && observer.Navigation is not null && !session.InShip(view))
-        {
-            session.CancelFlight(view);
-            var controls = _views[view];
-            controls.CameraDollyRate = Math.Clamp(controls.CameraDollyRate +
-                (inward ? 1 : -1) * Math.Log(.85) / CameraInertiaSeconds, -20, 20);
-            return true;
-        }
-        return session.AdjustCamera(view, 0, 0, inward ? .8 : 1.25);
-    }
+    private static void ClearCameraInertia(ViewControls controls) => ObserverNavigationInput.ClearCameraInertia(controls);
 
     private readonly GalacticTextureCache _galacticSky = new();
     private readonly DemoSurfaceCache _demoSurfaces = new();
@@ -1876,7 +1645,7 @@ public partial class SolarSystemScene : Control
         if (_active == index)
             return;
         _shipKeys.Clear();
-        _freeFlightKeys.Clear();
+        Navigation.ClearKeys();
         _active = index;
         UpdateActiveFrame();
     }

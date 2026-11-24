@@ -9,7 +9,7 @@ namespace SpaceTangent.Godot.Simulation;
 public partial class SolarSystemScene
 {
     private sealed record AlmanacContext(SimulationWorld World, int View, CalculationSite Site, DeltaTModel DeltaT, int Generation);
-    private CancellationTokenSource? _almanacSearch;
+    private readonly ObserverCalculationSlot _almanacSearch = new();
     private VBoxContainer _almanacRows = null!;
     private Label _almanacSummary = null!;
 
@@ -38,9 +38,9 @@ public partial class SolarSystemScene
         var session = Session!;
         var observer = session[_active];
         var context = CurrentAlmanacContext();
-        _almanacSearch?.Cancel();
-        using var cancellation = new CancellationTokenSource();
-        _almanacSearch = cancellation;
+        _almanacSearch.Cancel();
+        using var cancellation = _almanacSearch.Begin();
+        using var resourceUse = _addonResources.Borrow(context.World.DistantStars);
         ClearAlmanacRows();
         _almanacSummary.Text = "Calculating nearby events…";
         var meteors = _brightSky?.Meteors;
@@ -79,10 +79,6 @@ public partial class SolarSystemScene
         {
             if (!cancellation.IsCancellationRequested && IsInsideTree() && context == CurrentAlmanacContext())
                 _almanacSummary.Text = "Could not calculate nearby events: " + error.Message;
-        }
-        finally
-        {
-            if (ReferenceEquals(_almanacSearch, cancellation)) _almanacSearch = null;
         }
     }
 

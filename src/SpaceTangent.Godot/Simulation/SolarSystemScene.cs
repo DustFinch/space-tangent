@@ -49,6 +49,7 @@ public partial class SolarSystemScene : Control
     private OptionButton _deltaT => _timePanel.Model;
     private Label _status = null!;
     private int _active { get => _viewHost.Active; set => _viewHost.Active = value; }
+    private readonly SharedResourceRetirement<DistantStarIndex> _addonResources = new();
     private readonly AddonLoadCoordinator _addonLoads = new();
     private int _loadGeneration => _addonLoads.Generation;
     private ObserverScriptPlayer? _scriptPlayer;
@@ -690,11 +691,11 @@ public partial class SolarSystemScene : Control
         FlushObserverPlaces();
         _galacticSky.Dispose();
         _brightSky?.Surveys.Dispose();
-        _addOns?.Decoded.DistantStars.Value?.Dispose();
-        _eventSearch?.Cancel();
-        _almanacSearch?.Cancel();
-        _chartSearch?.Cancel();
-        _tonightSearch?.Cancel();
+        _addonResources.Retire(_addOns?.Decoded.DistantStars.Value);
+        _eventSearch.Dispose();
+        _almanacSearch.Dispose();
+        _chartSearch.Dispose();
+        _tonightSearch.Dispose();
         _landscapeLifetime.Cancel();
         _satelliteUpdate?.Cancel();
         DisconnectCapture();
@@ -1220,6 +1221,7 @@ public partial class SolarSystemScene : Control
             _localAddonPanel.SetBusy(true);
             LocalAddonSettings settings = requested ?? _localAddons;
             AddonGeneration? previous = _addOns;
+            using var previousUse = _addonResources.Borrow(previous?.Decoded.DistantStars.Value);
             var decoded = candidate = await AddonLoader.Load(Session!.World.Ephemeris, previous?.Decoded, settings, _localAddonFile, _brightSky?.Catalogue, token);
             if (!CanPublish(generation, token))
                 return false;
@@ -1280,7 +1282,7 @@ public partial class SolarSystemScene : Control
     private void DisposeSupersededStars(AddonPreparation.DecodedAddOns? decoded)
     {
         if (decoded?.DistantStars.Value is { } index && !ReferenceEquals(index, _addOns?.Decoded.DistantStars.Value))
-            index.Dispose();
+            _addonResources.Retire(index);
     }
 
     private void ShowAddonFailure(string prefix, Exception error)

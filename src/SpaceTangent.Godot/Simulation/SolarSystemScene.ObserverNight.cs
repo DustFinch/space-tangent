@@ -19,10 +19,10 @@ public partial class SolarSystemScene
             _status.Text = "Select a target before calculating night ephemerides.";
             return;
         }
-        _eventSearch?.Cancel();
+        _eventSearch.Cancel();
         _observerNight = null;
-        using var cancellation = new CancellationTokenSource();
-        _eventSearch = cancellation;
+        using var cancellation = _eventSearch.Begin();
+        using var resourceUse = _addonResources.Borrow(context.World.DistantStars);
         _status.Text = "Calculating night ephemerides…";
         try
         {
@@ -47,11 +47,6 @@ public partial class SolarSystemScene
         {
             if (!cancellation.IsCancellationRequested && IsInsideTree() && CurrentEventContext() == context)
                 _status.Text = "Could not calculate night ephemerides. " + error.Message;
-        }
-        finally
-        {
-            if (ReferenceEquals(_eventSearch, cancellation))
-                _eventSearch = null;
         }
     }
 

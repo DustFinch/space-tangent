@@ -8,7 +8,7 @@ namespace SpaceTangent.Godot.Simulation;
 
 public partial class SolarSystemScene
 {
-    private CancellationTokenSource? _chartSearch;
+    private readonly ObserverCalculationSlot _chartSearch = new();
     private (ObserverEventContext Context, ObserverCalculationResult Result)? _charts;
     private ObserverChart _dayChart = null!, _yearChart = null!, _moonChart = null!;
     private Label _chartSummary = null!, _yearSummary = null!;
@@ -55,9 +55,9 @@ public partial class SolarSystemScene
         var session = Session!;
         var observer = session[_active];
         var context = CurrentEventContext();
-        _chartSearch?.Cancel();
-        using var cancellation = new CancellationTokenSource();
-        _chartSearch = cancellation;
+        _chartSearch.Cancel();
+        using var cancellation = _chartSearch.Begin();
+        using var resourceUse = _addonResources.Borrow(context.World.DistantStars);
         _charts = null;
         foreach (Node row in _chartTable.GetChildren()) { _chartTable.RemoveChild(row); row.QueueFree(); }
         _dayChart.SetData(-90, 90, []); _yearChart.SetData(-90, 90, []); _moonChart.SetData(0, 180, []);
@@ -101,7 +101,6 @@ public partial class SolarSystemScene
             if (!cancellation.IsCancellationRequested && IsInsideTree() && CurrentEventContext() == context)
                 _chartSummary.Text = "Could not calculate charts: " + error.Message;
         }
-        finally { if (ReferenceEquals(_chartSearch, cancellation)) _chartSearch = null; }
     }
 
     private void SeekChart(SpaceTangent.Contracts.JulianInstant epoch)

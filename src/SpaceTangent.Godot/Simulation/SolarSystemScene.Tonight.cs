@@ -12,7 +12,7 @@ public partial class SolarSystemScene
 {
     private sealed record TonightContext(SimulationWorld World, int View, ObjectId Body, EarthSite Site,
         ObserverSiteClock? Clock, GroundSkyConditions? Conditions, DeltaTModel Model, int Generation);
-    private CancellationTokenSource? _tonightSearch;
+    private readonly ObserverCalculationSlot _tonightSearch = new();
     private Label _tonightSummary = null!;
     private VBoxContainer _tonightRows = null!;
 
@@ -41,9 +41,9 @@ public partial class SolarSystemScene
         var session = Session!;
         var observer = session[_active];
         var context = CurrentTonightContext();
-        _tonightSearch?.Cancel();
-        using var cancellation = new CancellationTokenSource();
-        _tonightSearch = cancellation;
+        _tonightSearch.Cancel();
+        using var cancellation = _tonightSearch.Begin();
+        using var resourceUse = _addonResources.Borrow(context.World.DistantStars);
         foreach (Node row in _tonightRows.GetChildren()) { _tonightRows.RemoveChild(row); row.QueueFree(); }
         _tonightSummary.Text = "Calculating tonight's visibility…";
         try
@@ -93,6 +93,5 @@ public partial class SolarSystemScene
             if (!cancellation.IsCancellationRequested && IsInsideTree() && context == CurrentTonightContext())
                 _tonightSummary.Text = "Could not calculate tonight's visibility: " + error.Message;
         }
-        finally { if (ReferenceEquals(_tonightSearch, cancellation)) _tonightSearch = null; }
     }
 }

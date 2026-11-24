@@ -18,7 +18,7 @@ public partial class SolarSystemScene
     private sealed record ObserverEventContext(SimulationWorld World, int View, ObjectId? Selection,
         CalculationSite Site, DeltaTModel DeltaT, int Generation);
 
-    private CancellationTokenSource? _eventSearch;
+    private readonly ObserverCalculationSlot _eventSearch = new();
     private (ObserverEventContext Context, ObserverEvent Event)? _nextObserverEvent;
 
     private async Task FindNextObserverEvent()
@@ -26,15 +26,15 @@ public partial class SolarSystemScene
         var session = Session!;
         var observer = session[_active];
         var context = CurrentEventContext();
-        _eventSearch?.Cancel();
+        _eventSearch.Cancel();
         _nextObserverEvent = null;
         if (observer.EarthObserver is { IsEarth: false })
         {
             _status.Text = "Local events need an Earth site. Use nearby events or charts.";
             return;
         }
-        using var cancellation = new CancellationTokenSource();
-        _eventSearch = cancellation;
+        using var cancellation = _eventSearch.Begin();
+        using var resourceUse = _addonResources.Borrow(context.World.DistantStars);
         _status.Text = "Searching observation events…";
         try
         {
@@ -56,11 +56,6 @@ public partial class SolarSystemScene
         {
             if (!cancellation.IsCancellationRequested && IsInsideTree())
                 _status.Text = "Could not search observation events: " + error.Message;
-        }
-        finally
-        {
-            if (ReferenceEquals(_eventSearch, cancellation))
-                _eventSearch = null;
         }
     }
 

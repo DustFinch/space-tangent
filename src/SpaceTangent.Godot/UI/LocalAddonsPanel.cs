@@ -2,6 +2,8 @@
 using Godot;
 using SpaceTangent.Godot.Simulation;
 
+using SpaceTangent.Application.Addons;
+
 namespace SpaceTangent.Godot.UI;
 
 internal sealed class LocalAddonsPanel
@@ -11,14 +13,14 @@ internal sealed class LocalAddonsPanel
     private readonly Button _browse, _reload, _updateSatellites;
     private readonly FileDialog _directory, _mission;
     private readonly Func<Task<bool>> _reloadAction;
-    private readonly Func<LocalAddonKind, bool, Task> _setDefault;
+    private readonly Func<AddonSourceKind, bool, Task> _setDefault;
     private readonly Func<LocalAddonSource, bool, Task> _setSource;
     private readonly List<CheckButton> _switches = [];
     private readonly CheckButton _offline;
     private bool _busy, _updatingSatellites;
 
     internal LocalAddonsPanel(Control owner, Container page, Func<Task<bool>> reload,
-        Func<LocalAddonKind, string, Task> add, Func<LocalAddonKind, bool, Task> setDefault,
+        Func<AddonSourceKind, string, Task> add, Func<AddonSourceKind, bool, Task> setDefault,
         Func<LocalAddonSource, bool, Task> setSource, Func<Task> updateSatellites, Action<bool> setOffline)
     {
         _reloadAction = reload;
@@ -45,7 +47,7 @@ internal sealed class LocalAddonsPanel
         import.Toggled += expanded => importTools.Visible = expanded;
         importTools.AddChild(SimulatorTheme.Section(WorkspaceText.Choose("Add a local source", "Добавить локальный источник")));
         _kind = new OptionButton { Name = "LocalAddonKind" };
-        foreach (LocalAddonKind kind in Enum.GetValues<LocalAddonKind>())
+        foreach (AddonSourceKind kind in Enum.GetValues<AddonSourceKind>())
             _kind.AddItem(Title(kind), (int)kind);
         importTools.AddChild(_kind);
 
@@ -57,11 +59,11 @@ internal sealed class LocalAddonsPanel
         owner.AddChild(_directory);
         owner.AddChild(_mission);
         _directory.DirSelected += async path => await add(Kind, path);
-        _mission.FileSelected += async path => await add(LocalAddonKind.Mission, path);
+        _mission.FileSelected += async path => await add(AddonSourceKind.Mission, path);
         _browse = new Button { Name = "BrowseLocalAddon", Text = WorkspaceText.Choose("Choose folder…", "Выбрать папку…") };
-        _kind.ItemSelected += _ => _browse.Text = Kind == LocalAddonKind.Mission ? WorkspaceText.Choose("Choose file…", "Выбрать файл…")
+        _kind.ItemSelected += _ => _browse.Text = Kind == AddonSourceKind.Mission ? WorkspaceText.Choose("Choose file…", "Выбрать файл…")
             : WorkspaceText.Choose("Choose folder…", "Выбрать папку…");
-        _browse.Pressed += () => (Kind == LocalAddonKind.Mission ? _mission : _directory).PopupCentered(new(720, 470));
+        _browse.Pressed += () => (Kind == AddonSourceKind.Mission ? _mission : _directory).PopupCentered(new(720, 470));
         importTools.AddChild(_browse);
         _updateSatellites = new Button { Name = "UpdateSatelliteGroups", Text = WorkspaceText.Choose("Update satellite groups", "Обновить группы спутников") };
         _updateSatellites.Pressed += async () =>
@@ -93,7 +95,7 @@ internal sealed class LocalAddonsPanel
             toggle.Disabled = disabled;
     }
 
-    internal void ShowSources(LocalAddonSettings settings, LocalAddonSettingsFile file, AddonLoader.DecodedAddOns? loaded)
+    internal void ShowSources(LocalAddonSettings settings, LocalAddonSettingsFile file, AddonPreparation.DecodedAddOns? loaded)
     {
         _offline.SetPressedNoSignal(settings.HipsOffline || System.Environment.GetEnvironmentVariable("SPACETANGENT_HIPS_OFFLINE") == "1");
         _offline.Disabled = _busy || _updatingSatellites || System.Environment.GetEnvironmentVariable("SPACETANGENT_HIPS_OFFLINE") == "1";
@@ -106,24 +108,24 @@ internal sealed class LocalAddonsPanel
         for (int index = 0; index < settings.Sources.Length; index++)
         {
             LocalAddonSource source = settings.Sources[index];
-            LocalDataPath path = AddonLoader.SourcePath(source, file);
-            string display = Path.GetFileName(source.Kind == LocalAddonKind.Mission
+            AddonSourcePath path = AddonLoader.SourcePath(source, file);
+            string display = Path.GetFileName(source.Kind == AddonSourceKind.Mission
                 ? Path.GetDirectoryName(path.Explicit!) : path.Explicit)!;
             AddSource($"LocalAddon{index}", display, source.Enabled && loaded?.FilteredPacks.ContainsKey(path) != true, path.Explicit!,
                 loaded?.HasSource(source.Kind, path) == true, enabled => _setSource(source, enabled), Title(source.Kind));
         }
-        foreach (LocalAddonKind kind in Enum.GetValues<LocalAddonKind>())
+        foreach (AddonSourceKind kind in Enum.GetValues<AddonSourceKind>())
         {
-            LocalDataPath path = AddonLoader.DefaultPath(kind);
+            AddonSourcePath path = AddonLoader.DefaultPath(kind);
             string location = path.Resolve();
-            if (kind == LocalAddonKind.Mission && path.Explicit is null && !File.Exists(location))
+            if (kind == AddonSourceKind.Mission && path.Explicit is null && !File.Exists(location))
                 location = path.WithExtension(".ssc").Resolve();
             AddSource($"DefaultAddon{kind}", Title(kind), settings.UsesDefault(kind) && loaded?.FilteredPacks.ContainsKey(path) != true, location,
                 loaded?.HasSource(kind, path) == true, enabled => _setDefault(kind, enabled), "Default");
         }
     }
 
-    private LocalAddonKind Kind => (LocalAddonKind)_kind.GetSelectedId();
+    private AddonSourceKind Kind => (AddonSourceKind)_kind.GetSelectedId();
 
     private void AddSource(string name, string title, bool enabled, string path, bool loaded, Func<bool, Task> apply,
         string category)
@@ -141,13 +143,13 @@ internal sealed class LocalAddonsPanel
         toggle.Toggled += async value => await apply(value);
     }
 
-    private static string Title(LocalAddonKind kind) => kind switch
+    private static string Title(AddonSourceKind kind) => kind switch
     {
-        LocalAddonKind.Science => "Science satellites",
-        LocalAddonKind.Mission => "SPICE mission",
-        LocalAddonKind.Timeline => "Sampled timeline",
-        LocalAddonKind.Terrain => "Lunar terrain",
-        LocalAddonKind.BodyCatalog => "SSC body catalogue",
+        AddonSourceKind.Science => "Science satellites",
+        AddonSourceKind.Mission => "SPICE mission",
+        AddonSourceKind.Timeline => "Sampled timeline",
+        AddonSourceKind.Terrain => "Lunar terrain",
+        AddonSourceKind.BodyCatalog => "SSC body catalogue",
         _ => throw new ArgumentOutOfRangeException(nameof(kind))
     };
 }

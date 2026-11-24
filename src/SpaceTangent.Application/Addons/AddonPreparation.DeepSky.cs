@@ -3,11 +3,11 @@ using SpaceTangent.Application.Assets;
 using SpaceTangent.Contracts;
 using SpaceTangent.Core.Observing;
 
-namespace SpaceTangent.Godot.Simulation;
+namespace SpaceTangent.Application.Addons;
 
-internal static partial class AddonLoader
+public sealed partial class AddonPreparation
 {
-    private static DecodedDeepSky ReadDeepSky(string root, CancellationToken cancellation)
+    private DecodedDeepSky ReadDeepSky(string root, CancellationToken cancellation)
     {
         var index = DeepSkyIndex.Load(root, cancellation);
         var sprites = new Dictionary<ObjectId, IReadOnlyList<DecodedModelSprite>>();
@@ -35,7 +35,7 @@ internal static partial class AddonLoader
             }
             catch (Exception error) when (error is IOException or InvalidDataException or NotSupportedException)
             {
-                global::Godot.GD.Print($"Deep sky: {body.Designation}: {error.Message}");
+                _report($"Deep sky: {body.Designation}: {error.Message}");
                 continue;
             }
             count += sprites[body.Id].Count;

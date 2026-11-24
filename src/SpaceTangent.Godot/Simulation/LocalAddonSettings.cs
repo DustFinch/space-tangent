@@ -4,20 +4,13 @@ using System.Text.Json.Serialization;
 using Godot;
 using SpaceTangent.Application;
 
+using SpaceTangent.Application.Addons;
+
 namespace SpaceTangent.Godot.Simulation;
 
-internal enum LocalAddonKind
-{
-    Science,
-    Mission,
-    Timeline,
-    Terrain,
-    BodyCatalog
-}
+internal sealed record LocalAddonSource(Guid Id, AddonSourceKind Kind, string Path, bool RelativeToData, bool Enabled);
 
-internal sealed record LocalAddonSource(Guid Id, LocalAddonKind Kind, string Path, bool RelativeToData, bool Enabled);
-
-internal sealed record LocalAddonSettings(LocalAddonKind[] DisabledDefaults, LocalAddonSource[] Sources)
+internal sealed record LocalAddonSettings(AddonSourceKind[] DisabledDefaults, LocalAddonSource[] Sources)
 {
     internal string[] DisabledPlugins { get; init; } = [];
     internal string[] DisabledPacks { get; init; } = [];
@@ -25,11 +18,11 @@ internal sealed record LocalAddonSettings(LocalAddonKind[] DisabledDefaults, Loc
 
     internal static LocalAddonSettings Empty { get; } = new([], []);
 
-    internal static bool AllowsMultiple(LocalAddonKind kind) => kind is LocalAddonKind.Science or LocalAddonKind.BodyCatalog;
+    internal static bool AllowsMultiple(AddonSourceKind kind) => kind is AddonSourceKind.Science or AddonSourceKind.BodyCatalog;
 
-    internal bool UsesDefault(LocalAddonKind kind) => !DisabledDefaults.Contains(kind);
+    internal bool UsesDefault(AddonSourceKind kind) => !DisabledDefaults.Contains(kind);
 
-    internal LocalAddonSettings SetDefault(LocalAddonKind kind, bool enabled)
+    internal LocalAddonSettings SetDefault(AddonSourceKind kind, bool enabled)
     {
         var defaults = DisabledDefaults.Where(item => item != kind).ToList();
         if (!enabled)
@@ -72,7 +65,7 @@ internal sealed class LocalAddonSettingsFile
         UnmappedMemberHandling = JsonUnmappedMemberHandling.Disallow,
         MaxDepth = 6,
         WriteIndented = true,
-        Converters = { new JsonStringEnumConverter<LocalAddonKind>(JsonNamingPolicy.CamelCase, allowIntegerValues: false) }
+        Converters = { new JsonStringEnumConverter<AddonSourceKind>(JsonNamingPolicy.CamelCase, allowIntegerValues: false) }
     };
 
     private readonly string _file;
@@ -134,7 +127,7 @@ internal sealed class LocalAddonSettingsFile
         }
     }
 
-    internal LocalAddonSource FindOrCreate(LocalAddonSettings settings, LocalAddonKind kind, string path)
+    internal LocalAddonSource FindOrCreate(LocalAddonSettings settings, AddonSourceKind kind, string path)
     {
         string absolute = Path.TrimEndingDirectorySeparator(Path.GetFullPath(path));
         var existing = settings.Sources.FirstOrDefault(source =>
@@ -176,7 +169,7 @@ internal sealed class LocalAddonSettingsFile
             throw new InvalidDataException("The local add-on settings contain an invalid source list.");
         foreach (LocalAddonSource source in settings.Sources)
             _ = Resolve(source);
-        foreach (LocalAddonKind kind in Enum.GetValues<LocalAddonKind>())
+        foreach (AddonSourceKind kind in Enum.GetValues<AddonSourceKind>())
         {
             if (!LocalAddonSettings.AllowsMultiple(kind) &&
                 settings.Sources.Count(source => source.Enabled && source.Kind == kind) + (settings.UsesDefault(kind) ? 1 : 0) > 1)
@@ -184,7 +177,7 @@ internal sealed class LocalAddonSettingsFile
         }
     }
 
-    private sealed record Document(int Version, LocalAddonKind[] DisabledDefaults, LocalAddonSource[] Sources,
+    private sealed record Document(int Version, AddonSourceKind[] DisabledDefaults, LocalAddonSource[] Sources,
         [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] string[]? DisabledPlugins,
         [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] string[]? DisabledPacks,
         [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingDefault)] bool HipsOffline = false);

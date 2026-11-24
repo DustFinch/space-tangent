@@ -4,15 +4,15 @@ using SpaceTangent.Contracts;
 using SpaceTangent.Core.Addons;
 using SpaceTangent.Core.Ephemerides;
 
-namespace SpaceTangent.Godot.Simulation;
+namespace SpaceTangent.Application.Addons;
 
-internal static partial class AddonLoader
+public sealed partial class AddonPreparation
 {
-    private static IReadOnlyDictionary<ObjectId, PreparedMissionObservation> PrepareObservations(
+    private IReadOnlyDictionary<ObjectId, DecodedMissionObservation> PrepareObservations(
         SimulationWorld world, IEnumerable<DecodedSampledMission> sources, CancellationToken cancellation)
     {
         var tracks = sources.ToDictionary(source => source.Track.Id, source => source.Track);
-        var result = new Dictionary<ObjectId, PreparedMissionObservation>();
+        var result = new Dictionary<ObjectId, DecodedMissionObservation>();
         const int sampleLimit = 8192;
         int remaining = sampleLimit;
         foreach (SampledMission track in tracks.Values)

@@ -5,6 +5,8 @@ using SpaceTangent.Contracts;
 using SpaceTangent.Core.Observing;
 using SpaceTangent.Godot.Simulation;
 
+using SpaceTangent.Application.Addons;
+
 namespace SpaceTangent.Godot.Tests;
 
 public partial class EarthOrbitProbe
@@ -13,21 +15,21 @@ public partial class EarthOrbitProbe
     {
         ExerciseAddonSettingsContracts(directory);
         string root=Path.Combine(directory,"named-pack"); Directory.CreateDirectory(root);
-        var location=new LocalDataPath(root,"","","",true);
-        var bare=LegacyPackKeys.For(location);
+        var location=new AddonSourcePath(root,"","","",true);
+        var bare=AddonPackIdentity.For(location);
         if(bare.Length!=2||bare[0]!="named-pack"||!bare[1].StartsWith("addon-root:",StringComparison.Ordinal)||bare[1].Length!=75)
             throw new InvalidOperationException("An unmanifested root requires its directory name and stable path identity.");
         File.WriteAllText(Path.Combine(root,"pack.json"),"{\"id\":\"authored-pack\"}");
-        var identified=LegacyPackKeys.For(location);
+        var identified=AddonPackIdentity.For(location);
         if(!identified.SequenceEqual(new[]{"authored-pack",bare[0],bare[1]}))
             throw new InvalidOperationException("A manifest ID must supplement rather than replace stable legacy keys.");
         foreach(string malformed in new[]{"{broken","[]","{\"id\":7}"})
         {
             File.WriteAllText(Path.Combine(root,"pack.json"),malformed);
-            if(!LegacyPackKeys.For(location).SequenceEqual(bare)) throw new InvalidOperationException("Invalid manifests changed the legacy root identity.");
+            if(!AddonPackIdentity.For(location).SequenceEqual(bare)) throw new InvalidOperationException("Invalid manifests changed the legacy root identity.");
         }
         using(var large=File.Create(Path.Combine(root,"pack.json"))) large.SetLength(64L*1024*1024+1);
-        if(!LegacyPackKeys.For(location).SequenceEqual(bare)) throw new InvalidOperationException("Oversized manifests must retain only root keys.");
+        if(!AddonPackIdentity.For(location).SequenceEqual(bare)) throw new InvalidOperationException("Oversized manifests must retain only root keys.");
         File.Delete(Path.Combine(root,"pack.json"));
 
         var sky=BrightSkyData.Load();

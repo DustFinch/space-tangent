@@ -5,6 +5,8 @@ using SpaceTangent.Contracts;
 using SpaceTangent.Core.Ephemerides;
 using SpaceTangent.Godot.Simulation;
 
+using SpaceTangent.Application.Addons;
+
 namespace SpaceTangent.Godot.Tests;
 
 public partial class WorkspaceInputSmoke
@@ -150,7 +152,7 @@ public partial class WorkspaceInputSmoke
         {
             if (guideBodies is not null)
             {
-                var guideSource = settingsFile.FindOrCreate(previousAddOns, LocalAddonKind.BodyCatalog, guideBodies);
+                var guideSource = settingsFile.FindOrCreate(previousAddOns, AddonSourceKind.BodyCatalog, guideBodies);
                 Require(await _scene.ReloadAddOns(previousAddOns.SetSource(guideSource, true)),
                     "Loading the original asteroid and comet catalogues for the guide.");
             }

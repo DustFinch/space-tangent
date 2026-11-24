@@ -7,53 +7,6 @@ namespace SpaceTangent.Godot.Simulation;
 
 internal static partial class AddonLoader
 {
-    private static IReadOnlyDictionary<string, byte[]> ReadMissionTextures(SampledMission mission,
-        Dictionary<string, byte[]> cache, ref int total, CancellationToken cancellation)
-    {
-        var textures = new Dictionary<string, byte[]>(StringComparer.Ordinal);
-        var geometry = mission.Geometry ?? [];
-        var paths = geometry.Select(span => span.Shape.GlobeTexturePath)
-            .Concat(geometry.SelectMany(span => span.Shape.ParticleEmitters ?? []).Select(emitter => emitter.TexturePath));
-        foreach (string path in paths.OfType<string>().Distinct(StringComparer.Ordinal))
-        {
-            cancellation.ThrowIfCancellationRequested();
-            if (!cache.TryGetValue(path, out var data))
-            {
-                data = ReadMissionTexture(path, ref total);
-                cache.Add(path, data);
-            }
-            textures.Add(path, data);
-        }
-        return textures;
-    }
-
-    private static IReadOnlyDictionary<string, byte[]> ReadMissionTiles(SampledMission mission,
-        Dictionary<string, byte[]> cache, ref int total, CancellationToken cancellation)
-    {
-        var resources = new Dictionary<string, byte[]>(StringComparer.Ordinal);
-        foreach (var maps in (mission.Geometry ?? []).Select(span => span.Shape.SurfaceMaps).OfType<BodySurfaceMaps>())
-        foreach (string path in (maps.Color?.Tiles.Values ?? []).Concat(maps.Normal?.Tiles.Values ?? []).Distinct())
-        {
-            cancellation.ThrowIfCancellationRequested();
-            if (!cache.TryGetValue(path, out var data))
-            {
-                const int maxTileBytes = 16 * 1024 * 1024, maxTotalBytes = 192 * 1024 * 1024;
-                using var file = AddonDependencies.OpenRead(path, maxTileBytes);
-                if (file.Length > maxTotalBytes - total)
-                    throw new InvalidDataException("Mission surface tiles exceed the catalogue size limit.");
-                data = new byte[(int)file.Length];
-                file.ReadExactly(data);
-                string format = Path.GetExtension(path).Equals(".dxt5nm", StringComparison.OrdinalIgnoreCase)
-                    ? Path.ChangeExtension(path, ".dds") : path;
-                ModelTextureFormats.Validate(format, data);
-                total += data.Length;
-                cache.Add(path, data);
-            }
-            resources[path] = data;
-        }
-        return resources;
-    }
-
     private static ShaderMaterial? PublishTiledMissionGlobe(BodySurfaceMaps maps,
         IReadOnlyDictionary<string, byte[]> bytes, Texture2D? fallback)
     {
@@ -78,23 +31,6 @@ internal static partial class AddonLoader
                 continue;
             textures.Add(path, PublishMissionTexture(path, data));
         }
-    }
-
-    private static byte[] ReadMissionTexture(string path, ref int total)
-    {
-        const int maximumTextureBytes = 8 * 1024 * 1024;
-        using FileStream source = AddonDependencies.OpenRead(path, maximumTextureBytes);
-        if (source.Length > maximumTextureBytes || total + source.Length > 64 * 1024 * 1024)
-            throw new InvalidDataException("Local textures exceed the per-file or catalogue size limit.");
-        var data = new byte[(int)source.Length];
-        source.ReadExactly(data);
-        AddonDiagnostics.Read(AddonStage.Texture, path, () =>
-        {
-            ModelTextureFormats.Validate(path, data);
-            return true;
-        });
-        total += data.Length;
-        return data;
     }
 
     private static Texture2D PublishMissionTexture(string path, byte[] data) =>

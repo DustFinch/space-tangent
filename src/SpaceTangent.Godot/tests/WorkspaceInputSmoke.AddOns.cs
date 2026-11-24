@@ -2,6 +2,8 @@
 using Godot;
 using SpaceTangent.Godot.Simulation;
 
+using SpaceTangent.Application.Addons;
+
 namespace SpaceTangent.Godot.Tests;
 
 public partial class WorkspaceInputSmoke
@@ -27,7 +29,7 @@ public partial class WorkspaceInputSmoke
 
         var kind = Find<OptionButton>("LocalAddonKind");
         await Click(kind);
-        await ChooseMenuItem(kind.GetPopup(), (int)LocalAddonKind.Mission);
+        await ChooseMenuItem(kind.GetPopup(), (int)AddonSourceKind.Mission);
         var missionDialog = _scene.GetNode<FileDialog>("OpenAddonMission");
         missionDialog.CurrentDir = mission;
         await Click(Find<Button>("BrowseLocalAddon"));
@@ -109,8 +111,8 @@ public partial class WorkspaceInputSmoke
         {
             var file = new LocalAddonSettingsFile();
             var portable = LocalAddonSettings.Empty;
-            portable = portable.SetSource(file.FindOrCreate(portable, LocalAddonKind.Science, originalScience), true);
-            portable = portable.SetSource(file.FindOrCreate(portable, LocalAddonKind.Mission, originalMission), true);
+            portable = portable.SetSource(file.FindOrCreate(portable, AddonSourceKind.Science, originalScience), true);
+            portable = portable.SetSource(file.FindOrCreate(portable, AddonSourceKind.Mission, originalMission), true);
             Require(portable.Sources.All(source => source.RelativeToData),
                 "Sources inside the portable data directory must be saved relative to it.");
             file.Save(portable);

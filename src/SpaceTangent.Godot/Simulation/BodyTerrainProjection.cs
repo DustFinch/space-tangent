@@ -5,20 +5,9 @@ using SpaceTangent.Application;
 using SpaceTangent.Contracts;
 using SpaceTangent.Core.Surfaces;
 
-namespace SpaceTangent.Godot.Simulation;
+using SpaceTangent.Application.Addons;
 
-internal sealed record DecodedBodyTerrain(int Width, int Height, float RadiusKilometers, byte[] Meters)
-{
-    internal static DecodedBodyTerrain Load(string path, double expectedRadius, CancellationToken cancellation)
-    {
-        ElevationMap map = ElevationMap.Load(path, cancellation);
-        if (Math.Abs(map.ReferenceRadiusKilometers - expectedRadius) > 0.001)
-            throw new InvalidDataException("The terrain datum does not match the reference radius.");
-        var bytes = new byte[checked(map.Width * map.Height * sizeof(float))];
-        map.CopyHeightsMeters(MemoryMarshal.Cast<byte, float>(bytes), cancellation);
-        return new(map.Width, map.Height, (float)map.ReferenceRadiusKilometers, bytes);
-    }
-}
+namespace SpaceTangent.Godot.Simulation;
 
 internal sealed record BodyTerrainAsset(Texture2D Heights, float RadiusKilometers, Mesh Globe, Mesh Patch)
 {

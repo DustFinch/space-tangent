@@ -10,6 +10,8 @@ using SpaceTangent.Core.Time;
 using SpaceTangent.Core.World;
 using SpaceTangent.Godot.UI;
 
+using SpaceTangent.Application.Addons;
+
 namespace SpaceTangent.Godot.Simulation;
 
 public partial class SolarSystemScene : Control
@@ -77,8 +79,8 @@ public partial class SolarSystemScene : Control
     private OptionButton _deltaT = null!;
     private Label _status = null!;
     private int _active;
-    private int _loadGeneration;
-    private CancellationTokenSource? _loadCancellation;
+    private readonly AddonLoadCoordinator _addonLoads = new();
+    private int _loadGeneration => _addonLoads.Generation;
     private LuaSessionScript? _script;
     private readonly List<(SimulationViewport Renderer, ScriptMediaPlayer Player)> _scriptMedia = [];
     private PopupMenu _scriptMenu = null!;
@@ -123,7 +125,7 @@ public partial class SolarSystemScene : Control
 
         ISolarSystemEphemeris ephemeris;
         string ephemerisPath = LocalDataPaths.Find("SPACETANGENT_DE440", "de440.440");
-        LocalDataPath historicalPath = LocalDataPaths.Candidates("SPACETANGENT_VSOP87", "vsop87-legacy.bin");
+        AddonSourcePath historicalPath = LocalDataPaths.Candidates("SPACETANGENT_VSOP87", "vsop87-legacy.bin");
         CancellationToken token = BeginLoad();
         int generation = _loadGeneration;
         try
@@ -174,7 +176,7 @@ public partial class SolarSystemScene : Control
             GD.PushWarning($"Could not load the bright sky catalogue. {error.Message}");
         }
         SimulationWorld world = new(ephemeris, [], brightStars: _brightSky?.Catalogue);
-        AddonLoader.DecodedAddOns? candidate = null;
+        AddonPreparation.DecodedAddOns? candidate = null;
         try
         {
             _status.Text = "Loading add-ons…";
@@ -604,7 +606,7 @@ public partial class SolarSystemScene : Control
         Refresh();
     }
 
-    private static ISolarSystemEphemeris LoadSolarEphemeris(string de440Path, LocalDataPath historicalPath)
+    private static ISolarSystemEphemeris LoadSolarEphemeris(string de440Path, AddonSourcePath historicalPath)
     {
         var precise = De440Ephemeris.Load(de440Path);
         string historical = historicalPath.Resolve();
@@ -831,10 +833,7 @@ public partial class SolarSystemScene : Control
         DisablePlugins(updateMenu: false);
         _script?.Stop();
         ClearScriptMedia();
-        _loadGeneration++;
-        _loadCancellation?.Cancel();
-        _loadCancellation?.Dispose();
-        _loadCancellation = null;
+        _addonLoads.Dispose();
     }
 
     public override void _Notification(int what)
@@ -1536,12 +1535,12 @@ public partial class SolarSystemScene : Control
 
     internal Task<bool> ReloadAddOns() => ReloadAddOns(null);
 
-    private LocalAddonSettings ApplyPackOverride(LocalAddonSettings settings, LocalDataPath path, bool enabled) =>
+    private LocalAddonSettings ApplyPackOverride(LocalAddonSettings settings, AddonSourcePath path, bool enabled) =>
         enabled && _addOns?.Decoded.FilteredPacks.TryGetValue(path, out var blocked) == true
             ? settings with { DisabledPacks = settings.DisabledPacks.Except(blocked, StringComparer.Ordinal).ToArray() }
             : settings;
 
-    private async Task InstallLocalAddon(LocalAddonKind kind, string path)
+    private async Task InstallLocalAddon(AddonSourceKind kind, string path)
     {
         try
         {
@@ -1560,7 +1559,7 @@ public partial class SolarSystemScene : Control
         var originalDeltaT = Session!.DeltaT;
         CancellationToken token = BeginLoad();
         int generation = _loadGeneration;
-        AddonLoader.DecodedAddOns? candidate = null;
+        AddonPreparation.DecodedAddOns? candidate = null;
         try
         {
             _status.Text = "Reloading add-ons…";
@@ -1623,7 +1622,7 @@ public partial class SolarSystemScene : Control
         }
     }
 
-    private void DisposeSupersededStars(AddonLoader.DecodedAddOns? decoded)
+    private void DisposeSupersededStars(AddonPreparation.DecodedAddOns? decoded)
     {
         if (decoded?.DistantStars.Value is { } index && !ReferenceEquals(index, _addOns?.Decoded.DistantStars.Value))
             index.Dispose();
@@ -1643,17 +1642,10 @@ public partial class SolarSystemScene : Control
         GD.Print($"SpaceTangent import [{issue.Code}] {context} · {issue.File ?? "-"} · {issue.Detail}");
     }
 
-    private CancellationToken BeginLoad()
-    {
-        _loadGeneration++;
-        _loadCancellation?.Cancel();
-        _loadCancellation?.Dispose();
-        _loadCancellation = new CancellationTokenSource();
-        return _loadCancellation.Token;
-    }
+    private CancellationToken BeginLoad() => _addonLoads.Begin();
 
     private bool CanPublish(int generation, CancellationToken token) =>
-        !token.IsCancellationRequested && generation == _loadGeneration &&
+        _addonLoads.IsCurrent(generation, token) &&
         GodotObject.IsInstanceValid(this) && IsInsideTree();
 
     private void AddView()

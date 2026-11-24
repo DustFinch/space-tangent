@@ -5,6 +5,8 @@ using SpaceTangent.Contracts;
 using SpaceTangent.Core.Observing;
 using SpaceTangent.Godot.Simulation;
 
+using SpaceTangent.Application.Addons;
+
 namespace SpaceTangent.Godot.Tests;
 
 public partial class EarthOrbitProbe
@@ -95,7 +97,7 @@ public partial class EarthOrbitProbe
             {
                 System.Environment.SetEnvironmentVariable(input, cassini);
                 originalSettings = new LocalAddonSettingsFile().Load();
-                if (!await scene.ReloadAddOns(originalSettings.SetDefault(LocalAddonKind.Timeline, false)))
+                if (!await scene.ReloadAddOns(originalSettings.SetDefault(AddonSourceKind.Timeline, false)))
                     throw new InvalidOperationException($"The original Cassini timeline pack failed to load: {scene.LastAddonDiagnostic}.");
                 await CheckPair("huygens-carried-and-landed",
                     View("ssc/sol/saturn/titan/huygens", 2453300.5, .006),

@@ -20,7 +20,7 @@ The native ABI currently exposes ephemeris queries. Its engine examples validate
 
 ## State and identity
 
-`SimulationWorld` provides the installed catalogue and evaluation graphs. `SimulationSession` owns live observers, time controls, navigation and the transitions used by the interface and scripts. The adapter reads that state to update controls and rendering.
+`SimulationWorldAssembly` builds the installed catalogue and evaluation graphs; `SimulationWorld` keeps their public query facade. `SimulationSession` owns live observers and delegates linked/independent time changes to `ObserverClock`, complete scenario validation to `ScenarioRestoration`, and camera entry requirements to `CameraModeRules`. UI and scripts keep the same session operations. The adapter reads that state to update controls and rendering.
 
 A view index describes its current place in the layout. A lifetime identity keeps callbacks attached to the same live observer when another view closes. A persistent place-history key identifies saved observing locations. These identities have different lifetimes: splitting forks place identity, restoring a scenario replaces live callback identities, and ordinary add-on reload preserves the session and its views.
 
@@ -30,9 +30,9 @@ Scenario restoration validates the complete input before changing live state. Sa
 
 ## Data preparation and publication
 
-`AddonLoader` resolves engine-specific source locations, prepares decoded data and publishes rendering assets. Source decoding and dependency validation run on workers. Godot resource creation and publication belong to the main thread.
+`AddonLoader` resolves engine-specific source locations and schedules preparation with explicit `AddonPreparationInputs`. `AddonPreparation` in Application reads catalogues, tracks dependencies, decodes meshes and terrain, and prepares observation samples without an engine reference. Its diagnostic callbacks run on the calling worker. The Godot adapter publishes Texture/Mesh resources on the main thread and preserves unchanged decoded/resource identities across reloads.
 
-The scene tracks the current loading generation and cancellation token. A completed request may publish only while it remains current and its scene owner is alive. Cancelled work must release candidate-owned data without disposing an index or asset still shared by the active generation. All views must finish switching before a superseded shared resource is released.
+`AddonLoadCoordinator` owns the loading generation and cancellation source. It cancels superseded work and invalidates pending results when its owner closes. The scene additionally checks its native lifetime and tree membership before publication. A completed request may publish only while it remains current and its scene owner is alive. Cancelled work must release candidate-owned data without disposing an index or asset still shared by the active generation. All views must finish switching before a superseded shared resource is released.
 
 Reload preserves the last successful world on rejected input and keeps the observers' epochs, cameras, selection and delta-T whenever the replacement supports them. Requested source preferences are saved for the successfully applied world. Content hashes and recorded failed lookups determine cache validity. See [add-on cache contracts](ADDON_CACHE.md).
 

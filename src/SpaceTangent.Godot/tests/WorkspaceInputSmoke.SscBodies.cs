@@ -5,6 +5,8 @@ using SpaceTangent.Contracts;
 using SpaceTangent.Core.Addons;
 using SpaceTangent.Godot.Simulation;
 
+using SpaceTangent.Application.Addons;
+
 namespace SpaceTangent.Godot.Tests;
 
 public partial class WorkspaceInputSmoke
@@ -21,7 +23,7 @@ public partial class WorkspaceInputSmoke
             await Click(addOns);
         var kind = Find<OptionButton>("LocalAddonKind");
         await Click(kind);
-        await ChooseMenuItem(kind.GetPopup(), kind.GetItemIndex((int)LocalAddonKind.BodyCatalog));
+        await ChooseMenuItem(kind.GetPopup(), kind.GetItemIndex((int)AddonSourceKind.BodyCatalog));
         var dialog = _scene.GetNode<FileDialog>("OpenAddonFolder");
         dialog.CurrentDir = local;
         await Click(Find<Button>("BrowseLocalAddon"));

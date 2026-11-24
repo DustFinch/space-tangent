@@ -7,13 +7,15 @@ using SpaceTangent.Core.Ephemerides;
 using SpaceTangent.Core.Observing;
 using SpaceTangent.Core.World;
 
+using SpaceTangent.Application.Addons;
+
 namespace SpaceTangent.Godot.Simulation;
 
 internal sealed record PreparedSscRings(SscRings Geometry, Texture2D Texture);
 
 internal sealed record PreparedImportedBody(ObjectId Id, CatalogueKind Kind, Vector3d Color, double RadiusKilometers,
     Basis3d MeshRotation, Vector3d MeshCenter, ArrayMesh? Model, double ModelDiameter,
-    IReadOnlyList<PreparedMissionGeometry>? Geometry = null, PreparedMissionObservation? Observation = null)
+    IReadOnlyList<PreparedMissionGeometry>? Geometry = null, DecodedMissionObservation? Observation = null)
 {
     internal Vector3d? EllipsoidRadiiKilometers { get; init; }
     internal Texture2D? Surface { get; init; }

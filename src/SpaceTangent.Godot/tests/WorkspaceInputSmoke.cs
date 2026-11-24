@@ -7,6 +7,8 @@ using SpaceTangent.Core.Time;
 using SpaceTangent.Godot.Simulation;
 using System.Text.Json.Nodes;
 
+using SpaceTangent.Application.Addons;
+
 namespace SpaceTangent.Godot.Tests;
 
 public partial class WorkspaceInputSmoke : Node

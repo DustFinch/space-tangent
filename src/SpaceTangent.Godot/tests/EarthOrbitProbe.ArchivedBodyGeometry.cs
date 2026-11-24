@@ -5,6 +5,8 @@ using SpaceTangent.Core.Ephemerides;
 using SpaceTangent.Application;
 using SpaceTangent.Godot.Simulation;
 
+using SpaceTangent.Application.Addons;
+
 namespace SpaceTangent.Godot.Tests;
 
 public partial class EarthOrbitProbe
@@ -321,8 +323,8 @@ public partial class EarthOrbitProbe
     {
         var settings = new LocalAddonSettingsFile().Load();
         string source = System.Environment.GetEnvironmentVariable("SPACETANGENT_GENERIC_CASSINI_SSC")!;
-        var pack = new LocalAddonSource(Guid.NewGuid(), LocalAddonKind.BodyCatalog, source, false, true);
-        if (!await scene.ReloadAddOns(settings.SetDefault(LocalAddonKind.Timeline, false).SetSource(pack, true)))
+        var pack = new LocalAddonSource(Guid.NewGuid(), AddonSourceKind.BodyCatalog, source, false, true);
+        if (!await scene.ReloadAddOns(settings.SetDefault(AddonSourceKind.Timeline, false).SetSource(pack, true)))
             throw new InvalidOperationException($"Could not install the original Cassini catalogue: {scene.LastAddonDiagnostic}");
         scene.SetProcess(false);
         string saved = Path.Combine(directory, "before-archived-huygens.stscene");
@@ -370,7 +372,7 @@ public partial class EarthOrbitProbe
         var file = new LocalAddonSettingsFile();
         var settings = file.Load();
         string source = System.Environment.GetEnvironmentVariable("SPACETANGENT_ARCHIVED_ISS_SOURCE")!;
-        var station = new LocalAddonSource(Guid.NewGuid(), LocalAddonKind.BodyCatalog, source, false, true);
+        var station = new LocalAddonSource(Guid.NewGuid(), AddonSourceKind.BodyCatalog, source, false, true);
         if (!await scene.ReloadAddOns(settings.SetSource(station, true)))
             throw new InvalidOperationException("Could not install the original station catalogue.");
         scene.SetProcess(false);

@@ -4,6 +4,8 @@ using SpaceTangent.Application;
 using SpaceTangent.Contracts;
 using SpaceTangent.Godot.Simulation;
 
+using SpaceTangent.Application.Addons;
+
 namespace SpaceTangent.Godot.Tests;
 
 public partial class EarthOrbitProbe
@@ -24,8 +26,8 @@ public partial class EarthOrbitProbe
         const string modify = "Modify \"International Space Station\" \"Sol/Earth\" { Radius 0.1 }";
         const string broken = "Modify \"International Space Station\" \"Sol/Earth\" { Mesh \"missing.cmod\" }";
         File.WriteAllText(patch, modify);
-        var installed = new LocalAddonSource(Guid.NewGuid(), LocalAddonKind.BodyCatalog, baseRoot, false, true);
-        var overlay = new LocalAddonSource(Guid.NewGuid(), LocalAddonKind.BodyCatalog, patches, false, true);
+        var installed = new LocalAddonSource(Guid.NewGuid(), AddonSourceKind.BodyCatalog, baseRoot, false, true);
+        var overlay = new LocalAddonSource(Guid.NewGuid(), AddonSourceKind.BodyCatalog, patches, false, true);
         var configured = original.SetSource(installed, true).SetSource(overlay, true);
         try
         {

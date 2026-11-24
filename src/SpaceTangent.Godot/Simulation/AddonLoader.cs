@@ -7,76 +7,26 @@ using SpaceTangent.Core.Ephemerides;
 using SpaceTangent.Core.Observing;
 using SpaceTangent.Core.Spice;
 
+using SpaceTangent.Application.Addons;
+using static SpaceTangent.Application.Addons.AddonPreparation;
+
 namespace SpaceTangent.Godot.Simulation;
 
-internal sealed record AddonGeneration(AddonLoader.DecodedAddOns Decoded, IReadOnlyList<PreparedSatellite> Satellites,
+internal sealed record AddonGeneration(AddonPreparation.DecodedAddOns Decoded, IReadOnlyList<PreparedSatellite> Satellites,
     PreparedMission? Mission, PreparedMission? Timeline, PreparedProbe? Probe, BodyTerrainAsset? Terrain, BodyTerrainAsset? MarsTerrain, IReadOnlyList<PreparedImportedBody> ImportedBodies);
 
 internal static partial class AddonLoader
 {
-    internal sealed record DecodedDeepSky(DeepSkyIndex Index, IReadOnlyDictionary<ObjectId, IReadOnlyList<DecodedModelSprite>> Sprites);
-    internal sealed record DecodedSatellite(ScienceSatellite Track, DecodedScienceModel Model);
-    internal sealed record DecodedMission(SpiceSpacecraft Track, DecodedScienceModel Model,
-        IReadOnlyList<SpiceSensor> Sensors, SaturnSurface? Surface);
-    internal sealed record DecodedTimeline(SscSampledSpacecraft Track, DecodedScienceModel Model, HuygensMission? Probe,
-        DecodedScienceModel? ProbeModel);
-    internal sealed record SscInstallation(LocalDataPath[] Paths, LocalDataPath MissionsPath, LocalDataPath? DedicatedPath,
-        AddonDependencies Dependencies, IReadOnlyList<DecodedSscBody> Bodies, DecodedMissionContent Missions, DecodedMission? Dedicated);
-    internal sealed record DecodedSscBody(SscBodyDefinition Body, DecodedScienceModel? Geometry, byte[]? Surface, byte[]? RingMap);
-    internal sealed record DecodedSampledMission(SampledMission Track,
-        IReadOnlyDictionary<string, DecodedScienceModel> Meshes, IReadOnlyDictionary<string, byte[]> Textures, IReadOnlyDictionary<string, byte[]> Tiles);
-    internal sealed record DecodedMissionContent(IReadOnlyList<DecodedSampledMission> Tracks, IReadOnlyList<MissionAnnotation> Annotations, IReadOnlyList<MissionViewpoint> Viewpoints);
-    internal sealed record DecodedTerrain(SpicePolynomialBodyFrame Frame, DecodedBodyTerrain Model);
+    private static readonly AddonPreparation Preparation = new(message => global::Godot.GD.Print(message),
+        message => global::Godot.GD.PushWarning(message));
 
-    internal sealed record Cached<T>(LocalDataPath Path, AddonDependencies Dependencies, T Value)
+    internal static AddonSourcePath DefaultPath(AddonSourceKind kind) => kind switch
     {
-        internal static Cached<T> Load(Cached<T>? previous, LocalDataPath path,
-            string source, Func<LocalDataPath, CancellationToken, T> read, CancellationToken cancellation)
-        {
-            try
-            {
-                if (previous?.Path == path && previous.Dependencies.IsCurrent(cancellation))
-                    return previous;
-                var (value, dependencies) = AddonDependencies.Capture(() => read(path, cancellation), cancellation);
-                return new(path, dependencies, value);
-            }
-            catch (Exception error) when (AddonDiagnostics.Annotate(error, AddonStage.Catalog, path.Explicit, source: source))
-            {
-                throw;
-            }
-        }
-    }
-
-    internal sealed record DecodedAddOns(SimulationWorld World, IReadOnlyList<Cached<IReadOnlyList<DecodedSatellite>>> Science,
-        DecodedMission? Mission, Cached<DecodedTimeline?>? Timeline, Cached<DecodedTerrain?>? Terrain,
-        PlanetEphemerides Planets, Cached<DecodedBodyTerrain>? MarsTerrain, Cached<StellarCatalogue> Stellar,
-        Cached<StellarCatalogue?> StellarArchive, Cached<StellarImport> StellarDefinitions, Cached<StellarImport> StellarCorrections,
-        SscInstallation BodyCatalogues, Cached<IReadOnlyList<SscSurfaceLocation>> Locations, Cached<DecodedDeepSky> DeepSky, Cached<ExoplanetCatalogue> Exoplanets,
-        DecodedMissionContent SampledMissions, Cached<IReadOnlyList<LocalTleSatellite>> LocalSatellites, string SatelliteUpdates,
-        Cached<EarthPlaceCatalogue> EarthPlaces, LocalDataPath SavedEarthPlacesPath, bool AllowAddonLua,
-        IReadOnlyDictionary<ObjectId, PreparedMissionObservation> Observations, Cached<GalacticDustGrid?> GalacticDust, Cached<DistantStarIndex?> DistantStars)
-    {
-        internal IReadOnlyDictionary<LocalDataPath, string[]> FilteredPacks { get; init; } =
-            new Dictionary<LocalDataPath, string[]>();
-
-        internal bool HasSource(LocalAddonKind kind, LocalDataPath path) => kind switch
-        {
-            LocalAddonKind.Science => Science.Any(source => source.Path == path && source.Value.Count > 0),
-            LocalAddonKind.Mission => BodyCatalogues.DedicatedPath == path && Mission is not null,
-            LocalAddonKind.Timeline => Timeline?.Path == path && Timeline.Value is not null,
-            LocalAddonKind.Terrain => Terrain?.Path == path && Terrain.Value is not null,
-            LocalAddonKind.BodyCatalog => BodyCatalogues.Paths.Contains(path) && BodyCatalogues.Bodies.Count > 0,
-            _ => false
-        };
-    }
-
-    internal static LocalDataPath DefaultPath(LocalAddonKind kind) => kind switch
-    {
-        LocalAddonKind.Science => LocalDataPaths.Candidates("SPACETANGENT_SCIENCE_ROOT", "science", directory: true),
-        LocalAddonKind.Mission => LocalDataPaths.Candidates("SPACETANGENT_MISSION_CATALOG", "mission/cassini.json"),
-        LocalAddonKind.Timeline => LocalDataPaths.Candidates("SPACETANGENT_TIMELINE_ROOT", "timeline", directory: true),
-        LocalAddonKind.Terrain => LocalDataPaths.Candidates("SPACETANGENT_TERRAIN_ROOT", "terrain", directory: true),
-        LocalAddonKind.BodyCatalog => LocalDataPaths.Candidates("SPACETANGENT_SSC_ADDON_ROOT", "ssc-bodies", directory: true),
+        AddonSourceKind.Science => LocalDataPaths.Candidates("SPACETANGENT_SCIENCE_ROOT", "science", directory: true),
+        AddonSourceKind.Mission => LocalDataPaths.Candidates("SPACETANGENT_MISSION_CATALOG", "mission/cassini.json"),
+        AddonSourceKind.Timeline => LocalDataPaths.Candidates("SPACETANGENT_TIMELINE_ROOT", "timeline", directory: true),
+        AddonSourceKind.Terrain => LocalDataPaths.Candidates("SPACETANGENT_TERRAIN_ROOT", "terrain", directory: true),
+        AddonSourceKind.BodyCatalog => LocalDataPaths.Candidates("SPACETANGENT_SSC_ADDON_ROOT", "ssc-bodies", directory: true),
         _ => throw new ArgumentOutOfRangeException(nameof(kind))
     };
 
@@ -86,34 +36,23 @@ internal static partial class AddonLoader
         return path.Explicit ?? path.User;
     }
 
-    internal static LocalDataPath SavedEarthPlacePath() =>
+    internal static AddonSourcePath SavedEarthPlacePath() =>
         LocalDataPaths.Candidates("SPACETANGENT_SAVED_EARTH_PLACES", "saved-sites.tsv");
 
-    private static IEnumerable<string> SavedEarthPlaceSources(LocalDataPath paths)
-    {
-        if (paths.Explicit is { } explicitPath)
-        {
-            yield return explicitPath;
-            yield break;
-        }
-        yield return AddonDependencies.FileExists(paths.Project) ? paths.Project : paths.Export;
-        yield return paths.User;
-    }
-
-    internal static LocalDataPath SourcePath(LocalAddonSource source, LocalAddonSettingsFile file) =>
-        new(file.Resolve(source), "", "", "", source.Kind != LocalAddonKind.Mission);
+    internal static AddonSourcePath SourcePath(LocalAddonSource source, LocalAddonSettingsFile file) =>
+        new(file.Resolve(source), "", "", "", source.Kind != AddonSourceKind.Mission);
 
     // Godot path resolution runs on the main thread. File probes, hashing and decoding run on the worker.
     internal static Task<DecodedAddOns> Load(ISolarSystemEphemeris ephemeris, DecodedAddOns? previous,
         LocalAddonSettings settings, LocalAddonSettingsFile file, BrightStarCatalogue? brightStars, CancellationToken cancellation)
     {
-        LocalDataPath[] science = Paths(LocalAddonKind.Science).ToArray();
-        LocalDataPath[] bodySources = Paths(LocalAddonKind.BodyCatalog).ToArray();
+        AddonSourcePath[] science = Paths(AddonSourceKind.Science).ToArray();
+        AddonSourcePath[] bodySources = Paths(AddonSourceKind.BodyCatalog).ToArray();
         bool allowAddonLua = global::Godot.OS.GetCmdlineUserArgs().Contains("--allow-addon-lua", StringComparer.Ordinal) ||
             System.Environment.GetEnvironmentVariable("SPACETANGENT_ALLOW_ADDON_LUA") == "1";
-        LocalDataPath? mission = First(LocalAddonKind.Mission);
-        LocalDataPath? timeline = First(LocalAddonKind.Timeline);
-        LocalDataPath? terrain = First(LocalAddonKind.Terrain);
+        AddonSourcePath? mission = First(AddonSourceKind.Mission);
+        AddonSourcePath? timeline = First(AddonSourceKind.Timeline);
+        AddonSourcePath? terrain = First(AddonSourceKind.Terrain);
         var planetPath = LocalDataPaths.Candidates("SPACETANGENT_PLANET_TEXTURES", "planets", directory: true);
         var pckPath = LocalDataPaths.Candidates("SPACETANGENT_PCK", "timeline/pck00011.tpc");
         var stellarPath = LocalDataPaths.Candidates("SPACETANGENT_SPATIAL_STARS", "sky/spatial-stars.tsv");
@@ -129,151 +68,32 @@ internal static partial class AddonLoader
         string tleUpdates = SatelliteUpdatesPath();
         var earthPlacesPath = LocalDataPaths.Candidates("SPACETANGENT_EARTH_PLACES", "sites.txt");
         var savedEarthPlacesPath = SavedEarthPlacePath();
-        return Task.Run(() =>
-        {
-            var filteredPacks = new Dictionary<LocalDataPath, string[]>();
-            science = science.Where(Enabled).ToArray();
-            bodySources = bodySources.Where(Enabled).ToArray();
-            if (mission is { } missionSource && !Enabled(missionSource)) mission = null;
-            if (timeline is { } timelineSource && !Enabled(timelineSource)) timeline = null;
-            if (terrain is { } terrainSource && !Enabled(terrainSource)) terrain = null;
-            bool Enabled(LocalDataPath path)
-            {
-                if (settings.DisabledPacks.Length == 0)
-                    return true;
-                var keys = LegacyPackKeys.For(path).Intersect(settings.DisabledPacks, StringComparer.Ordinal).ToArray();
-                if (keys.Length == 0)
-                    return true;
-                filteredPacks[path] = keys;
-                return false;
-            }
-            var satellites = science.Select(path => Cached<IReadOnlyList<DecodedSatellite>>.Load(
-                previous?.Science.FirstOrDefault(source => source.Path == path), path,
-                "Science satellites", ReadScience, cancellation)).ToArray();
-            bool sameScience = previous is not null && previous.Science.SequenceEqual(satellites);
-            PlanetEphemerides planets = previous?.Planets ?? new(planetPath.Resolve(), pckPath.Resolve());
-            var bodies = LoadBodyCatalogues(bodySources, missionsPath, mission,
-                sameScience && previous?.AllowAddonLua == allowAddonLua ? previous.BodyCatalogues : null,
-                satellites.SelectMany(source => source.Value).Select(item => item.Track).ToArray(), allowAddonLua, planets.CatalogueModels(ephemeris), cancellation);
-            var missions = bodies.Missions;
-            var spice = bodies.Dedicated;
-            var sampled = Read(previous?.Timeline, timeline, "Sampled timeline", ReadTimeline);
-            var relief = Read(previous?.Terrain, terrain, "Lunar terrain", ReadTerrain);
-            string marsPath = Path.Combine(planetPath.Resolve(), "terrain-mars.bin");
-            Cached<DecodedBodyTerrain>? marsTerrain = planets.HasOrientation(499) && File.Exists(marsPath)
-                ? Read(previous?.MarsTerrain, new LocalDataPath(marsPath, "", "", "", false), "Mars terrain",
-                    (path, token) => AddonDiagnostics.Read(AddonStage.Terrain, marsPath,
-                        () => DecodedBodyTerrain.Load(path.Resolve(), 3396, token)))
-                : null;
-            cancellation.ThrowIfCancellationRequested();
+        var inputs = new AddonPreparationInputs(
+            science,
+            bodySources,
+            mission,
+            timeline,
+            terrain,
+            planetPath,
+            pckPath,
+            stellarPath,
+            archivePath,
+            stellarDefinitionsPath,
+            stellarCorrectionsPath,
+            exoplanetPath,
+            locationPath,
+            deepSkyPath,
+            dustPath,
+            missionsPath,
+            tlePath,
+            tleUpdates,
+            earthPlacesPath,
+            savedEarthPlacesPath,
+            allowAddonLua,
+            settings.DisabledPacks);
+        return Task.Run(() => Preparation.Prepare(ephemeris, previous, inputs, brightStars, cancellation), cancellation);
 
-            var locations = Cached<IReadOnlyList<SscSurfaceLocation>>.Load(previous?.Locations, locationPath, "Surface locations",
-                (path, token) => SscSurfaceLocations.Load(path.Resolve(), token), cancellation);
-            var deepSky = Cached<DecodedDeepSky>.Load(previous?.DeepSky, deepSkyPath, "Deep-sky catalogues",
-                (path, token) => ReadDeepSky(path.Resolve(), token), cancellation);
-            var galacticDust = Cached<GalacticDustGrid?>.Load(previous?.GalacticDust, dustPath, "Galactic dust grid",
-                (path, _) => ReadGalacticDust(path.Resolve()), cancellation);
-            var stellar = Cached<StellarCatalogue>.Load(previous?.Stellar, stellarPath, "Spatial star catalogue",
-                (path, _) =>
-                {
-                    string file = path.Resolve();
-                    return AddonDependencies.FileExists(file) ? StellarCatalogue.Load(file) : StellarCatalogue.Empty;
-                }, cancellation);
-            var archive = Cached<StellarCatalogue?>.Load(ReferenceEquals(previous?.Stellar, stellar) ? previous?.StellarArchive : null,
-                archivePath, "Archived star catalogue", (path, token) =>
-                {
-                    string root = path.Resolve();
-                    return AddonDependencies.FileExists(Path.Combine(root, "stars.bin")) ?
-                        StellarCatalogue.LoadArchive(root, stellar.Value, token) : null;
-                }, cancellation);
-            bool sameStarBase = ReferenceEquals(previous?.Stellar, stellar) && ReferenceEquals(previous?.StellarArchive, archive);
-            var definitions = Cached<StellarImport>.Load(sameStarBase ? previous?.StellarDefinitions : null,
-                stellarDefinitionsPath, "STC stellar catalogues", (path, token) =>
-                {
-                    var result = (archive.Value ?? stellar.Value).WithStc(path.Resolve(),
-                        archive.Value is null ? null : stellar.Value, token);
-                    if (result.AppliedRecords > 0 || result.DiagnosticCount > 0)
-                    {
-                        global::Godot.GD.Print($"SpaceTangent STC: {result.AppliedRecords:N0} effective records, {result.DiagnosticCount} diagnostics.");
-                        foreach (string warning in result.Warnings)
-                            global::Godot.GD.Print("SpaceTangent STC: " + warning);
-                    }
-                    return result;
-                }, cancellation);
-            var corrections = Cached<StellarImport>.Load(
-                ReferenceEquals(previous?.StellarDefinitions, definitions) ? previous?.StellarCorrections : null,
-                stellarCorrectionsPath, "Stellar distance corrections", (path, token) =>
-                {
-                    var result = definitions.Value.Catalogue.WithDistanceCorrectionPacks(path.Resolve(), token);
-                    if (result.AppliedRecords > 0 || result.DiagnosticCount > 0)
-                    {
-                        global::Godot.GD.Print($"Stellar distance corrections: {result.AppliedRecords} applied, {result.DiagnosticCount} diagnostics.");
-                        foreach (string warning in result.Warnings)
-                            global::Godot.GD.Print("Stellar distance corrections: " + warning);
-                    }
-                    return result;
-                }, cancellation);
-            var exoplanets = Cached<ExoplanetCatalogue>.Load(previous?.Exoplanets, exoplanetPath, "Exoplanet catalogue",
-                (path, token) =>
-                {
-                    string file = path.Resolve();
-                    return AddonDependencies.FileExists(file) ? ExoplanetCatalogue.Load(file, token) : ExoplanetCatalogue.Empty;
-                }, cancellation);
-
-            var tle = Cached<IReadOnlyList<LocalTleSatellite>>.Load(
-                previous?.SatelliteUpdates == tleUpdates ? previous.LocalSatellites : null, tlePath,
-                "Local TLE groups", (path, token) => LocalTleCatalogue.LoadSources([path.Resolve(), tleUpdates],
-                    message => global::Godot.GD.Print("Local TLE: " + message), token), cancellation);
-            var earthPlaces = Cached<EarthPlaceCatalogue>.Load(
-                previous?.SavedEarthPlacesPath == savedEarthPlacesPath ? previous?.EarthPlaces : null,
-                earthPlacesPath, "Earth observing places", (path, token) => EarthPlaceCatalogue.LoadWithSavedSources(path.Resolve(),
-                    SavedEarthPlaceSources(savedEarthPlacesPath), message => global::Godot.GD.Print("Earth places: " + message), token), cancellation);
-            DistantStarIndex? openedDistantStars = null;
-            try
-            {
-                var distantStars = Cached<DistantStarIndex?>.Load(previous?.DistantStars, archivePath, "Distant star catalogue",
-                    (path, _) =>
-                    {
-                        string root = path.Resolve();
-                        string file = Path.Combine(root, "stars-far.bin");
-                        if (AddonDependencies.FileExists(file))
-                            openedDistantStars = DistantStarIndex.Load(file, Path.Combine(root, "stars-far-names.txt"));
-                        return openedDistantStars;
-                    }, cancellation);
-                bool sameBodies = ReferenceEquals(previous?.BodyCatalogues, bodies);
-                if (previous is not null && sameScience && sameBodies && ReferenceEquals(previous.Mission, spice) &&
-                    ReferenceEquals(previous.Timeline, sampled) && ReferenceEquals(previous.Terrain, relief) &&
-                    ReferenceEquals(previous.MarsTerrain, marsTerrain) && ReferenceEquals(previous.Locations, locations) &&
-                    ReferenceEquals(previous.DeepSky, deepSky) && ReferenceEquals(previous.GalacticDust, galacticDust) && ReferenceEquals(previous.Stellar, stellar) &&
-                    ReferenceEquals(previous.StellarArchive, archive) && ReferenceEquals(previous.DistantStars, distantStars) && ReferenceEquals(previous.StellarDefinitions, definitions) &&
-                    ReferenceEquals(previous.StellarCorrections, corrections) && ReferenceEquals(previous.Exoplanets, exoplanets) && ReferenceEquals(previous.SampledMissions, missions) &&
-                    ReferenceEquals(previous.LocalSatellites, tle) && ReferenceEquals(previous.EarthPlaces, earthPlaces) &&
-                    previous.FilteredPacks.Count == filteredPacks.Count && filteredPacks.All(pair =>
-                        previous.FilteredPacks.TryGetValue(pair.Key, out var keys) && keys.SequenceEqual(pair.Value)))
-                    return previous;
-
-                var tracks = satellites.SelectMany(source => source.Value).Select(item => item.Track).ToArray();
-                var world = AddonDiagnostics.Read(AddonStage.World, null, () => new SimulationWorld(ephemeris, tracks,
-                    spice?.Track, sampled?.Value?.Track, sampled?.Value?.Probe, relief?.Value?.Frame, brightStars, planets, marsTerrain is not null, corrections.Value.Catalogue,
-                    bodies.Bodies.Select(body => body.Body), locations.Value, deepSky.Value.Index, exoplanets.Value, missions.Tracks.Select(mission => mission.Track), tle.Value, earthPlaces.Value, distantStars.Value));
-                foreach (string warning in world.SourceWarnings)
-                    global::Godot.GD.PushWarning(warning);
-                var observations = PrepareObservations(world,
-                    missions.Tracks.DistinctBy(item => item.Track.Id), cancellation);
-                var decoded = new DecodedAddOns(world, sameScience ? previous!.Science : satellites, spice, sampled, relief, planets, marsTerrain, stellar, archive, definitions, corrections, bodies, locations, deepSky, exoplanets, missions, tle, tleUpdates, earthPlaces, savedEarthPlacesPath, allowAddonLua, observations, galacticDust, distantStars) { FilteredPacks = filteredPacks };
-                openedDistantStars = null;
-                return decoded;
-            }
-            finally
-            {
-                openedDistantStars?.Dispose();
-            }
-        }, cancellation);
-
-        Cached<T>? Read<T>(Cached<T>? cached, LocalDataPath? path, string category, Func<LocalDataPath, CancellationToken, T> reader) =>
-            path is { } available ? Cached<T>.Load(cached, available, category, reader, cancellation) : null;
-
-        IEnumerable<LocalDataPath> Paths(LocalAddonKind kind)
+        IEnumerable<AddonSourcePath> Paths(AddonSourceKind kind)
         {
             if (settings.UsesDefault(kind))
                 yield return DefaultPath(kind);
@@ -282,20 +102,7 @@ internal static partial class AddonLoader
         }
 
 
-        LocalDataPath? First(LocalAddonKind kind) => Paths(kind).Select(path => (LocalDataPath?)path).SingleOrDefault();
-    }
-
-    private static GalacticDustGrid? ReadGalacticDust(string path)
-    {
-        if (!AddonDependencies.FileExists(path))
-            return null;
-        const int maximum = 56 + GalacticDustGrid.MaximumVoxels * 2;
-        using var stream = AddonDependencies.OpenRead(path, maximum);
-        if (stream.Length > maximum)
-            throw new InvalidDataException("The galactic extinction grid exceeds its size limit.");
-        byte[] data = new byte[(int)stream.Length];
-        stream.ReadExactly(data);
-        return GalacticDustGrid.Read(data);
+        AddonSourcePath? First(AddonSourceKind kind) => Paths(kind).Select(path => (AddonSourcePath?)path).SingleOrDefault();
     }
 
     internal static AddonGeneration Publish(DecodedAddOns decoded, AddonGeneration? previous)
@@ -385,7 +192,7 @@ internal static partial class AddonLoader
                     mesh = ScienceMeshLoader.Publish(model, definition.Mesh!, litBody: lit, bodySurface: texture));
             var bounds = model is not null &&
                 (definition.EllipsoidRadiiKilometers is not null || body.Kind == CatalogueKind.Spacecraft)
-                ? ReadMeshBounds(model) : ((Vector3d Center, Vector3d Span)?)null;
+                ? model.MeshBounds() : ((Vector3d Center, Vector3d Span)?)null;
             return new PreparedImportedBody(body.Id, body.Kind, definition.Color, definition.RadiusKilometers,
                 definition.MeshRotation, definition.MeshCenter, mesh, model?.Diameter ?? 2)
             {
@@ -444,283 +251,4 @@ internal static partial class AddonLoader
         return Array.AsReadOnly(bodies.Concat(missions).ToArray());
     }
 
-    private static (IReadOnlyList<DecodedSscBody> Bodies, DecodedMissionContent Missions, DecodedMission? Dedicated) ReadMissionCatalogues(
-        IEnumerable<string> bodyRoots, LocalDataPath location, LocalDataPath? dedicatedPath, IReadOnlyList<ScienceSatellite> science,
-        bool allowLua, SscCustomModels custom, CancellationToken cancellation)
-    {
-        string root = location.Resolve();
-        string[] catalogues = AddonDependencies.DirectoryExists(root) ? FindMissionCatalogues(root) : [];
-        string? dedicated = dedicatedPath is { } path ? FindDedicatedMission(path) : null;
-        string[]? overlays = dedicated is not null && Path.GetExtension(dedicated).Equals(".ssc", StringComparison.OrdinalIgnoreCase)
-            ? SscSources(dedicated, Path.GetDirectoryName(dedicated)!) : null;
-        var imported = SscBodyCatalogue.LoadWithMissions(bodyRoots, catalogues, root, Resolve,
-            message => global::Godot.GD.Print("SSC bodies: " + message),
-            message => global::Godot.GD.Print("Sampled mission: " + message), cancellation,
-            allowLua ? new LuaCatalogueFactories() : null, dedicated, overlays, custom);
-        var mission = imported.DedicatedMission is { } data
-            ? AddonDiagnostics.Read(AddonStage.Catalog, dedicated, () => DecodeDedicatedMission(dedicated!, data, cancellation))
-            : null;
-        return (DecodeBodyCatalogues(imported.Bodies, cancellation), DecodeSampledMissions(root, imported.Missions, cancellation), mission);
-
-        ObjectId? Resolve(string name)
-        {
-            if (name.Equals("Sun", StringComparison.OrdinalIgnoreCase) || name.Equals("Sol", StringComparison.OrdinalIgnoreCase))
-                return SolarSystemSample.SunId;
-            if (name.Equals("Moon", StringComparison.OrdinalIgnoreCase))
-                return SolarSystemSample.MoonId;
-            return PlanetCatalogue.Planets.FirstOrDefault(planet => planet.Name.Equals(name, StringComparison.OrdinalIgnoreCase))?.Id ??
-                NaturalBodyCatalogue.Bodies.FirstOrDefault(body => body.Name.Equals(name, StringComparison.OrdinalIgnoreCase))?.Id ??
-                science.FirstOrDefault(track => track.Name.Equals(name, StringComparison.OrdinalIgnoreCase))?.Id;
-        }
-    }
-
-    private static string[] FindMissionCatalogues(string root)
-    {
-        var catalogues = AddonDependencies.ListFiles(root, "*.json");
-        string directory = Path.Combine(root, "catalog");
-        if (AddonDependencies.DirectoryExists(directory))
-            catalogues = [.. catalogues, .. AddonDependencies.ListFiles(directory, "*.json")];
-        // Installed mission packs retain their own resource folders under the shared mission root.
-        foreach (string folder in AddonDependencies.ListDirectories(root))
-        {
-            if (folder == directory || (AddonDependencies.GetAttributes(folder) & FileAttributes.ReparsePoint) != 0)
-                continue;
-            string pack = Path.Combine(folder, "pack.json");
-            if (AddonDependencies.FileExists(pack))
-                catalogues = [.. catalogues, pack];
-            if (catalogues.Length > 64)
-                break;
-        }
-        if (catalogues.Length > 64)
-            throw new InvalidDataException("The sampled mission directory may contain at most 64 catalogues.");
-        return catalogues.Order(StringComparer.Ordinal).ToArray();
-    }
-
-    private static DecodedMissionContent DecodeSampledMissions(string root, SampledMissionContent content,
-        CancellationToken cancellation)
-    {
-        var tracks = new List<DecodedSampledMission>();
-        var textureCache = new Dictionary<string, byte[]>(StringComparer.Ordinal);
-        var tileCache = new Dictionary<string, byte[]>(StringComparer.Ordinal);
-        int textureBytes = 0, tileBytes = 0;
-        foreach (SampledMission mission in content.Missions)
-        {
-            cancellation.ThrowIfCancellationRequested();
-            var meshes = new Dictionary<string, DecodedScienceModel>(StringComparer.Ordinal);
-            foreach (string file in (mission.Geometry ?? []).Select(span => span.Shape.MeshPath).OfType<string>().Distinct())
-                meshes.Add(file, ReadAddonMesh(root, file, cancellation));
-            var track = mission;
-            var metrics = meshes.ToDictionary(pair => pair.Key, pair => ReadMissionMeshMetrics(pair.Value), StringComparer.Ordinal);
-            double? navigationRadius = null;
-            if (mission.GeometryBounds is { Complete: true } bounds)
-            {
-                foreach (string file in bounds.Meshes.Select(term => term.Path).Distinct())
-                    if (!metrics.ContainsKey(file))
-                        metrics.Add(file, ReadMissionMeshMetrics(ReadAddonMesh(root, file, cancellation)));
-                navigationRadius = bounds.Resolve(file => metrics[file]);
-            }
-            IReadOnlyList<MissionGeometrySpan>? geometry = mission.Geometry?.Select(span =>
-            {
-                var shape = span.Shape;
-                if (shape.MeshPath is not { } path)
-                    return span;
-                var (extent, originRadius) = metrics[path];
-                var bound = new MissionMeshBound(path, shape.RadiusKilometers, shape.MeshOffset) { Scale = shape.MeshScale };
-                double physicalRadius = Math.Abs(bound.InstanceRadius(extent, originRadius));
-                if (!double.IsFinite(physicalRadius))
-                    throw new InvalidDataException("A mission mesh has a nonfinite physical radius.");
-                return span with { Shape = shape with { MeshScale = bound.ScaleForExtent(extent), RadiusKilometers = physicalRadius } };
-            }).ToArray();
-            if (navigationRadius is null && geometry?.Any(span => span.Shape.MeshScale.HasValue) == true)
-                navigationRadius = geometry.Max(span => span.Shape.RadiusKilometers);
-            track = mission with { Geometry = geometry, NavigationRadiusKilometers = navigationRadius };
-            tracks.Add(new(track, meshes, ReadMissionTextures(mission, textureCache, ref textureBytes, cancellation),
-                ReadMissionTiles(mission, tileCache, ref tileBytes, cancellation)));
-        }
-        return new(tracks.AsReadOnly(), content.Annotations, content.Viewpoints);
-    }
-
-    private static SscInstallation LoadBodyCatalogues(LocalDataPath[] paths, LocalDataPath missionsPath,
-        LocalDataPath? dedicatedPath, SscInstallation? previous,
-        IReadOnlyList<ScienceSatellite> science, bool allowLua, SscCustomModels custom, CancellationToken cancellation)
-    {
-        if (previous is not null && previous.MissionsPath == missionsPath && previous.DedicatedPath == dedicatedPath && previous.Paths.SequenceEqual(paths) &&
-            previous.Dependencies.IsCurrent(cancellation))
-            return previous;
-        try
-        {
-            var (content, dependencies) = AddonDependencies.Capture(
-                () => ReadMissionCatalogues(paths.Select(path => path.Resolve()), missionsPath, dedicatedPath, science, allowLua, custom, cancellation),
-                cancellation);
-            return new SscInstallation(paths, missionsPath, dedicatedPath, dependencies, content.Bodies, content.Missions, content.Dedicated);
-        }
-        catch (Exception error) when (AddonDiagnostics.Annotate(error, AddonStage.Catalog, source: "Mission catalogues"))
-        {
-            throw;
-        }
-    }
-
-    private static IReadOnlyList<DecodedSscBody> DecodeBodyCatalogues(IReadOnlyList<SscBodyDefinition> bodies,
-        CancellationToken cancellation)
-    {
-        var decodedMeshes = new Dictionary<(string File, string Root, bool Native), DecodedScienceModel>();
-        var decodedSurfaces = new Dictionary<string, byte[]>(StringComparer.Ordinal);
-        int textureBytes = 0;
-        return Array.AsReadOnly(bodies.Select(body =>
-        {
-            cancellation.ThrowIfCancellationRequested();
-            DecodedScienceModel? mesh = null;
-            bool native = body.Class.Equals("minormoon", StringComparison.OrdinalIgnoreCase);
-            if (body.Mesh is { } file && body.MeshRoot is { } root &&
-                !decodedMeshes.TryGetValue((file, root, native), out mesh))
-                decodedMeshes.Add((file, root, native), mesh = ReadAddonMesh(root, file, cancellation, native));
-            byte[]? pixels = null;
-            if (body.SurfaceMap is { } map && !decodedSurfaces.TryGetValue(map, out pixels))
-            {
-                pixels = ReadMissionTexture(map, ref textureBytes);
-                decodedSurfaces.Add(map, pixels);
-            }
-            byte[]? ringMap = null;
-            if (body.Rings is { } rings && !decodedSurfaces.TryGetValue(rings.TexturePath, out ringMap))
-            {
-                ringMap = ReadMissionTexture(rings.TexturePath, ref textureBytes);
-                decodedSurfaces.Add(rings.TexturePath, ringMap);
-            }
-            return new DecodedSscBody(body, mesh, pixels, ringMap);
-        }).ToArray());
-    }
-
-    private static (float Extent, float OriginRadius) ReadMissionMeshMetrics(DecodedScienceModel model)
-    {
-        var (_, span) = ReadMeshBounds(model);
-        float squaredRadius = 0;
-        foreach (var surface in model.Surfaces)
-        foreach (var vertex in surface.Positions.Span)
-            Include(vertex);
-        foreach (var sprite in model.Sprites)
-            Include(sprite.Position);
-        return ((float)Math.Max(span.X, Math.Max(span.Y, span.Z)), MathF.Sqrt(squaredRadius));
-
-        void Include(Vector3d vertex)
-        {
-            float x = (float)vertex.X, y = (float)vertex.Y, z = (float)vertex.Z;
-            squaredRadius = MathF.Max(squaredRadius, x * x + y * y + z * z);
-        }
-    }
-
-    private static (Vector3d Center, Vector3d Span) ReadMeshBounds(DecodedScienceModel model)
-    {
-        Vector3d lower = new(double.PositiveInfinity, double.PositiveInfinity, double.PositiveInfinity);
-        Vector3d upper = lower * -1;
-        foreach (var surface in model.Surfaces)
-        foreach (var p in surface.Positions.Span)
-        {
-            lower = new(Math.Min(lower.X, p.X), Math.Min(lower.Y, p.Y), Math.Min(lower.Z, p.Z));
-            upper = new(Math.Max(upper.X, p.X), Math.Max(upper.Y, p.Y), Math.Max(upper.Z, p.Z));
-        }
-        return ((lower + upper) * .5, upper - lower);
-    }
-
-    private static DecodedScienceModel ReadAddonMesh(string root, string file, CancellationToken cancellation, bool nativeBody = false) =>
-        Path.GetExtension(file).ToLowerInvariant() switch
-        {
-            ".obj" => ScienceModelDecoder.Decode(file, cancellation),
-            ".cmod" => nativeBody ? CmodMeshDecoder.DecodeNativeBody(root, file, cancellation) : CmodMeshDecoder.Decode(root, file, cancellation),
-            ".cms" => DisplacedSphereDecoder.Decode(file, cancellation),
-            ".3ds" => StudioMeshDecoder.Decode(root, file, cancellation),
-            ".glb" or ".gltf" => PackedModelDecoder.Decode(root, file, cancellation),
-            _ => throw new NotSupportedException("The add-on mesh needs OBJ, CMOD, CMS, 3DS, glTF or GLB.")
-        };
-
-    private static IReadOnlyList<DecodedSatellite> ReadScience(LocalDataPath location, CancellationToken cancellation)
-    {
-        string root = location.Resolve();
-        string catalog = Path.Combine(root, "catalog", "sciencesat.json");
-        string pack = Path.Combine(root, "pack.json");
-        IReadOnlyList<ScienceSatellite> tracks = AddonDependencies.FileExists(pack)
-            ? PackedSatelliteCatalog.Load(root, message => global::Godot.GD.Print("Packed satellites: " + message))
-            : location.Explicit is not null || AddonDependencies.FileExists(catalog)
-                ? ScienceSatelliteCatalog.Load(catalog, root) : [];
-        return Array.AsReadOnly(tracks.Select(track =>
-        {
-            cancellation.ThrowIfCancellationRequested();
-            return new DecodedSatellite(track, Path.GetExtension(track.MeshPath).ToLowerInvariant() is ".glb" or ".gltf"
-                ? PackedModelDecoder.Decode(root, track.MeshPath, cancellation) : ScienceModelDecoder.Decode(track.MeshPath, cancellation));
-        }).ToArray());
-    }
-
-    private static string? FindDedicatedMission(LocalDataPath location)
-    {
-        string? path = location.Explicit;
-        if (path is null)
-        {
-            string json = location.Resolve();
-            if (AddonDependencies.FileExists(json))
-                path = json;
-            else
-            {
-                string ssc = location.WithExtension(".ssc").Resolve();
-                if (AddonDependencies.FileExists(ssc))
-                    path = ssc;
-            }
-        }
-        return path is null ? null : Path.GetFullPath(path);
-    }
-
-    private static DecodedMission DecodeDedicatedMission(string fullPath, SpiceCatalogResult catalog, CancellationToken cancellation)
-    {
-        string root = Path.GetDirectoryName(fullPath)!;
-        IReadOnlyList<SpiceSpacecraft> entries = catalog.Spacecraft;
-        if (entries.Count != 1 || entries[0].Target != -82 || entries[0].Center != 6 || entries[0].AttitudeFrame is null)
-            throw new NotSupportedException("This mission view expects a single Cassini track at Saturn with CK pointing.");
-        SpiceSpacecraft mission = entries[0];
-        if (!mission.TrySample(SimulationSession.MissionPreview, out _) || !mission.TryAttitude(SimulationSession.MissionPreview, out _))
-            throw new InvalidDataException("The mission kernels do not cover the Cassini orbit insertion preview.");
-
-        string centers = Path.Combine(root, "sat480.bsp"), pck = Path.Combine(root, "pck00011.tpc");
-        SaturnSurface? surface = AddonDependencies.FileExists(centers) && AddonDependencies.FileExists(pck) ? new(centers, pck) : null;
-        return new(mission, StudioMeshDecoder.Decode(mission.MeshPath, cancellation), catalog.Sensors, surface);
-    }
-
-    private static DecodedTimeline? ReadTimeline(LocalDataPath location, CancellationToken cancellation)
-    {
-        string root = location.Resolve();
-        string catalog = Path.Combine(root, "ssc", "cassini.ssc");
-        if (location.Explicit is null && !AddonDependencies.FileExists(catalog))
-            return null;
-        string[] sources = SscSources(catalog, root);
-        var track = AddonDiagnostics.Read(AddonStage.Catalog, catalog,
-            () => SscSampledCatalog.Load(sources, root, "Sol/Saturn/Cassini", cancellation));
-        var geometry = StudioMeshDecoder.Decode(track.MeshPath, cancellation);
-        string sat083 = Path.Combine(root, "sat083.bsp"), pck = Path.Combine(root, "pck00011.tpc");
-        if (!AddonDependencies.FileExists(sat083) || !AddonDependencies.FileExists(pck))
-            return new(track, geometry, null, null);
-
-        var frame = new SpicePolynomialBodyFrame(pck, 606);
-        var probe = AddonDiagnostics.Read(AddonStage.Catalog, catalog,
-            () => SscHuygensTrack.Load(sources, root, track, frame, cancellation));
-        return new(track, geometry, new(probe, new(sat083), frame),
-            StudioMeshDecoder.Decode(probe.MeshPath, cancellation, centerOnBounds: true));
-    }
-
-    private static DecodedTerrain? ReadTerrain(LocalDataPath location, CancellationToken cancellation)
-    {
-        string root = location.Resolve();
-        string path = Path.Combine(root, "terrain-moon.bin");
-        if (!AddonDependencies.FileExists(path))
-        {
-            if (location.Explicit is not null)
-                throw new FileNotFoundException("The terrain pack needs terrain-moon.bin.", path);
-            return null;
-        }
-        var frame = new SpicePolynomialBodyFrame(Path.Combine(root, "pck00011.tpc"), 301);
-        return new(frame, AddonDiagnostics.Read(AddonStage.Terrain, path,
-            () => DecodedBodyTerrain.Load(path, frame.RadiiKilometers.X, cancellation)));
-    }
-
-    private static string[] SscSources(string catalog, string root)
-    {
-        string directory = Path.Combine(root, "overrides");
-        return AddonDependencies.DirectoryExists(directory) ? [catalog, .. AddonDependencies.ListFiles(directory, "*.ssc")] : [catalog];
-    }
 }

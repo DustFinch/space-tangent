@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
 using SpaceTangent.Godot.Simulation;
 
+using SpaceTangent.Application.Addons;
+
 namespace SpaceTangent.Godot.Tests;
 
 public partial class EarthOrbitProbe
@@ -14,15 +16,15 @@ public partial class EarthOrbitProbe
         try
         {
             var file = new LocalAddonSettingsFile();
-            var first = file.FindOrCreate(LocalAddonSettings.Empty, LocalAddonKind.Mission, directory);
+            var first = file.FindOrCreate(LocalAddonSettings.Empty, AddonSourceKind.Mission, directory);
             var second = first with { Id = Guid.NewGuid(), Path = Path.Combine(directory, "second") };
             var settings = LocalAddonSettings.Empty.SetSource(first, true).SetSource(second, true);
-            Require(!settings.Sources[0].Enabled && settings.Sources[1].Enabled && !settings.UsesDefault(LocalAddonKind.Mission),
+            Require(!settings.Sources[0].Enabled && settings.Sources[1].Enabled && !settings.UsesDefault(AddonSourceKind.Mission),
                 "Enabling a mission source must disable the previous mission and the default.");
             Require(first.Id == file.FindOrCreate(settings, first.Kind, directory).Id,
                 "An existing source must preserve its identity when added again.");
-            settings = settings.SetSource(second, false).SetDefault(LocalAddonKind.Mission, true);
-            Require(settings.Sources.All(source => !source.Enabled) && settings.UsesDefault(LocalAddonKind.Mission),
+            settings = settings.SetSource(second, false).SetDefault(AddonSourceKind.Mission, true);
+            Require(settings.Sources.All(source => !source.Enabled) && settings.UsesDefault(AddonSourceKind.Mission),
                 "Restoring the default must leave custom missions disabled.");
             file.Save(settings);
             Require(file.Load().Sources.SequenceEqual(settings.Sources), "The valid source choices must survive an atomic round trip.");

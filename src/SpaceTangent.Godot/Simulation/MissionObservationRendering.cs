@@ -3,14 +3,13 @@ using Godot;
 using SpaceTangent.Contracts;
 using SpaceTangent.Core.Addons;
 
-namespace SpaceTangent.Godot.Simulation;
+using SpaceTangent.Application.Addons;
 
-internal sealed record PreparedMissionObservation(MissionObservation Style, IReadOnlyList<MissionFootprint> Footprints,
-    double RadiusKilometers, bool SphericalDisplay);
+namespace SpaceTangent.Godot.Simulation;
 
 internal sealed class MissionObservationRendering
 {
-    private readonly PreparedMissionObservation _source;
+    private readonly DecodedMissionObservation _source;
     private readonly MeshInstance3D _node;
     private readonly ImmediateMesh _mesh = new();
     private readonly StandardMaterial3D _material = new()
@@ -24,7 +23,7 @@ internal sealed class MissionObservationRendering
     private int _published = -1;
     private bool _triangles, _lines;
 
-    public MissionObservationRendering(MeshInstance3D node, PreparedMissionObservation source)
+    public MissionObservationRendering(MeshInstance3D node, DecodedMissionObservation source)
     {
         _node = node;
         _source = source;

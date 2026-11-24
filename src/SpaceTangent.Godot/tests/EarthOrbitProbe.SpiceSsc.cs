@@ -5,6 +5,8 @@ using SpaceTangent.Contracts;
 using SpaceTangent.Core.Addons;
 using SpaceTangent.Godot.Simulation;
 
+using SpaceTangent.Application.Addons;
+
 namespace SpaceTangent.Godot.Tests;
 
 public partial class EarthOrbitProbe
@@ -56,12 +58,12 @@ public partial class EarthOrbitProbe
             {"formatVersion":19,"spiceLoads":[{"policy":"furnish",
                 "files":["cas_v43.tf","cas00172.tsc","04182_04183pa_soi_itl.bc"]}]}
             """);
-        var bodySource = new LocalAddonSource(Guid.NewGuid(), LocalAddonKind.BodyCatalog, bodies, false, true);
-        var kernelSource = new LocalAddonSource(Guid.NewGuid(), LocalAddonKind.BodyCatalog, kernels, false, true);
+        var bodySource = new LocalAddonSource(Guid.NewGuid(), AddonSourceKind.BodyCatalog, bodies, false, true);
+        var kernelSource = new LocalAddonSource(Guid.NewGuid(), AddonSourceKind.BodyCatalog, kernels, false, true);
         var configured = original.SetSource(bodySource, true);
         if (dedicatedInput is { Length: > 0 })
         {
-            kernelSource = new(Guid.NewGuid(), LocalAddonKind.Mission, Path.Combine(kernels, "cassini.json"), false, true);
+            kernelSource = new(Guid.NewGuid(), AddonSourceKind.Mission, Path.Combine(kernels, "cassini.json"), false, true);
             configured = configured.SetSource(kernelSource, true);
         }
         else if (!jsonKernels)

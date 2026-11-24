@@ -4,11 +4,11 @@ using System.Text;
 using System.Text.Json;
 using SpaceTangent.Core.Addons;
 
-namespace SpaceTangent.Godot.Simulation;
+namespace SpaceTangent.Application.Addons;
 
-internal static class LegacyPackKeys
+public static class AddonPackIdentity
 {
-    internal static string[] For(LocalDataPath location)
+    public static string[] For(AddonSourcePath location)
     {
         string path = location.Resolve();
         string root = location.Directory ? path : Path.GetDirectoryName(path)!;

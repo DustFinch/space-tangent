@@ -2,6 +2,8 @@
 using Godot;
 using SpaceTangent.Godot.Simulation;
 
+using SpaceTangent.Application.Addons;
+
 namespace SpaceTangent.Godot.Tests;
 
 public partial class WorkspaceInputSmoke
@@ -11,9 +13,9 @@ public partial class WorkspaceInputSmoke
         string copy = Path.Combine(directory, "duplicate-science");
         CopyDirectory(science, copy);
         var file = new LocalAddonSettingsFile();
-        var settings = LocalAddonSettings.Empty.SetDefault(LocalAddonKind.Science, false);
-        settings = settings.SetSource(file.FindOrCreate(settings, LocalAddonKind.Science, science), true);
-        settings = settings.SetSource(file.FindOrCreate(settings, LocalAddonKind.Science, copy), true);
+        var settings = LocalAddonSettings.Empty.SetDefault(AddonSourceKind.Science, false);
+        settings = settings.SetSource(file.FindOrCreate(settings, AddonSourceKind.Science, science), true);
+        settings = settings.SetSource(file.FindOrCreate(settings, AddonSourceKind.Science, copy), true);
         var decoded = await AddonLoader.Load(Session.World.Ephemeris, null, settings, file, null, CancellationToken.None);
         try
         {

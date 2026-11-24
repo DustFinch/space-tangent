@@ -23,6 +23,19 @@ public sealed record DecodedScienceModel(IReadOnlyList<DecodedSurface> Surfaces,
     IReadOnlyDictionary<string, ReadOnlyMemory<byte>> Textures, double Diameter)
 {
     public IReadOnlyList<DecodedModelSprite> Sprites { get; init; } = [];
+
+    public (Vector3d Center, Vector3d Span) MeshBounds()
+    {
+        Vector3d lower = new(double.PositiveInfinity, double.PositiveInfinity, double.PositiveInfinity);
+        Vector3d upper = lower * -1;
+        foreach (var surface in Surfaces)
+        foreach (var p in surface.Positions.Span)
+        {
+            lower = new(Math.Min(lower.X, p.X), Math.Min(lower.Y, p.Y), Math.Min(lower.Z, p.Z));
+            upper = new(Math.Max(upper.X, p.X), Math.Max(upper.Y, p.Y), Math.Max(upper.Z, p.Z));
+        }
+        return ((lower + upper) * .5, upper - lower);
+    }
 }
 
 public readonly record struct DecodedModelSprite(Vector3d Position, double Size, Vector3d Color, double Opacity)

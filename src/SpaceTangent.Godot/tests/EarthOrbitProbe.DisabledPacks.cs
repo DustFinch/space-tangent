@@ -6,6 +6,8 @@ using SpaceTangent.Application;
 using SpaceTangent.Contracts;
 using SpaceTangent.Godot.Simulation;
 
+using SpaceTangent.Application.Addons;
+
 namespace SpaceTangent.Godot.Tests;
 
 public partial class EarthOrbitProbe
@@ -15,7 +17,7 @@ public partial class EarthOrbitProbe
         var session = scene.Session!;
         var file = new LocalAddonSettingsFile();
         var original = file.Load();
-        var source = file.FindOrCreate(original, LocalAddonKind.BodyCatalog, packRoot);
+        var source = file.FindOrCreate(original, AddonSourceKind.BodyCatalog, packRoot);
         var installed = original.SetSource(source, true);
         if (!await scene.ReloadAddOns(installed))
             throw new InvalidOperationException("The original comet pack could not be installed.");
@@ -70,7 +72,7 @@ public partial class EarthOrbitProbe
         var original = file.Load();
         var settings = original with { Sources = [] };
         foreach (string root in new[] { first, second })
-            settings = settings.SetSource(file.FindOrCreate(settings, LocalAddonKind.BodyCatalog, root), true);
+            settings = settings.SetSource(file.FindOrCreate(settings, AddonSourceKind.BodyCatalog, root), true);
         if (!await scene.ReloadAddOns(settings))
             throw new InvalidOperationException("The original comet and asteroid packs could not be loaded together.");
         var comet = session.World.Catalogue.Objects.Single(body => body.Kind == CatalogueKind.Comet &&
@@ -132,13 +134,13 @@ public partial class EarthOrbitProbe
             throw new InvalidOperationException("The original lunar relief must load.");
 
         string profile = Path.Combine(directory, "archived-terrain-timeline.json");
-        foreach (LocalAddonKind kind in new[] { LocalAddonKind.Timeline, LocalAddonKind.Terrain })
+        foreach (AddonSourceKind kind in new[] { AddonSourceKind.Timeline, AddonSourceKind.Terrain })
         {
             string key = ArchivedPackPathKey(AddonLoader.DefaultPath(kind).Resolve());
             File.WriteAllText(profile, System.Text.Json.JsonSerializer.Serialize(new { Site = new { }, DisabledPacks = key }));
             await scene.ImportStartupSettings(profile);
-            if (!await scene.ReloadAddOns() || session.World.HasLunarTerrain != (kind != LocalAddonKind.Terrain) ||
-                session.World.TimelineId != (kind == LocalAddonKind.Timeline ? null : timeline) ||
+            if (!await scene.ReloadAddOns() || session.World.HasLunarTerrain != (kind != AddonSourceKind.Terrain) ||
+                session.World.TimelineId != (kind == AddonSourceKind.Timeline ? null : timeline) ||
                 !file.Load().DisabledPacks.SequenceEqual([key]) || session.World.Satellites.Count != 2 || session.DeltaT != deltaT)
                 throw new InvalidOperationException($"Disabling {kind} must preserve the other source, spacecraft and delta-T.");
         }

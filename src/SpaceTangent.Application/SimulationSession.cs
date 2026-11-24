@@ -319,57 +319,16 @@ public sealed partial class SimulationSession
 
     public bool TryReplaceWorld(SimulationWorld next)
     {
-        if (_views.Any(view => !Covers(next, view.Epoch)))
-            return false;
-
-        var fallbacks = new List<int>();
+        var plan = WorldReplacementPlan.Prepare(World, next, _views, DeltaT);
+        if (plan is null) return false;
         for (int index = 0; index < _views.Count; index++)
         {
-            ObserverView previous = _views[index];
-            ObjectId? selected = previous.Selection is { } id && next.Catalogue.Find(id) is not null
-                ? id
-                : null;
-            bool lostMode = (previous.Mode == CameraMode.Satellites && next.Satellites.Count == 0) ||
-                (previous.Mode == CameraMode.Mission && next.MissionId is null) ||
-                (previous.Mode == CameraMode.Timeline && next.TimelineId is null) ||
-                (previous.Mode == CameraMode.Probe && next.Probe is null) ||
-                (previous.Mode == CameraMode.LunarTerrain && !next.HasLunarTerrain) ||
-                (previous.Mode == CameraMode.MarsTerrain && !next.HasMarsTerrain);
-            CameraMode mode = lostMode
-                ? CameraMode.Solar
-                : previous.Mode;
-            NavigationCamera? navigation = previous.Navigation;
-            if (navigation is { Target: { } target } camera)
-            {
-                bool lostTarget = next.Catalogue.Find(target) is null;
-                bool lostFrame = camera.Placement is { UsesFrame: true } &&
-                    !camera.TryFrameBasis(next.Graph.Evaluate(previous.Epoch, DeltaT), DeltaT, out _);
-                if (lostTarget || lostFrame)
-                {
-                    NavigationPlacement? placement = camera.Placement is { UsesFrame: true }
-                        ? camera.ResolvePlacement(World.Graph.Evaluate(previous.Epoch, DeltaT), DeltaT) : camera.Placement;
-                    bool release = lostTarget || camera.Placement?.CatalogueFrame is not null;
-                    navigation = camera with { Target = release ? null : target, Tracking = !release && camera.Tracking,
-                        Placement = placement };
-                    CancelFlight(index);
-                }
-            }
-            ObjectId? aim = previous.ScriptAimTarget is { } tracked && next.Catalogue.Find(tracked) is not null ? tracked : null;
-            EarthObserverCamera? site = previous.EarthObserver;
-            if (site is { IsEarth: false } surface &&
-                !SurfaceObserver.TryFrame(next, surface, next.Graph.Evaluate(previous.Epoch, DeltaT), DeltaT, out _))
-            {
-                site = previous.Places.Find(SolarSystemSample.EarthId) ?? EarthObserverCamera.Default;
-                if (mode == CameraMode.Surface && navigation is null) mode = CameraMode.Solar;
-                fallbacks.Add(index);
-            }
-            var updated = previous with { Selection = selected, Mode = mode, Navigation = navigation, ScriptAimTarget = aim };
-            _views[index] = site is { } location && site != previous.EarthObserver ? updated.WithObserverCamera(location) :
-                updated with { EarthObserver = site };
+            if (plan.CancelFlights[index]) CancelFlight(index);
+            _views[index] = plan.Views[index];
         }
         World = next;
-        SurfaceObserverFallbacks = fallbacks.AsReadOnly();
-        if (fallbacks.Count > 0) ObserverPlacesVersion++;
+        SurfaceObserverFallbacks = plan.SurfaceFallbacks;
+        if (plan.SurfaceFallbacks.Count > 0) ObserverPlacesVersion++;
         return true;
     }
 

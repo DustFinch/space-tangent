@@ -16,9 +16,18 @@ def literal(value):
 
 @unittest.skipUnless(shutil.which('pwsh'), 'PowerShell 7 is required for runner path contracts.')
 class RunnerPathTests(unittest.TestCase):
-    def exercise(self, suite, engine_mode='relative', failure=None):
+    def exercise(self, suite, engine_mode='relative', failure=None, short_path=False):
         with tempfile.TemporaryDirectory(prefix='runner paths ') as folder:
             root = Path(folder)
+            if short_path:
+                # Hosted Windows TEMP can contain an 8.3 alias such as RUNNER~1.
+                # Force that spelling locally instead of relying on runner setup.
+                import ctypes
+                buffer = ctypes.create_unicode_buffer(32768)
+                length = ctypes.windll.kernel32.GetShortPathNameW(folder, buffer, len(buffer))
+                if not length or length >= len(buffer):
+                    raise ctypes.WinError()
+                root = Path(buffer.value)
             caller, process = root / 'caller directory', root / 'process directory'
             caller.mkdir()
             process.mkdir()
@@ -139,7 +148,10 @@ function global:dotnet {
                     self.assertTrue(Path(observed['profile']).samefile(profile))
                     self.assertTrue(Path(observed['engine']).samefile(engine))
                 capture = json.loads((output / 'soak-options.json').read_text(encoding='utf-8-sig'))['SPACETANGENT_PROBE_CAPTURE']
-                self.assertEqual(output / 'memory.json', Path(capture))
+                capture = Path(capture)
+                self.assertTrue(capture.is_absolute())
+                self.assertEqual('memory.json', capture.name)
+                self.assertTrue(capture.parent.samefile(output))
             else:
                 observed = json.loads((output / 'observed.json').read_text(encoding='utf-8-sig'))
                 self.assertTrue(Path(observed['profile']).samefile(profile))
@@ -151,6 +163,10 @@ function global:dotnet {
 
     def test_resource_suite_relative_inputs_follow_set_location(self):
         self.exercise(True)
+
+    @unittest.skipUnless(os.name == 'nt', 'Windows 8.3 path aliases are platform-specific.')
+    def test_resource_evidence_accepts_short_and_long_directory_names(self):
+        self.exercise(True, short_path=True)
 
     def test_both_runners_resolve_an_engine_from_path(self):
         for suite in (False, True):

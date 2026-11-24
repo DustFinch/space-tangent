@@ -199,6 +199,8 @@ Run the six committed resource probes together with a hash-pinned workspace prof
 
 Use a new output directory each time. The suite builds/imports once, runs each probe with coverage in a separate process, and accepts only exit 0, its exact marker, required tracker hits and no engine/script/shader errors. It records progress and failures in `status.json`, raw logs and per-probe XML. It never switches desktops or synthesizes system mouse input. Linux rendered acceptance requires an explicitly dedicated display. These six reports supplement the full source-checked coverage matrix; they do not establish the four-module 95% threshold on their own.
 
+The matrix, individual-probe and resource-suite runners resolve relative input, options and output paths from the caller's PowerShell location, before changing directories. `-Godot` accepts an executable name from `PATH`, an absolute path or an explicit relative path; explicit paths take precedence over a same-named executable on `PATH`. This also works after interactive `Set-Location`, when the process current directory differs from `$PWD`.
+
 | Probe | Required evidence |
 |---|---|
 | GpuAssetOwnershipProbe | Abandoned/committed/shared dependencies and 32 alternating updates; native ObjectDB identities independently of disposed C# wrappers; a node keeps a mesh alive until its last native reference is released |

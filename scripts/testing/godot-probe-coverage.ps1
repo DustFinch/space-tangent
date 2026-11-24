@@ -16,12 +16,14 @@ param(
     [string[]]$RequiredModules=@('SpaceTangent.Core','SpaceTangent.Contracts','SpaceTangent.Application','SpaceTangent.Godot')
 )
 $ErrorActionPreference='Stop'
+. (Join-Path $PSScriptRoot 'runner-paths.ps1')
 $checkout=[IO.Path]::GetFullPath((Join-Path $PSScriptRoot '../..'))
 $core=Join-Path $checkout 'deps/space-tangent-core'
 $project=Join-Path $checkout 'src/SpaceTangent.Godot'
-$out=[IO.Path]::GetFullPath($OutputDirectory)
-$DataProfile=[IO.Path]::GetFullPath($DataProfile)
-if ($ProbeOptions) { $ProbeOptions=[IO.Path]::GetFullPath($ProbeOptions) }
+$out=Resolve-Input $OutputDirectory
+$DataProfile=Resolve-Input $DataProfile
+if ($ProbeOptions) { $ProbeOptions=Resolve-Input $ProbeOptions }
+$Godot=Resolve-Engine $Godot
 if ($Scene -notmatch '^res://tests/[A-Za-z0-9_-]+\.tscn$') { throw 'Choose an explicit test scene.' }
 if ($UserArguments.Count -gt 64 -or @($UserArguments | Where-Object {
     [string]::IsNullOrWhiteSpace($_) -or $_.Length -gt 32768 -or $_.Contains('"') -or

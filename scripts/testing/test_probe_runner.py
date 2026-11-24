@@ -24,6 +24,7 @@ class ProbeRunnerTests(unittest.TestCase):
         original = Path(__file__).with_name('godot-probe-coverage.ps1')
         self.runner = scripts / original.name
         shutil.copyfile(original, self.runner)
+        shutil.copyfile(original.with_name('runner-paths.ps1'), scripts / 'runner-paths.ps1')
         verifier = checkout / 'deps/space-tangent-core/scripts/testing'
         verifier.mkdir(parents=True)
         shutil.copyfile(Path(__file__).resolve().parents[2] /

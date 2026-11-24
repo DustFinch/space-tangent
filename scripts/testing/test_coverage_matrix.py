@@ -119,6 +119,7 @@ class CoverageMatrixExecutionTests(unittest.TestCase):
             scripts.mkdir(parents=True)
             runner = scripts / 'coverage-matrix.ps1'
             shutil.copyfile(Path(__file__).with_name(runner.name), runner)
+            shutil.copyfile(Path(__file__).with_name('runner-paths.ps1'), scripts / 'runner-paths.ps1')
             core_scripts = core / 'scripts/testing'
             core_scripts.mkdir(parents=True)
             shutil.copyfile(Path(__file__).resolve().parents[2] /

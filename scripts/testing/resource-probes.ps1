@@ -9,10 +9,13 @@ param(
 $ErrorActionPreference='Stop'
 if (-not $IsolatedDesktop -and -not $DedicatedDisplay) { throw 'Choose an inactive desktop or an explicit dedicated display.' }
 if ($IsolatedDesktop -and -not $IsWindows) { throw 'Inactive desktop isolation requires Windows.' }
+. (Join-Path $PSScriptRoot 'runner-paths.ps1')
+$DataProfile=Resolve-Input $DataProfile
+$Godot=Resolve-Engine $Godot
+$root=Resolve-Input $OutputDirectory
 foreach ($file in @($DataProfile, $Godot)) {
     if (-not (Test-Path -LiteralPath $file -PathType Leaf)) { throw "Required file missing: $file" }
 }
-$root=[IO.Path]::GetFullPath($OutputDirectory)
 if (Test-Path -LiteralPath $root) { throw 'Use a fresh resource-suite directory.' }
 [IO.Directory]::CreateDirectory($root) | Out-Null
 $runs=@(

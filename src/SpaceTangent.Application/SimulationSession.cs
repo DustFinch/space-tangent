@@ -13,7 +13,7 @@ namespace SpaceTangent.Application;
 public sealed partial class SimulationSession
 {
     // A recorded Cassini Saturn orbit insertion epoch with both state and pointing coverage.
-    public static JulianInstant MissionPreview { get; } = JulianInstant.FromTdbSeconds(141917558.4203589);
+    public static JulianInstant MissionPreview => CameraModeRules.MissionPreview;
     private readonly List<ObserverView> _views;
     /// <summary>View indices whose saved non-Earth site was reset by the last successful world replacement.</summary>
     public IReadOnlyList<int> SurfaceObserverFallbacks { get; private set; } = [];
@@ -53,71 +53,10 @@ public sealed partial class SimulationSession
 
     public void RestoreScenario(SimulationScenario scenario)
     {
-        ObserverView[] views = scenario.Views.ToArray();
-        if (views.Where(view => view.Places.HasIdentity).Select(view => view.Places.ViewKey).Distinct().Count() !=
-            views.Count(view => view.Places.HasIdentity))
-            throw new InvalidDataException("The scenario has duplicate observing place identities.");
-        if (views.Length is < 1 or > ObserverLayout.MaximumViews || scenario.ClockOwner < 0 || scenario.ClockOwner >= views.Length ||
-            scenario.ActiveView < 0 || scenario.ActiveView >= views.Length)
-            throw new InvalidDataException("The scenario refers to an unavailable view.");
-        if (!Enum.IsDefined(scenario.DeltaT))
-            throw new InvalidDataException("The scenario has an unknown ΔT model.");
-        ObserverLayout layout = ObserverLayout.Restore(scenario.Layout, views.Length, scenario.SplitLayout);
-        foreach (ObserverView view in views)
-        {
-            if (!Covers(World, view.Epoch))
-                throw new InvalidDataException("The scenario epoch is outside the current ephemeris.");
-            if (!Enum.IsDefined(view.Mode))
-                throw new InvalidDataException("The scenario has an unknown camera mode.");
-            if (view.Mode == CameraMode.Mission && World.MissionId is null)
-                throw new InvalidDataException("The scenario needs the Cassini mission add-on.");
-            if (view.Mode == CameraMode.Timeline && World.TimelineId is null)
-                throw new InvalidDataException("The scenario needs the Cassini timeline catalogue.");
-            if (view.Mode == CameraMode.Probe && World.Probe is null)
-                throw new InvalidDataException("The scenario needs the Huygens timeline and Titan kernels.");
-            if (view.Mode == CameraMode.LunarTerrain && !World.HasLunarTerrain)
-                throw new InvalidDataException("The scenario needs the lunar elevation map and orientation kernel.");
-            if (view.Mode == CameraMode.MarsTerrain && !World.HasMarsTerrain)
-                throw new InvalidDataException("The scenario needs the Martian elevation map and orientation kernel.");
-            if (view.EarthObserver is { } earth && !earth.IsValid())
-                throw new InvalidDataException("The scenario has an invalid Earth observer camera.");
-            if (!view.Places.IsValid())
-                throw new InvalidDataException("The scenario has an invalid observing place memory.");
-            if (view.EarthObserver is { IsEarth: false } surface &&
-                !SurfaceObserver.TryFrame(World, surface, World.Graph.Evaluate(view.Epoch, scenario.DeltaT), scenario.DeltaT, out _))
-                throw new InvalidDataException("The scenario needs the observing body's position and orientation at its saved epoch.");
-            if (view.FieldOfViewDegrees is { } field && !ObserverView.ValidFieldOfView(field))
-                throw new InvalidDataException("The scenario has an invalid field of view.");
-            if (view.Optics is { } optical && !optical.IsValid())
-                throw new InvalidDataException("The scenario has an invalid optics profile.");
-            if (view.PlaybackRate is { } rate && !ObserverView.ValidPlaybackRate(rate))
-                throw new InvalidDataException("The scenario has an invalid playback rate.");
-            if (!view.Sky.IsValid() || view.AutoOrbit is { } autoOrbit && !autoOrbit.IsValid() ||
-                view.MouseSensitivity is { } sensitivity && !ObserverView.ValidMouseSensitivity(sensitivity))
-                throw new InvalidDataException("The scenario has invalid sky or camera settings.");
-            if (view.LightTimeOffsetNanoseconds is { } offset && (offset < 0 || !view.LightTimeDelayed))
-                throw new InvalidDataException("The scenario has an invalid light-time offset.");
-            if ((view.ReferenceMarks & ~BodyReferenceMarks.All) != 0)
-                throw new InvalidDataException("The scenario has unsupported reference marks.");
-            if (view.Terrain is { } terrain && !terrain.IsValid())
-                throw new InvalidDataException("The scenario has invalid lunar camera coordinates or field width.");
-            if (view.Mode == CameraMode.Satellites && World.Satellites.Count == 0)
-                throw new InvalidDataException("The scenario needs the Earth satellite add-ons.");
-            if (view.Selection is { } selection && World.Catalogue.Find(selection) is null)
-                throw new InvalidDataException($"The selected object {selection.Value} is missing from the current world.");
-            if (view.ScriptAimTarget is { } aim && World.Catalogue.Find(aim) is null)
-                throw new InvalidDataException("The scenario has an unavailable script aim target.");
-            if (view.Navigation is { } camera &&
-                (!camera.IsValid() || (camera.Target is { } target && World.Catalogue.Find(target) is null)))
-                throw new InvalidDataException("The scenario has an invalid camera pose or unavailable camera target.");
-            if (view.Navigation is { Placement.UsesFrame: true } framed &&
-                !framed.TryFrameBasis(World.Graph.Evaluate(view.Epoch, scenario.DeltaT), scenario.DeltaT, out _))
-                throw new InvalidDataException("The scene needs an unavailable observer frame.");
-        }
-        ObserverView owner = views[scenario.ClockOwner];
-        if (scenario.Synchronized && views.Any(view => view.Epoch != owner.Epoch || view.Playing != owner.Playing))
-            throw new InvalidDataException("Synchronized scenario clocks must agree.");
-
+        var validated = ScenarioRestoration.Validate(World, scenario);
+        ObserverView[] views = validated.Views;
+        ObserverLayout layout = validated.Layout;
+        ObserverView owner = validated.Owner;
         _ships.Clear();
         _views.Clear();
         _views.AddRange(views.Select(view => view with { Places = view.Places.EnsureIdentity() }));
@@ -289,39 +228,12 @@ public sealed partial class SimulationSession
 
     public void SetMode(int view, CameraMode mode)
     {
-        if (!Enum.IsDefined(mode))
-            throw new ArgumentOutOfRangeException(nameof(mode));
-        if (mode == CameraMode.LunarTerrain && !World.HasLunarTerrain)
-            throw new InvalidOperationException("The current world has no lunar terrain.");
-        if (mode == CameraMode.MarsTerrain && !World.HasMarsTerrain)
-            throw new InvalidOperationException("The current world has no Martian terrain.");
-        ObserverView previous = _views[view];
-        if (mode == CameraMode.Satellites)
-        {
-            ScienceSatellite target = World.Satellites.FirstOrDefault(satellite => satellite.Id == previous.Selection)
-                ?? World.Satellites.FirstOrDefault()
-                ?? throw new InvalidOperationException("The current world has no satellites.");
-            Select(view, target.Id);
-        }
-        if (mode == CameraMode.Mission)
-        {
-            ObjectId mission = World.MissionId ?? throw new InvalidOperationException("The current world has no mission.");
-            WorldSnapshot snapshot = World.Graph.Evaluate(previous.Epoch, DeltaT);
-            if (!snapshot.TryState(mission, out _) || !snapshot.TryOrientation(mission, out _))
-                Seek(view, MissionPreview);
-        }
-        if (mode == CameraMode.Timeline)
-        {
-            ObjectId id = World.TimelineId ?? throw new InvalidOperationException("The current world has no sampled timeline.");
-            if (!World.Graph.Evaluate(previous.Epoch, DeltaT).TryState(id, out _))
-                Seek(view, World.TimelineStart!.Value);
-        }
-        if (mode == CameraMode.Probe)
-        {
-            var probe = World.Probe ?? throw new InvalidOperationException("The current world has no Huygens track.");
-            if (!World.Graph.Evaluate(previous.Epoch, DeltaT).TryOrientation(probe.Id, out _))
-                Seek(view, probe.Separation);
-        }
+        CameraModeRules.ValidateRequestedMode(World, mode);
+        var transition = CameraModeRules.Plan(World, _views[view], mode, DeltaT);
+        if (transition.Selection is { } selection)
+            Select(view, selection);
+        if (transition.Epoch is { } epoch)
+            Seek(view, epoch);
         CancelFlight(view);
         LeaveShip(view);
         double sharedRate = CurrentPlaybackRate(view);
@@ -466,6 +378,5 @@ public sealed partial class SimulationSession
     private void SharePlaybackRate(double rate) => _clocks.SharePlaybackRate(rate);
 
     private static bool Covers(SimulationWorld world, JulianInstant epoch) =>
-        epoch.Scale == TimeScale.Tdb && epoch.CompareTo(world.Ephemeris.Start) >= 0 &&
-        epoch.CompareTo(world.Ephemeris.End) <= 0;
+        WorldEpochRange.Contains(world.Ephemeris, epoch);
 }

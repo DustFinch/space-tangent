@@ -55,9 +55,7 @@ internal partial class SimulationViewport
         _navigationEarth.Hide();
         _navigationMoon.Hide();
         HidePlanetGlobes();
-        foreach (var disk in _stellarDisks)
-            disk.Hide();
-        _visibleStars.Clear();
+        Stars.HideResolvedDisks();
         HideImportedBodies();
         HideComets();
         HideLocalSatelliteMarkers();

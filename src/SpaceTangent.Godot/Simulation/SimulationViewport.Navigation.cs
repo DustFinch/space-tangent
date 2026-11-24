@@ -239,7 +239,7 @@ internal partial class SimulationViewport
         foreach (var (id, body) in _importedNodes)
             if (body.Asset.Observation is null && body.Asset.Geometry?.Any(span => span.VectorOverlay is not null || span.Swarm is not null) != true)
                 Consider(id, body.Node);
-        foreach (var (id, disk) in _visibleStars)
+        foreach (var (id, disk) in Stars.VisibleStars)
             Consider(id, disk);
         foreach (var (id, demo) in _demoGlobes)
             Consider(id, demo.Globe);

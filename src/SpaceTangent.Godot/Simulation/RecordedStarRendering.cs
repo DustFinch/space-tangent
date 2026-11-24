@@ -1,0 +1,239 @@
+// SPDX-License-Identifier: GPL-2.0-or-later
+using System.Runtime.InteropServices;
+using Godot;
+using SpaceTangent.Application;
+using SpaceTangent.Contracts;
+
+namespace SpaceTangent.Godot.Simulation;
+
+internal sealed class RecordedStarRendering
+{
+    private readonly Node3D _parent;
+    internal RecordedStarRendering(Node3D parent) => _parent = parent;
+    private MeshInstance3D? _archivedStarBackground, _archivedMovingStars;
+    private RecordedStarField? _archivedBackgroundSource, _archivedMovingSource;
+    private ReadOnlyMemory<byte> _archivedMovingPositions;
+    internal int ArchivedStarCount => _archivedStarBackground?.Visible == true
+        ? (_archivedBackgroundSource?.Count ?? 0) + (_archivedMovingSource?.Count ?? 0) : 0;
+
+    private MeshInstance3D? _archivedStarPoints, _archivedGroundGlow;
+    internal MeshInstance3D? ArchivedGroundGlow => _archivedGroundGlow;
+    private IReadOnlyList<RecordedStarPoint>? _archivedStarPointSource;
+
+    internal void DrawGroundGlow(RecordedSceneGeometry? frame, Camera3D camera)
+    {
+        if (frame?.StellarView?.Ground is not { Glow: > 0 } ground || DisplayServer.GetName() == "headless")
+        {
+            _archivedGroundGlow?.Hide();
+            return;
+        }
+
+        Vector3d sun = frame.SunPosition;
+        double altitude = sun.Length > 0 ? Vector3d.Dot(sun / sun.Length, ground.Zenith) : -1;
+        float darkness = 1 - Mathf.SmoothStep(-.208f, -.087f, (float)altitude);
+        if (darkness <= 0)
+        {
+            _archivedGroundGlow?.Hide();
+            return;
+        }
+
+        if (_archivedGroundGlow is null)
+        {
+            _archivedGroundGlow = new MeshInstance3D
+            {
+                Name = "ArchivedGroundGlow",
+                Mesh = new SphereMesh { Radius = 1, Height = 2, RadialSegments = 48, Rings = 24 },
+                MaterialOverride = new ShaderMaterial
+                {
+                    Shader = GD.Load<Shader>("res://Shaders/archived_ground_glow.gdshader"),
+                    RenderPriority = 1
+                },
+                CastShadow = GeometryInstance3D.ShadowCastingSetting.Off
+            };
+            _parent.AddChild(_archivedGroundGlow);
+        }
+        _archivedGroundGlow.Transform = camera.Transform;
+        var material = (ShaderMaterial)_archivedGroundGlow.MaterialOverride;
+        material.SetShaderParameter("zenith", new Vector3((float)ground.Zenith.X, (float)ground.Zenith.Y, (float)ground.Zenith.Z));
+        material.SetShaderParameter("zenith_glow", ground.Glow);
+        material.SetShaderParameter("darkness", darkness);
+        _archivedGroundGlow.Show();
+    }
+
+    internal void DrawPoints(IReadOnlyList<RecordedStarPoint>? points, Camera3D camera)
+    {
+        if (points is not { Count: > 0 } || DisplayServer.GetName() == "headless")
+        {
+            if (_archivedStarPoints is { } hidden)
+            {
+                hidden.Hide();
+                ReplaceMesh(hidden, null);
+            }
+            _archivedStarPointSource = null;
+            return;
+        }
+
+        var node = _archivedStarPoints ??= CreateArchivedStarNode("ArchivedStarPoints", "archived_star_points");
+        if (!ReferenceEquals(points, _archivedStarPointSource))
+        {
+            using var mesh = new SurfaceTool();
+            mesh.Begin(Mesh.PrimitiveType.Triangles);
+            ReadOnlySpan<Vector2> corners = [new(0, 0), new(0, 1), new(1, 1), new(0, 0), new(1, 1), new(1, 0)];
+            foreach (var point in points)
+            {
+                var direction = point.CameraDirection;
+                Vector3 center = new((float)direction.X, (float)direction.Y, (float)direction.Z);
+                foreach (var uv in corners)
+                {
+                    mesh.SetColor(new(.8f, .88f, 1f, (float)point.Brightness));
+                    mesh.SetUV(uv);
+                    // The saved sky used a 0.18-unit quad at 100 units from the camera.
+                    mesh.AddVertex(center + new Vector3(uv.X - .5f, uv.Y - .5f, 0) * .0018f);
+                }
+            }
+            ReplaceMesh(node, mesh.Commit());
+            _archivedStarPointSource = points;
+        }
+        node.Transform = camera.Transform;
+        node.Show();
+    }
+
+    internal void DrawStars(RecordedStellarView? view, double julianDate, Camera3D camera)
+    {
+        if (view is null || DisplayServer.GetName() == "headless")
+        {
+            _archivedStarBackground?.Hide();
+            if (_archivedStarBackground is { } backgroundNode)
+                ReplaceMesh(backgroundNode, null);
+            _archivedBackgroundSource = null;
+            ClearMovingStars();
+            return;
+        }
+
+        var background = _archivedStarBackground ??= CreateArchivedStarNode("ArchivedStarBackground");
+        if (!ReferenceEquals(_archivedBackgroundSource, view.Background))
+        {
+            ReplaceMesh(background, StarMesh(view.Background, default));
+            _archivedBackgroundSource = view.Background;
+        }
+        Apply(background, (float)((julianDate - 2451545) / 365.25), view.NearCut);
+
+        if (view.Periodic is { } field)
+        {
+            var moving = _archivedMovingStars ??= CreateArchivedStarNode("ArchivedMovingStars");
+            if (!ReferenceEquals(field, _archivedMovingSource) || !view.PeriodicPositions.Equals(_archivedMovingPositions))
+            {
+                ReplaceMesh(moving, StarMesh(field, MemoryMarshal.Cast<byte, float>(view.PeriodicPositions.Span)));
+                _archivedMovingSource = field;
+                _archivedMovingPositions = view.PeriodicPositions;
+            }
+            Apply(moving, 0, 0);
+        }
+        else
+            ClearMovingStars();
+
+        void Apply(MeshInstance3D node, float years, float nearCut)
+        {
+            node.Transform = camera.Transform;
+            var material = (ShaderMaterial)node.MaterialOverride;
+            material.SetShaderParameter("sky_to_camera", new Basis(
+                Column(view.ToCamera.X), Column(view.ToCamera.Y), Column(view.ToCamera.Z)));
+            material.SetShaderParameter("eye_ly", Column(view.Observer));
+            material.SetShaderParameter("near_origin", Column(view.NearOrigin));
+            material.SetShaderParameter("near_cut", nearCut);
+            material.SetShaderParameter("years", years);
+            material.SetShaderParameter("faintest", view.FaintestMagnitude);
+            material.SetShaderParameter("brightness_scale", view.BrightnessScale);
+            material.SetShaderParameter("saturation_point", view.SaturationPoint);
+            material.SetShaderParameter("ground_beta", Column(view.Ground?.Beta ?? default));
+            material.SetShaderParameter("zenith", Column(view.Ground?.Zenith ?? new(0, 1, 0)));
+            material.SetShaderParameter("refraction", view.Ground?.Refraction ?? 0);
+            material.SetShaderParameter("twinkle", view.Ground?.Twinkle ?? 0);
+            material.SetShaderParameter("animation_time", view.Ground?.Time ?? 0);
+            node.Show();
+        }
+
+        static Vector3 Column(Vector3d axis) => new((float)axis.X, (float)axis.Y, (float)axis.Z);
+    }
+
+    private void ClearMovingStars()
+    {
+        if (_archivedMovingStars is { } moving)
+        {
+            moving.Hide();
+            ReplaceMesh(moving, null);
+        }
+        _archivedMovingSource = null;
+        _archivedMovingPositions = default;
+    }
+
+    private MeshInstance3D CreateArchivedStarNode(string name, string shader = "archived_stars")
+    {
+        var mesh = new MeshInstance3D
+        {
+            MaterialOverride = new ShaderMaterial { Shader = GD.Load<Shader>($"res://Shaders/{shader}.gdshader"), RenderPriority = -10 },
+            Name = name,
+            Layers = 3,
+            CustomAabb = new Aabb(-Vector3.One * 2, Vector3.One * 4),
+            CastShadow = GeometryInstance3D.ShadowCastingSetting.Off
+        };
+        _parent.AddChild(mesh);
+        return mesh;
+    }
+
+    private static void ReplaceMesh(MeshInstance3D node, Mesh? next)
+    {
+        var previous = node.Mesh;
+        node.Mesh = next;
+        previous?.Dispose();
+    }
+
+    internal void Close()
+    {
+        foreach (var node in new[] { _archivedStarBackground, _archivedMovingStars, _archivedStarPoints, _archivedGroundGlow })
+        {
+            if (node is null) continue;
+            ReplaceMesh(node, null);
+            node.MaterialOverride?.Dispose();
+        }
+        _archivedBackgroundSource = _archivedMovingSource = null;
+        _archivedStarPointSource = null;
+        _archivedMovingPositions = default;
+    }
+
+    private static ArrayMesh StarMesh(RecordedStarField field, ReadOnlySpan<float> positions)
+    {
+        var directions = field.Directions;
+        var distances = field.Distances;
+        var magnitudes = field.Magnitudes;
+        var rgb = field.Colors;
+        var velocities = field.Velocities;
+        var vertices = new Vector3[field.Count];
+        var colors = new Color[field.Count];
+        var uv = new Vector2[field.Count];
+        var motion = velocities.IsEmpty || !positions.IsEmpty ? [] : new float[field.Count * 4];
+        for (int i = 0; i < field.Count; i++)
+        {
+            int component = i * 3;
+            float distance = distances.IsEmpty ? 1e9f : distances[i];
+            vertices[i] = positions.IsEmpty
+                ? new Vector3(directions[component], directions[component + 1], directions[component + 2]) * distance
+                : new Vector3(positions[component], positions[component + 1], positions[component + 2]);
+            colors[i] = Color.Color8(rgb[component], rgb[component + 1], rgb[component + 2]);
+            uv[i] = new(magnitudes[i] - 5 * MathF.Log10(distance), 0);
+            if (motion.Length != 0)
+                velocities.Slice(component, 3).CopyTo(motion.AsSpan(i * 4, 3));
+        }
+        using var arrays = new global::Godot.Collections.Array();
+        arrays.Resize((int)Mesh.ArrayType.Max);
+        arrays[(int)Mesh.ArrayType.Vertex] = vertices;
+        arrays[(int)Mesh.ArrayType.Color] = colors;
+        arrays[(int)Mesh.ArrayType.TexUV] = uv;
+        if (motion.Length != 0)
+            arrays[(int)Mesh.ArrayType.Custom0] = motion;
+        var mesh = new ArrayMesh();
+        mesh.AddSurfaceFromArrays(Mesh.PrimitiveType.Points, arrays, flags: motion.Length == 0 ? 0 :
+            (Mesh.ArrayFormat)((long)Mesh.ArrayCustomFormat.RgbaFloat << (int)Mesh.ArrayFormat.FormatCustom0Shift));
+        return mesh;
+    }
+}
